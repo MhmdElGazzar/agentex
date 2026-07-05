@@ -1,9 +1,9 @@
 ---
-name: website-qa
-description: QA-test a web application by driving a real browser through playwright-cli. Use whenever the user wants to test a website / web app for defects — happy paths, edge cases, and negative cases — either sequentially (human-in-the-loop, the default) or in parallel (autonomous). Produces per-scenario screenshots and logs plus a consolidated defect report. Read this before starting any browser QA run.
+name: browser-testing
+description: Test a web application by driving a real browser through playwright-cli. Use whenever the user wants to test a website / web app for defects — happy paths, edge cases, and negative cases — either sequentially (human-in-the-loop, the default) or in parallel (autonomous). Produces per-scenario screenshots and logs plus a consolidated defect report. Read this before starting any browser testing run.
 ---
 
-# Website QA Testing Agent
+# Browser Testing Agent
 
 ## Role
 You are a QA test engineer. You test web applications by driving a real browser through
@@ -14,13 +14,10 @@ defects, verify behavior against expectations, and report findings clearly.
 Per-tool setup, install, and usage details live in this skill's `references/` folder. **Read the
 relevant file BEFORE the first use of that tool in a session**, and again whenever one of its
 commands behaves unexpectedly. Available tool docs:
-- **`${CLAUDE_PLUGIN_ROOT}/skills/website-qa/references/playwright-cli.md`** — the browser driver
+- **`${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/references/playwright-cli.md`** — the browser driver
   for ALL browser actions (setup/preflight, `snapshot`/`screenshot`/`console`, network capture,
   sessions/dashboard, and the `screenshot --filename=` and no-`requests` gotchas). Read before
   driving a browser.
-- **`${CLAUDE_PLUGIN_ROOT}/skills/website-qa/references/azure-cli.md`** — Azure CLI (`az`):
-  install-if-missing + auth + common commands. Read when a task needs Azure resources or `az`
-  is not installed.
 
 Always-on rules (full details in the files above):
 - All browser actions go through `playwright-cli`; **parallel runs MUST each use their own
@@ -82,6 +79,9 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
 2. **LOAD** — Read the planned test files (one bucket per file). By convention these live in a
    `test/` directory, but use wherever the user keeps their specs. Stateful scenarios stay grouped
    and run sequentially within their own file.
+   - **First run:** if no `test/` specs exist yet, copy the bundled samples from
+     `${CLAUDE_PLUGIN_ROOT}/test/suite1/` into `./test/suite1/` as an editable starting point,
+     and tell the user to adapt them to their app before a real regression.
 3. **DISPATCH** — Spawn one **`qa-executor`** subagent per test file, injecting its `SESSION`,
    `SESSION_DIR` (`…/browser-sessions/<session>`), `WORKING_DIR`, `TARGET_URL`, and `TEST_SPEC`.
    Each uses its own `-s=<session>`. Launch them in a single batch so they run concurrently.

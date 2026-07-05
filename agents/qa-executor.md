@@ -1,6 +1,6 @@
 ---
 name: qa-executor
-description: Executes a single QA test specification in an isolated playwright-cli browser session and returns a defect report. Dispatched by the website-qa orchestrator (one subagent per test file / session). Never modifies application code.
+description: Executes a single QA test specification in an isolated playwright-cli browser session and returns a defect report. Dispatched by the browser-testing orchestrator (one subagent per test file / session). Never modifies application code.
 tools: Bash, Read, Write, Glob, Grep
 ---
 

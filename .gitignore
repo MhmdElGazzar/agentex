@@ -4,12 +4,14 @@ node_modules/
 # Playwright CLI scratch
 .playwright-cli/
 
-# QA run artifacts (users generate these in their own projects)
-executions/
+# QA run artifacts — keep the folder + its README, ignore actual run outputs
+executions/*
+!executions/README.md
 
 # Secrets
 .env
 .env.*
+!.env.example
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
