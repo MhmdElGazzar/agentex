@@ -1,0 +1,51 @@
+{
+  "//": "RECOMMENDED PERMISSIONS for the Website QA Agent. Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the safe playwright-cli commands, gate the powerful ones behind a prompt, and deny secret reads / destructive actions.",
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npx playwright-cli open:*)",
+      "Bash(npx playwright-cli goto:*)",
+      "Bash(npx playwright-cli snapshot:*)",
+      "Bash(npx playwright-cli screenshot:*)",
+      "Bash(npx playwright-cli click:*)",
+      "Bash(npx playwright-cli dblclick:*)",
+      "Bash(npx playwright-cli fill:*)",
+      "Bash(npx playwright-cli type:*)",
+      "Bash(npx playwright-cli press:*)",
+      "Bash(npx playwright-cli check:*)",
+      "Bash(npx playwright-cli uncheck:*)",
+      "Bash(npx playwright-cli select:*)",
+      "Bash(npx playwright-cli hover:*)",
+      "Bash(npx playwright-cli go-back:*)",
+      "Bash(npx playwright-cli go-forward:*)",
+      "Bash(npx playwright-cli reload:*)",
+      "Bash(npx playwright-cli console:*)",
+      "Bash(npx playwright-cli tab-list:*)",
+      "Bash(npx playwright-cli list:*)",
+      "Bash(npx playwright-cli close:*)",
+      "Bash(npx playwright-cli close-all:*)",
+      "Bash(npx playwright-cli --version:*)",
+      "Bash(npx playwright-cli install-browser:*)",
+      "Bash(npm install *)"
+    ],
+    "ask": [
+      "Bash(npx playwright-cli eval:*)",
+      "Bash(npx playwright-cli run-code:*)",
+      "Bash(npx playwright-cli upload:*)",
+      "Bash(npx playwright-cli drop:*)",
+      "Bash(npx playwright-cli route:*)",
+      "Bash(npx playwright-cli state-save:*)",
+      "Bash(npx playwright-cli state-load:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./secrets/**)",
+      "Edit(./src/**)",
+      "Bash(rm -rf:*)",
+      "Bash(git push:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}
