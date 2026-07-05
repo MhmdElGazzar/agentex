@@ -1,13 +1,14 @@
 # AgenTeX — agentic test execution for Claude Code
 
-**AgenTeX** (Agentic Test eXecution) drives a **real browser** through
-[`@playwright/cli`](https://www.npmjs.com/package/@playwright/cli) to run tests against web
-applications from inside Claude Code. It plans test scenarios, runs them, captures screenshot/log
-evidence, and produces a consolidated defect report — either **sequentially** (human-in-the-loop,
-approving each step) or in **parallel** (autonomous, one browser session per test file).
+**AgenTeX** (Agentic Test eXecution) takes the hassle of **manual test execution** off your
+plate. Instead of clicking through the same scenarios by hand, an agent plans them, runs them,
+captures screenshot/log evidence, and produces a consolidated defect report — either
+**sequentially** (human-in-the-loop, approving each step) or in **parallel** (autonomous, one
+session per test file).
 
-Web is the first execution target; API, DB, and Azure targets are planned as sibling skills under
-the same plugin.
+It drives a **real browser** through
+[`@playwright/cli`](https://www.npmjs.com/package/@playwright/cli) today; API, DB, and Azure
+execution targets are coming soon as sibling skills under the same plugin.
 
 The agent **never modifies your application code** — it only writes test artifacts.
 

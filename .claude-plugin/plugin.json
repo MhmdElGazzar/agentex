@@ -3,7 +3,7 @@
   "name": "agentex",
   "displayName": "AgenTeX",
   "version": "0.1.0",
-  "description": "Agentic test execution. Drives a real browser via playwright-cli to run web tests — human-in-the-loop or fully autonomous — with structured screenshot/log evidence and a defect report. Web is the first execution target; API, DB, and Azure targets to follow.",
+  "description": "Agentic test execution — skip the manual-execution grind. AgenTeX plans and runs your tests for you, human-in-the-loop or fully autonomous, capturing structured evidence and a consolidated defect report instead of hours of manual click-through. Drives a real browser via playwright-cli today; API, DB, and Azure execution targets coming soon.",
   "author": {
     "name": "Mohamed Elgazzar",
     "email": "mhmd.elgazzar.sqe@gmail.com"
@@ -13,11 +13,11 @@
     "qa",
     "testing",
     "test-execution",
+    "manual-testing",
     "agentic",
     "playwright",
     "browser",
     "automation",
-    "web",
     "defects"
   ]
 }
