@@ -1,0 +1,42 @@
+# Changelog
+
+All notable changes to AgenTeX are documented here.
+
+## [0.3.0] — 2026-07-14
+
+### Added
+- **`task-estimation` skill** — estimates QA effort for Azure DevOps User Stories
+  (complexity buckets from scenarios/fields/validations/integrations) and creates 5
+  `[Testing]` tasks per story, one story at a time with confirmation.
+  Reference: `references/azure-devops-cli.md` (`az boards` / `az devops` mechanics).
+- **`/estimate-story [ids]` command** — entrypoint for the estimation flow; defaults to the
+  current sprint's stories.
+- `/init-test` now also scaffolds a keys-only `.env` (no values, no credentials) and ensures
+  it's gitignored.
+- `.env.example`: `AZURE_TEAM`, `AZURE_ASSIGNEE`, and the `AZURE_DEVOPS_EXT_PAT` shell-export
+  auth pattern.
+- Recommended permissions: `az boards` / `az devops` / `az extension` and read-only base `az`
+  commands allowed; destructive ones (`work-item delete`, `webapp deploy`, `blob upload`,
+  `aks get-credentials`, `group create`) gated behind a prompt.
+
+### Changed
+- `.env` is no longer denied to the agent — it may read config keys; secrets must never be
+  printed or passed (instruction-level rule).
+- Plugin description & keywords updated for the Azure DevOps estimation capability.
+
+## [0.2.0] — 2026-07-13
+
+### Changed
+- Renamed the `website-qa` skill to **`browser-testing`**.
+- Moved the Azure CLI reference out into a new **`azure-integration`** skill.
+- Simplified `.env.example` to target URL + Azure DevOps values.
+- Reduced recommended permissions to a `playwright-cli` wildcard allow.
+
+### Added
+- `/execute-test` and `/init-test` commands, bundled sample specs (`test/suite1/`), and the
+  `executions/` output scaffold.
+
+## [0.1.0] — 2026-07-12
+
+- Initial release: `website-qa` skill (sequential & parallel modes), `qa-executor` subagent,
+  `/qa-test` command, playwright-cli & azure-cli references, recommended permissions.

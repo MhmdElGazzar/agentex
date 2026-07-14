@@ -1,15 +1,35 @@
 {
-  "//": "RECOMMENDED PERMISSIONS for the Browser Testing Agent. Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve ALL playwright-cli commands and still deny secret reads / destructive actions.",
+  "//": "RECOMMENDED PERMISSIONS for AgenTeX (Browser Testing + Azure DevOps task estimation). Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the safe commands, gate destructive ones behind a prompt, and deny secret reads / destructive actions.",
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Bash(npx playwright-cli:*)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(az boards:*)",
+      "Bash(az devops:*)",
+      "Bash(az extension:*)",
+      "Bash(az --version)",
+      "Bash(az login:*)",
+      "Bash(az account:*)",
+      "Bash(az group list:*)",
+      "Bash(az resource list:*)",
+      "Bash(az webapp list:*)",
+      "Bash(az webapp show:*)",
+      "Bash(az webapp log:*)",
+      "Bash(az storage account list:*)",
+      "Bash(az storage blob list:*)",
+      "Bash(az keyvault list:*)",
+      "Bash(az keyvault secret list:*)",
+      "Bash(az aks list:*)"
+    ],
+    "ask": [
+      "Bash(az boards work-item delete:*)",
+      "Bash(az webapp deploy:*)",
+      "Bash(az storage blob upload:*)",
+      "Bash(az aks get-credentials:*)",
+      "Bash(az group create:*)"
     ],
     "deny": [
-      "Read(./.env)",
-      "Read(./.env.*)",
-      "Read(./**/.env)",
       "Read(./secrets/**)",
       "Edit(./src/**)",
       "Bash(rm -rf:*)",

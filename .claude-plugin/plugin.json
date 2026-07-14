@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "agentex",
   "displayName": "AgenTeX",
-  "version": "0.2.0",
-  "description": "Agentic test execution — skip the manual-execution grind. AgenTeX plans and runs your tests for you, human-in-the-loop or fully autonomous, capturing structured evidence and a consolidated defect report instead of hours of manual click-through. Drives a real browser via playwright-cli today; API, DB, and Azure execution targets coming soon.",
+  "version": "0.3.0",
+  "description": "Agentic QA — skip the manual grind. AgenTeX plans and runs your tests for you (human-in-the-loop or fully autonomous) with structured evidence and a consolidated defect report, driving a real browser via playwright-cli. Also estimates QA effort for Azure DevOps sprint stories and creates [Testing] tasks on them, and reaches Azure resources mid-run via the az CLI. API & DB execution targets coming soon.",
   "author": {
     "name": "Mohamed Elgazzar",
     "email": "mhmd.elgazzar.sqe@gmail.com"
@@ -18,6 +18,10 @@
     "playwright",
     "browser",
     "automation",
-    "defects"
+    "defects",
+    "azure-devops",
+    "estimation",
+    "sprint-planning",
+    "work-items"
   ]
 }

@@ -14,9 +14,11 @@ The agent **never modifies your application code** — it only writes test artif
 |-----------|--------|
 | **Browser test execution** — drives a real browser via [`@playwright/cli`](https://www.npmjs.com/package/@playwright/cli) | ✅ Available |
 | **Azure resource access** — reach Azure resources mid-run via the `az` CLI | ✅ Available (helper skill) |
+| **Azure DevOps QA planning** — estimate sprint stories & create `[Testing]` tasks | ✅ Available (helper skill) |
 | **API & database execution targets** | 🚧 Planned |
 
-The rest of this README covers the **browser-testing** flow — the core of AgenTeX today.
+Most of this README covers the **browser-testing** flow — the core of AgenTeX today. For the
+Azure DevOps estimation flow, see [QA task estimation](#qa-task-estimation-on-azure-devops).
 
 ## Quick start
 
@@ -28,17 +30,40 @@ The rest of this README covers the **browser-testing** flow — the core of Agen
 Then, in the project you want to test: `/init-test` to scaffold sample specs, and
 `/execute-test https://example.com` to run. See [One-time setup](#one-time-setup-in-the-project-you-want-to-test) for the Playwright + permissions steps.
 
+## QA task estimation on Azure DevOps
+
+`/estimate-story` analyzes your sprint's User Stories, proposes an hours estimate per story
+(based on scenarios, fields, validations, integrations…), and — after you confirm each one —
+creates 5 `[Testing]` tasks on it (Requirement Review, Test Creation, Test Execution,
+Bug Review & Retest, Automation), iteration-inherited and assigned.
+
+One-time setup:
+
+1. Azure CLI + DevOps extension: install `az` (see `skills/azure-integration/references/azure-cli.md`),
+   then `az extension add --name azure-devops`.
+2. Fill the `AZURE_*` keys in `.env` (`/init-test` scaffolds it keys-only): organization URL,
+   project, team, default assignee.
+3. Auth: `az login`, or for non-interactive use export a PAT in your shell:
+   `export AZURE_DEVOPS_EXT_PAT=<your-pat>` (never committed, never printed by the agent).
+
+Then run `/estimate-story` for the current sprint, or `/estimate-story 12345 12346` for
+specific stories. The agent processes **one story at a time** and never creates tasks without
+your confirmation.
+
 ## What's inside
 
 | Component | File | Purpose |
 |-----------|------|---------|
 | Skill | `skills/browser-testing/SKILL.md` | The orchestrator workflow — modes, output layout, defect format, rules |
 | Skill | `skills/azure-integration/SKILL.md` | Reach Azure resources during a run via the `az` CLI |
+| Skill | `skills/task-estimation/SKILL.md` | Estimate QA effort and create `[Testing]` tasks on Azure DevOps stories |
 | Agent | `agents/qa-executor.md` | Subagent that runs one test spec in its own isolated browser session |
 | Reference | `skills/browser-testing/references/playwright-cli.md` | The browser driver — setup & gotchas |
 | Reference | `skills/azure-integration/references/azure-cli.md` | `az` CLI — install/auth/common commands |
+| Reference | `skills/task-estimation/references/azure-devops-cli.md` | `az boards` / `az devops` — task creation mechanics |
 | Command | `commands/init-test.md` | `/init-test` — scaffold sample specs + `executions/` in your project |
 | Command | `commands/execute-test.md` | `/execute-test <url or scope>` — run the tests |
+| Command | `commands/estimate-story.md` | `/estimate-story [ids]` — estimate & create QA tasks on ADO stories |
 | Permissions | `settings.example.json` | Recommended permission rules to copy into your project |
 | Example specs | `test/suite1/` | Ready-to-adapt sample test specs — one file per browser session |
 | Output | `executions/` | Where each run's report, screenshots & defect list land (auto-created) |
