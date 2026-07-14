@@ -15,6 +15,7 @@ The agent **never modifies your application code** — it only writes test artif
 | **Browser test execution** — drives a real browser via [`@playwright/cli`](https://www.npmjs.com/package/@playwright/cli) | ✅ Available |
 | **Azure resource access** — reach Azure resources mid-run via the `az` CLI | ✅ Available (helper skill) |
 | **Azure DevOps QA planning** — estimate sprint stories & create `[Testing]` tasks | ✅ Available (helper skill) |
+| **Azure DevOps test design** — analyze story ACs & create linked test cases | ✅ Available (helper skill) |
 | **API & database execution targets** | 🚧 Planned |
 
 Most of this README covers the **browser-testing** flow — the core of AgenTeX today. For the
@@ -57,15 +58,19 @@ your confirmation.
 | Skill | `skills/browser-testing/SKILL.md` | The orchestrator workflow — modes, output layout, defect format, rules |
 | Skill | `skills/azure-integration/SKILL.md` | Reach Azure resources during a run via the `az` CLI |
 | Skill | `skills/task-estimation/SKILL.md` | Estimate QA effort and create `[Testing]` tasks on Azure DevOps stories |
+| Skill | `skills/test-design/SKILL.md` | Analyze story ACs into test conditions; create & link test cases in ADO |
 | Skill | `skills/extent-report/SKILL.md` | Interactive HTML dashboard (`extent-report.html`) for a finished run |
 | Agent | `agents/qa-executor.md` | Subagent that runs one test spec in its own isolated browser session |
 | Reference | `skills/browser-testing/references/playwright-cli.md` | The browser driver — setup & gotchas |
 | Reference | `skills/azure-integration/references/azure-cli.md` | `az` CLI — install/auth/common commands |
-| Reference | `skills/task-estimation/references/azure-devops-cli.md` | `az boards` / `az devops` — task creation mechanics |
+| Reference | `skills/azure-integration/references/azure-devops-cli.md` | `az boards` / `az devops` basics — shared by the ADO skills |
+| Reference | `skills/test-design/references/test-case-mechanics.md` | Test Case creation — Steps XML, linking direction, gotchas |
+| Template | `skills/test-design/templates/test-template.md` | Project conventions template — scaffolded to `.agentex/` in your project |
 | Script | `skills/extent-report/scripts/make_html_report.js` | Standalone HTML dashboard generator (run via `node`) |
 | Command | `commands/init-test.md` | `/init-test` — scaffold sample specs + `executions/` in your project |
 | Command | `commands/execute-test.md` | `/execute-test <url or scope>` — run the tests |
 | Command | `commands/estimate-story.md` | `/estimate-story [ids]` — estimate & create QA tasks on ADO stories |
+| Command | `commands/design-test.md` | `/design-test <ids>` — design & create linked test cases on ADO stories |
 | Permissions | `settings.example.json` | Recommended permission rules to copy into your project |
 | Example specs | `test/suite1/` | Ready-to-adapt sample test specs — one file per browser session |
 | Output | `executions/` | Where each run's report, screenshots & defect list land (auto-created) |

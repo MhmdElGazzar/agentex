@@ -24,7 +24,7 @@ when to confirm). Command mechanics live in the references — **read them befor
 - **`${CLAUDE_PLUGIN_ROOT}/skills/test-design/references/test-case-mechanics.md`** — Test Case
   creation specifics: Steps XML format, the file+`$STEPS` quoting trick, `Tested By` link
   direction, the no-delete gotcha, retry notes.
-- **`${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/references/azure-devops-cli.md`** — shared
+- **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-devops-cli.md`** — shared
   `az devops` basics: extension install, auth, `configure --defaults`, fetching the current
   iteration, WIQL queries.
 

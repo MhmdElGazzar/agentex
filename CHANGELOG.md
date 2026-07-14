@@ -2,6 +2,24 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.5.0] — 2026-07-14
+
+### Added
+- **`test-design` skill** — analyze a User Story's ACs into test conditions, map them to
+  titled test cases, create them in ADO with structured steps (Steps XML), and link them
+  `Tested By` to the story, ending with a coverage check. Project conventions (persona,
+  journey step map, setup steps, languages, extra categories) live in the consumer project at
+  `.agentex/test-template.md`, scaffolded from the bundled template on first run.
+- **`/design-test <ids>` command** — entrypoint for the test-design flow.
+- Reference `test-case-mechanics.md`: Steps XML format, file+`$STEPS` quoting trick,
+  `TestedBy-Forward` direction rule, the CLI no-delete gotcha and DELETE-ME workaround.
+
+### Changed
+- Moved the shared `azure-devops-cli.md` reference from `task-estimation/references/` to
+  `azure-integration/references/` — azure-integration is now the Azure toolbox shared by the
+  ADO workflow skills (task-estimation, test-design).
+- Recommended permissions: deny agent reads of `executions/**` run artifacts.
+
 ## [0.4.0] — 2026-07-14
 
 ### Added

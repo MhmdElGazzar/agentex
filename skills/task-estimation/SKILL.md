@@ -17,7 +17,7 @@ This file is the **workflow** (what tasks, how to estimate, when to confirm). Th
 `az devops` command mechanics live in the reference — **read it before the first `az boards`
 command in a session**:
 
-- **`${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/references/azure-devops-cli.md`** —
+- **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-devops-cli.md`** —
   extension install, `az devops configure`, work-item create/show/query, WIQL
   `@CurrentIteration`, parent linking, delete, and the known gotchas.
 

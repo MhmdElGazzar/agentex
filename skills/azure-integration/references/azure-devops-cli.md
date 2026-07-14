@@ -2,7 +2,8 @@
 
 The Azure DevOps extension for the Azure CLI. Read this before the first `az boards` / `az devops`
 command in a session, or when one behaves unexpectedly. For installing/authenticating `az` itself,
-see the **azure-integration** skill's `references/azure-cli.md`.
+see the sibling reference `azure-cli.md`. Used by the **task-estimation** and **test-design**
+skills.
 
 ## Preflight & install
 - Preflight: `az extension show --name azure-devops` (verify the extension is present).

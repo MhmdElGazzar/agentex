@@ -2,7 +2,7 @@
 
 Test-Case-specific `az boards` mechanics. Read this before creating or linking test cases, or
 when a command behaves unexpectedly. For shared basics (extension install, auth,
-`configure --defaults`, current-iteration fetch, WIQL), see the task-estimation skill's
+`configure --defaults`, current-iteration fetch, WIQL), see the azure-integration skill's
 `references/azure-devops-cli.md`.
 
 ## Fetch a story for analysis

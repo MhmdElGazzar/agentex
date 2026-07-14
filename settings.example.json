@@ -31,6 +31,7 @@
     ],
     "deny": [
       "Read(./secrets/**)",
+      "Read(./executions/**)",
       "Edit(./src/**)",
       "Bash(rm -rf:*)",
       "Bash(git push:*)",

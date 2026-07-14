@@ -18,6 +18,10 @@ behaves unexpectedly:
 - **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-cli.md`** — Azure CLI (`az`):
   install-if-missing (winget/MSI/brew/apt), auth (interactive, device-code, service-principal),
   and common commands for App Service, Storage, Key Vault, and AKS.
+- **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-devops-cli.md`** — the
+  `azure-devops` extension (`az boards` / `az devops`): install, PAT auth, configure defaults,
+  iteration fetch, WIQL, work-item create/link. Shared by the task-estimation and test-design
+  skills.
 
 ## Rules
 - Preflight `az --version` before use; install per the reference if it's missing.
