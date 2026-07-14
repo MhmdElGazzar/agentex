@@ -69,7 +69,8 @@ Follow this loop and STOP for approval at each checkpoint. Do not skip ahead.
    → Checkpoint: pause after each scenario before moving to the next.
 4. **REPORT** — Create `executions/execu_<timestamp>/` (single session `default`), save
    screenshots/logs under `browser-sessions/default/`, then write `report.md` + `bugs/` there.
-   Summarize results as a defect list (format below).
+   Summarize results as a defect list (format below). Optionally generate an interactive
+   `extent-report.html` next to `report.md` via the **extent-report** skill.
 
 ### Parallel mode — autonomous
 Run end to end WITHOUT stopping for per-checkpoint approval; present the final report when done.
@@ -88,7 +89,8 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
    Expect ~6–8 browser sessions to run at once; the rest queue automatically.
 4. **MERGE** — Collect each subagent's report; write the final `report.md` and build `bugs/`
    (`bug-list.md` + copy the bug-evidence screenshots each subagent flagged) inside the execution
-   folder. Use the defect format below.
+   folder. Use the defect format below. Optionally generate an interactive `extent-report.html`
+   next to `report.md` via the **extent-report** skill.
 5. **PRESENT** — Show the merged summary.
 
 Autonomy boundary (applies in parallel mode): still never modify app source, never create real

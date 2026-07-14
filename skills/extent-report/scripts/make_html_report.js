@@ -67,7 +67,10 @@ for (const key of order) {
   const pct = (count / total) * 100;
   const startAngle = cum * 3.6;
   cum += pct;
-  const endAngle = cum * 3.6;
+  let endAngle = cum * 3.6;
+  // A full-circle arc (start == end point) renders as zero-length in SVG and the
+  // donut disappears (e.g. an all-passed run). Cap just under 360°.
+  if (endAngle - startAngle >= 360) endAngle = startAngle + 359.99;
   const [x1, y1] = polar(startAngle, r);
   const [x2, y2] = polar(endAngle, r);
   const [x1i, y1i] = polar(startAngle, rInner);

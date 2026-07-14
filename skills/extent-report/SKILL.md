@@ -23,6 +23,10 @@ Test Coverage = (Passed + Failed + Blocked) ÷ Total # of TC — scenarios actua
 the total planned. Total # of TC is the count of individual test scenarios/steps executed across
 all specs in the run, not the count of spec files.
 
+Note: executor reports only emit PASS/FAIL per scenario. Blocked, N/A-De-scoped, and Not Run
+come from the orchestrator's own plan — scenarios that couldn't be attempted (environment/
+prerequisite), were intentionally excluded from scope, or were planned but never reached.
+
 ## Tool
 The generator script lives in this skill's `scripts/` folder:
 - **`${CLAUDE_PLUGIN_ROOT}/skills/extent-report/scripts/make_html_report.js`** — reads a JSON
@@ -74,8 +78,8 @@ na > notrun > passed).
 ## Output placement
 `extent-report.html` lives at the run folder root next to `report.md` (see the browser-testing
 skill's execution output layout), fully self-contained (inline CSS/JS, no external requests), and
-opens directly in a browser. It never goes inside `browser-sessions/` or `bugs/screenshots/`, so
-old-results cleanup rules that purge those two subfolders before the next run never delete it.
+opens directly in a browser. Never place it inside `browser-sessions/` or `bugs/` — those
+subfolders hold session evidence, not run-level artifacts.
 
 ## Rules
 - Never hand-edit the generated HTML — regenerate it from the JSON summary instead.
