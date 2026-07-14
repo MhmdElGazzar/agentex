@@ -1,17 +1,30 @@
-# Tool: API requests (curl) — executing `*_api.json` entries
+# Tool: API requests — executing `*_api.json` entries
 
 How to execute a cataloged API request. Read before the first `api:` step in a session.
 
-## Preflight & install
-- Preflight: `curl --version`.
-- Usually preinstalled (Windows 10+, macOS, most Linux; also ships with Git Bash). If missing:
-  - **Windows:** `winget install -e --id cURL.cURL` (or use the Git Bash bundled curl)
-  - **macOS:** `brew install curl`
-  - **Linux (Debian/Ubuntu):** `sudo apt-get install -y curl`
+## Primary path: the runner script
 
-## Catalog entry → command
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js" \
+  --entry sample-api.get-todo --param id=1 \
+  --expect-status 200 --expect-field title \
+  --log "$SESSION_DIR/logs/s1-get-todo.log"
+```
 
-Given an `integrations/<service>_api.json`:
+- Only needs Node (already required by the plugin). Reads `./integration/*_api.json`, enforces
+  catalog-only execution, validates params, resolves env vars, writes the evidence log, checks
+  expectations, and prints one JSON line (`PASS`/`FAIL`/`BLOCKED`; exit 0/1/2).
+- Assertion flags: `--expect-status <code>`, `--expect-field <dot.path>` (exists),
+  `--expect-equals <dot.path>=<value>`. Non-default catalog dir: `--catalog <dir>`.
+- A `BLOCKED` result tells you exactly what's missing (entry, param, or env var) — surface it
+  to the user; do not work around it.
+
+## Fallback: manual curl (only if node/the runner fails)
+
+Preflight: `curl --version` (usually preinstalled; Windows: `winget install -e --id cURL.cURL`,
+macOS: `brew install curl`, Debian/Ubuntu: `sudo apt-get install -y curl`).
+
+Given an `integration/<service>_api.json`:
 
 ```json
 {

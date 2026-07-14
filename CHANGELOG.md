@@ -2,6 +2,25 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.7.0] — 2026-07-14
+
+### Added
+- **Deterministic runner scripts** — mechanical work moved from agent reasoning into code:
+  - `run_api.js` (api-integration) — executes one cataloged API request via Node fetch:
+    catalog-only enforcement, param validation, env resolution, evidence log, status/body
+    assertions; prints PASS/FAIL/BLOCKED JSON.
+  - `run_db.js` (db-integration) — executes one cataloged query via sqlcmd: catalog-only,
+    **DDL ban and param sanitization enforced in code**, env-based connection
+    (`SQLCMDPASSWORD` only), row-count assertions.
+  - `preflight.js`, `init_run.js`, `merge_run.js` (browser-testing) — one-call tool checks,
+    execution-tree scaffold, and bug-evidence merging.
+
+### Changed
+- Split the `integrations` skill into **`api-integration`** and **`db-integration`** (sharper
+  triggering, engine-specific references/scripts/templates per skill).
+- Consumer catalog folder renamed `integrations/` → **`integration/`**.
+- References rewritten runner-first; curl/manual sqlcmd remain as documented fallbacks.
+
 ## [0.6.0] — 2026-07-14
 
 ### Added

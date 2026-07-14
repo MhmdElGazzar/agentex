@@ -26,7 +26,7 @@ See [`suite1/`](./suite1/) for ready-to-adapt examples. Each spec should have:
 
 ## API & DB steps in specs
 
-Scenario steps can reach beyond the browser using the **`integrations/` catalog** at the
+Scenario steps can reach beyond the browser using the **`integration/` catalog** at the
 project root (scaffolded by `/init-test` with samples):
 
 ```
@@ -34,7 +34,7 @@ api: sample-api.get-todo(id=1) → expect HTTP 200 and title present
 db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
 ```
 
-- Each `<name>.<entry>(params)` must be **defined first** in `integrations/*_api.json` /
+- Each `<name>.<entry>(params)` must be **defined first** in `integration/*_api.json` /
   `*_db.json` — the agent only executes cataloged entries, never its own SQL/HTTP.
 - Secrets are never in the catalog — files name env vars; values live in `.env`/your shell.
 

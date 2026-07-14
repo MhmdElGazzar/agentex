@@ -16,7 +16,7 @@ The agent **never modifies your application code** — it only writes test artif
 | **Azure resource access** — reach Azure resources mid-run via the `az` CLI | ✅ Available (helper skill) |
 | **Azure DevOps QA planning** — estimate sprint stories & create `[Testing]` tasks | ✅ Available (helper skill) |
 | **Azure DevOps test design** — analyze story ACs & create linked test cases | ✅ Available (helper skill) |
-| **API & DB steps in tests** — cataloged API calls & SQL checks mid-run (`integrations/`) | ✅ Available |
+| **API & DB steps in tests** — cataloged API calls & SQL checks mid-run (`integration/`) | ✅ Available |
 | **Standalone API & database test suites** | 🚧 Planned |
 
 Most of this README covers the **browser-testing** flow — the core of AgenTeX today. For the
@@ -60,7 +60,8 @@ your confirmation.
 | Skill | `skills/azure-integration/SKILL.md` | Reach Azure resources during a run via the `az` CLI |
 | Skill | `skills/task-estimation/SKILL.md` | Estimate QA effort and create `[Testing]` tasks on Azure DevOps stories |
 | Skill | `skills/test-design/SKILL.md` | Analyze story ACs into test conditions; create & link test cases in ADO |
-| Skill | `skills/integrations/SKILL.md` | Execute cataloged API calls / DB queries in test steps (`api:`/`db:`) |
+| Skill | `skills/api-integration/SKILL.md` | Execute cataloged API calls in test steps (`api:`) via a runner script |
+| Skill | `skills/db-integration/SKILL.md` | Execute cataloged DB queries in test steps (`db:`) via a runner script |
 | Skill | `skills/extent-report/SKILL.md` | Interactive HTML dashboard (`extent-report.html`) for a finished run |
 | Agent | `agents/qa-executor.md` | Subagent that runs one test spec in its own isolated browser session |
 | Reference | `skills/browser-testing/references/playwright-cli.md` | The browser driver — setup & gotchas |
@@ -68,9 +69,10 @@ your confirmation.
 | Reference | `skills/azure-integration/references/azure-devops-cli.md` | `az boards` / `az devops` basics — shared by the ADO skills |
 | Reference | `skills/test-design/references/test-case-mechanics.md` | Test Case creation — Steps XML, linking direction, gotchas |
 | Template | `skills/test-design/templates/test-template.md` | Project conventions template — scaffolded to `.agentex/` in your project |
-| Reference | `skills/integrations/references/api-requests.md` | curl mechanics for cataloged API requests |
-| Reference | `skills/integrations/references/sqlcmd.md` | sqlcmd (SQL Server) mechanics for cataloged queries |
-| Templates | `skills/integrations/templates/sample_{api,db}.json` | Catalog samples — scaffolded to `integrations/` in your project |
+| Reference | `skills/api-integration/references/api-requests.md` | Runner usage + curl fallback for cataloged API requests |
+| Reference | `skills/db-integration/references/sqlcmd.md` | Runner usage + sqlcmd (SQL Server) for cataloged queries |
+| Scripts | `skills/*/scripts/*.js` | Deterministic runners & helpers: `run_api`, `run_db`, `preflight`, `init_run`, `merge_run` |
+| Templates | `skills/{api,db}-integration/templates/sample_{api,db}.json` | Catalog samples — scaffolded to `integration/` in your project |
 | Script | `skills/extent-report/scripts/make_html_report.js` | Standalone HTML dashboard generator (run via `node`) |
 | Command | `commands/init-test.md` | `/init-test` — scaffold sample specs + `executions/` in your project |
 | Command | `commands/execute-test.md` | `/execute-test <url or scope>` — run the tests |

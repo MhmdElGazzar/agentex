@@ -24,9 +24,14 @@ Always-on rules (full details in the files above):
   `-s=<session>`** so browsers don't collide (sequential may use the default session).
 - Console errors and failed network calls count as defects even if the UI looks fine.
 - Specs may include **`api:` / `db:` steps** (verify via API, check a DB row, seed data) —
-  execute them via the **integrations** skill from the project's `integrations/` catalog
-  (read `${CLAUDE_PLUGIN_ROOT}/skills/integrations/SKILL.md` before the first such step).
-  Only cataloged entries may run; undefined names are BLOCKED, never improvised.
+  execute them via the **api-integration** / **db-integration** skills' runner scripts, from
+  the project's `integration/` catalog (read the relevant SKILL.md before the first such
+  step). Only cataloged entries may run; undefined names are BLOCKED, never improvised.
+- Helper scripts (all in `${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/scripts/`, each prints
+  one JSON line): `preflight.js` — check all tools in one call at session start;
+  `init_run.js --sessions a,b` — create the whole execution tree (use instead of mkdir chains);
+  `merge_run.js --run-dir <dir> <evidence paths...>` — copy bug-evidence screenshots into
+  `bugs/screenshots/` during MERGE.
 
 ## Execution output layout
 Every run writes ALL its data under one timestamped folder (created in the current project) —

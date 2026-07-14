@@ -4,6 +4,26 @@ How to execute a cataloged database query. Read before the first `db:` step in a
 v1 targets **SQL Server** via `sqlcmd`; other engines (psql/mysql) can be added as sections
 here later.
 
+## Primary path: the runner script
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/skills/db-integration/scripts/run_db.js" \
+  --entry sample-db.todo-by-title --param title=qa-test-item \
+  --expect-rows 1 \
+  --log "$SESSION_DIR/logs/s6-todo-by-title.log"
+```
+
+- Reads `./integration/*_db.json`; enforces catalog-only execution, the DDL ban, and param
+  sanitization in code; resolves the connection from env vars (password only via
+  `SQLCMDPASSWORD`); runs sqlcmd; writes the evidence log; checks expectations; prints one
+  JSON line (`PASS`/`FAIL`/`BLOCKED`; exit 0/1/2).
+- Assertion flags: `--expect-rows <n>`, `--expect-min-rows <n>`. Non-default catalog dir:
+  `--catalog <dir>`.
+- A `BLOCKED` result tells you exactly what's missing or refused (entry, param, env var,
+  DDL, forbidden characters) — surface it to the user; do not work around it.
+
+The sections below cover sqlcmd itself (needed by the runner) and the manual fallback.
+
 ## Preflight & install
 - Preflight: `sqlcmd "-?"` (or `sqlcmd --version` for the new go-sqlcmd).
 - If missing:

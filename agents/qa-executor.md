@@ -38,14 +38,15 @@ WHERE TO SAVE EVIDENCE (your session slice only)
   Save network / run-code captures the same way.
 
 INTEGRATION STEPS (`api:` / `db:` in the spec)
-- When a scenario step starts with `api:` or `db:`, execute it per the **integrations** skill
-  (`${CLAUDE_PLUGIN_ROOT}/skills/integrations/SKILL.md` — read it and the relevant reference
-  before the first such step).
-- Execute ONLY entries defined in the project's `integrations/*.json` catalog — never compose
-  your own SQL or HTTP request. If the named entry doesn't exist, mark the step BLOCKED and
-  report exactly which definition is missing.
-- Save every response/result to `{{SESSION_DIR}}/logs/<scenario>-<entry>.log`; an expectation
-  mismatch is a FAIL defect with that log as evidence.
+- `api:` steps → the **api-integration** skill; `db:` steps → the **db-integration** skill
+  (read the skill + its reference before the first such step). Execute via the bundled runner:
+    node ${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js --entry <file>.<request> --param k=v --expect-status 200 --log {{SESSION_DIR}}/logs/<scenario>-<entry>.log
+    node ${CLAUDE_PLUGIN_ROOT}/skills/db-integration/scripts/run_db.js --entry <file>.<query> --param k=v --expect-rows 1 --log {{SESSION_DIR}}/logs/<scenario>-<entry>.log
+- The runner executes ONLY entries defined in the project's `integration/*.json` catalog and
+  prints PASS/FAIL/BLOCKED as JSON (exit 0/1/2). BLOCKED = missing definition/param/env —
+  report it verbatim; never compose your own SQL or HTTP request to work around it.
+- The runner writes the evidence log itself; an expectation mismatch is a FAIL defect with
+  that log as evidence.
 - Never print secret values (tokens, passwords) — they come from env vars only.
 
 EXECUTION RULES
