@@ -40,6 +40,8 @@ sqlcmd -S "$DB_SERVER" -d "$DB_NAME" -U "$DB_USER" -C -b \
 
 - `-C` trusts the server certificate (typical for staging); `-b` makes SQL errors set a nonzero
   exit code so failures are detectable.
+- Non-default port: SQL Server uses a **comma** in the server value, not a colon —
+  `DB_SERVER=myhost.example.com,1433` (`-S "$DB_SERVER"` then just works). Default is 1433.
 - For Azure AD / integrated auth omit `-U` and use `-G`/`-E` per the environment; ask the user
   once which applies.
 
