@@ -21,7 +21,7 @@ The catalog file names the env vars; the user sets the values in `.env`/shell:
 {
   "name": "sample-db",
   "engine": "sqlserver",
-  "connection": { "serverEnv": "DB_SERVER", "databaseEnv": "DB_NAME", "userEnv": "DB_USER" },
+  "connection": { "serverEnv": "DB_SERVER", "portEnv": "DB_PORT", "databaseEnv": "DB_NAME", "userEnv": "DB_USER" },
   "queries": [
     { "name": "todo-by-title", "params": ["title"],
       "query": "SELECT TOP 1 Id, Title, Status FROM Todos WHERE Title = '{title}' ORDER BY Id DESC" }
@@ -33,15 +33,18 @@ The catalog file names the env vars; the user sets the values in `.env`/shell:
 # Password comes ONLY from the SQLCMDPASSWORD env var (sqlcmd reads it natively).
 # NEVER pass -P — a password on the command line leaks into logs/history.
 export SQLCMDPASSWORD  # user exports it in their shell / .env
-sqlcmd -S "$DB_SERVER" -d "$DB_NAME" -U "$DB_USER" -C -b \
+
+# Compose the server value: SQL Server appends the port with a COMMA (not a colon).
+# DB_PORT empty → default 1433.
+SRV="$DB_SERVER"; [ -n "$DB_PORT" ] && SRV="$DB_SERVER,$DB_PORT"
+
+sqlcmd -S "$SRV" -d "$DB_NAME" -U "$DB_USER" -C -b \
   -Q "SELECT TOP 1 Id, Title, Status FROM Todos WHERE Title = 'qa-test-item' ORDER BY Id DESC" \
   > "$SESSION_DIR/logs/s6-todo-by-title.log" 2>&1
 ```
 
 - `-C` trusts the server certificate (typical for staging); `-b` makes SQL errors set a nonzero
   exit code so failures are detectable.
-- Non-default port: SQL Server uses a **comma** in the server value, not a colon —
-  `DB_SERVER=myhost.example.com,1433` (`-S "$DB_SERVER"` then just works). Default is 1433.
 - For Azure AD / integrated auth omit `-U` and use `-G`/`-E` per the environment; ask the user
   once which applies.
 

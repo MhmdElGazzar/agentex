@@ -2,7 +2,7 @@
   "name": "sample-db",
   "description": "EXAMPLE — replace with your database. The queries below are the ONLY SQL the agent may execute; add one entry per check your tests need. DDL (DROP/TRUNCATE/ALTER) is refused even if defined here.",
   "engine": "sqlserver",
-  "connection": { "serverEnv": "DB_SERVER", "databaseEnv": "DB_NAME", "userEnv": "DB_USER" },
+  "connection": { "serverEnv": "DB_SERVER", "portEnv": "DB_PORT", "databaseEnv": "DB_NAME", "userEnv": "DB_USER" },
   "queries": [
     {
       "name": "todo-by-title",
