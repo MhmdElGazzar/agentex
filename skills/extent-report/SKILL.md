@@ -1,6 +1,6 @@
 ---
 name: extent-report
-description: Produce a standalone, self-contained extent-report.html — a dark-themed interactive dashboard (donut chart, per-status stat cards, expandable test-case cards with step-by-step detail) that visually matches extentreports.com's Spark reporter. Use at the end of any playwright-cli test execution (one test case or a full parallel/sequential batch) once final scenario results are known, alongside report.md.
+description: Produce a standalone, self-contained extent-report.html — a dark-themed interactive dashboard (donut chart, per-status stat cards, expandable test-case cards with step-by-step detail). Use at the end of any playwright-cli test execution (one test case or a full parallel/sequential batch) once final scenario results are known, alongside report.md.
 ---
 
 # Extent Report — Testing Execution Status Dashboard

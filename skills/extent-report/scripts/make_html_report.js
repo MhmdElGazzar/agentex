@@ -1,6 +1,5 @@
 // Extent Report HTML generator — produces a standalone, self-contained HTML file
-// styled after extentreports.com's Spark reporter (dark sidebar, donut chart,
-// expandable per-test-case step list).
+// (dark sidebar, donut chart, expandable per-test-case step list).
 //
 // Usage: node make_html_report.js <input.json> <output.html>
 //

@@ -37,3 +37,11 @@ See [`suite1/`](./suite1/) for ready-to-adapt examples. Each spec should have:
 - Sequential (human-in-the-loop, default): `/execute-test https://your-app.example`
 - Parallel (autonomous, one session per file): ask for a "parallel regression from the
   specs in `test/suite1/`".
+
+## Azure DevOps (optional)
+
+AgenTeX can also work your ADO backlog — fill the `AZURE_*` keys in `.env` first:
+
+- `/design-test <story-ids>` — analyze a story's ACs and create linked test cases
+  (project conventions live in `.agentex/test-template.md`, scaffolded on first run).
+- `/estimate-story [ids]` — estimate QA effort and create the 5 `[Testing]` tasks per story.

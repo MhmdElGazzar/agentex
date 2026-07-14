@@ -1,5 +1,5 @@
 ---
-description: Initialize AgenTeX in the current project — scaffold a sample test suite, the executions output folder, and a keys-only .env file.
+description: Initialize AgenTeX in the current project — scaffold a sample test suite, the executions output folder, a keys-only .env file, and CLAUDE.md guidance.
 ---
 
 Initialize **AgenTeX** in the current project so the user has a working starting point.
@@ -21,12 +21,23 @@ Do these steps, then report what was created:
    - Tell the user to fill in the values themselves. The agent may read `.env` to resolve
      config keys (target URL, Azure org/project/team/assignee), but must NEVER print, log,
      or pass secret values (e.g. the PAT) anywhere.
-4. **Permissions reminder** — remind the user to copy the `permissions` block from
+4. **CLAUDE.md guidance** — append this bullet to the project's `CLAUDE.md`, creating the
+   file if it doesn't exist (if an equivalent line is already there, skip):
+   ```markdown
+   - `executions/` holds generated test-run artifacts (reports, screenshots, logs).
+     Never read or search it when gathering context — only when explicitly asked
+     about a specific run.
+   ```
+   Never overwrite or reorganize existing CLAUDE.md content — append only.
+5. **Permissions reminder** — remind the user to copy the `permissions` block from
    `${CLAUDE_PLUGIN_ROOT}/settings.example.json` into their project's `.claude/settings.json`
    if they haven't already (plugin manifests can't ship permission rules).
-5. **Playwright preflight** — mention they need `@playwright/cli` installed
+6. **Playwright preflight** — mention they need `@playwright/cli` installed
    (`npm install -D @playwright/cli && npx playwright-cli install-browser chromium`); offer
    to run it. Do not install without confirmation.
 
 Finish by telling the user to edit the sample specs in `./test/suite1/` to match their app,
-then run `/execute-test <url or scope>`.
+then run `/execute-test <url or scope>`. Also mention the Azure DevOps commands if they use
+ADO: `/design-test <story-ids>` (create linked test cases from a story's ACs) and
+`/estimate-story [ids]` (estimate QA effort + create [Testing] tasks) — both need the
+`AZURE_*` keys in `.env`.
