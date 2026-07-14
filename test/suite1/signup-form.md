@@ -20,6 +20,12 @@ Type: form validation — NO real account is created (validation-only)
 4. **Weak password** — enter a 3-character password and submit. Expect a
    password length/strength error.
 
+<!-- Steps can also reach beyond the browser via the integration/ catalog — define the
+     entry in integration/*_api.json / *_db.json first, then reference it by name:
+5. api: sample-api.get-todo(id=1) → expect HTTP 200 and title present
+6. db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
+-->
+
 ## Notes
 - Screenshot every scenario (pass and fail).
 - Treat any console error or failed request as a defect even if the UI looks fine.
