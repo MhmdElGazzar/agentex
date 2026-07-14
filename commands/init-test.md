@@ -21,7 +21,12 @@ Do these steps, then report what was created:
    - Tell the user to fill in the values themselves. The agent may read `.env` to resolve
      config keys (target URL, Azure org/project/team/assignee), but must NEVER print, log,
      or pass secret values (e.g. the PAT) anywhere.
-4. **CLAUDE.md guidance** — append this bullet to the project's `CLAUDE.md`, creating the
+4. **Integrations catalog** — if `./integrations/` doesn't exist, create it and copy the two
+   sample definition files from `${CLAUDE_PLUGIN_ROOT}/skills/integrations/templates/`
+   (`sample_api.json`, `sample_db.json`). Never overwrite existing files. Tell the user these
+   define the ONLY API calls / DB queries test steps can execute (`api:`/`db:` steps in specs)
+   and to replace them with their own services.
+5. **CLAUDE.md guidance** — append this bullet to the project's `CLAUDE.md`, creating the
    file if it doesn't exist (if an equivalent line is already there, skip):
    ```markdown
    - `executions/` holds generated test-run artifacts (reports, screenshots, logs).

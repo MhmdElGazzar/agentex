@@ -1,0 +1,14 @@
+{
+  "name": "sample-db",
+  "description": "EXAMPLE — replace with your database. The queries below are the ONLY SQL the agent may execute; add one entry per check your tests need. DDL (DROP/TRUNCATE/ALTER) is refused even if defined here.",
+  "engine": "sqlserver",
+  "connection": { "serverEnv": "DB_SERVER", "databaseEnv": "DB_NAME", "userEnv": "DB_USER" },
+  "queries": [
+    {
+      "name": "todo-by-title",
+      "description": "Verify a todo row exists by title",
+      "params": ["title"],
+      "query": "SELECT TOP 1 Id, Title, Status FROM Todos WHERE Title = '{title}' ORDER BY Id DESC"
+    }
+  ]
+}

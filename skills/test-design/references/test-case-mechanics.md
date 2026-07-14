@@ -68,7 +68,7 @@ STEPS=$(cat "$SCRATCH/tc_steps.xml")
 # $ITER = the story's iteration (fetch per the shared azure-devops-cli reference)
 az boards work-item create \
   --type "Test Case" \
-  --title "<Persona> || Step[N] || [condition]" \
+  --title "<Persona> || <Feature> || [condition]" \
   --iteration "$ITER" \
   --assigned-to "$AZURE_ASSIGNEE" \
   --fields "Microsoft.VSTS.TCM.Steps=$STEPS" \

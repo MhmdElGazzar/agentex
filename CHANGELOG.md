@@ -2,6 +2,26 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.6.0] — 2026-07-14
+
+### Added
+- **`integrations` skill** — test scenarios can now include `api:` / `db:` steps (verify via
+  API, check a DB row, seed data). Execution is **catalog-only**: the agent runs exclusively
+  the named, parameterized requests/queries the user defines in the project-root
+  `integrations/` folder (`*_api.json` via curl, `*_db.json` via sqlcmd/SQL Server) — it never
+  composes its own SQL or HTTP. Writes run if cataloged; DDL (`DROP`/`TRUNCATE`/`ALTER`) is
+  refused even if cataloged. Secrets stay in env vars — catalog files hold only env-var names.
+- References: `api-requests.md` (curl preflight/install, auth, assertions, logging) and
+  `sqlcmd.md` (preflight/install, env-based connection, substitution/escaping rules).
+- Catalog samples scaffolded by `/init-test` into `./integrations/`.
+- `qa-executor` and browser-testing now route `api:`/`db:` spec steps through the skill;
+  results logged to the session's `logs/` as evidence.
+
+### Changed
+- Permissions: `curl` moved from deny to allow (it was browser-era theater); `sqlcmd` allowed.
+- `.env.example`: new Integrations section (`API_BASE_URL`, `API_TOKEN`, `DB_SERVER`,
+  `DB_NAME`, `DB_USER`; password via `SQLCMDPASSWORD`).
+
 ## [0.5.0] — 2026-07-14
 
 ### Added

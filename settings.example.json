@@ -20,7 +20,9 @@
       "Bash(az storage blob list:*)",
       "Bash(az keyvault list:*)",
       "Bash(az keyvault secret list:*)",
-      "Bash(az aks list:*)"
+      "Bash(az aks list:*)",
+      "Bash(curl:*)",
+      "Bash(sqlcmd:*)"
     ],
     "ask": [
       "Bash(az boards work-item delete:*)",
@@ -33,8 +35,7 @@
       "Read(./secrets/**)",
       "Edit(./src/**)",
       "Bash(rm -rf:*)",
-      "Bash(git push:*)",
-      "Bash(curl:*)"
+      "Bash(git push:*)"
     ]
   }
 }

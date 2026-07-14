@@ -45,7 +45,7 @@ all session. Never bake an organization, project, team, or email into commands.
 ## Project conventions file
 
 Everything that varies per project lives in the **consumer project**, not in this skill:
-persona, journey step map, standard setup steps, project-specific condition categories, and
+persona, feature map, standard setup steps, project-specific condition categories, and
 the languages text checks must cover.
 
 - Look for **`./.agentex/test-template.md`** in the current project and read it before
@@ -108,23 +108,25 @@ Present the mapped conditions and wait for approval:
 Is anything missing? Should I add or remove any test condition?
 ```
 
-## Step 3 — Determine the Step Number
+## Step 3 — Determine the Feature
 
-Each title includes the step number of the story's position in the user journey. Read the
-journey step map from the conventions file; if the story isn't in the map, infer from the
-flow's context or ask the user.
+Each title includes the feature the story belongs to. A feature can be a step in a flow
+(e.g. `Step5`) but not always — it can also be any feature name (e.g. `Login`). Read the
+feature map from the conventions file; if the story isn't in the map, infer from the
+story's context or ask the user.
 
 ## Step 4 — Title Convention
 
 ```
-<Persona> || Step[N] || [test condition]
+<Persona> || <Feature> || [test condition]
 ```
 
 - **Persona** comes from the conventions file (e.g. `SME User`).
-- Step number matches the journey position (not the story ID).
+- Feature comes from the feature map (a flow step like `Step5`, or a feature name — not the story ID).
 - Test condition is lowercase, no punctuation at the end, no quotes around it.
 
-Example (with persona "SME User", step 5): `SME User || Step5 || user checks the page UI`
+Examples (with persona "SME User"): `SME User || Step5 || user checks the page UI`,
+`SME User || Login || user checks the page UI`
 
 ## Step 5 — Test Case Steps
 
@@ -169,4 +171,4 @@ ask whether to add a test case for it.
 - ❌ Putting a PAT on the command line (auth flows through the extension)
 - ❌ Creating input test cases when the story has no input fields
 - ❌ Skipping non-primary-language text checks when the project is multilingual
-- ❌ Using a step number that doesn't match the journey position
+- ❌ Using a feature that doesn't match the feature map

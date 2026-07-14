@@ -24,6 +24,20 @@ See [`suite1/`](./suite1/) for ready-to-adapt examples. Each spec should have:
 - **Scenarios** — numbered: happy path, edge cases, and negative cases.
 - **Notes** — anything special (stateful order, disposable data to use).
 
+## API & DB steps in specs
+
+Scenario steps can reach beyond the browser using the **`integrations/` catalog** at the
+project root (scaffolded by `/init-test` with samples):
+
+```
+api: sample-api.get-todo(id=1) → expect HTTP 200 and title present
+db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
+```
+
+- Each `<name>.<entry>(params)` must be **defined first** in `integrations/*_api.json` /
+  `*_db.json` — the agent only executes cataloged entries, never its own SQL/HTTP.
+- Secrets are never in the catalog — files name env vars; values live in `.env`/your shell.
+
 ## Rules the agent already follows
 
 - Never uses real personal data or completes real signup/login/checkout — use disposable

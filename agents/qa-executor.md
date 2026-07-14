@@ -37,6 +37,17 @@ WHERE TO SAVE EVIDENCE (your session slice only)
     npx playwright-cli -s={{SESSION}} console error > {{SESSION_DIR}}/logs/s1-console.log
   Save network / run-code captures the same way.
 
+INTEGRATION STEPS (`api:` / `db:` in the spec)
+- When a scenario step starts with `api:` or `db:`, execute it per the **integrations** skill
+  (`${CLAUDE_PLUGIN_ROOT}/skills/integrations/SKILL.md` — read it and the relevant reference
+  before the first such step).
+- Execute ONLY entries defined in the project's `integrations/*.json` catalog — never compose
+  your own SQL or HTTP request. If the named entry doesn't exist, mark the step BLOCKED and
+  report exactly which definition is missing.
+- Save every response/result to `{{SESSION_DIR}}/logs/<scenario>-<entry>.log`; an expectation
+  mismatch is a FAIL defect with that log as evidence.
+- Never print secret values (tokens, passwords) — they come from env vars only.
+
 EXECUTION RULES
 - Execute the scenarios in the TEST SPECIFICATION in the order written.
 - If the spec marks scenarios as a stateful chain, keep them strictly sequential in this one

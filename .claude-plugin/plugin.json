@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "agentex",
   "displayName": "AgenTeX",
-  "version": "0.5.0",
-  "description": "Agentic QA — skip the manual grind. AgenTeX plans and runs your tests for you (human-in-the-loop or fully autonomous) with structured evidence, a consolidated defect report, and an interactive HTML dashboard, driving a real browser via playwright-cli. On Azure DevOps it designs test cases from story ACs and links them to stories, estimates QA effort and creates [Testing] tasks, and reaches Azure resources mid-run via the az CLI. API & DB execution targets coming soon.",
+  "version": "0.6.0",
+  "description": "Agentic QA — skip the manual grind. AgenTeX plans and runs your tests for you (human-in-the-loop or fully autonomous) with structured evidence, a consolidated defect report, and an interactive HTML dashboard, driving a real browser via playwright-cli. Test steps can call your APIs and query your database from a user-defined integrations catalog. On Azure DevOps it designs test cases from story ACs and links them to stories, estimates QA effort and creates [Testing] tasks, and reaches Azure resources mid-run via the az CLI.",
   "author": {
     "name": "Mohamed Elgazzar",
     "email": "mhmd.elgazzar.sqe@gmail.com"
@@ -24,6 +24,9 @@
     "sprint-planning",
     "work-items",
     "test-design",
-    "test-cases"
+    "test-cases",
+    "api-testing",
+    "database",
+    "sql-server"
   ]
 }

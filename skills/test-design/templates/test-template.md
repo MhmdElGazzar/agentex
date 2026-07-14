@@ -6,21 +6,22 @@ at `.agentex/test-template.md`.
 
 ## Persona
 
-The persona prefix used in every test case title (`<Persona> || Step[N] || <condition>`):
+The persona prefix used in every test case title (`<Persona> || <Feature> || <condition>`):
 
 ```
 <e.g. SME User>
 ```
 
-## Journey step map
+## Feature map
 
-Which journey step each story/feature belongs to (used for the `Step[N]` part of titles).
-Add rows as the journey grows:
+Which feature each story belongs to (used for the `<Feature>` part of titles). A feature can
+be a step in a flow (e.g. `Step 3`) but not always — it can also be any feature name (e.g.
+`Login`, `Dashboard`). Add rows as the product grows:
 
-| Step | Story / feature |
+| Feature | Story |
 |---|---|
-| Step 1 | <story ID or feature name> |
-| Step 2 | <story ID or feature name> |
+| <e.g. Step 1> | <story ID> |
+| <e.g. Login> | <story ID> |
 
 ## Standard setup steps
 

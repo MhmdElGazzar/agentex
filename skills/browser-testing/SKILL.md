@@ -23,6 +23,10 @@ Always-on rules (full details in the files above):
 - All browser actions go through `playwright-cli`; **parallel runs MUST each use their own
   `-s=<session>`** so browsers don't collide (sequential may use the default session).
 - Console errors and failed network calls count as defects even if the UI looks fine.
+- Specs may include **`api:` / `db:` steps** (verify via API, check a DB row, seed data) —
+  execute them via the **integrations** skill from the project's `integrations/` catalog
+  (read `${CLAUDE_PLUGIN_ROOT}/skills/integrations/SKILL.md` before the first such step).
+  Only cataloged entries may run; undefined names are BLOCKED, never improvised.
 
 ## Execution output layout
 Every run writes ALL its data under one timestamped folder (created in the current project) —
