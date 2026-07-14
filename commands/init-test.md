@@ -34,10 +34,10 @@ Do these steps, then report what was created:
      about a specific run.
    ```
    Never overwrite or reorganize existing CLAUDE.md content — append only.
-5. **Permissions reminder** — remind the user to copy the `permissions` block from
+6. **Permissions reminder** — remind the user to copy the `permissions` block from
    `${CLAUDE_PLUGIN_ROOT}/settings.example.json` into their project's `.claude/settings.json`
    if they haven't already (plugin manifests can't ship permission rules).
-6. **Playwright preflight** — mention they need `@playwright/cli` installed
+7. **Playwright preflight** — mention they need `@playwright/cli` installed
    (`npm install -D @playwright/cli && npx playwright-cli install-browser chromium`); offer
    to run it. Do not install without confirmation.
 
