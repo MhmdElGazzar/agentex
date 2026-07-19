@@ -131,7 +131,15 @@ From Claude Code:
 
 - Or use the commands: `/init-test` once to scaffold sample specs, then
   `/execute-test https://example.com` to run.
+- **Exploratory testing (no spec yet):**
+  > /explore-test https://example.com
 
+  The agent explores the site across multiple testing perspectives (personas, SFDPOT, boundary
+  values, error guessing, security-lite, accessibility-lite — see
+  [`skills/exploratory-testing/references/exploration-charters.md`](./skills/exploratory-testing/references/exploration-charters.md)),
+  logs every observation with a Risk/Severity/Priority rating, keeps only the Critical/High
+  findings, designs them into real specs under `test/explore_<ProjectName>/`, and executes them
+  the same way any other suite runs.
 ### Writing your own specs
 
 Start from the examples in [`test/suite1/`](./test/suite1/) — see
