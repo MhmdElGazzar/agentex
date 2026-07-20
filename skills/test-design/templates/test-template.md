@@ -55,3 +55,9 @@ Where the design link lives in stories (e.g. "story description, under 'Figma De
 ```
 <location>
 ```
+## Jira-specific settings (leave blank if this project uses Azure DevOps)
+
+Filled once per project — the skill asks for these if missing and the tracker is Jira:
+
+- **Test Case issue type name:** `<e.g. Test (Xray) / Test Case (Zephyr) / Task>`
+- **Story ↔ Test Case link type:** `<e.g. Tests (Xray) / relates to>`
