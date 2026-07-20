@@ -132,3 +132,34 @@ Bot: Story #12345 — Capture Contact Preferences (3 SP)
 User: تمام
 Bot: [creates 5 tasks — iteration inherited, Activity: Testing, assigned] ✅ Done. Next: #12346...
 ```
+## Jira (in addition to Azure DevOps)
+
+This skill also works on **Jira** — everything above (task template, estimation factors,
+complexity buckets, hours-per-task, workflow, rules) applies unchanged. Only the tracker
+mechanics differ.
+
+- **Detect the tracker**: a pasted link (`dev.azure.com/...` → Azure DevOps,
+  `*.atlassian.net/...` → Jira), what the user names explicitly, or — if ambiguous — ask once
+  and reuse the answer for the session.
+- **Reference**: read
+  `${CLAUDE_PLUGIN_ROOT}/skills/jira-integration/references/jira-issues-cli.md` before the
+  first `acli jira workitem` command. Base `acli` install/auth is in the sibling
+  **jira-integration** skill's `references/jira-cli.md`.
+- **Configuration (Jira)**: `JIRA_URL`, `JIRA_PROJECT`, `JIRA_BOARD_ID`, `JIRA_ASSIGNEE` /
+  ask once each; `JIRA_API_TOKEN` env in the user's shell — never print or pass it (see
+  `.env.example`).
+- **Field mapping** for the same 5-task template:
+
+  | ADO field | Jira equivalent |
+  |---|---|
+  | `--type Task` | `--type "Sub-task"` (or `Task` + a link, if the story's issue type disallows sub-tasks) |
+  | `--title "[Testing] <name>"` | `--summary "[Testing] <name>"` |
+  | `--iteration <parent story's iteration>` | `--parent <STORY_KEY>` |
+  | `--assigned-to <assignee>` | `--assignee <assignee>` |
+  | `Microsoft.VSTS.Common.Activity=Testing` | label `testing` (Jira has no Activity field) |
+  | `OriginalEstimate`/`RemainingWork` | timetracking `originalEstimate`/`remainingEstimate` |
+
+- **Sprint fetch / current iteration**: use JQL against the active sprint (see the reference)
+  instead of WIQL `@CurrentIteration`.
+- Everything else — one story at a time, show-then-confirm before creating, never batch —
+  applies exactly as written above for ADO.

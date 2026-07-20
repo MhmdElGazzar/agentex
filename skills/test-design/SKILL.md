@@ -172,3 +172,32 @@ ask whether to add a test case for it.
 - ❌ Creating input test cases when the story has no input fields
 - ❌ Skipping non-primary-language text checks when the project is multilingual
 - ❌ Using a feature that doesn't match the feature map
+
+## Jira (in addition to Azure DevOps)
+
+This skill also works on **Jira** — the whole methodology above (condition mapping, title
+convention, step derivation, coverage check, common mistakes) applies unchanged. Only the
+Test Case creation/linking mechanics differ.
+
+- **Detect the tracker**: a pasted link (`dev.azure.com/...` → Azure DevOps,
+  `*.atlassian.net/...` → Jira), what the user names explicitly, or — if ambiguous — ask once
+  and reuse the answer for the session.
+- **Reference**: read
+  `${CLAUDE_PLUGIN_ROOT}/skills/test-design/references/jira-test-case-mechanics.md` before
+  creating or linking any Jira test case, plus the jira-integration skill's
+  `references/jira-issues-cli.md` for shared `acli` basics.
+- **Configuration (Jira)**: `JIRA_URL`, `JIRA_PROJECT`, `JIRA_BOARD_ID`, `JIRA_ASSIGNEE` /
+  ask once each; `JIRA_API_TOKEN` env in the user's shell — never print or pass it. Additionally
+  ask once (no ADO equivalent):
+  - **Test Case issue type name** — Jira has no built-in Test Case type; it's usually a
+    plugin's type (Xray: `Test`, Zephyr: `Test Case`) or a plain type the team designates.
+  - **Story ↔ Test Case link type** — commonly `Tests` (Xray) or `relates to`.
+- **Conventions file**: the same `./.agentex/test-template.md` — its "Jira-specific settings"
+  section (added below the Design reference section) holds the two Jira-only values above.
+- **Steps**: no native Steps XML field on Jira — put Action/Expected pairs in a Markdown table
+  in the description instead (see the reference for the exact format and the file-based
+  create trick for long tables).
+- **Linking**: `--key` = the STORY, `--target-key` = the TEST CASE, using the link type's
+  outward name (e.g. `Tests`, not its inward complement `is tested by`).
+- Everything else — one test case per condition, confirm-before-create, coverage check —
+  applies exactly as written above for ADO.
