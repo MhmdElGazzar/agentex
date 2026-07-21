@@ -2,6 +2,12 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.8.1] — 2026-07-21
+### Added
+- `/ask-kb <question>` command — ask the project's Knowledge Base a question directly
+  (standalone, outside a test run). `/ask-kb <project>: <question>` targets a project.
+  Read-only, advisory only.
+
 ## [0.8.0] — 2026-07-21
 ### Added
 - `ask-kb` skill: explicit `kb:` step to query a project's KB Ask API for advisory,

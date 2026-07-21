@@ -79,6 +79,7 @@ your confirmation.
 | Script | `skills/extent-report/scripts/make_html_report.js` | Standalone HTML dashboard generator (run via `node`) |
 | Command | `commands/init-test.md` | `/init-test` — scaffold sample specs + `executions/` in your project |
 | Command | `commands/execute-test.md` | `/execute-test <url or scope>` — run the tests |
+| Command | `commands/ask-kb.md` | `/ask-kb <question>` — ask the project's Knowledge Base a question (advisory only) |
 | Command | `commands/estimate-story.md` | `/estimate-story [ids]` — estimate & create QA tasks on ADO stories |
 | Command | `commands/design-test.md` | `/design-test <ids>` — design & create linked test cases on ADO stories |
 | Permissions | `settings.example.json` | Recommended permission rules to copy into your project |
