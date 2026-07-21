@@ -17,6 +17,7 @@ The agent **never modifies your application code** — it only writes test artif
 | **Azure DevOps QA planning** — estimate sprint stories & create `[Testing]` tasks | ✅ Available (helper skill) |
 | **Azure DevOps test design** — analyze story ACs & create linked test cases | ✅ Available (helper skill) |
 | **API & DB steps in tests** — cataloged API calls & SQL checks mid-run (`integration/`) | ✅ Available |
+| **KB questions in tests** — ask your project's knowledge base mid-run (`kb:`), advisory only | ✅ Available |
 | **Standalone API & database test suites** | 🚧 Planned |
 
 Most of this README covers the **browser-testing** flow — the core of AgenTeX today. For the
@@ -62,6 +63,7 @@ your confirmation.
 | Skill | `skills/test-design/SKILL.md` | Analyze story ACs into test conditions; create & link test cases in ADO |
 | Skill | `skills/api-integration/SKILL.md` | Execute cataloged API calls in test steps (`api:`) via a runner script |
 | Skill | `skills/db-integration/SKILL.md` | Execute cataloged DB queries in test steps (`db:`) via a runner script |
+| Skill | `skills/ask-kb/SKILL.md` | Ask the project's KB Ask API in test steps (`kb:`) for advisory answers (never evidence) |
 | Skill | `skills/extent-report/SKILL.md` | Interactive HTML dashboard (`extent-report.html`) for a finished run |
 | Agent | `agents/qa-executor.md` | Subagent that runs one test spec in its own isolated browser session |
 | Reference | `skills/browser-testing/references/playwright-cli.md` | The browser driver — setup & gotchas |
@@ -71,7 +73,8 @@ your confirmation.
 | Template | `skills/test-design/templates/test-template.md` | Project conventions template — scaffolded to `.agentex/` in your project |
 | Reference | `skills/api-integration/references/api-requests.md` | Runner usage + curl fallback for cataloged API requests |
 | Reference | `skills/db-integration/references/sqlcmd.md` | Runner usage + sqlcmd (SQL Server) for cataloged queries |
-| Scripts | `skills/*/scripts/*.js` | Deterministic runners & helpers: `run_api`, `run_db`, `preflight`, `init_run`, `merge_run` |
+| Reference | `skills/ask-kb/references/kb-ask-api.md` | KB Ask API contract, result handling & curl fallback |
+| Scripts | `skills/*/scripts/*.js` | Deterministic runners & helpers: `run_api`, `run_db`, `ask_kb`, `preflight`, `init_run`, `merge_run` |
 | Templates | `skills/{api,db}-integration/templates/sample_{api,db}.json` | Catalog samples — scaffolded to `integration/` in your project |
 | Script | `skills/extent-report/scripts/make_html_report.js` | Standalone HTML dashboard generator (run via `node`) |
 | Command | `commands/init-test.md` | `/init-test` — scaffold sample specs + `executions/` in your project |
