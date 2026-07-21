@@ -2,6 +2,15 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.8.0] — 2026-07-21
+### Added
+- `ask-kb` skill: explicit `kb:` step to query a project's KB Ask API for advisory,
+  natural-language answers (never used as PASS/FAIL evidence). Sends `x-api-key` from
+  `KB_ASK_API_KEY` when set (never logged); maps `401` to a non-retryable BLOCKED, honors
+  `Retry-After` on `429`, surfaces the `cached` flag, and documents the API's `sonnet` default.
+- `kb:` step handling wired into `qa-executor` and noted in `browser-testing`; `.env.example`
+  gains `KB_ASK_BASE_URL` / `KB_PROJECT` / `KB_ASK_API_KEY`.
+
 ## [0.7.0] — 2026-07-14
 
 ### Added

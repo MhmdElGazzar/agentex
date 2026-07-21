@@ -26,7 +26,9 @@ Always-on rules (full details in the files above):
 - Specs may include **`api:` / `db:` steps** (verify via API, check a DB row, seed data) —
   execute them via the **api-integration** / **db-integration** skills' runner scripts, from
   the project's `integration/` catalog (read the relevant SKILL.md before the first such
-  step). Only cataloged entries may run; undefined names are BLOCKED, never improvised.
+  step). Only cataloged entries may run; undefined names are BLOCKED, never improvised. Specs
+  may also include **`kb:` steps** (ask the project's knowledge base a question; advisory
+  only, never a PASS/FAIL) — execute via the **ask-kb** skill's runner script.
 - Helper scripts (all in `${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/scripts/`, each prints
   one JSON line): `preflight.js` — check all tools in one call at session start;
   `init_run.js --sessions a,b` — create the whole execution tree (use instead of mkdir chains);

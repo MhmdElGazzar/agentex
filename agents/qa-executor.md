@@ -49,6 +49,19 @@ INTEGRATION STEPS (`api:` / `db:` in the spec)
   that log as evidence.
 - Never print secret values (tokens, passwords) — they come from env vars only.
 
+KB QUESTIONS (`kb:` in the spec)
+- `kb:` steps ask the project's knowledge base a natural-language question via the **ask-kb**
+  skill (read the skill + `references/kb-ask-api.md` before the first such step). Execute via
+  the bundled runner:
+    node ${CLAUDE_PLUGIN_ROOT}/skills/ask-kb/scripts/ask_kb.js --question "<text>" [--project <id>] --log {{SESSION_DIR}}/logs/<scenario>-kb.log
+  Step syntax: `kb: <question>` uses the default project from `agentex.config.json`;
+  `kb:<project>: <question>` overrides it (pass the project as `--project`).
+- Prints {"result":"OK|NOT_COVERED|BLOCKED", ...} as JSON (exit 0 OK/NOT_COVERED, 2 BLOCKED).
+  OK → read the `answer` as advisory context. NOT_COVERED → treat as "not documented in the KB".
+  BLOCKED → report the reason verbatim; never compose your own request to work around it.
+- A KB answer is ADVISORY CONTEXT ONLY — never evidence. Do NOT turn a `kb:` result into a
+  PASS/FAIL verdict or fold it into the scenario tally.
+
 EXECUTION RULES
 - Execute the scenarios in the TEST SPECIFICATION in the order written.
 - If the spec marks scenarios as a stateful chain, keep them strictly sequential in this one
@@ -63,6 +76,8 @@ EXECUTION RULES
 OUTPUT (your final message only — it is consumed by the orchestrator, not a human):
 - A heading naming the test you ran.
 - Per scenario: PASS / FAIL, observed vs expected, screenshot path, console/network notes.
+- `kb:` steps are reported as an advisory note (the KB answer, or "not covered in the KB"),
+  never as a scenario PASS / FAIL and never counted in the final pass/fail tally.
 - A defect list, each: Title / Steps to reproduce / Expected vs Actual /
   Severity (Critical|High|Medium|Low) / Evidence.
 - BUG EVIDENCE: an explicit list of screenshot paths (under SESSION_DIR/screenshots/) that
