@@ -1,0 +1,25 @@
+{
+  "_comment": "Copy this file to config.json (same folder) or bug-skill.config.json at your repo root, then fill in your team's values. Anything you leave out is ASKED at runtime or inherited from the parent story — never silently guessed. None of these are hardcoded in the scripts.",
+
+  "orgUrl": "https://dev.azure.com/{{ORG_NAME}}",
+  "project": "{{PROJECT_NAME}}",
+  "team": "{{TEAM_NAME}}",
+
+  "areaPath": "{{PROJECT_NAME}}\\{{TEAM_NAME}}",
+  "iterationPath": "{{PROJECT_NAME}}\\{{ITERATION_PATH}}",
+
+  "templateBugId": "{{TEMPLATE_BUG_ID}}",
+
+  "assignees": [
+    "{{ASSIGNEE_EMAIL}}",
+    "{{ANOTHER_DEVELOPER_EMAIL}}"
+  ],
+
+  "valueArea": "Business",
+  "environment": "{{ENVIRONMENT}}",
+  "bugCategory": "{{BUG_CATEGORY}}",
+
+  "testPlanId": "{{TEST_PLAN_ID}}",
+
+  "apiVersion": "7.1"
+}
