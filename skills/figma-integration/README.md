@@ -100,9 +100,9 @@ Then shape the output into `Description → User Story → Test Conditions` (the
 | `README.md` | **people** | This guide |
 | [`references/figma-cli.md`](references/figma-cli.md) | agent + humans | The full reference — CLI (install/auth/commands/authoring) **and** the REST read toolkit |
 
-Follows the same shape as the other AgenTeX integration skills (`azure-integration`,
-`jira-integration`): a `SKILL.md` plus a reference, no bundled scripts — the agent runs the CLI
-(via `npx`) and REST calls directly.
+Follows the same shape as the other AgenTeX integration skills (e.g. `azure-integration`): a
+`SKILL.md` plus a reference, no bundled scripts — the agent runs the CLI (via `npx`) and REST
+calls directly.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: figma-integration
-description: Interact with Figma from a QA/dev-handoff run two ways — (1) READ designs via the Figma REST API to pull a frame's text/specs/components/images for user stories, test conditions, design-vs-build checks, or a screenshot-diff reference (needs only a File-Read token); and (2) SYNC design↔code via Figma's official CLI `@figma/code-connect` (`figma connect`) — scaffold, preview, and publish component↔code mappings for Dev Mode. Use whenever a task needs to reach Figma (read a screen's content to derive requirements/stories, verify the built UI matches the design, render a frame as an image, or link a component library to code). Read the reference before the first Figma call.
+description: Reach Figma from a QA/dev-handoff run — read a design via the Figma REST API to derive user stories, test conditions, and design-vs-build baselines (primary), or sync design↔code via the official `@figma/code-connect` CLI (secondary). Use whenever a task needs to turn a Figma screen into requirements/tests, verify a build against the design, render a frame as an image, or publish component↔code mappings for Dev Mode.
 ---
 
 # Figma Integration
@@ -34,20 +34,19 @@ Design ref (opt): <PNG URL from /v1/images — a visual baseline for design-vs-b
 - For a **section/feature** (many screens), emit one such block **per frame** (see the reference's
   "one story per frame" recipe).
 - Include the **Design ref** PNG (`/v1/images`, ~30-min URL) when a design-vs-build baseline is
-  wanted — attach it to the executor's evidence or the Jira issue.
+  wanted — attach it to the executor's evidence or the tracked work item.
 
 ### Handoff targets — who consumes this
 The same output feeds different downstream skills; pick by where the work is tracked:
-- **`test-design`** (Azure DevOps) — *Test Conditions* → Step 2 → one linked Test Case each.
-- **`jira-integration`** (Jira/Confluence) — *User Story* → a Story (or Epic→Story hierarchy);
-  *Test Conditions* → the story's ACs; publish the set to a Confluence page.
+- **`test-design`** (Azure DevOps) — *User Story* + *Test Conditions* → Step 2 → one linked Test
+  Case each. This is the primary tracked-work route.
 - **`task-estimation`** — the scoped conditions/screens feed effort estimates and `[Testing]` tasks.
 - **`browser-testing`** — *Description + Test Conditions* → a `test/suite/*.md` spec (*Description*
   → intro, *Test Conditions* → **Acceptance criteria** / **Scenarios**); the **Design ref** PNG is
   the visual baseline for the run.
 
 This skill is the **producer at the front of the pipeline** — it reads the design and emits the
-block; the consumer skills above turn it into tracked work. It does not itself write to Jira/ADO.
+block; the consumer skills above turn it into tracked work. It does not itself write to ADO.
 
 ## Tool
 Setup, install, auth, and all commands live in this skill's `references/` folder. **Read the
@@ -62,7 +61,7 @@ command behaves unexpectedly:
 
 ## Verify the connection first
 The common path is a **read**, which needs only the File-Read scope. Confirm auth and that a file
-read works (matches the Jira/Azure connection-check pattern):
+read works (matches the `azure-integration` connection-check pattern):
 
 ```bash
 set -a; . ./.env; set +a

@@ -1,5 +1,5 @@
 {
-  "//": "RECOMMENDED PERMISSIONS for AgenTeX (Browser Testing + Azure DevOps task estimation). Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the safe commands, gate destructive ones behind a prompt, and deny secret reads / destructive actions.",
+  "//": "RECOMMENDED PERMISSIONS for AgenTeX (Browser Testing, Azure DevOps estimation, API/DB/KB integrations, Figma). Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the safe/read-only commands, gate writes (deploys, Figma publish/unpublish) behind a prompt, and deny secret reads / destructive actions.",
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
@@ -22,14 +22,21 @@
       "Bash(az keyvault secret list:*)",
       "Bash(az aks list:*)",
       "Bash(curl:*)",
-      "Bash(sqlcmd:*)"
+      "Bash(sqlcmd:*)",
+      "Bash(npx @figma/code-connect@latest --version)",
+      "Bash(npx @figma/code-connect@latest connect create:*)",
+      "Bash(npx @figma/code-connect@latest connect preview:*)",
+      "Bash(npx @figma/code-connect@latest connect parse:*)"
     ],
     "ask": [
       "Bash(az boards work-item delete:*)",
       "Bash(az webapp deploy:*)",
       "Bash(az storage blob upload:*)",
       "Bash(az aks get-credentials:*)",
-      "Bash(az group create:*)"
+      "Bash(az group create:*)",
+      "Bash(npx @figma/code-connect@latest connect publish:*)",
+      "Bash(npx @figma/code-connect@latest connect unpublish:*)",
+      "Bash(npx @figma/code-connect@latest connect migrate:*)"
     ],
     "deny": [
       "Read(./secrets/**)",
