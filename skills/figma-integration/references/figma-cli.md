@@ -43,6 +43,11 @@ use the `include`/`exclude` globs to find files; with no config it parses the cu
   React/React Native, HTML/Web Components (Angular, Vue), SwiftUI, Jetpack Compose, custom.
 - `label`: groups a set of mappings (e.g. per framework) — the `-l/--label` flag targets it.
 - `importPaths`: rewrites the import shown in Dev Mode (repo path → published package path).
+- **TypeScript repos** — add the Code Connect type defs to `tsconfig.json` so template files get
+  autocomplete on `figma.*` / the `instance.get*` accessors:
+  ```json
+  { "compilerOptions": { "types": ["@figma/code-connect/figma-types"] } }
+  ```
 
 ## Commands
 Verified against the live CLI. Common flags on the file-scanning commands (`publish`/`unpublish`/
