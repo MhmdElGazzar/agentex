@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.9.0] — 2026-07-25
 ### Added
 - **`figma-integration` skill** — read a Figma design → user stories & test conditions that feed
   `test-design`/`browser-testing` (the QA-pipeline use), via the Figma REST API; optionally sync
