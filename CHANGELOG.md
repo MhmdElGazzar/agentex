@@ -10,6 +10,11 @@ All notable changes to AgenTeX are documented here.
   parser `.figma.tsx` + CLI, or template `.figma.ts` + Figma MCP). Read-only by default,
   confirm-before-publish. Reference: `figma-cli.md`. REST reads verified live.
 - `test-design` now hands off to `figma-integration` when a story carries a Figma link.
+- **`jira-integration` skill** — reach Jira & Confluence via the Atlassian CLI (`acli`): file
+  defects with screenshot/video evidence, build Epic→Story/Task/Bug→Subtask hierarchies, plan
+  sprints, and publish Confluence report pages that embed live Jira status. Read-only by default,
+  confirm-before-write. References: `atlassian-cli.md`, `confluence-cli.md`, `admin-cli.md`
+  (opt-in org admin). Verified live against a real tenant (acli 1.3.x).
 
 ## [0.8.1] — 2026-07-21
 ### Added
