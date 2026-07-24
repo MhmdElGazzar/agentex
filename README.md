@@ -65,6 +65,7 @@ your confirmation.
 | Skill | `skills/db-integration/SKILL.md` | Execute cataloged DB queries in test steps (`db:`) via a runner script |
 | Skill | `skills/ask-kb/SKILL.md` | Ask the project's KB Ask API in test steps (`kb:`) for advisory answers (never evidence) |
 | Skill | `skills/extent-report/SKILL.md` | Interactive HTML dashboard (`extent-report.html`) for a finished run |
+| Skill | `skills/figma-integration/SKILL.md` | Read a Figma design → user stories & test conditions that feed `test-design`/`browser-testing`; optionally sync design↔code via the `@figma/code-connect` CLI |
 | Agent | `agents/qa-executor.md` | Subagent that runs one test spec in its own isolated browser session |
 | Reference | `skills/browser-testing/references/playwright-cli.md` | The browser driver — setup & gotchas |
 | Reference | `skills/azure-integration/references/azure-cli.md` | `az` CLI — install/auth/common commands |
@@ -74,6 +75,7 @@ your confirmation.
 | Reference | `skills/api-integration/references/api-requests.md` | Runner usage + curl fallback for cataloged API requests |
 | Reference | `skills/db-integration/references/sqlcmd.md` | Runner usage + sqlcmd (SQL Server) for cataloged queries |
 | Reference | `skills/ask-kb/references/kb-ask-api.md` | KB Ask API contract, result handling & curl fallback |
+| Reference | `skills/figma-integration/references/figma-cli.md` | Figma REST reads (design → stories/specs) + `@figma/code-connect` CLI (install/auth/authoring) |
 | Scripts | `skills/*/scripts/*.js` | Deterministic runners & helpers: `run_api`, `run_db`, `ask_kb`, `preflight`, `init_run`, `merge_run` |
 | Templates | `skills/{api,db}-integration/templates/sample_{api,db}.json` | Catalog samples — scaffolded to `integration/` in your project |
 | Script | `skills/extent-report/scripts/make_html_report.js` | Standalone HTML dashboard generator (run via `node`) |

@@ -55,3 +55,6 @@ Where the design link lives in stories (e.g. "story description, under 'Figma De
 ```
 <location>
 ```
+
+> When a story carries this link and `FIGMA_ACCESS_TOKEN` is set, the **figma-integration** skill
+> can read the frame's text layers to enrich the test conditions (see its `SKILL.md`). Read-only.

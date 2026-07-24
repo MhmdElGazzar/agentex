@@ -61,6 +61,13 @@ Fetch with `--expand all` (see mechanics reference for the command and field nam
 description + acceptance criteria, extract any design link (e.g. Figma) and translation tables
 from the HTML.
 
+> **Tip — read the Figma design, don't just note the link.** If the story carries a Figma URL and
+> `FIGMA_ACCESS_TOKEN` is set, the **`figma-integration`** skill can read that frame's real text
+> layers via the Figma REST API, surfacing labels, states, and actions the AC text may omit —
+> richer input for the test conditions in Step 2. See
+> `${CLAUDE_PLUGIN_ROOT}/skills/figma-integration/references/figma-cli.md` (§Read designs via the
+> Figma REST API). Read-only; no design is modified.
+
 ## Step 2 — Identify Test Conditions
 
 Group the ACs into **test conditions**. Each test condition maps to ONE test case.

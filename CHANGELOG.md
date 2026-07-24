@@ -2,6 +2,15 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **`figma-integration` skill** — read a Figma design → user stories & test conditions that feed
+  `test-design`/`browser-testing` (the QA-pipeline use), via the Figma REST API; optionally sync
+  design↔code via Figma's official CLI `@figma/code-connect` (Code Connect, two authoring modes:
+  parser `.figma.tsx` + CLI, or template `.figma.ts` + Figma MCP). Read-only by default,
+  confirm-before-publish. Reference: `figma-cli.md`. REST reads verified live.
+- `test-design` now hands off to `figma-integration` when a story carries a Figma link.
+
 ## [0.8.1] — 2026-07-21
 ### Added
 - `/ask-kb <question>` command — ask the project's Knowledge Base a question directly
