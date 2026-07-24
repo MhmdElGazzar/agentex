@@ -39,14 +39,16 @@ Design ref (opt): <PNG URL from /v1/images — a visual baseline for design-vs-b
 ### Handoff targets — who consumes this
 The same output feeds different downstream skills; pick by where the work is tracked:
 - **`test-design`** (Azure DevOps) — *User Story* + *Test Conditions* → Step 2 → one linked Test
-  Case each. This is the primary tracked-work route.
+  Case each. Primary tracked-work route on ADO.
+- **`jira-integration`** (Jira/Confluence) — *User Story* → a Story (or Epic→Story hierarchy);
+  *Test Conditions* → the story's ACs; optionally publish the set to a Confluence page.
 - **`task-estimation`** — the scoped conditions/screens feed effort estimates and `[Testing]` tasks.
 - **`browser-testing`** — *Description + Test Conditions* → a `test/suite/*.md` spec (*Description*
   → intro, *Test Conditions* → **Acceptance criteria** / **Scenarios**); the **Design ref** PNG is
   the visual baseline for the run.
 
 This skill is the **producer at the front of the pipeline** — it reads the design and emits the
-block; the consumer skills above turn it into tracked work. It does not itself write to ADO.
+block; the consumer skills above turn it into tracked work. It does not itself write to Jira/ADO.
 
 ## Tool
 Setup, install, auth, and all commands live in this skill's `references/` folder. **Read the
