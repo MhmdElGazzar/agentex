@@ -1,5 +1,5 @@
 {
-  "//": "RECOMMENDED PERMISSIONS for AgenTeX (Browser Testing, Azure DevOps estimation, API/DB/KB integrations, Figma). Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the safe/read-only commands, gate writes (deploys, Figma publish/unpublish) behind a prompt, and deny secret reads / destructive actions.",
+  "//": "RECOMMENDED PERMISSIONS for AgenTeX (Browser Testing, Azure DevOps estimation, API/DB/KB integrations, Figma, Jira/Confluence). Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the safe/read-only commands, gate writes (deploys, Figma publish/unpublish, Jira/Confluence writes) behind a prompt, and deny secret reads / destructive actions.",
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
@@ -26,7 +26,19 @@
       "Bash(npx @figma/code-connect@latest --version)",
       "Bash(npx @figma/code-connect@latest connect create:*)",
       "Bash(npx @figma/code-connect@latest connect preview:*)",
-      "Bash(npx @figma/code-connect@latest connect parse:*)"
+      "Bash(npx @figma/code-connect@latest connect parse:*)",
+      "Bash(acli --version)",
+      "Bash(acli jira auth status)",
+      "Bash(acli jira project:*)",
+      "Bash(acli jira workitem view:*)",
+      "Bash(acli jira workitem search:*)",
+      "Bash(acli jira board:*)",
+      "Bash(acli jira sprint view:*)",
+      "Bash(acli jira sprint list-workitems:*)",
+      "Bash(acli confluence auth status)",
+      "Bash(acli confluence space list:*)",
+      "Bash(acli confluence space view:*)",
+      "Bash(acli confluence page view:*)"
     ],
     "ask": [
       "Bash(az boards work-item delete:*)",
@@ -36,7 +48,14 @@
       "Bash(az group create:*)",
       "Bash(npx @figma/code-connect@latest connect publish:*)",
       "Bash(npx @figma/code-connect@latest connect unpublish:*)",
-      "Bash(npx @figma/code-connect@latest connect migrate:*)"
+      "Bash(npx @figma/code-connect@latest connect migrate:*)",
+      "Bash(acli jira workitem create:*)",
+      "Bash(acli jira workitem edit:*)",
+      "Bash(acli jira workitem transition:*)",
+      "Bash(acli jira workitem delete:*)",
+      "Bash(acli jira sprint create:*)",
+      "Bash(acli confluence space create:*)",
+      "Bash(acli confluence blog create:*)"
     ],
     "deny": [
       "Read(./secrets/**)",
