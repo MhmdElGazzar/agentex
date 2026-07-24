@@ -27,6 +27,8 @@
     "test-cases",
     "api-testing",
     "database",
-    "sql-server"
+    "sql-server",
+    "figma",
+    "code-connect"
   ]
 }
