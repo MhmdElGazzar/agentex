@@ -235,6 +235,15 @@ This is the **workhorse for QA/requirements** — the Code Connect CLI authors m
 work even when the CLI is blocked. Same token in the `X-Figma-Token` header, base
 `https://api.figma.com/v1`.
 
+> **REST vs the Figma MCP for *reading* — they return different things.** The Figma MCP
+> (`get_metadata`, `get_screenshot`) gives the layer **structure** and a **screenshot** — great for
+> frame names and a visual baseline, and it needs no token (just the connector). But it does **not**
+> return the **TEXT-layer characters** (button labels, validation copy, error messages) — the exact
+> on-screen words that become requirements. For those, use the **REST `/nodes` + TEXT extraction**
+> below (needs `FIGMA_ACCESS_TOKEN`). Rule of thumb: **MCP for structure/visual, REST for the copy.**
+> Also: `get_metadata` on a whole feature/section can be huge (overflows the token limit) — read a
+> single frame with `?depth=N` or `/nodes?ids=` instead of the whole node.
+
 **Parse the Figma URL first** (both values come from it):
 `https://figma.com/design/`**`<FILE_KEY>`**`/Name?node-id=`**`<NODE-ID>`**
 - **FILE_KEY** = the segment right after `/design/`.
