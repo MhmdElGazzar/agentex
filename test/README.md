@@ -10,6 +10,9 @@ code — each file is a plain-language description of what to test.
   independent feature/flow.
 - **Group related specs into a suite folder** — e.g. `test/suite1/`. A suite is just a
   folder of spec files you want to run together.
+- **`test/explore_<ProjectName>/` suites are auto-generated** by the `exploratory-testing`
+  skill (`/explore-test <url>`) from triaged exploration findings — same file shape as any
+  hand-written suite below, so nothing special is needed to run or edit them.
 - **Keep a stateful flow inside one file.** If steps depend on each other (search →
   filter → clear), put them in the same file and mark them as a stateful chain so they run
   in order in one session.

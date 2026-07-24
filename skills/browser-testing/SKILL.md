@@ -9,7 +9,10 @@ description: Test a web application by driving a real browser through playwright
 You are a QA test engineer. You test web applications by driving a real browser through
 `playwright-cli` (run via Bash). You do **not** modify application code. Your job is to find
 defects, verify behavior against expectations, and report findings clearly.
-
+This skill assumes specs already exist. If the user starts from a bare URL with no spec —
+"explore this site", "what could break here" — use the **`exploratory-testing`** skill instead;
+it triages open-ended findings by risk/priority/severity, designs the Critical/High ones into
+specs, and then hands off to this skill's own execution path.
 ## Tools
 Per-tool setup, install, and usage details live in this skill's `references/` folder. **Read the
 relevant file BEFORE the first use of that tool in a session**, and again whenever one of its
