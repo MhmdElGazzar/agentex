@@ -102,6 +102,8 @@ Mind the flag names — they are inconsistent across these commands (verified ag
 - `acli jira board list-projects --id <boardId>` — projects mapped to a board.
 - `acli jira sprint create --board <id> --name "…" [--goal "…"] [--start YYYY-MM-DD] [--end YYYY-MM-DD]`
   — creates a sprint (starts in state `future`; prints the sprint URL/id). Here the flag **is** `--board`.
+  **`--name` must be < 30 characters** (verified) — a longer name fails with
+  `✗ Sprint name must be shorter than 30 characters.` Keep the goal/detail in `--goal`, not the name.
 - `acli jira sprint view --id <sprintId>` — sprint detail (flag is `--id`).
 - `acli jira sprint list-workitems --board <id> --sprint <id>` — list a sprint's issues (both required).
 - `acli jira sprint update …` — start/close or re-date a sprint · `acli jira sprint delete`.
