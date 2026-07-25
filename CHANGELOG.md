@@ -8,6 +8,10 @@ All notable changes to AgenTeX are documented here.
   value only, matching the `AZURE_PAT`/`SQLCMDPASSWORD` secret handling (never written to
   `.env`, never passed on the command line). `browser-testing` skill rule tightened to state
   this explicitly for all secret-shaped values.
+### Added
+- README: "Secrets" step under one-time setup, with per-platform export instructions
+  (`~/.zshrc`/`~/.bashrc` for macOS/Linux/WSL/Git Bash; `SetEnvironmentVariable` for native
+  Windows PowerShell/cmd).
 
 ## [0.8.1] — 2026-07-21
 ### Added

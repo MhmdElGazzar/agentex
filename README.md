@@ -117,6 +117,19 @@ From Claude Code:
    block from [`settings.example.json`](./settings.example.json) into your project's
    `.claude/settings.json` (merge with anything already there). This pre-approves the safe
    `playwright-cli` commands and denies secret reads / destructive actions.
+3. **Secrets** (`API_TOKEN`, `AZURE_PAT`, DB password, …) — never go in `.env`; they're
+   exported in your shell so the agent never reads, prints, or passes the raw value:
+   - **macOS/Linux, or Windows via WSL/Git Bash** — add to `~/.zshrc`/`~/.bashrc` (persists
+     across every new terminal):
+     ```bash
+     export API_TOKEN="your-token"
+     ```
+   - **Windows, native PowerShell/cmd (no WSL/Git Bash)** — set it once at the user level so
+     every new session (and Claude Code) picks it up:
+     ```powershell
+     [Environment]::SetEnvironmentVariable("API_TOKEN", "your-token", "User")
+     ```
+     (open a new terminal afterward — existing sessions won't see it until restarted.)
 
 ## Usage
 
