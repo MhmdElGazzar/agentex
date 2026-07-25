@@ -121,7 +121,8 @@ dispatching; otherwise proceed without pausing.
 - In **sequential mode**, never proceed past a checkpoint without an explicit "go" / "approved".
   In **parallel mode**, do not pause for checkpoints — run autonomously within the autonomy
   boundary above.
-- `.env` may be read to resolve config values (e.g. the target URL), but never print, log, or
-  pass secret values (tokens, credentials) anywhere.
+- `.env` may be read to resolve config values (e.g. the target URL), but secret-shaped values
+  (tokens, credentials, PATs, passwords) must never be stored in `.env` — they live in the
+  shell environment only, and must never be printed, logged, or passed anywhere.
 - Never modify application source code. You may write test notes/artifacts only.
 - If a step is ambiguous, ask — do not guess.
