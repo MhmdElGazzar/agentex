@@ -1,18 +1,17 @@
 ---
 name: endpoint-testing
 description: >
-  Run a standalone sanity or regression pass over the project's cataloged API endpoints,
+  Run a standalone API test pass over the project's cataloged endpoints ("api-tests"),
   independent of any browser test spec. Use for /test-endpoints, or requests like "run the
-  API regression suite", "sanity-check the endpoints", "test all endpoints". Distinct from
-  api-integration's `api:` step (a single cataloged call made mid-browser-test) — this skill
-  runs a whole tagged set of cases in one pass and returns a consolidated report. Execution
-  is catalog+suite-only: only cases defined in integration/suites/*.json, referencing entries
-  defined in integration/*_api.json, ever run.
+  API tests", "test all endpoints". Distinct from api-integration's `api:` step (a single
+  cataloged call made mid-browser-test) — this skill runs the whole set of cases in one pass
+  and returns a consolidated report. Execution is catalog+suite-only: only cases defined in
+  integration/suites/*.json, referencing entries defined in integration/*_api.json, ever run.
 ---
 
-# Endpoint Testing — standalone API suite runs
+# Endpoint Testing — standalone API test runs
 
-Runs a tagged set of API test **cases** (params + expected result per case, possibly several
+Runs the full set of API test **cases** (params + expected result per case, possibly several
 cases per cataloged endpoint) as its own pass, not tied to a browser spec. Read
 **`${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/references/suite-format.md`** before the
 first run in a session — it covers the suite file schema and the runner's contract in full.
@@ -22,7 +21,7 @@ first run in a session — it covers the suite file schema and the runner's cont
 - **`api-integration`** — one cataloged call, made inline from a browser spec's `api:` step.
   Unaffected by this skill; its catalog (`integration/*_api.json`) and runner (`run_api.js`)
   are reused here, not duplicated.
-- **`endpoint-testing`** (this skill) — a whole tagged set of cases (`integration/suites/*.json`),
+- **`endpoint-testing`** (this skill) — the whole set of cases (`integration/suites/*.json`),
   run standalone via the **`api-executor`** subagent, producing one report. No browser
   involved.
 
@@ -37,25 +36,26 @@ Definitions live in the **consumer project** at **`./integration/suites/`**.
 - **Hard rule:** a case naming an undefined entry is BLOCKED — report which definition is
   missing, never improvise a request.
 
-## Running a suite
+## Running the api-tests
 
 Dispatch the bundled **`api-executor`** agent (do not run the loop inline yourself — it keeps
 per-case logs/output out of the orchestrator's context and returns one consolidated report,
 same reasoning as dispatching `qa-executor` for browser sessions). It makes one call to
-`run_suite.js` covering every matching case, then formats the result.
+`run_suite.js` covering every case, then formats the result.
 
 ```
 node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
-  --scope sanity|regression|all --catalog ./integration --suites ./integration/suites \
-  --run-dir <RUN_DIR>
+  --catalog ./integration --suites ./integration/suites --run-dir <RUN_DIR>
 ```
+
+Every case in every suite file runs every time — there's no scope/tag selection.
 
 ## Safety rules (also enforced by the runner)
 
 - Catalog+suite-only, same as `api-integration`: never compose a request that isn't defined.
 - Secrets stay in env — suite files hold only params/expectations, never token values.
-- Write-method cases (POST/PUT/DELETE) run if cataloged — be deliberate about what you tag
-  into `sanity` (may run more often) versus `regression`.
+- Write-method cases (POST/PUT/DELETE) run if cataloged — be deliberate about which write
+  operations you add cases for, since every case in `integration/suites/` runs every time.
 
 ## Evidence
 

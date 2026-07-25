@@ -17,14 +17,13 @@ executions/
         └── screenshots/                 # copies of bug-evidence shots
 ```
 
-**Standalone API suite runs** (`/test-endpoints`):
+**Standalone API test runs** (`/test-endpoints`):
 ```
 executions/
 └── execu_<YYYY-MM-DD_HH-MM-SS>/
-    └── api-runs/
-        └── <sanity|regression|all>/
-            ├── result.md                # PASS/FAIL/BLOCKED tally + defect list
-            └── logs/                    # one evidence log per case
+    └── api-tests/
+        ├── result.md                    # PASS/FAIL/BLOCKED tally + defect list
+        └── logs/                        # one evidence log per case
 ```
 
 Run artifacts are gitignored (only this README is tracked). They're specific to each run

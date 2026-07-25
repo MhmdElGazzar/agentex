@@ -48,7 +48,7 @@ not a bug.
    request bodies, placeholder "not found" values, unsupported auth schemes) that need human
    verification before the generated suite means anything.
 3. Tell the user to open the generated files and adjust anything flagged, then try
-   `/test-endpoints sanity`.
+   `/test-endpoints`.
 
 ## What this does NOT do
 

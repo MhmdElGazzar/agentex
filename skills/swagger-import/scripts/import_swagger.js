@@ -200,14 +200,14 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
       }
       const expectHappy = { status: okCode ? parseInt(okCode, 10) : 200 };
       if (okSchema && okSchema.type !== 'array' && okSchema.properties) expectHappy.fields = Object.keys(okSchema.properties);
-      cases.push({ name: `${reqName}-happy-path`, entry: `${name}.${reqName}`, tags: ['sanity', 'regression'], params: happyParams, expect: expectHappy });
+      cases.push({ name: `${reqName}-happy-path`, entry: `${name}.${reqName}`, params: happyParams, expect: expectHappy });
 
       // error-case suite case, if a 4xx is documented and there's a param to break
       const errCode = firstCode(op.responses, c => c >= 400 && c < 500);
       if (errCode && usableParams.length) {
         const errParams = {};
         for (const p of usableParams) errParams[p.name] = notFoundValueFor(paramSchema(p));
-        cases.push({ name: `${reqName}-error-case`, entry: `${name}.${reqName}`, tags: ['regression'], params: errParams, expect: { status: parseInt(errCode, 10) } });
+        cases.push({ name: `${reqName}-error-case`, entry: `${name}.${reqName}`, params: errParams, expect: { status: parseInt(errCode, 10) } });
         review.push(`${method.toUpperCase()} ${urlPath}: error case uses a placeholder param value — verify it actually produces ${errCode}`);
       }
     }

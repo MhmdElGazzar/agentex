@@ -18,7 +18,7 @@ The agent **never modifies your application code** — it only writes test artif
 | **Azure DevOps test design** — analyze story ACs & create linked test cases | ✅ Available (helper skill) |
 | **API & DB steps in tests** — cataloged API calls & SQL checks mid-run (`integration/`) | ✅ Available |
 | **KB questions in tests** — ask your project's knowledge base mid-run (`kb:`), advisory only | ✅ Available |
-| **Standalone API test suites** — sanity/regression pass over cataloged endpoints (`/test-endpoints`) | ✅ Available |
+| **Standalone API tests** — run every cataloged endpoint's test cases (`/test-endpoints`) | ✅ Available |
 | **Swagger/OpenAPI import** — generate the API catalog + suite from a spec (`/import-swagger`) | ✅ Available |
 | **Standalone database test suites** | 🚧 Planned |
 
@@ -66,11 +66,11 @@ your confirmation.
 | Skill | `skills/api-integration/SKILL.md` | Execute cataloged API calls in test steps (`api:`) via a runner script |
 | Skill | `skills/db-integration/SKILL.md` | Execute cataloged DB queries in test steps (`db:`) via a runner script |
 | Skill | `skills/ask-kb/SKILL.md` | Ask the project's KB Ask API in test steps (`kb:`) for advisory answers (never evidence) |
-| Skill | `skills/endpoint-testing/SKILL.md` | Standalone sanity/regression pass over cataloged API endpoints — dispatches `api-executor` |
+| Skill | `skills/endpoint-testing/SKILL.md` | Standalone API test run over cataloged endpoints — dispatches `api-executor` |
 | Skill | `skills/swagger-import/SKILL.md` | Generate the API catalog + suite from a Swagger 2.0 / OpenAPI 3.x JSON doc |
 | Skill | `skills/extent-report/SKILL.md` | Interactive HTML dashboard (`extent-report.html`) for a finished run |
 | Agent | `agents/qa-executor.md` | Subagent that runs one test spec in its own isolated browser session |
-| Agent | `agents/api-executor.md` | Subagent that runs a standalone API suite (sanity/regression/all) and returns a report |
+| Agent | `agents/api-executor.md` | Subagent that runs the standalone API tests and returns a report |
 | Reference | `skills/browser-testing/references/playwright-cli.md` | The browser driver — setup & gotchas |
 | Reference | `skills/azure-integration/references/azure-cli.md` | `az` CLI — install/auth/common commands |
 | Reference | `skills/azure-integration/references/azure-devops-cli.md` | `az boards` / `az devops` basics — shared by the ADO skills |
@@ -87,7 +87,7 @@ your confirmation.
 | Script | `skills/extent-report/scripts/make_html_report.js` | Standalone HTML dashboard generator (run via `node`) |
 | Command | `commands/init-test.md` | `/init-test` — scaffold sample specs + `executions/` in your project |
 | Command | `commands/execute-test.md` | `/execute-test <url or scope>` — run the tests |
-| Command | `commands/test-endpoints.md` | `/test-endpoints [sanity\|regression\|all]` — standalone API suite run |
+| Command | `commands/test-endpoints.md` | `/test-endpoints` — standalone API test run over every cataloged case |
 | Command | `commands/import-swagger.md` | `/import-swagger <path-or-url> [--name <service>]` — generate catalog + suite from a spec |
 | Command | `commands/ask-kb.md` | `/ask-kb <question>` — ask the project's Knowledge Base a question (advisory only) |
 | Command | `commands/estimate-story.md` | `/estimate-story [ids]` — estimate & create QA tasks on ADO stories |

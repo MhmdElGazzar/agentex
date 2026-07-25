@@ -27,5 +27,5 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/scripts/import_swagger.js" <so
   credential env var names to export in their shell (never in `.env`).
 - Report every `review` entry — these flag skipped params, generated request bodies,
   placeholder "not found" values, or unsupported auth schemes that need manual verification.
-- Tell them to review the generated files, then try `/test-endpoints sanity` once the env
+- Tell them to review the generated files, then try `/test-endpoints` once the env
   vars are set.

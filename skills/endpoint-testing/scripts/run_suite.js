@@ -1,12 +1,10 @@
-// AgenTeX endpoint-suite runner — runs every cataloged test CASE matching a scope
-// (sanity/regression/all) by shelling out to api-integration's run_api.js per case.
-// Never duplicates run_api.js's catalog/auth/assertion logic — it stays the single source
-// of truth for how one cataloged call executes; this script only reads suite files, filters
-// by tag, and aggregates results.
+// AgenTeX endpoint-suite runner — runs every cataloged test CASE by shelling out to
+// api-integration's run_api.js per case. Never duplicates run_api.js's catalog/auth/assertion
+// logic — it stays the single source of truth for how one cataloged call executes; this
+// script only reads suite files and aggregates results.
 //
 // Usage:
-//   node run_suite.js --scope sanity|regression|all [--catalog ./integration]
-//     [--suites ./integration/suites] --run-dir <dir>
+//   node run_suite.js [--catalog ./integration] [--suites ./integration/suites] --run-dir <dir>
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL","total":N,"passed":N,"failed":N,"blocked":N,
 //   "cases":[{"name":...,"entry":...,"result":...,"log":...,"failures":[...]?}]}
@@ -20,16 +18,13 @@ function blocked(reason, extra) { out({ result: 'BLOCKED', reason, ...extra }, 2
 
 // ---- args ----
 const args = process.argv.slice(2);
-let scope, catalog = './integration', suites = './integration/suites', runDir;
+let catalog = './integration', suites = './integration/suites', runDir;
 for (let i = 0; i < args.length; i++) {
   const a = args[i], v = () => args[++i];
-  if (a === '--scope') scope = v();
-  else if (a === '--catalog') catalog = v();
+  if (a === '--catalog') catalog = v();
   else if (a === '--suites') suites = v();
   else if (a === '--run-dir') runDir = v();
 }
-if (!scope) blocked('usage: --scope sanity|regression|all --run-dir <dir> required');
-if (!['sanity', 'regression', 'all'].includes(scope)) blocked(`--scope must be sanity, regression, or all (got "${scope}")`);
 if (!runDir) blocked('usage: --run-dir <dir> required');
 
 // ---- load & flatten suite cases ----
@@ -46,15 +41,12 @@ for (const f of suiteFiles) {
 }
 if (!allCases.length) blocked(`no cases defined across suite files in ${suites}`);
 
-const matched = scope === 'all' ? allCases : allCases.filter(c => (c.tags || []).includes(scope));
-if (!matched.length) blocked(`no cases tagged "${scope}" found in ${suites}`);
-
-// ---- run each matched case via run_api.js ----
+// ---- run every case via run_api.js ----
 const runApiPath = path.join(__dirname, '..', '..', 'api-integration', 'scripts', 'run_api.js');
 fs.mkdirSync(path.join(runDir, 'logs'), { recursive: true });
 
 const results = [];
-for (const c of matched) {
+for (const c of allCases) {
   if (!c.name || !c.entry) {
     results.push({ name: c.name || '(unnamed)', entry: c.entry, result: 'BLOCKED', reason: `case in ${c.__file} is missing "name" or "entry"` });
     continue;

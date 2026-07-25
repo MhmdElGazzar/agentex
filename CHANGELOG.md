@@ -4,20 +4,20 @@ All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
 ### Added
-- **`endpoint-testing` skill** — standalone sanity/regression pass over cataloged API
-  endpoints, independent of any browser test spec (the "Standalone API test suites" row
-  flips from planned to available). New `integration/suites/*.json` case files reference
-  `integration/*_api.json` entries by name and supply the concrete params/expected result a
-  standalone run needs — one entry can have multiple cases (happy path, not-found, …), each
-  tagged `sanity`/`regression`.
-- `run_suite.js` — deterministic runner that filters suite cases by scope and shells out to
-  `api-integration`'s `run_api.js` per case (never duplicates its catalog/auth/assertion
-  logic), aggregating one PASS/FAIL/BLOCKED summary.
-- `agents/api-executor.md` — subagent (sibling to `qa-executor`) that runs a suite scope in
-  one call and returns a consolidated defect report, keeping per-case logs out of the
-  orchestrator's context.
-- `/test-endpoints [sanity|regression|all]` command — entrypoint for the standalone flow;
-  scaffolds `integration/suites/sample_suite.json` on first run.
+- **`endpoint-testing` skill** — standalone API test run over cataloged endpoints ("api-tests"),
+  independent of any browser test spec (the "Standalone API tests" row flips from planned to
+  available). New `integration/suites/*.json` case files reference `integration/*_api.json`
+  entries by name and supply the concrete params/expected result a standalone run needs — one
+  entry can have multiple cases (happy path, not-found, …). Every case in every suite file
+  runs every time — there's no scope/tag selection.
+- `run_suite.js` — deterministic runner that shells out to `api-integration`'s `run_api.js`
+  per case (never duplicates its catalog/auth/assertion logic), aggregating one
+  PASS/FAIL/BLOCKED summary.
+- `agents/api-executor.md` — subagent (sibling to `qa-executor`) that runs the full set of
+  api-tests in one call and returns a consolidated defect report, keeping per-case logs out of
+  the orchestrator's context.
+- `/test-endpoints` command — entrypoint for the standalone flow; scaffolds
+  `integration/suites/sample_suite.json` on first run.
 - **`swagger-import` skill** — generates a catalog (`integration/*_api.json`) and suite
   (`integration/suites/*_suite.json`) from a Swagger 2.0 / OpenAPI 3.x JSON document (local
   file or URL), via `import_swagger.js` and the `/import-swagger <path-or-url> [--name
