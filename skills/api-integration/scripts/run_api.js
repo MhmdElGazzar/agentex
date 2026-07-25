@@ -6,6 +6,10 @@
 //     [--expect-status 200] [--expect-field dot.path] [--expect-equals dot.path=value]
 //     [--catalog ./integration] --log <path>
 //
+// A declared param whose name appears as a `{name}` path placeholder is substituted into the
+// path; any other declared param is sent as a URL query string param instead.
+// auth.type: "bearer" | "basic" | "apiKey" (custom header, e.g. X-API-Key) | "none".
+//
 // Prints ONE JSON line: {"result":"PASS|FAIL|BLOCKED", ...}. Exit: 0 PASS, 1 FAIL, 2 BLOCKED.
 // Secrets: env values (tokens) are used for the request but never printed or logged.
 const fs = require('fs');
@@ -64,10 +68,17 @@ function resolveEnvRefs(s) {
 }
 const baseUrl = resolveEnvRefs(def.baseUrl || '');
 let urlPath = req.path || '';
-for (const [k, v] of Object.entries(params)) urlPath = urlPath.split(`{${k}}`).join(encodeURIComponent(v));
+const queryParams = [];
+for (const [k, v] of Object.entries(params)) {
+  const placeholder = `{${k}}`;
+  if (urlPath.includes(placeholder)) urlPath = urlPath.split(placeholder).join(encodeURIComponent(v));
+  else queryParams.push([k, v]);
+}
 const unresolved = urlPath.match(/\{[a-zA-Z0-9_]+\}/);
 if (unresolved) blocked(`unresolved placeholder ${unresolved[0]} in path`);
-const url = baseUrl.replace(/\/$/, '') + urlPath;
+// declared params not consumed by a path placeholder are sent as query string params
+const query = queryParams.length ? '?' + queryParams.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&') : '';
+const url = baseUrl.replace(/\/$/, '') + urlPath + query;
 
 const headers = { 'Accept': 'application/json' };
 const auth = def.auth || { type: 'none' };
@@ -79,6 +90,10 @@ if (auth.type === 'bearer') {
   const u = process.env[auth.userEnv], p = process.env[auth.passEnv];
   if (!u || !p) blocked(`env vars ${auth.userEnv}/${auth.passEnv} (basic auth) are not set`);
   headers['Authorization'] = 'Basic ' + Buffer.from(`${u}:${p}`).toString('base64');
+} else if (auth.type === 'apiKey') {
+  const tok = process.env[auth.tokenEnv];
+  if (!tok) blocked(`env var ${auth.tokenEnv} (apiKey) is not set`);
+  headers[auth.headerName] = tok;
 }
 
 let body;

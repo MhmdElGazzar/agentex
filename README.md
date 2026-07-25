@@ -18,7 +18,9 @@ The agent **never modifies your application code** — it only writes test artif
 | **Azure DevOps test design** — analyze story ACs & create linked test cases | ✅ Available (helper skill) |
 | **API & DB steps in tests** — cataloged API calls & SQL checks mid-run (`integration/`) | ✅ Available |
 | **KB questions in tests** — ask your project's knowledge base mid-run (`kb:`), advisory only | ✅ Available |
-| **Standalone API & database test suites** | 🚧 Planned |
+| **Standalone API test suites** — sanity/regression pass over cataloged endpoints (`/test-endpoints`) | ✅ Available |
+| **Swagger/OpenAPI import** — generate the API catalog + suite from a spec (`/import-swagger`) | ✅ Available |
+| **Standalone database test suites** | 🚧 Planned |
 
 Most of this README covers the **browser-testing** flow — the core of AgenTeX today. For the
 Azure DevOps estimation flow, see [QA task estimation](#qa-task-estimation-on-azure-devops).
@@ -64,8 +66,11 @@ your confirmation.
 | Skill | `skills/api-integration/SKILL.md` | Execute cataloged API calls in test steps (`api:`) via a runner script |
 | Skill | `skills/db-integration/SKILL.md` | Execute cataloged DB queries in test steps (`db:`) via a runner script |
 | Skill | `skills/ask-kb/SKILL.md` | Ask the project's KB Ask API in test steps (`kb:`) for advisory answers (never evidence) |
+| Skill | `skills/endpoint-testing/SKILL.md` | Standalone sanity/regression pass over cataloged API endpoints — dispatches `api-executor` |
+| Skill | `skills/swagger-import/SKILL.md` | Generate the API catalog + suite from a Swagger 2.0 / OpenAPI 3.x JSON doc |
 | Skill | `skills/extent-report/SKILL.md` | Interactive HTML dashboard (`extent-report.html`) for a finished run |
 | Agent | `agents/qa-executor.md` | Subagent that runs one test spec in its own isolated browser session |
+| Agent | `agents/api-executor.md` | Subagent that runs a standalone API suite (sanity/regression/all) and returns a report |
 | Reference | `skills/browser-testing/references/playwright-cli.md` | The browser driver — setup & gotchas |
 | Reference | `skills/azure-integration/references/azure-cli.md` | `az` CLI — install/auth/common commands |
 | Reference | `skills/azure-integration/references/azure-devops-cli.md` | `az boards` / `az devops` basics — shared by the ADO skills |
@@ -74,11 +79,16 @@ your confirmation.
 | Reference | `skills/api-integration/references/api-requests.md` | Runner usage + curl fallback for cataloged API requests |
 | Reference | `skills/db-integration/references/sqlcmd.md` | Runner usage + sqlcmd (SQL Server) for cataloged queries |
 | Reference | `skills/ask-kb/references/kb-ask-api.md` | KB Ask API contract, result handling & curl fallback |
-| Scripts | `skills/*/scripts/*.js` | Deterministic runners & helpers: `run_api`, `run_db`, `ask_kb`, `preflight`, `init_run`, `merge_run` |
+| Reference | `skills/endpoint-testing/references/suite-format.md` | Suite case schema (`integration/suites/*.json`) + `run_suite.js` contract |
+| Reference | `skills/swagger-import/references/swagger-mapping.md` | Spec-field → catalog/suite-field mapping, what's skipped, auth scheme selection |
+| Scripts | `skills/*/scripts/*.js` | Deterministic runners & helpers: `run_api`, `run_db`, `run_suite`, `import_swagger`, `ask_kb`, `preflight`, `init_run`, `merge_run` |
 | Templates | `skills/{api,db}-integration/templates/sample_{api,db}.json` | Catalog samples — scaffolded to `integration/` in your project |
+| Template | `skills/endpoint-testing/templates/sample_suite.json` | Suite case sample — scaffolded to `integration/suites/` in your project |
 | Script | `skills/extent-report/scripts/make_html_report.js` | Standalone HTML dashboard generator (run via `node`) |
 | Command | `commands/init-test.md` | `/init-test` — scaffold sample specs + `executions/` in your project |
 | Command | `commands/execute-test.md` | `/execute-test <url or scope>` — run the tests |
+| Command | `commands/test-endpoints.md` | `/test-endpoints [sanity\|regression\|all]` — standalone API suite run |
+| Command | `commands/import-swagger.md` | `/import-swagger <path-or-url> [--name <service>]` — generate catalog + suite from a spec |
 | Command | `commands/ask-kb.md` | `/ask-kb <question>` — ask the project's Knowledge Base a question (advisory only) |
 | Command | `commands/estimate-story.md` | `/estimate-story [ids]` — estimate & create QA tasks on ADO stories |
 | Command | `commands/design-test.md` | `/design-test <ids>` — design & create linked test cases on ADO stories |
