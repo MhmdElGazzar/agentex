@@ -10,7 +10,7 @@ Question / arguments: $ARGUMENTS
 Do this:
 
 1. **Parse the arguments:**
-   - If they begin with `<project>:` (e.g. `dwi: how does the Musaned flow work?`), use that as
+   - If they begin with `<project>:` (e.g. `acme-store: how does the checkout flow work?`), use that as
      the project and the rest as the question.
    - Otherwise the whole string is the question and the default project is resolved from
      `.env` (`KB_PROJECT`) → `agentex.config.json` (`kb.project`).

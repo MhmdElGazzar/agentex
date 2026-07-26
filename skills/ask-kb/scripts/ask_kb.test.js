@@ -52,7 +52,7 @@ async function test(name, fn) {
       res.end(JSON.stringify({ success: true, answer: '## A', sources: ['mod-x'], hasContext: true, isNoAnswer: false }));
     });
     const port = srv.address().port;
-    const cwd = fixtureCwd({ project: 'travel-insurance' });
+    const cwd = fixtureCwd({ project: 'acme-store' });
     const r = await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}` }, ['--question', 'How?']);
     srv.close();
     assert.strictEqual(r.code, 0);
@@ -70,11 +70,11 @@ async function test(name, fn) {
       res.end(JSON.stringify({ success: true, answer: 'x', sources: [], hasContext: true, isNoAnswer: false }));
     });
     const port = srv.address().port;
-    const cwd = fixtureCwd({ project: 'dwi' });
+    const cwd = fixtureCwd({ project: 'acme-store' });
     await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}` }, ['--question', 'Q']);
     srv.close();
-    assert.strictEqual(seen.project, 'dwi');
-    assert.strictEqual(seen.org, 'tameeni');
+    assert.strictEqual(seen.project, 'acme-store');
+    assert.strictEqual(seen.org, 'acme');
     assert.strictEqual(seen.model, 'opus');
   });
 
@@ -87,10 +87,10 @@ async function test(name, fn) {
       res.end(JSON.stringify({ success: true, answer: 'x', sources: [], hasContext: true, isNoAnswer: false }));
     });
     const port = srv.address().port;
-    const cwd = fixtureCwd({ project: 'dwi' });
-    await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_PROJECT: 'marine' }, ['--question', 'Q']);
+    const cwd = fixtureCwd({ project: 'acme-store' });
+    await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_PROJECT: 'demo-shop' }, ['--question', 'Q']);
     srv.close();
-    assert.strictEqual(seen.project, 'marine');
+    assert.strictEqual(seen.project, 'demo-shop');
   });
 
   // 3. NOT_COVERED when hasContext false
@@ -100,7 +100,7 @@ async function test(name, fn) {
       res.end(JSON.stringify({ success: true, answer: 'guess', sources: [], hasContext: false, isNoAnswer: false }));
     });
     const port = srv.address().port;
-    const cwd = fixtureCwd({ project: 'dwi' });
+    const cwd = fixtureCwd({ project: 'acme-store' });
     const r = await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}` }, ['--question', 'Q']);
     srv.close();
     assert.strictEqual(r.code, 0);
@@ -135,7 +135,7 @@ async function test(name, fn) {
       res.end(JSON.stringify({ success: true, answer: 'ok', sources: [], hasContext: true, isNoAnswer: false }));
     });
     const port = srv.address().port;
-    const cwd = fixtureCwd({ project: 'dwi', retries: 2 });
+    const cwd = fixtureCwd({ project: 'acme-store', retries: 2 });
     const r = await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}` }, ['--question', 'Q']);
     srv.close();
     assert.strictEqual(r.json.result, 'OK');
@@ -144,7 +144,7 @@ async function test(name, fn) {
 
   // 6. Missing base url -> BLOCKED
   await test('missing KB_ASK_BASE_URL -> BLOCKED', async () => {
-    const cwd = fixtureCwd({ project: 'dwi' });
+    const cwd = fixtureCwd({ project: 'acme-store' });
     const r = await run(cwd, { KB_ASK_BASE_URL: '' }, ['--question', 'Q']);
     assert.strictEqual(r.code, 2);
     assert.strictEqual(r.json.result, 'BLOCKED');
@@ -157,7 +157,7 @@ async function test(name, fn) {
       res.end(JSON.stringify({ success: false, error: 'boom' }));
     });
     const port = srv.address().port;
-    const cwd = fixtureCwd({ project: 'dwi' });
+    const cwd = fixtureCwd({ project: 'acme-store' });
     const r = await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}` }, ['--question', 'Q']);
     srv.close();
     assert.strictEqual(r.code, 2);
@@ -174,7 +174,7 @@ async function test(name, fn) {
       res.end(JSON.stringify({ success: true, answer: 'a', sources: [], hasContext: true, isNoAnswer: false, cached: true }));
     });
     const port = srv.address().port;
-    const cwd = fixtureCwd({ project: 'dwi' });
+    const cwd = fixtureCwd({ project: 'acme-store' });
     const r = await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_ASK_API_KEY: 'secret-123' }, ['--question', 'Q']);
     srv.close();
     assert.strictEqual(seenKey, 'secret-123', 'x-api-key header must carry KB_ASK_API_KEY');
@@ -191,7 +191,7 @@ async function test(name, fn) {
       res.end(JSON.stringify({ success: true, answer: 'a', sources: [], hasContext: true, isNoAnswer: false }));
     });
     const port = srv.address().port;
-    const cwd = fixtureCwd({ project: 'dwi' });
+    const cwd = fixtureCwd({ project: 'acme-store' });
     await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_ASK_API_KEY: '' }, ['--question', 'Q']);
     srv.close();
     assert.strictEqual(hadKey, false, 'x-api-key must be absent when no key configured');
@@ -206,7 +206,7 @@ async function test(name, fn) {
       res.end(JSON.stringify({ error: 'Unauthorized' }));
     });
     const port = srv.address().port;
-    const cwd = fixtureCwd({ project: 'dwi' });
+    const cwd = fixtureCwd({ project: 'acme-store' });
     const r = await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_ASK_API_KEY: 'wrong' }, ['--question', 'Q']);
     srv.close();
     assert.strictEqual(r.code, 2);
