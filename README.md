@@ -59,6 +59,31 @@ Run a parallel regression against https://example.com from the specs in test/sui
 Every run writes to a timestamped `executions/execu_<timestamp>/` folder — `report.md`,
 `extent-report.html`, per-session logs/screenshots, and a merged bug list.
 
+## Setup
+
+1. **Playwright CLI** (the agent will offer to do this, or run it yourself):
+   ```
+   npm install -D @playwright/cli
+   npx playwright-cli install-browser chromium
+   ```
+2. **Permissions** — plugin manifests can't ship permission rules, so copy the `permissions`
+   block from [`settings.example.json`](./settings.example.json) into your project's
+   `.claude/settings.json` (merge with anything already there). This pre-approves the safe
+   `playwright-cli` commands and denies secret reads / destructive actions.
+3. **Secrets** (`API_TOKEN`, `AZURE_PAT`, DB password, …) — never go in `.env`; they're
+   exported in your shell so the agent never reads, prints, or passes the raw value:
+   - **macOS/Linux, or Windows via WSL/Git Bash** — add to `~/.zshrc`/`~/.bashrc` (persists
+     across every new terminal):
+     ```bash
+     export API_TOKEN="your-token"
+     ```
+   - **Windows, native PowerShell/cmd (no WSL/Git Bash)** — set it once at the user level so
+     every new session (and Claude Code) picks it up:
+     ```powershell
+     [Environment]::SetEnvironmentVariable("API_TOKEN", "your-token", "User")
+     ```
+     (open a new terminal afterward — existing sessions won't see it until restarted.)
+
 ## Contributing
 
 Contributions are welcome. Each capability is a self-contained skill under `skills/<name>/`
