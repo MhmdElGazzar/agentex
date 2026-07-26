@@ -90,7 +90,8 @@ async function main() {
   const question = typeof args.question === 'string' ? args.question : null;
   // Project precedence: --project flag → KB_PROJECT (env/.env) → kb.project in config.
   const project = (typeof args.project === 'string' ? args.project : null) || resolveEnv(cwd, 'KB_PROJECT') || cfg.project || null;
-  const org = (typeof args.org === 'string' ? args.org : null) || cfg.org || 'tameeni';
+  // Org precedence: --org flag → KB_ORG (env/.env) → kb.org in config → generic default.
+  const org = (typeof args.org === 'string' ? args.org : null) || resolveEnv(cwd, 'KB_ORG') || cfg.org || 'acme';
   const model = (typeof args.model === 'string' ? args.model : null) || cfg.model || 'opus';
   const timeoutMs = Number(cfg.timeout_ms) > 0 ? Number(cfg.timeout_ms) : 120000;
   const retries = Number.isInteger(cfg.retries) ? cfg.retries : 2;

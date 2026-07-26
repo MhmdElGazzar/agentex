@@ -16,12 +16,11 @@ dev server.
 |---|---|---|---|
 | `question` | string | yes | the natural-language question |
 | `project` | string | yes | project id (see list) |
-| `org` | string | no | org slug, default `tameeni` |
+| `org` | string | no | org slug, default `acme` |
 | `model` | string | no | `sonnet` (API default) / `opus` / `haiku` |
 
-Valid `project` values: `dwi`, `travel-insurance`, `mmp`, `tameeniportal`, `health-sme`,
-`leasing`, `marine`, `health-individual`, `civil-liability`, `home-insurance`,
-`Tameeni SME Motor`, `VAS`. A project answers only if its KB exists on disk (else 404).
+Valid `project` values are whatever KB ids are configured on your server (e.g. `acme-store`,
+`demo-shop`, `support-kb`). A project answers only if its KB exists on disk (else 404).
 
 ## Success — 200
 
@@ -52,6 +51,6 @@ Retry policy: `429` honors the `Retry-After` header (seconds; default 2s) grown 
     curl -X POST "$KB_ASK_BASE_URL/api/kb/ask" \
       -H "Content-Type: application/json" \
       -H "x-api-key: $KB_ASK_API_KEY" \
-      -d '{"project":"travel-insurance","question":"How is the premium calculated?"}'
+      -d '{"project":"acme-store","question":"How is the order total calculated?"}'
 
 Then apply the same result handling: `hasContext=false` or `isNoAnswer=true` ⇒ not covered.
