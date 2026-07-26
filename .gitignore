@@ -16,6 +16,10 @@ executions/*
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
 
+# Consumer-project conventions scaffolded by test-design into the project
+# under test — the plugin ships the blank template, not a filled-in copy
+.agentex/
+
 # OS / editor
 .DS_Store
 Thumbs.db

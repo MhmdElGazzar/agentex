@@ -12,6 +12,20 @@ description: |
 
 # QA Task Estimation & Task Creation (Azure DevOps)
 
+> **Tracker scope: Azure DevOps only.** If the stories live in **Jira**, this skill's estimation
+> *methodology* (factors, complexity buckets, hours-per-task table) still applies, but its
+> *mechanics* do not — there is no `az boards` in Jira. Route the Jira half through the
+> **jira-acli** skill (`${CLAUDE_PLUGIN_ROOT}/skills/jira-acli/SKILL.md`) and mind this verified
+> limitation: **`acli jira workitem edit` cannot write story points, original estimate, or any
+> custom field** — its only writable fields are summary, description, type, labels, and assignee
+> (confirmed on acli 1.3.22 via `--help` and `--generate-json`). On Jira you can therefore:
+> - report the estimate without writing it, or
+> - write the estimate into the Story's **description** via `--description-file`, or
+> - create the 5 `[Testing]` tasks as **Subtasks** with hours in each Subtask description.
+>
+> Setting the native story-points field needs the Jira REST API or the UI — outside jira-acli's
+> ACLI-only boundary. State which route you're taking before creating anything.
+
 Automates QA testing-task creation on Azure DevOps User Stories, estimated by story complexity.
 This file is the **workflow** (what tasks, how to estimate, when to confirm). The `az boards` /
 `az devops` command mechanics live in the reference — **read it before the first `az boards`

@@ -2,6 +2,30 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **`jira-acli` skill** — operate Jira Cloud through Atlassian's official `acli jira` command
+  family: discovery, JQL search, work-item CRUD, transitions, comments, links, attachments,
+  watchers, and guarded bulk workflows (`--key`/`--jql`/`--filter` targeting, `--yes` confirm-skip,
+  `--ignore-errors` partial-completion). Read-before-write, preview-before-bulk-mutate. Reference:
+  `official-acli.md`. Verified live against acli 1.3.22-stable on a real tenant.
+- **`confluence-acli` skill** — operate Confluence Cloud through `acli confluence` first, with a
+  guarded PowerShell REST fallback (`confluence_rest.ps1`) for the real gaps in ACLI's Confluence
+  surface (no page create/update/delete, no CQL command, verified live and dated). Reference:
+  `official-confluence.md`.
+- **`jira-confluence-integration` skill** — thin orchestrator for workflows spanning both
+  products (audit Jira↔Confluence relationships, reconcile a page's embedded Jira keys against
+  the tracker, publish reports, turn specs into work items) with idempotency and
+  version-conflict handling. Documents which halves are reachable ACLI-only: reads and
+  reconciliation are, page creation and Jira remote links are not.
+  References: `identity-and-auth.md`, `linking-patterns.md`, `workflow-recipes.md`.
+
+### Removed
+- **`jira-integration` skill** — replaced by the three ACLI skills above (`jira-acli`,
+  `confluence-acli`, `jira-confluence-integration`), which depend on Atlassian's official ACLI
+  only and were verified live against a real Jira/Confluence tenant with dated, versioned
+  command inventories. Never shipped in a tagged release.
+
 ## [0.8.1] — 2026-07-21
 ### Added
 - `/ask-kb <question>` command — ask the project's Knowledge Base a question directly
