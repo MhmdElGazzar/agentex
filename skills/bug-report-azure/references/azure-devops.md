@@ -1,29 +1,26 @@
 # Azure DevOps — az CLI recipes & field schema (reference)
 
-Backing detail for the `report-azure-bug-generic` skill. Everything here is **product/team
-agnostic** — substitute the `{{PLACEHOLDERS}}` from your `config.json`. Read this only when you
-need exact field names or `az` invocations; day-to-day the three scripts wrap all of it.
+Backing detail for the `bug-report-azure` skill: the **bug-specific** `az` recipes (field schema,
+ReproSteps HTML, attachments, test-plan outcomes) that the three scripts wrap. Read this when you
+need exact field names or `az` invocations; day-to-day the scripts handle all of it. Everything
+here is **product/team agnostic** — substitute the `{{PLACEHOLDERS}}` from your `.env`
+(`AZURE_*` keys — see the repo-root `.env.example`).
 
 All commands use the **Azure CLI** only (`az devops` / `az boards`, and `az devops invoke` for the
 few routes `az boards` doesn't cover). No direct REST calls.
 
 ## Connection & auth
 
-```bash
-# one-time defaults so you can omit --org/--project on every call
-az devops configure --defaults \
-  organization={{ORG_URL}} \
-  project="{{PROJECT_NAME}}"
+Install, PAT auth, and `az devops configure --defaults` are **not repeated here** — they live in
+the shared Azure reference (same setup the task-estimation / test-design skills use):
 
-# auth: interactive, or a PAT via env (never printed by the scripts)
-az login                      # or:
-export AZURE_DEVOPS_EXT_PAT=<pat>       # PAT with Work Items + Test Management scopes
-export PYTHONIOENCODING=utf-8           # keep non-ASCII fields from tripping cp1252
-```
+- **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-devops-cli.md`** — install
+  the `azure-devops` extension, authenticate with a PAT, and configure org/project defaults.
 
-The scripts resolve `{{ORG_URL}}` / `{{PROJECT_NAME}}` from `config.json`, then the
-`AZURE_DEVOPS_ORG_URL` / `AZURE_DEVOPS_DEFAULT_PROJECT` env vars, then `az` configured defaults —
-whichever is found first. They never store a PAT.
+The scripts resolve org/project/etc. from the AgenTeX `.env` (`AZURE_URL`, `AZURE_PROJECT`,
+`AZURE_TEAM`, …), then `az` configured defaults. Auth is whatever `az` already uses: the PAT is
+read by `az` from `AZURE_DEVOPS_EXT_PAT` — the scripts never read, store, or print it. Set
+`PYTHONIOENCODING=utf-8` so non-ASCII fields don't trip cp1252 on Windows.
 
 ## Bug field schema (template mirror)
 
@@ -44,7 +41,7 @@ User Story). Adjust field reference names to your process if it differs from the
 | `Custom.BugCategory` | `{{BUG_CATEGORY}}` | e.g. `Functional` / `UI/UX` (omit if not in your process) |
 | `Microsoft.VSTS.TCM.ReproSteps` | HTML (see below) | the visible body of the bug |
 
-> `Custom.*` fields exist only if your project defines them. `create-bug.mjs` emits them only when
+> `Custom.*` fields exist only if your project defines them. `create-bug.js` emits them only when
 > the spec provides a value; leave them out of the spec for stock processes.
 
 Parent link (the **only** relation the skill may add):
@@ -70,6 +67,8 @@ az boards query --wiql \
 ## Creating the Bug (write — only past explicit confirmation)
 
 ```bash
+# 1) create with the SHORT fields only. ReproSteps (large HTML) is intentionally NOT passed
+#    here — a big repro could exceed the Windows cmd.exe ~8191-char command-line limit.
 az boards work-item create --type Bug --title "<title>" \
   --org {{ORG_URL}} --project "{{PROJECT_NAME}}" \
   --fields \
@@ -79,9 +78,19 @@ az boards work-item create --type Bug --title "<title>" \
     "Microsoft.VSTS.Common.Priority=<1-4>" \
     "Microsoft.VSTS.Common.Severity=<sev>" \
     "Microsoft.VSTS.Common.ValueArea=Business" \
-    "Microsoft.VSTS.TCM.ReproSteps=<html>" \
   -o json
-# then: az boards work-item relation add --id <newId> --relation-type parent --target-id <storyId>
+
+# 2) parent link
+az boards work-item relation add --id <newId> --relation-type parent --target-id <storyId>
+
+# 3) set ReproSteps + attach screenshots in ONE JSON-Patch read from a file (off the
+#    command line), sent as application/json-patch+json:
+#    [{"op":"add","path":"/fields/Microsoft.VSTS.TCM.ReproSteps","value":"<html>"},
+#     {"op":"add","path":"/relations/-","value":{"rel":"AttachedFile","url":"<attUrl>","attributes":{"comment":"<name>"}}}]
+az devops invoke --area wit --resource workitems \
+  --route-parameters id=<newId> --http-method PATCH \
+  --media-type application/json-patch+json --api-version 7.1 \
+  --in-file <repro+attachments>.json
 ```
 
 ## ReproSteps HTML shape
@@ -94,26 +103,29 @@ az boards work-item create --type Bug --title "<title>" \
               <u>Actual Result</u>    {text}  <img src={attachment-url}>      </table>
 [hr] <table>  <b>Test Configuration:</b> | {testConfig}                      </table>
 ```
-`create-bug.mjs` regenerates this exact structure from the spec JSON — you don't hand-write HTML.
+`create-bug.js` regenerates this exact structure from the spec JSON — you don't hand-write HTML.
 
 ## Attachments (via `az devops invoke` — `az boards` has no native verb)
 
 ```bash
-# 1) upload the file, get back {id, url}
+# 1) upload the file, get back {id, url}. Body is raw bytes → octet-stream, not JSON.
 az devops invoke --area wit --resource attachments \
   --route-parameters project="{{PROJECT_NAME}}" \
   --query-parameters fileName=<name.png> \
   --http-method POST --in-file <path/to/name.png> \
+  --media-type application/octet-stream \
   --api-version 7.1 -o json
 
-# 2) attach it to the bug (relation) — PATCH the work item's relations
+# 2) attach it to the bug (relation) — PATCH the work item's relations.
+#    A JSON Patch body MUST be sent as application/json-patch+json or the server rejects it.
 az devops invoke --area wit --resource workitems \
   --route-parameters id=<bugId> \
   --http-method PATCH --api-version 7.1 \
+  --media-type application/json-patch+json \
   --in-file <patch.json>   # [{"op":"add","path":"/relations/-","value":{"rel":"AttachedFile","url":"<attachmentUrl>","attributes":{"comment":"<name>"}}}]
 ```
 The returned attachment `url` is also embedded as `<img src=…>` inside ReproSteps so the evidence
-renders in the bug body. `create-bug.mjs` does all of this and prints each command first.
+renders in the bug body. `create-bug.js` does all of this and prints each command first.
 
 ## Test plans / suites / cases (reads via `az devops invoke`)
 
@@ -127,7 +139,7 @@ az devops invoke --area testplan --resource suites \
 # cases in a suite
 az devops invoke --area testplan --resource "suite entries" ...   # or resource=TestCase per suite
 ```
-`testplan.mjs` wraps the exact resource/route names; adjust `--api-version` per your org if a route
+`testplan.js` wraps the exact resource/route names; adjust `--api-version` per your org if a route
 404s.
 
 ## Creating a NEW test case (only on explicit user choice)
@@ -143,7 +155,7 @@ az boards work-item create --type "Test Case" --title "<title>" \
 ## Failing an existing test case (record a Failed outcome)
 
 A Test Case work item has a **State** (Design/Ready/Closed), not pass/fail — the outcome lives on a
-**Test Point** inside a Plan/Suite. `testplan.mjs fail` (via `az devops invoke --area test`) does:
+**Test Point** inside a Plan/Suite. `testplan.js fail` (via `az devops invoke --area test`) does:
 
 1. find the test point: iterate the plan's suites → `Suites/{suite}/TestPoint?testCaseId={tc}`.
 2. `POST test/runs` `{name, plan:{id}, pointIds:[point], automated:false, state:"InProgress"}`.

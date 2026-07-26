@@ -10,22 +10,24 @@ team template and hang off the right User Story — with a human confirming ever
 board-changing step. This is the closing gate of a test run.
 
 This skill is **decoupled from any specific team or product**. Everything team-specific is a
-placeholder resolved at runtime from config (never hardcoded in the skill):
+placeholder resolved at runtime from the AgenTeX `.env` (never hardcoded in the skill):
 
-| Placeholder | Meaning | Resolved from |
+| Placeholder | Meaning | Resolved from (`.env` key) |
 |---|---|---|
-| `{{ORG_URL}}` | Azure DevOps org URL | config / `AZURE_DEVOPS_ORG_URL` / `az` defaults |
-| `{{PROJECT_NAME}}` | Project | config / `AZURE_DEVOPS_DEFAULT_PROJECT` / `az` defaults |
-| `{{TEAM_NAME}}` | Team | config |
-| `{{AREA_PATH}}` | Area Path | config or inherited from the parent story |
-| `{{ITERATION_PATH}}` | Iteration Path | config or inherited from the parent story |
-| `{{TEMPLATE_BUG_ID}}` | Reference bug the template mirrors | config (optional) |
-| `{{ASSIGNEE_EMAIL}}` / `{{DEVELOPER_NAME}}` | Bug assignee options | config (`assignees` list) — **always asked** |
-| `{{TEST_PLAN_ID}}` / `{{TEST_SUITE_ID}}` | Related test plan / suite | **always asked** |
-| `{{ENVIRONMENT}}` / `{{BUG_CATEGORY}}` | Custom fields | config defaults or asked |
+| `{{ORG_URL}}` | Azure DevOps org URL | `AZURE_URL` / `az` defaults |
+| `{{PROJECT_NAME}}` | Project | `AZURE_PROJECT` / `az` defaults |
+| `{{TEAM_NAME}}` | Team | `AZURE_TEAM` |
+| `{{AREA_PATH}}` | Area Path | `AZURE_AREA_PATH` or inherited from the parent story |
+| `{{ITERATION_PATH}}` | Iteration Path | `AZURE_ITERATION_PATH` or inherited from the parent story |
+| `{{TEMPLATE_BUG_ID}}` | Reference bug the template mirrors | `AZURE_BUG_TEMPLATE_ID` (optional) |
+| `{{ASSIGNEE_EMAIL}}` | Bug assignee options | `AZURE_ASSIGNEE` (comma-separated for several) — **always asked** |
+| `{{TEST_PLAN_ID}}` / `{{TEST_SUITE_ID}}` | Related test plan / suite | `AZURE_TEST_PLAN_ID` — **always asked** |
+| `{{ENVIRONMENT}}` / `{{BUG_CATEGORY}}` | Custom fields | `AZURE_ENVIRONMENT` / `AZURE_BUG_CATEGORY` or asked |
 
-Copy `config.example.json` to `config.json` (next to this file, or repo root) and fill in your
-values. Anything left unset is **asked**, never inferred — see constraint 8.
+Config lives in the repo-root `.env` — the same keys-only file every AgenTeX integration uses
+(copy `.env.example` → `.env`, fill in the `AZURE_*` keys; the PAT is read by `az` from
+`AZURE_DEVOPS_EXT_PAT`, never by this skill). Anything left unset is **asked**, never inferred —
+see constraint 8.
 
 ## Tooling: az CLI only
 
@@ -37,9 +39,9 @@ values. Anything left unset is **asked**, never inferred — see constraint 8.
   `AZURE_DEVOPS_EXT_PAT` env var. The scripts never read or print a PAT themselves. Set
   `PYTHONIOENCODING=utf-8` so non-ASCII fields don't trip cp1252 on Windows.
 - Two dry-run-by-default helpers wrap the CLI so a human sees the plan first:
-  - `scripts/create-bug.mjs` — create a Bug + parent link (+ validated attachments).
-  - `scripts/testplan.mjs` — `list-suites` / `list-cases` / `find-case` / `create-case` / `fail`.
-  - `scripts/check-image.mjs` — structural screenshot validation (Pass 1 of the evidence gate).
+  - `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js` — create a Bug + parent link (+ validated attachments).
+  - `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/testplan.js` — `list-suites` / `list-cases` / `find-case` / `create-case` / `fail`.
+  - `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/check-image.js` — structural screenshot validation (Pass 1 of the evidence gate).
 
   Both write helpers print the **exact `az` commands they will run** and change nothing until
   `--execute` is passed.
@@ -101,7 +103,7 @@ exists and is a User Story before proceeding:**
 az boards work-item show --id <storyId> --query "{id:id,type:fields.\"System.WorkItemType\",title:fields.\"System.Title\",state:fields.\"System.State\"}" -o json
 ```
 If the ID is not found, or the type is not `User Story`, **report that back and ask again** — do
-not guess. `create-bug.mjs` re-validates this and refuses a non-story parent. Area Path / Iteration
+not guess. `create-bug.js` re-validates this and refuses a non-story parent. Area Path / Iteration
 are inherited from the story unless config overrides them.
 
 ### 4. Severity + Priority (RECOMMEND from the run's findings, then ASK)
@@ -137,7 +139,7 @@ ID too if known).
 
 **If a specific test case is provided** — validate it exists via CLI before linking:
 ```
-node scripts/testplan.mjs find-case --plan <plan> --testcase <tc>
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/testplan.js find-case --plan <plan> --testcase <tc>
 ```
 (under the hood: `az boards work-item show` + a suite/point lookup via `az devops invoke`). If it
 doesn't exist, report back and ask again.
@@ -146,7 +148,7 @@ doesn't exist, report back and ask again.
 - **If yes** → ask **which test suite** (and plan) it should be added to. Only after confirmation,
   create it and add it to that suite (step 7 executes it):
   ```
-  node scripts/testplan.mjs create-case --plan <plan> --suite <suite> --title "<title>" [--execute]
+  node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/testplan.js create-case --plan <plan> --suite <suite> --title "<title>" [--execute]
   ```
 - **If no** → skip the test-case link; the bug is filed on its own.
 
@@ -157,7 +159,7 @@ A bug should carry evidence. Validate screenshots **before** attaching (two pass
 
 **Pass 1 — structural (script):**
 ```
-node scripts/check-image.mjs --dir <screenshots-folder>
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/check-image.js --dir <screenshots-folder>
 ```
 Drops corrupt / `0×0` / `too-small` / `likely-blank` images.
 
@@ -170,7 +172,7 @@ judge it against this bug's *summary / expected / actual*:
 
 Then build one spec JSON per issue (shape below) and **dry-run** it:
 ```
-node scripts/create-bug.mjs --spec <spec>.json
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json
 ```
 The dry run prints the plan, an idempotency (duplicate-title) check, the attachment structural
 checks, **and the exact `az` commands** it will run.
@@ -187,14 +189,14 @@ confirmations. Include:
 
 **Only after the user's single explicit "yes" to this summary**, execute in order:
 ```
-node scripts/create-bug.mjs --spec <spec>.json --execute                 # bug + parent link + attachments
-node scripts/testplan.mjs create-case --plan <plan> --suite <suite> --title "<t>" --execute   # only if chosen
-node scripts/testplan.mjs fail --plan <plan> --testcase <tc> --bug <bugId> --execute           # only if chosen
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json --execute                 # bug + parent link + attachments
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/testplan.js create-case --plan <plan> --suite <suite> --title "<t>" --execute   # only if chosen
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/testplan.js fail --plan <plan> --testcase <tc> --bug <bugId> --execute           # only if chosen
 ```
 Report back each new Bug / Test Case ID + URL. If any command fails, show the **exact** `az`
 error and stop — do not auto-retry the write.
 
-## Spec JSON shape (for create-bug.mjs)
+## Spec JSON shape (for create-bug.js)
 
 ```json
 {
