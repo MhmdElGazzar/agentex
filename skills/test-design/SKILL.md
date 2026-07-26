@@ -16,6 +16,33 @@ description: >
 
 # Test Design — Azure DevOps
 
+> **Tracker scope: Azure DevOps only.** If the stories live in **Jira**, everything in Steps 1–5
+> (fetch the story, identify test conditions, feature/title convention, step design) applies
+> unchanged — only Steps 6–7 differ. Route those through the **jira-acli** skill
+> (`${CLAUDE_PLUGIN_ROOT}/skills/jira-acli/SKILL.md`), with these verified differences:
+> - **No native Test Case type.** Jira has no Test Case work-item type unless Xray/Zephyr is
+>   installed. Check `acli jira project view --key <KEY> --json` first; the portable fallback is
+>   a **Subtask parented to the Story**, which is also what gives you the story link for free.
+> - **No Steps XML.** Write the setup ActionSteps and ValidateSteps as structured text into the
+>   Subtask's description via `--description-file` (avoids shell-quoting problems, same reason
+>   ADO uses the file + `$STEPS` trick).
+> - **No `Tested By` relation.** A Subtask's parent *is* the link. For a top-level type, use
+>   `acli jira workitem link create --out <TC> --in <STORY> --type Relates` — `--parent` is
+>   rejected on standard issue types.
+> - **Verify explicitly.** `workitem view <KEY> --json` omits `parent` unless you pass
+>   `--fields parent`; a bare read looks like "not linked" when it is.
+>
+> **If the ACs live on a Confluence page** rather than in the tracker, read them first via the
+> **confluence-acli** skill (`${CLAUDE_PLUGIN_ROOT}/skills/confluence-acli/SKILL.md`) and treat
+> the page as the Step 1 source. There is no page search in ACLI — start from the space
+> homepage and walk down:
+> `space view --id <spaceId> --include-all --json` exposes `homepageId`, then
+> `page view --id <pageId> --include-direct-children --json` walks the tree, and
+> `page view --id <pageId> --body-format storage --json` returns the body.
+> Story pages commonly embed the tracker key in a Jira macro
+> (`<ac:parameter ac:name="key">SCRUM-26</ac:parameter>`) — parse the key from the storage body
+> rather than inferring it from the page title, then design against the ACs as normal.
+
 End-to-end methodology for designing, creating, and linking test cases to User Stories in
 Azure DevOps. This file is the **workflow** (how to analyze ACs, what test cases to derive,
 when to confirm). Command mechanics live in the references — **read them before the first

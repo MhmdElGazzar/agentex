@@ -53,6 +53,35 @@ Then run `/estimate-story` for the current sprint, or `/estimate-story 12345 123
 specific stories. The agent processes **one story at a time** and never creates tasks without
 your confirmation.
 
+## Jira & Confluence (Atlassian ACLI)
+
+Three skills cover Atlassian Cloud, and the agent picks between them by what your request
+touches: **`jira-acli`** for Jira-only work, **`confluence-acli`** for Confluence-only, and
+**`jira-confluence-integration`** only when a workflow genuinely spans both.
+
+One-time setup:
+
+1. Install Atlassian's official CLI — a single binary, direct download, no package manager.
+   See <https://developer.atlassian.com/cloud/acli/guides/install-acli/>; verify with
+   `acli --help`. This is Atlassian's own `acli`, not the community `jira-cli` or Appfire's CLI.
+2. Fill `JIRA_SITE`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` in `.env` (create the token at
+   <https://id.atlassian.com/manage-profile/security/api-tokens>). The agent pipes the token
+   over stdin and never puts it on a command line.
+3. Log in **per product** — Jira and Confluence authenticate separately even on the same site
+   and with the same token:
+   ```
+   acli jira auth login --site "$JIRA_SITE" --email "$JIRA_EMAIL" --token   # token via stdin
+   acli confluence auth login --site "$JIRA_SITE" --email "$JIRA_EMAIL" --token
+   ```
+   Confirm with `acli jira auth status` and `acli confluence auth status`. Jira access does not
+   prove Confluence access; Confluence also needs a Confluence licence on the site.
+
+**Know what ACLI cannot do** before planning around it — these are gaps in the tool, verified
+live, and each skill states them up front: no attachment **upload**, no story-points or
+custom-field writes, no Confluence page **create/update** (read-only) and no CQL command, and
+no Jira remote-link support (so a Jira↔Confluence backlink can't be created ACLI-only). The
+skills report these plainly rather than substituting another tool.
+
 ## What's inside
 
 | Component | File | Purpose |
@@ -65,6 +94,9 @@ your confirmation.
 | Skill | `skills/db-integration/SKILL.md` | Execute cataloged DB queries in test steps (`db:`) via a runner script |
 | Skill | `skills/ask-kb/SKILL.md` | Ask the project's KB Ask API in test steps (`kb:`) for advisory answers (never evidence) |
 | Skill | `skills/extent-report/SKILL.md` | Interactive HTML dashboard (`extent-report.html`) for a finished run |
+| Skill | `skills/jira-acli/SKILL.md` | Operate Jira Cloud via Atlassian's official `acli jira` — search, create, edit, transition, link, bulk workflows |
+| Skill | `skills/confluence-acli/SKILL.md` | Operate Confluence Cloud via `acli confluence`, with an official-REST fallback for gaps ACLI doesn't cover |
+| Skill | `skills/jira-confluence-integration/SKILL.md` | Orchestrate cross-product workflows (audit relationships, publish reports, link specs to work items) between the two ACLI skills |
 | Agent | `agents/qa-executor.md` | Subagent that runs one test spec in its own isolated browser session |
 | Reference | `skills/browser-testing/references/playwright-cli.md` | The browser driver — setup & gotchas |
 | Reference | `skills/azure-integration/references/azure-cli.md` | `az` CLI — install/auth/common commands |
@@ -74,7 +106,13 @@ your confirmation.
 | Reference | `skills/api-integration/references/api-requests.md` | Runner usage + curl fallback for cataloged API requests |
 | Reference | `skills/db-integration/references/sqlcmd.md` | Runner usage + sqlcmd (SQL Server) for cataloged queries |
 | Reference | `skills/ask-kb/references/kb-ask-api.md` | KB Ask API contract, result handling & curl fallback |
+| Reference | `skills/jira-acli/references/official-acli.md` | `acli jira` — install/auth, discovery, JQL, mutations, bulk safeguards, troubleshooting |
+| Reference | `skills/confluence-acli/references/official-confluence.md` | `acli confluence` — dated command/limitation snapshot, page-tree discovery, REST endpoint map, CQL |
+| Reference | `skills/jira-confluence-integration/references/identity-and-auth.md` | Multi-site identity & credential boundaries across Jira + Confluence |
+| Reference | `skills/jira-confluence-integration/references/linking-patterns.md` | Stable Jira↔Confluence relationship and backlink patterns |
+| Reference | `skills/jira-confluence-integration/references/workflow-recipes.md` | Release reports, spec-to-work-items, status pages, postmortems |
 | Scripts | `skills/*/scripts/*.js` | Deterministic runners & helpers: `run_api`, `run_db`, `ask_kb`, `preflight`, `init_run`, `merge_run` |
+| Script | `skills/confluence-acli/scripts/confluence_rest.ps1` | Guarded REST fallback for Confluence operations `acli confluence` doesn't expose |
 | Templates | `skills/{api,db}-integration/templates/sample_{api,db}.json` | Catalog samples — scaffolded to `integration/` in your project |
 | Script | `skills/extent-report/scripts/make_html_report.js` | Standalone HTML dashboard generator (run via `node`) |
 | Command | `commands/init-test.md` | `/init-test` — scaffold sample specs + `executions/` in your project |

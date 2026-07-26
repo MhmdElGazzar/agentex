@@ -116,6 +116,34 @@ dispatching; otherwise proceed without pausing.
 - **Severity** — Critical / High / Medium / Low
 - **Evidence** — screenshot filename, console/network notes
 
+## Optional: file the defects into a tracker (after MERGE)
+
+`bugs/bug-list.md` is the run's own record and is complete on its own. Only when the user asks
+to file the defects into a tracker, hand off **after** MERGE — never during EXECUTE, and never
+from a `qa-executor` subagent (subagents write only into their own session slice; letting
+several parallel agents file independently causes duplicate and racing bug creation). The
+orchestrator is the single writer.
+
+- **Jira** — read `${CLAUDE_PLUGIN_ROOT}/skills/jira-acli/SKILL.md` first, then file one
+  `Bug` work item per defect using the fields above. Confirm the exact list with the user
+  before creating anything, and search for an existing marker label first so a re-run updates
+  rather than duplicates.
+- **Azure DevOps** — the `azure-integration` skill covers `az boards` if the project tracks
+  work there instead.
+- **Confluence** — for a written run report rather than tracker issues, see the
+  **confluence-acli** skill (`${CLAUDE_PLUGIN_ROOT}/skills/confluence-acli/SKILL.md`).
+  **`acli confluence page` is view-only** — there is no page `create` or `update`, so a run
+  report cannot be published to a Confluence page through ACLI alone. Only `blog create`
+  writes content. Either publish via the REST fallback documented in that skill, or keep the
+  report in `report.md` / `extent-report.html` and say plainly that the Confluence page needs
+  creating by hand. Never claim a page was published when it wasn't.
+
+**Evidence is a known limitation on the Jira path:** `acli jira workitem attachment` exposes
+only `list` and `delete` — there is **no upload command**, so screenshots cannot be attached
+through ACLI. Reference the evidence paths (`bugs/screenshots/...`) in the Bug description
+instead, and tell the user the images need attaching via the Jira UI or REST if they want them
+on the issue itself. Do not silently drop the evidence.
+
 ## Rules
 - Think out loud: state your reasoning before each action so the user can follow the chain.
 - In **sequential mode**, never proceed past a checkpoint without an explicit "go" / "approved".
