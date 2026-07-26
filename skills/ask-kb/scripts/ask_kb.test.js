@@ -78,8 +78,8 @@ async function test(name, fn) {
     assert.strictEqual(seen.model, 'opus');
   });
 
-  // 2b. KB_PROJECT env takes precedence over kb.project in config
-  await test('KB_PROJECT env overrides config project', async () => {
+  // 2b. KB_PROJECT / KB_ORG env take precedence over config
+  await test('KB_PROJECT and KB_ORG env override config', async () => {
     let seen = null;
     const srv = await server((req, res, body) => {
       seen = JSON.parse(body);
@@ -88,9 +88,10 @@ async function test(name, fn) {
     });
     const port = srv.address().port;
     const cwd = fixtureCwd({ project: 'acme-store' });
-    await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_PROJECT: 'demo-shop' }, ['--question', 'Q']);
+    await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_PROJECT: 'demo-shop', KB_ORG: 'widget-co' }, ['--question', 'Q']);
     srv.close();
     assert.strictEqual(seen.project, 'demo-shop');
+    assert.strictEqual(seen.org, 'widget-co');
   });
 
   // 3. NOT_COVERED when hasContext false

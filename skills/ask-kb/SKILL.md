@@ -38,6 +38,7 @@ Examples:
 |---|---|---|
 | `KB_ASK_BASE_URL` | `http://localhost:3000` | endpoint host (host only) |
 | `KB_PROJECT` | `acme-store` | default project id; `kb:<project>:` overrides per step |
+| `KB_ORG` | `acme` | org slug sent with each request; `--org` overrides. Blank ⇒ config `kb.org` ⇒ generic default |
 | `KB_ASK_API_KEY` | `<secret>` | shared secret; sent as the `x-api-key` header. Required when the server has it set (else `401`). Leave blank only for an unauthenticated dev server. Never logged/printed. |
 
 `agentex.config.json` → `kb` block tunes the rest (missing key = documented default):
