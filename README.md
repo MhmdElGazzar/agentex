@@ -37,6 +37,8 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 | **Azure DevOps bug filing** | After a run, `bug-report-azure` files found defects as ADO **Bugs** via the `az` CLI — recommends severity/priority, links each to its parent User Story, validates & attaches screenshots, optionally fails the related test case; all behind one confirmation. | [azure-devops](./docs/azure-devops.md) |
 | **HTML report** | At the end of a run, generates a standalone, self-contained `extent-report.html` dashboard (donut chart, status cards, expandable per-test-case steps). | [extent-report](./docs/extent-report.md) |
 | **Configuration** | A keys-only `.env` drives targets and integrations; catalog files hold only env-var *names*, so secrets stay in the environment. | [configuration](./docs/configuration.md) |
+| **Standalone API tests** | `/test-endpoints` runs every cataloged endpoint's test cases in one pass, dispatching an `api-executor` subagent and reporting pass/fail per case. | [skills/endpoint-testing/SKILL.md](./skills/endpoint-testing/SKILL.md) |
+| **Swagger/OpenAPI import** | `/import-swagger <path-or-url>` generates the API catalog + suite from a Swagger 2.0 / OpenAPI 3.x spec — mapping fields, skipping what it can't infer, and picking an auth scheme. | [skills/swagger-import/SKILL.md](./skills/swagger-import/SKILL.md) |
 
 See [docs/](./docs/) for the full reference on any feature.
 
@@ -51,6 +53,8 @@ Run a parallel regression against https://example.com from the specs in test/sui
 
 # Slash commands:
 /execute-test https://example.com
+/test-endpoints
+/import-swagger ./openapi.json --name acme-api
 /estimate-story 12345 12346
 /design-test 12345
 /ask-kb acme-store: how does the checkout flow work?

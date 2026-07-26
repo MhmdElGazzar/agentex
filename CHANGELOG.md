@@ -2,6 +2,46 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **`endpoint-testing` skill** — standalone API test run over cataloged endpoints ("api-tests"),
+  independent of any browser test spec (the "Standalone API tests" row flips from planned to
+  available). New `integration/suites/*.json` case files reference `integration/*_api.json`
+  entries by name and supply the concrete params/expected result a standalone run needs — one
+  entry can have multiple cases (happy path, not-found, …). Every case in every suite file
+  runs every time — there's no scope/tag selection.
+- `run_suite.js` — deterministic runner that shells out to `api-integration`'s `run_api.js`
+  per case (never duplicates its catalog/auth/assertion logic), aggregating one
+  PASS/FAIL/BLOCKED summary.
+- `agents/api-executor.md` — subagent (sibling to `qa-executor`) that runs the full set of
+  api-tests in one call and returns a consolidated defect report, keeping per-case logs out of
+  the orchestrator's context.
+- `/test-endpoints` command — entrypoint for the standalone flow; scaffolds
+  `integration/suites/sample_suite.json` on first run.
+- **`swagger-import` skill** — generates a catalog (`integration/*_api.json`) and suite
+  (`integration/suites/*_suite.json`) from a Swagger 2.0 / OpenAPI 3.x JSON document (local
+  file or URL), via `import_swagger.js` and the `/import-swagger <path-or-url> [--name
+  <service>]` command. Picks one supported auth scheme per catalog file (`bearer` > `apiKey`
+  header > `basic`), flags unsupported schemes (oauth2/openIdConnect) and every generated
+  best-effort value (param examples, request bodies, "not found" placeholders) for manual
+  review instead of guessing silently. Never overwrites an existing catalog/suite file.
+  JSON-only input (no YAML parser); Postman import and response-schema/contract validation
+  are explicitly out of scope.
+- `run_api.js`: two small additive extensions needed for imported entries to work against
+  real specs — `auth.type: "apiKey"` (custom header auth) and a query-string fallback for any
+  declared param not consumed by a `{name}` path placeholder (previously silently dropped).
+  Backward compatible; existing catalogs are unaffected.
+
+### Fixed
+- `import_swagger.js`: found while testing against a live public OpenAPI spec — relative
+  `servers[].url` values (e.g. `"/api/v3"`, common in real specs) were used literally instead
+  of being resolved against the spec's own host; now resolved when the spec was fetched from
+  a URL (flagged for manual review when imported from a local file, since there's no origin
+  to resolve against). Also: enum-typed params now use the first enum value instead of a
+  generic placeholder (e.g. a `status` param picks its first valid value), and array-typed
+  params are explicitly flagged in `review` — a single representative value is generated, not
+  full OpenAPI array-serialization (`style`/`explode`), which remains a known limitation.
+
 ## [0.8.1] — 2026-07-21
 ### Added
 - `/ask-kb <question>` command — ask the project's Knowledge Base a question directly
