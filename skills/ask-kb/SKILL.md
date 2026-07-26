@@ -27,8 +27,8 @@ It resolves config, performs the request, writes the evidence log, and prints ON
 
 Examples:
 
-    kb: How does the Musaned payment flow work?
-    kb:dwi: How is the quotation premium calculated?
+    kb: How does the checkout payment flow work?
+    kb:acme-store: How is the order total calculated?
 
 ## Configuration (consumer project)
 
@@ -37,14 +37,15 @@ Examples:
 | `.env` key | Example | Notes |
 |---|---|---|
 | `KB_ASK_BASE_URL` | `http://localhost:3000` | endpoint host (host only) |
-| `KB_PROJECT` | `travel-insurance` | default project id; `kb:<project>:` overrides per step |
+| `KB_PROJECT` | `acme-store` | default project id; `kb:<project>:` overrides per step |
+| `KB_ORG` | `acme` | org slug sent with each request; `--org` overrides. Blank ⇒ config `kb.org` ⇒ generic default |
 | `KB_ASK_API_KEY` | `<secret>` | shared secret; sent as the `x-api-key` header. Required when the server has it set (else `401`). Leave blank only for an unauthenticated dev server. Never logged/printed. |
 
 `agentex.config.json` → `kb` block tunes the rest (missing key = documented default):
 
 | Key | Default | Notes |
 |---|---|---|
-| `org` | `tameeni` | API default |
+| `org` | `acme` | API default |
 | `model` | `opus` | `opus` / `sonnet` / `haiku` (the API's own default is `sonnet`) |
 | `timeout_ms` | `120000` | client timeout (guide requires ≥120s) |
 | `retries` | `2` | 429/5xx + network/timeout; `429` honors `Retry-After`, else exponential backoff |
