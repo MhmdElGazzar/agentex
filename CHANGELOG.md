@@ -2,6 +2,33 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.9.0] — 2026-07-28
+### Added
+- `optimize-login` skill: pay a web application's login cost once per session instead of once
+  per test. Drive the login live, reduce it to the smallest script that works, verify by
+  landmark, save `storageState`, then reload that session into a fresh browser and continue.
+  Measured on a real project: ~197s of agentic login per scenario became **~38s once, then
+  ~8s** per later run.
+- `skills/optimize-login/scripts/session.js` — the only app-agnostic part, usable as a library
+  (`isAuthenticated` / `saveSession` / `resumeSession`) or as a CLI
+  (`session.js resume --state <path> --url <url> --absent <selector>`) to check whether a saved
+  session is still alive. It verifies **before** saving, so a half-finished login cannot write
+  a valid-looking state file, and **after** loading, because a state file outlives the session
+  it describes — age is reported, never trusted (a 15-minute-old session was dead while a
+  47-minute-old one restored cleanly).
+- Authentication is verified by landmark, never by URL: a login page carrying
+  `?returnUrl=/dashboard` satisfies any path-based check while the user is still logged out.
+
+### Notes
+- The skill deliberately ships **no catalogue of known login pitfalls**. Those are findings
+  from exploring one application and belong in that application's notes (the page map's
+  `gotchas`); shipping them as doctrine invites reading the next login through the wrong lens.
+  What generalises is the loop, the landmark rule, and the session contract.
+- Gates are surfaced, never defeated: a page-rendered captcha can be read by a person or the
+  agent; reCAPTCHA/hCaptcha/Turnstile and received OTPs mean running headed and letting a
+  person finish — the session is still saved afterwards. `storageState` covers cookies and
+  localStorage only, so IndexedDB-based auth cannot be resumed this way.
+
 ## [0.8.1] — 2026-07-21
 ### Added
 - `/ask-kb <question>` command — ask the project's Knowledge Base a question directly
