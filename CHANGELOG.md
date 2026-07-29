@@ -45,6 +45,19 @@ All notable changes to AgenTeX are documented here.
   generic placeholder (e.g. a `status` param picks its first valid value), and array-typed
   params are explicitly flagged in `review` — a single representative value is generated, not
   full OpenAPI array-serialization (`style`/`explode`), which remains a known limitation.
+- `import_swagger.js`: found running the generated Petstore suite against a live server —
+  internal `$ref` pointers (`components.schemas` / `definitions`) were never resolved, so any
+  field defined via `$ref` (in practice, almost every non-trivial field in a real spec)
+  silently degraded to the generic `'example'` placeholder, and every request body — always a
+  `$ref` to a reusable schema in practice — became the literal string `"example"` instead of
+  an object. The server rejected these outright (`400 unable to convert input to <Model>`).
+  Now: `$ref`s resolve recursively (including nested and chained refs), external refs and
+  circular chains are left unresolved/flagged instead of guessed, request bodies build real
+  nested arrays/objects instead of flattening them to a scalar, and `date`/`date-time` string
+  formats get a real ISO-8601 placeholder instead of `'example'`. Verified against the live
+  Petstore demo: all 6 previously-400ing write endpoints now pass body validation (any
+  remaining failures are the shared public demo server's own instability, confirmed
+  independently on read-only endpoints too).
 
 ## [0.8.1] — 2026-07-21
 ### Added

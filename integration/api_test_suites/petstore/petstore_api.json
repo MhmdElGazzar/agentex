@@ -14,7 +14,24 @@
       "method": "POST",
       "path": "/pet",
       "params": [],
-      "body": "example"
+      "body": {
+        "id": 10,
+        "name": "doggie",
+        "category": {
+          "id": 1,
+          "name": "Dogs"
+        },
+        "photoUrls": [
+          "example"
+        ],
+        "tags": [
+          {
+            "id": 1,
+            "name": "example"
+          }
+        ],
+        "status": "available"
+      }
     },
     {
       "name": "updatepet",
@@ -22,7 +39,24 @@
       "method": "PUT",
       "path": "/pet",
       "params": [],
-      "body": "example"
+      "body": {
+        "id": 10,
+        "name": "doggie",
+        "category": {
+          "id": 1,
+          "name": "Dogs"
+        },
+        "photoUrls": [
+          "example"
+        ],
+        "tags": [
+          {
+            "id": 1,
+            "name": "example"
+          }
+        ],
+        "status": "available"
+      }
     },
     {
       "name": "findpetsbystatus",
@@ -94,7 +128,14 @@
       "method": "POST",
       "path": "/store/order",
       "params": [],
-      "body": "example"
+      "body": {
+        "id": 10,
+        "petId": 198772,
+        "quantity": 7,
+        "shipDate": "2024-01-01T00:00:00Z",
+        "status": "approved",
+        "complete": false
+      }
     },
     {
       "name": "getorderbyid",
@@ -120,7 +161,16 @@
       "method": "POST",
       "path": "/user",
       "params": [],
-      "body": "example"
+      "body": {
+        "id": 10,
+        "username": "theUser",
+        "firstName": "John",
+        "lastName": "James",
+        "email": "john@email.com",
+        "password": "12345",
+        "phone": "12345",
+        "userStatus": 1
+      }
     },
     {
       "name": "createuserswithlistinput",
@@ -128,7 +178,18 @@
       "method": "POST",
       "path": "/user/createWithList",
       "params": [],
-      "body": "example"
+      "body": [
+        {
+          "id": 10,
+          "username": "theUser",
+          "firstName": "John",
+          "lastName": "James",
+          "email": "john@email.com",
+          "password": "12345",
+          "phone": "12345",
+          "userStatus": 1
+        }
+      ]
     },
     {
       "name": "loginuser",
@@ -164,7 +225,16 @@
       "params": [
         "username"
       ],
-      "body": "example"
+      "body": {
+        "id": 10,
+        "username": "theUser",
+        "firstName": "John",
+        "lastName": "James",
+        "email": "john@email.com",
+        "password": "12345",
+        "phone": "12345",
+        "userStatus": 1
+      }
     },
     {
       "name": "deleteuser",

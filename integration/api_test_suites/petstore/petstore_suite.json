@@ -6,7 +6,11 @@
       "entry": "petstore.addpet",
       "params": {},
       "expect": {
-        "status": 200
+        "status": 200,
+        "fields": [
+          "name",
+          "photoUrls"
+        ]
       }
     },
     {
@@ -14,7 +18,11 @@
       "entry": "petstore.updatepet",
       "params": {},
       "expect": {
-        "status": 200
+        "status": 200,
+        "fields": [
+          "name",
+          "photoUrls"
+        ]
       }
     },
     {
@@ -64,7 +72,11 @@
         "petId": 1
       },
       "expect": {
-        "status": 200
+        "status": 200,
+        "fields": [
+          "name",
+          "photoUrls"
+        ]
       }
     },
     {
@@ -86,7 +98,11 @@
         "status": "example"
       },
       "expect": {
-        "status": 200
+        "status": 200,
+        "fields": [
+          "name",
+          "photoUrls"
+        ]
       }
     },
     {

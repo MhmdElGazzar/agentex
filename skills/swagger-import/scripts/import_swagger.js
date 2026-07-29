@@ -106,11 +106,57 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
     }
   }
 
+  // ---- $ref resolution (internal "#/..." pointers only) ----
+  // Real specs almost always reference reusable schemas via $ref rather than inlining them, so
+  // every schema consumer below must deref before reading .type/.properties/.items — otherwise
+  // request bodies degrade to a bare '{"$ref":...}' placeholder value instead of a real object
+  // (this was the exact bug caught importing the public Petstore spec: every write endpoint's
+  // body became the literal string "example").
+  const flaggedRefs = new Set();
+  function deref(schema, seen) {
+    if (!schema || typeof schema !== 'object' || typeof schema.$ref !== 'string') return schema;
+    const ref = schema.$ref;
+    if (!ref.startsWith('#/')) {
+      if (!flaggedRefs.has(ref)) { flaggedRefs.add(ref); review.push(`schema $ref "${ref}" is external (not "#/...") — not resolved, left as a placeholder`); }
+      return schema;
+    }
+    seen = seen || new Set();
+    if (seen.has(ref)) {
+      if (!flaggedRefs.has(ref)) { flaggedRefs.add(ref); review.push(`schema $ref "${ref}" is part of a circular reference chain — resolved to an empty schema instead of looping`); }
+      return {};
+    }
+    const parts = ref.slice(2).split('/').map(p => decodeURIComponent(p.replace(/~1/g, '/').replace(/~0/g, '~')));
+    let node = doc;
+    for (const part of parts) { node = node == null ? undefined : node[part]; }
+    if (node === undefined) {
+      if (!flaggedRefs.has(ref)) { flaggedRefs.add(ref); review.push(`schema $ref "${ref}" does not resolve within the document — left as a placeholder`); }
+      return schema;
+    }
+    seen.add(ref);
+    return deref(node, seen);
+  }
+
   // ---- helpers for example values ----
+  // Shared by exampleFor (params) and bodyValueFor (JSON bodies) so a format-aware placeholder
+  // (e.g. a real date-time string, not the literal "example") only needs to be taught once.
+  // Untyped/unrecognized formats fall back to the generic 'example' placeholder, flagged for
+  // review by the caller same as before.
+  function primitivePlaceholder(schema) {
+    switch (schema.type) {
+      case 'integer': case 'number': return 1;
+      case 'boolean': return false;
+      case 'string':
+        if (schema.format === 'date-time') return '2024-01-01T00:00:00Z';
+        if (schema.format === 'date') return '2024-01-01';
+        return 'example';
+      default: return 'example';
+    }
+  }
   // Swagger 2.0 path/query parameter objects carry "type" directly (no nested schema);
   // OpenAPI 3.x parameter objects nest it under "schema". Normalize to whichever exists.
-  function paramSchema(p) { return p.schema || p; }
+  function paramSchema(p) { return deref(p.schema || p); }
   function exampleFor(schema) {
+    schema = deref(schema);
     if (!schema) return { value: 'example', inferred: true };
     if (schema.example !== undefined) return { value: schema.example, inferred: false };
     if (schema.default !== undefined) return { value: schema.default, inferred: false };
@@ -123,30 +169,37 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
       const item = exampleFor(schema.items || {});
       return { value: item.value, inferred: true, isArray: true };
     }
-    switch (schema.type) {
-      case 'integer': case 'number': return { value: 1, inferred: true };
-      case 'boolean': return { value: false, inferred: true };
-      default: return { value: 'example', inferred: true };
-    }
+    return { value: primitivePlaceholder(schema), inferred: true };
   }
   function notFoundValueFor(schema) {
     return (schema && (schema.type === 'integer' || schema.type === 'number')) ? 999999999 : '__REPLACE_ME__';
   }
-  function bodyExampleFor(schema) {
-    if (!schema) return undefined;
+  // Recursive body-value builder — unlike exampleFor (which intentionally flattens arrays to a
+  // single representative scalar, correct for query/path params), a JSON request body needs
+  // real nested arrays/objects: photoUrls must stay an array, category must stay an object, or
+  // a strict server rejects the whole body as a type mismatch. depth caps pathological/self-
+  // referential inline schemas (rare; $ref cycles are already guarded in deref()).
+  function bodyValueFor(schema, depth) {
+    schema = deref(schema);
+    depth = depth || 0;
+    if (!schema || depth > 6) return 'example';
     if (schema.example !== undefined) return schema.example;
+    if (schema.default !== undefined) return schema.default;
+    if (Array.isArray(schema.enum) && schema.enum.length) return schema.enum[0];
+    if (schema.type === 'array') return [bodyValueFor(schema.items || {}, depth + 1)];
     if (schema.type === 'object' || schema.properties) {
       const o = {};
-      for (const [prop, propSchema] of Object.entries(schema.properties || {})) o[prop] = exampleFor(propSchema).value;
+      for (const [prop, propSchema] of Object.entries(schema.properties || {})) o[prop] = bodyValueFor(propSchema, depth + 1);
       return o;
     }
-    return exampleFor(schema).value;
+    return primitivePlaceholder(schema);
   }
+  function bodyExampleFor(schema) { return bodyValueFor(schema); }
   function responseSchema(responses, code) {
     const r = responses && responses[code];
     if (!r) return null;
-    if (isOpenApi3) return r.content && r.content['application/json'] && r.content['application/json'].schema;
-    return r.schema;
+    const schema = isOpenApi3 ? (r.content && r.content['application/json'] && r.content['application/json'].schema) : r.schema;
+    return deref(schema);
   }
   function firstCode(responses, test) {
     return Object.keys(responses || {}).find(c => c !== 'default' && test(parseInt(c, 10)));
@@ -198,7 +251,14 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
         if (ex.isArray) review.push(`${method.toUpperCase()} ${urlPath}: param "${p.name}" is array-typed — using a single representative value, not full array serialization (style/explode) — verify it's accepted`);
       }
       const expectHappy = { status: okCode ? parseInt(okCode, 10) : 200 };
-      if (okSchema && okSchema.type !== 'array' && okSchema.properties) expectHappy.fields = Object.keys(okSchema.properties);
+      // Only assert schema-required properties, not every documented one — optional fields are
+      // routinely omitted by a real server (null/absent), so asserting on all of them would
+      // fail correct responses. If the schema declares no required[], no fields are asserted
+      // (nothing is safe to assume present) rather than falling back to "all properties".
+      if (okSchema && okSchema.type !== 'array' && okSchema.properties && Array.isArray(okSchema.required) && okSchema.required.length) {
+        const requiredDeclared = okSchema.required.filter(k => k in okSchema.properties);
+        if (requiredDeclared.length) expectHappy.fields = requiredDeclared;
+      }
       cases.push({ name: `${reqName}-happy-path`, entry: `${name}.${reqName}`, params: happyParams, expect: expectHappy });
 
       // error-case suite case, if a 4xx is documented and there's a param to break

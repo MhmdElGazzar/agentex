@@ -26,6 +26,23 @@ The importer never invents business-meaningful test data — param example value
 request bodies, and "not found" placeholder values are all flagged in the command's `review`
 list. **Review the generated files before trusting suite results.**
 
+## `$ref` resolution
+
+Reusable schemas (`components.schemas` / OpenAPI 2.0 `definitions`) referenced via internal
+`$ref` pointers (`"$ref": "#/components/schemas/Pet"`) are resolved before being read — request
+bodies, response schemas (for `expect.fields`), and param schemas all deref first. Nested
+`$ref`s (an object property that itself points at another schema, e.g. `Pet.category` →
+`Category`) resolve recursively, and a chain of `$ref`s pointing at each other resolves to the
+final concrete schema. Without this, every property behind a `$ref` — which in practice means
+almost every non-trivial field in a real-world spec — degraded to the generic `'example'`
+placeholder instead of a real value, and top-level request bodies degraded to the bare string
+`"example"` instead of an object.
+
+Boundaries, both flagged in `review` rather than guessed:
+- **External refs** (anything not starting with `#/`, e.g. a separate file or URL) are left
+  unresolved.
+- **Circular `$ref` chains** resolve to `{}` rather than recursing forever.
+
 ## Field mapping
 
 | Spec concept | OpenAPI 3.x | Swagger 2.0 | Catalog / suite field |
@@ -35,7 +52,7 @@ list. **Review the generated files before trusting suite results.**
 | Path/method | `paths.<path>.<method>` | same | `requests[].path` / `.method` (path template syntax already matches — `{id}` copied as-is) |
 | Path/query params | `parameters[].in: path\|query` | same | `requests[].params` (names only) |
 | Request body | `requestBody.content['application/json'].schema` | body parameter's `.schema` | `requests[].body` (generated example — flagged for review) |
-| 2xx response schema | `responses.<code>.content['application/json'].schema` | `responses.<code>.schema` | suite case `expect.fields` (top-level property names only) |
+| 2xx response schema | `responses.<code>.content['application/json'].schema` | `responses.<code>.schema` | suite case `expect.fields` (schema's `required[]` properties only — see below) |
 | 4xx response | any documented 4xx code | same | a second suite case, `expect.status` = that code |
 
 ## Auth scheme selection
@@ -67,6 +84,14 @@ rule as everywhere else in this project (see the root `.env.example`).
   (`style`/`explode`: repeated keys vs. comma-joined). Always flagged in `review`, since a
   1-element value only coincidentally matches the common default (`style: form, explode:
   true`) case.
+- **Format-aware string placeholders**: `format: date-time` / `format: date` get a real
+  ISO-8601 value (`2024-01-01T00:00:00Z` / `2024-01-01`) instead of the literal `'example'`,
+  since a strict server-side deserializer rejects a non-date string in a date field. Any other
+  `format` (or none) still falls back to `'example'`.
+- **Request-body arrays and objects are built recursively**, not flattened to a scalar the way
+  param values are (a param's array collapses to one representative element; a JSON body's
+  array/object must stay a real array/object or a strict server rejects the whole payload as a
+  type mismatch).
 - **Relative `servers[].url`** (e.g. `"/api/v3"`, common in real specs) is resolved against
   the spec's own host when the source was a URL; when the source is a local file, there's no
   origin to resolve against, so it's flagged in `review` instead of guessed. A SwaggerHub-
@@ -74,6 +99,14 @@ rule as everywhere else in this project (see the root `.env.example`).
   runs) — SwaggerHub's own registry host isn't the API's real origin anyway, so this is the
   correct outcome, not a regression, but it does mean these specs always need a manual base
   URL check when `servers[].url` is relative.
+
+## Response `expect.fields` — required properties only
+
+A happy-path case only asserts fields listed in the response schema's own `required[]` — never
+every documented property. A real server routinely omits optional/null fields, so asserting on
+all of them would fail a perfectly correct response. If the schema declares no `required[]` (or
+none of it maps to a known property), no `fields` assertion is generated at all — safer than
+guessing "all of them" when nothing is actually guaranteed present.
 
 ## What's skipped, not guessed
 
