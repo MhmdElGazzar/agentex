@@ -69,6 +69,33 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
 - No suite files or no cases at all → **BLOCKED** with a clear reason. Never silently reports
   an empty run as PASS.
 
+## Worked example
+
+Full sequence for a standalone run: create the run folder, load env vars (`.env` for
+non-secret values, shell `export` for tokens — never into `.env`), then run the suite.
+
+```bash
+TS=$(date +%Y-%m-%d_%H-%M-%S)
+mkdir -p "executions/execu_${TS}/api-tests"
+
+set -a; source .env; set +a       # loads e.g. PETSTORE_BASE_URL
+export PETSTORE_TOKEN="..."       # shell-only, never written to .env
+
+node skills/endpoint-testing/scripts/run_suite.js \
+  --catalog ./integration --suites ./integration/api_test_suites \
+  --run-dir "executions/execu_${TS}/api-tests"
+```
+
+Prints the final JSON summary line to stdout; per-case evidence lands in
+`executions/execu_<TS>/api-tests/logs/<case-name>.log`. `env` vars must be present in the
+*same* shell invocation that runs the script — they don't persist across separate shell
+sessions, so `source .env` and any `export` need to happen right before this command, not in
+an earlier one.
+
+This is what `/test-endpoints` does for you automatically via the **`api-executor`** subagent
+(which also writes a human-readable `result.md` next to the logs) — running it manually like
+this is useful for a quick one-off check without going through the full command/agent flow.
+
 ## Rules
 
 - Catalog-only, same as `api-integration`: a case naming an undefined `entry` is BLOCKED.
