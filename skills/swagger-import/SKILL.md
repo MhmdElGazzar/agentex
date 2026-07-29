@@ -1,11 +1,11 @@
 ---
 name: swagger-import
 description: >
-  Generate an API catalog (integration/*_api.json) and a suite of test cases
-  (integration/suites/*.json) from a Swagger 2.0 or OpenAPI 3.x JSON document. Use for
-  /import-swagger, or requests like "import this swagger doc", "generate endpoint tests from
-  this OpenAPI spec". Output feeds directly into the endpoint-testing and api-integration
-  skills — this skill only generates config, it never executes requests itself.
+  Generate an API catalog + suite of test cases (integration/api_test_suites/<service>/) from
+  a Swagger 2.0 or OpenAPI 3.x JSON document. Use for /import-swagger, or requests like
+  "import this swagger doc", "generate endpoint tests from this OpenAPI spec". Output feeds
+  directly into the endpoint-testing and api-integration skills — this skill only generates
+  config, it never executes requests itself.
 ---
 
 # Swagger Import — generate catalog + suite files from a spec
@@ -38,8 +38,13 @@ scheme selection works.
 ```
 node "${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/scripts/import_swagger.js" \
   <path-or-url> [--name <service>] \
-  [--catalog ./integration] [--suites ./integration/suites]
+  [--dir ./integration/api_test_suites]
 ```
+
+Writes both generated files **co-located** under `<dir>/<name>/`: the catalog
+(`<name>_api.json`) and its suite (`<name>_suite.json`) live in the same per-service folder —
+e.g. `integration/api_test_suites/petstore/petstore_api.json` +
+`integration/api_test_suites/petstore/petstore_suite.json`.
 
 Prints one JSON line: `{"result":"OK|BLOCKED", "catalogPath", "suitePath",
 "operationsImported", "casesGenerated", "envVarsToSet", "review": [...]}` (exit 0 OK, 2

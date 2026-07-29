@@ -4,7 +4,11 @@
 // script only reads suite files and aggregates results.
 //
 // Usage:
-//   node run_suite.js [--catalog ./integration] [--suites ./integration/suites] --run-dir <dir>
+//   node run_suite.js [--catalog ./integration] [--suites ./integration/api_test_suites] --run-dir <dir>
+//
+// --suites is searched recursively for *_suite.json (catalogs from the same swagger-import
+// output live alongside their suite as <name>_api.json in the same folder — must filter on
+// the _suite.json suffix specifically, not just any .json file).
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL","total":N,"passed":N,"failed":N,"blocked":N,
 //   "cases":[{"name":...,"entry":...,"result":...,"log":...,"failures":[...]?}]}
@@ -18,7 +22,7 @@ function blocked(reason, extra) { out({ result: 'BLOCKED', reason, ...extra }, 2
 
 // ---- args ----
 const args = process.argv.slice(2);
-let catalog = './integration', suites = './integration/suites', runDir;
+let catalog = './integration', suites = './integration/api_test_suites', runDir;
 for (let i = 0; i < args.length; i++) {
   const a = args[i], v = () => args[++i];
   if (a === '--catalog') catalog = v();
@@ -29,13 +33,22 @@ if (!runDir) blocked('usage: --run-dir <dir> required');
 
 // ---- load & flatten suite cases ----
 if (!fs.existsSync(suites)) blocked(`suites folder not found: ${suites} — scaffold it and define your cases first`);
-const suiteFiles = fs.readdirSync(suites).filter(f => f.endsWith('.json'));
-if (!suiteFiles.length) blocked(`no *.json suite files in ${suites} — define at least one case before running`);
+function findSuiteFiles(dir) {
+  let found = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) found = found.concat(findSuiteFiles(full));
+    else if (entry.isFile() && entry.name.endsWith('_suite.json')) found.push(full);
+  }
+  return found;
+}
+const suiteFiles = findSuiteFiles(suites);
+if (!suiteFiles.length) blocked(`no *_suite.json files under ${suites} — define at least one case before running`);
 
 let allCases = [];
 for (const f of suiteFiles) {
   let j;
-  try { j = JSON.parse(fs.readFileSync(path.join(suites, f), 'utf8')); }
+  try { j = JSON.parse(fs.readFileSync(f, 'utf8')); }
   catch (e) { blocked(`invalid JSON in ${f}: ${e.message}`); }
   for (const c of (j.cases || [])) allCases.push({ ...c, __file: f });
 }

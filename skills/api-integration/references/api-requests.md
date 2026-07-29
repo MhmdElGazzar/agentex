@@ -11,7 +11,8 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js" \
   --log "$SESSION_DIR/logs/s1-get-todo.log"
 ```
 
-- Only needs Node (already required by the plugin). Reads `./integration/*_api.json`, enforces
+- Only needs Node (already required by the plugin). Recursively reads every `*_api.json` under
+  `./integration/` (flat or nested, e.g. `integration/api_test_suites/<service>/`), enforces
   catalog-only execution, validates params, resolves env vars, writes the evidence log, checks
   expectations, and prints one JSON line (`PASS`/`FAIL`/`BLOCKED`; exit 0/1/2).
 - Assertion flags: `--expect-status <code>`, `--expect-field <dot.path>` (exists),

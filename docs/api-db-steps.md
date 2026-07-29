@@ -18,7 +18,9 @@ session's `logs/` as evidence.
 ## API steps
 
 A scenario step beginning with `api:` (or a request like "verify via API", "call the endpoint")
-runs a request from `integration/*_api.json`.
+runs a request from a `*_api.json` catalog, found recursively anywhere under `integration/`
+(flat, or nested under `integration/api_test_suites/<service>/` for a `swagger-import`ed
+service).
 
 - Runner: `skills/api-integration/scripts/run_api.js` (executes one request via Node `fetch`).
 - Catalog sample: `skills/api-integration/templates/sample_api.json` (scaffolded to `integration/` by `/init-test`).

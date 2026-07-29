@@ -1,12 +1,12 @@
-// AgenTeX Swagger/OpenAPI importer — generates a catalog file (integration/*_api.json) and a
-// suite file (integration/suites/*_suite.json) from a Swagger 2.0 or OpenAPI 3.x JSON document.
-// JSON only (no YAML parser — see references/swagger-mapping.md for why). Never overwrites an
-// existing catalog/suite file — refuses instead, so two files can never collide on the same
-// internal catalog "name".
+// AgenTeX Swagger/OpenAPI importer — generates a catalog file (<name>_api.json) and a suite
+// file (<name>_suite.json), co-located under integration/api_test_suites/<name>/, from a
+// Swagger 2.0 or OpenAPI 3.x JSON document. JSON only (no YAML parser — see
+// references/swagger-mapping.md for why). Never overwrites an existing catalog/suite file —
+// refuses instead, so two files can never collide on the same internal catalog "name".
 //
 // Usage:
 //   node import_swagger.js <path-or-url> [--name <service>]
-//     [--catalog ./integration] [--suites ./integration/suites]
+//     [--dir ./integration/api_test_suites]
 //
 // Prints ONE JSON line: {"result":"OK|BLOCKED", ...}. Exit: 0 OK, 2 BLOCKED.
 // Everything generated is a best-effort skeleton — review notes are collected in "review".
@@ -24,12 +24,11 @@ const upper = s => slug(s).toUpperCase().replace(/-/g, '_');
 
 // ---- args ----
 const args = process.argv.slice(2);
-let source, nameArg, catalogDir = './integration', suitesDir = './integration/suites';
+let source, nameArg, baseDir = './integration/api_test_suites';
 for (let i = 0; i < args.length; i++) {
   const a = args[i], v = () => args[++i];
   if (a === '--name') nameArg = v();
-  else if (a === '--catalog') catalogDir = v();
-  else if (a === '--suites') suitesDir = v();
+  else if (a === '--dir') baseDir = v();
   else if (!a.startsWith('--') && !source) source = a;
 }
 if (!source) blocked('usage: <path-or-url> [--name <service>] required');
@@ -214,17 +213,17 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   }
   if (!requests.length) blocked('no operations found in "paths" — nothing to import');
 
-  // ---- write catalog + suite (never overwrite) ----
-  const catalogPath = path.join(catalogDir, `${name}_api.json`);
-  const suitePath = path.join(suitesDir, `${name}_suite.json`);
+  // ---- write catalog + suite, co-located under <dir>/<name>/ (never overwrite) ----
+  const serviceDir = path.join(baseDir, name);
+  const catalogPath = path.join(serviceDir, `${name}_api.json`);
+  const suitePath = path.join(serviceDir, `${name}_suite.json`);
   if (fs.existsSync(catalogPath)) blocked(`${catalogPath} already exists — pick a different --name or remove/rename it first`);
   if (fs.existsSync(suitePath)) blocked(`${suitePath} already exists — pick a different --name or remove/rename it first`);
 
   const catalog = { name, description: doc.info && doc.info.description || `Imported from ${source}`, baseUrl: `\${${baseUrlEnvVar}}`, auth, requests };
   const suite = { name: `${name}-suite`, cases };
 
-  fs.mkdirSync(catalogDir, { recursive: true });
-  fs.mkdirSync(suitesDir, { recursive: true });
+  fs.mkdirSync(serviceDir, { recursive: true });
   fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2) + '\n');
   fs.writeFileSync(suitePath, JSON.stringify(suite, null, 2) + '\n');
 

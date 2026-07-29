@@ -1,5 +1,6 @@
 // AgenTeX API runner — executes ONE cataloged API request deterministically.
-// The catalog is the authorization: only entries defined in <catalog>/*_api.json can run.
+// The catalog is the authorization: only entries defined in <catalog>/**/*_api.json can run
+// (searched recursively, so both flat and integration/api_test_suites/<name>/-nested catalogs work).
 //
 // Usage:
 //   node run_api.js --entry <file-name>.<request-name> [--param k=v ...]
@@ -41,16 +42,27 @@ if (dot < 1) blocked('entry must be <file-name>.<request-name>');
 const fileName = entry.slice(0, dot), reqName = entry.slice(dot + 1);
 
 // ---- catalog resolution (allowlist: only defined entries can run) ----
+// Recursive: catalogs may sit flat in <catalog>/ (hand-written, api-integration convention) or
+// nested under <catalog>/api_test_suites/<name>/ (swagger-import output, co-located with its suite).
 if (!fs.existsSync(catalog)) blocked(`catalog folder not found: ${catalog} — scaffold it and define your requests first`);
-const files = fs.readdirSync(catalog).filter(f => f.endsWith('_api.json'));
+function findApiFiles(dir) {
+  let found = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) found = found.concat(findApiFiles(full));
+    else if (entry.isFile() && entry.name.endsWith('_api.json')) found.push(full);
+  }
+  return found;
+}
+const files = findApiFiles(catalog);
 let def = null;
 for (const f of files) {
   try {
-    const j = JSON.parse(fs.readFileSync(path.join(catalog, f), 'utf8'));
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
     if (j.name === fileName) { def = j; break; }
   } catch (e) { blocked(`invalid JSON in ${f}: ${e.message}`); }
 }
-if (!def) blocked(`no *_api.json in ${catalog} has "name": "${fileName}" — define it before this step can run`);
+if (!def) blocked(`no *_api.json under ${catalog} has "name": "${fileName}" — define it before this step can run`);
 const req = (def.requests || []).find(r => r.name === reqName);
 if (!req) blocked(`request "${reqName}" is not defined in catalog "${fileName}" — add it to run this step`);
 

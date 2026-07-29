@@ -1,8 +1,9 @@
 # Tool: Swagger/OpenAPI import — `import_swagger.js`
 
-How a Swagger 2.0 / OpenAPI 3.x document maps onto the catalog (`integration/*_api.json`) and
-suite (`integration/suites/*.json`) formats that `api-integration`/`endpoint-testing` already
-know how to run. Read before the first `/import-swagger` invocation in a session.
+How a Swagger 2.0 / OpenAPI 3.x document maps onto the catalog (`<name>_api.json`) and suite
+(`<name>_suite.json`) formats that `api-integration`/`endpoint-testing` already know how to
+run. Both are written co-located under `integration/api_test_suites/<name>/`. Read before the
+first `/import-swagger` invocation in a session.
 
 ## Input constraints
 
@@ -85,8 +86,9 @@ rule as everywhere else in this project (see the root `.env.example`).
 
 ## Never overwrite
 
-If the target catalog or suite file already exists (`integration/<name>_api.json` or
-`integration/suites/<name>_suite.json`), the importer refuses rather than overwriting or
-picking an alternate filename — a second file could otherwise declare the same internal
-catalog `name`, which `run_api.js`'s glob-and-match-by-name lookup resolves ambiguously (first
+If the target catalog or suite file already exists
+(`integration/api_test_suites/<name>/<name>_api.json` or
+`.../<name>/<name>_suite.json`), the importer refuses rather than overwriting or picking an
+alternate filename — a second file could otherwise declare the same internal catalog `name`,
+which `run_api.js`'s recursive search-and-match-by-name lookup resolves ambiguously (first
 match wins). Pick a different `--name`, or remove/rename the existing file first.

@@ -6,10 +6,10 @@ All notable changes to AgenTeX are documented here.
 ### Added
 - **`endpoint-testing` skill** — standalone API test run over cataloged endpoints ("api-tests"),
   independent of any browser test spec (the "Standalone API tests" row flips from planned to
-  available). New `integration/suites/*.json` case files reference `integration/*_api.json`
-  entries by name and supply the concrete params/expected result a standalone run needs — one
-  entry can have multiple cases (happy path, not-found, …). Every case in every suite file
-  runs every time — there's no scope/tag selection.
+  available). New `integration/api_test_suites/**/*_suite.json` case files reference a sibling
+  `*_api.json` catalog's entries by name and supply the concrete params/expected result a
+  standalone run needs — one entry can have multiple cases (happy path, not-found, …). Every
+  case in every suite file runs every time — there's no scope/tag selection.
 - `run_suite.js` — deterministic runner that shells out to `api-integration`'s `run_api.js`
   per case (never duplicates its catalog/auth/assertion logic), aggregating one
   PASS/FAIL/BLOCKED summary.
@@ -17,20 +17,24 @@ All notable changes to AgenTeX are documented here.
   api-tests in one call and returns a consolidated defect report, keeping per-case logs out of
   the orchestrator's context.
 - `/test-endpoints` command — entrypoint for the standalone flow; scaffolds
-  `integration/suites/sample_suite.json` on first run.
-- **`swagger-import` skill** — generates a catalog (`integration/*_api.json`) and suite
-  (`integration/suites/*_suite.json`) from a Swagger 2.0 / OpenAPI 3.x JSON document (local
-  file or URL), via `import_swagger.js` and the `/import-swagger <path-or-url> [--name
-  <service>]` command. Picks one supported auth scheme per catalog file (`bearer` > `apiKey`
-  header > `basic`), flags unsupported schemes (oauth2/openIdConnect) and every generated
-  best-effort value (param examples, request bodies, "not found" placeholders) for manual
-  review instead of guessing silently. Never overwrites an existing catalog/suite file.
-  JSON-only input (no YAML parser); Postman import and response-schema/contract validation
-  are explicitly out of scope.
-- `run_api.js`: two small additive extensions needed for imported entries to work against
-  real specs — `auth.type: "apiKey"` (custom header auth) and a query-string fallback for any
-  declared param not consumed by a `{name}` path placeholder (previously silently dropped).
-  Backward compatible; existing catalogs are unaffected.
+  `integration/api_test_suites/sample_suite.json` on first run.
+- **`swagger-import` skill** — generates a catalog + suite, co-located under
+  `integration/api_test_suites/<service>/<service>_api.json` /
+  `.../<service>_suite.json`, from a Swagger 2.0 / OpenAPI 3.x JSON document (local file,
+  URL, or a SwaggerHub-hosted spec via the Swagger MCP connector), via `import_swagger.js`
+  and the `/import-swagger <source> [--name <service>]` command. Picks one supported auth
+  scheme per catalog file (`bearer` > `apiKey` header > `basic`), flags unsupported schemes
+  (oauth2/openIdConnect) and every generated best-effort value (param examples, request
+  bodies, "not found" placeholders) for manual review instead of guessing silently. Never
+  overwrites an existing catalog/suite file. JSON-only input (no YAML parser); Postman import
+  and response-schema/contract validation are explicitly out of scope.
+- `run_api.js`: catalog lookup is recursive under `--catalog` (default `./integration`), so
+  both hand-written flat catalogs and `swagger-import`'s nested
+  `integration/api_test_suites/<service>/` catalogs resolve by their internal `"name"`
+  regardless of location. Also two small additive extensions needed for imported entries to
+  work against real specs — `auth.type: "apiKey"` (custom header auth) and a query-string
+  fallback for any declared param not consumed by a `{name}` path placeholder (previously
+  silently dropped). Backward compatible; existing catalogs are unaffected.
 
 ### Fixed
 - `import_swagger.js`: found while testing against a live public OpenAPI spec — relative

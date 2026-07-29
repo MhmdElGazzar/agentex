@@ -6,7 +6,8 @@ description: >
   API tests", "test all endpoints". Distinct from api-integration's `api:` step (a single
   cataloged call made mid-browser-test) — this skill runs the whole set of cases in one pass
   and returns a consolidated report. Execution is catalog+suite-only: only cases defined in
-  integration/suites/*.json, referencing entries defined in integration/*_api.json, ever run.
+  integration/api_test_suites/**/*_suite.json, referencing entries defined in the sibling
+  *_api.json catalog, ever run.
 ---
 
 # Endpoint Testing — standalone API test runs
@@ -19,20 +20,24 @@ first run in a session — it covers the suite file schema and the runner's cont
 ## Relationship to api-integration
 
 - **`api-integration`** — one cataloged call, made inline from a browser spec's `api:` step.
-  Unaffected by this skill; its catalog (`integration/*_api.json`) and runner (`run_api.js`)
-  are reused here, not duplicated.
-- **`endpoint-testing`** (this skill) — the whole set of cases (`integration/suites/*.json`),
-  run standalone via the **`api-executor`** subagent, producing one report. No browser
-  involved.
+  Unaffected by this skill; its catalog (`*_api.json`, found recursively under `integration/`)
+  and runner (`run_api.js`) are reused here, not duplicated.
+- **`endpoint-testing`** (this skill) — the whole set of cases
+  (`integration/api_test_suites/**/*_suite.json`), run standalone via the **`api-executor`**
+  subagent, producing one report. No browser involved.
 
 ## The suites — the ONLY cases you may run
 
-Definitions live in the **consumer project** at **`./integration/suites/`**.
+Definitions live in the **consumer project** under **`./integration/api_test_suites/`**, one
+subfolder per service (e.g. `integration/api_test_suites/petstore/petstore_suite.json`) —
+this is also where `swagger-import` writes its generated suite, co-located with that
+service's catalog.
 - If missing when a standalone run is requested, scaffold from
   `${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/templates/sample_suite.json` (never
   overwrite), then ask the user to define real cases before treating results as meaningful.
-- Each case's `entry` must resolve in `integration/*_api.json` — if the catalog itself is
-  missing, point the user at `/init-test` first.
+- Each case's `entry` must resolve in a sibling (or elsewhere under `integration/`)
+  `*_api.json` catalog — if the catalog itself is missing, point the user at `/init-test`
+  first.
 - **Hard rule:** a case naming an undefined entry is BLOCKED — report which definition is
   missing, never improvise a request.
 
@@ -45,7 +50,7 @@ same reasoning as dispatching `qa-executor` for browser sessions). It makes one 
 
 ```
 node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
-  --catalog ./integration --suites ./integration/suites --run-dir <RUN_DIR>
+  --catalog ./integration --suites ./integration/api_test_suites --run-dir <RUN_DIR>
 ```
 
 Every case in every suite file runs every time — there's no scope/tag selection.
@@ -55,7 +60,8 @@ Every case in every suite file runs every time — there's no scope/tag selectio
 - Catalog+suite-only, same as `api-integration`: never compose a request that isn't defined.
 - Secrets stay in env — suite files hold only params/expectations, never token values.
 - Write-method cases (POST/PUT/DELETE) run if cataloged — be deliberate about which write
-  operations you add cases for, since every case in `integration/suites/` runs every time.
+  operations you add cases for, since every case under `integration/api_test_suites/` runs
+  every time.
 
 ## Evidence
 
