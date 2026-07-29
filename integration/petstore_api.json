@@ -1,0 +1,179 @@
+{
+  "name": "petstore",
+  "description": "This is a sample Pet Store Server based on the OpenAPI 3.0 specification.  You can find out more about\nSwagger at [https://swagger.io](https://swagger.io). In the third iteration of the pet store, we've switched to the design first approach!\nYou can now help us improve the API whether it's by making changes to the definition itself or to the code.\nThat way, with time, we can improve the API in general, and expose some of the new features in OAS3.\n\nSome useful links:\n- [The Pet Store repository](https://github.com/swagger-api/swagger-petstore)\n- [The source API definition for the Pet Store](https://github.com/swagger-api/swagger-petstore/blob/master/src/main/resources/openapi.yaml)",
+  "baseUrl": "${PETSTORE_BASE_URL}",
+  "auth": {
+    "type": "apiKey",
+    "headerName": "api_key",
+    "tokenEnv": "PETSTORE_TOKEN"
+  },
+  "requests": [
+    {
+      "name": "addpet",
+      "description": "Add a new pet to the store.",
+      "method": "POST",
+      "path": "/pet",
+      "params": [],
+      "body": "example"
+    },
+    {
+      "name": "updatepet",
+      "description": "Update an existing pet.",
+      "method": "PUT",
+      "path": "/pet",
+      "params": [],
+      "body": "example"
+    },
+    {
+      "name": "findpetsbystatus",
+      "description": "Finds Pets by status.",
+      "method": "GET",
+      "path": "/pet/findByStatus",
+      "params": [
+        "status"
+      ]
+    },
+    {
+      "name": "findpetsbytags",
+      "description": "Finds Pets by tags.",
+      "method": "GET",
+      "path": "/pet/findByTags",
+      "params": [
+        "tags"
+      ]
+    },
+    {
+      "name": "getpetbyid",
+      "description": "Find pet by ID.",
+      "method": "GET",
+      "path": "/pet/{petId}",
+      "params": [
+        "petId"
+      ]
+    },
+    {
+      "name": "updatepetwithform",
+      "description": "Updates a pet in the store with form data.",
+      "method": "POST",
+      "path": "/pet/{petId}",
+      "params": [
+        "petId",
+        "name",
+        "status"
+      ]
+    },
+    {
+      "name": "deletepet",
+      "description": "Deletes a pet.",
+      "method": "DELETE",
+      "path": "/pet/{petId}",
+      "params": [
+        "petId"
+      ]
+    },
+    {
+      "name": "uploadfile",
+      "description": "Uploads an image.",
+      "method": "POST",
+      "path": "/pet/{petId}/uploadImage",
+      "params": [
+        "petId",
+        "additionalMetadata"
+      ]
+    },
+    {
+      "name": "getinventory",
+      "description": "Returns pet inventories by status.",
+      "method": "GET",
+      "path": "/store/inventory",
+      "params": []
+    },
+    {
+      "name": "placeorder",
+      "description": "Place an order for a pet.",
+      "method": "POST",
+      "path": "/store/order",
+      "params": [],
+      "body": "example"
+    },
+    {
+      "name": "getorderbyid",
+      "description": "Find purchase order by ID.",
+      "method": "GET",
+      "path": "/store/order/{orderId}",
+      "params": [
+        "orderId"
+      ]
+    },
+    {
+      "name": "deleteorder",
+      "description": "Delete purchase order by identifier.",
+      "method": "DELETE",
+      "path": "/store/order/{orderId}",
+      "params": [
+        "orderId"
+      ]
+    },
+    {
+      "name": "createuser",
+      "description": "Create user.",
+      "method": "POST",
+      "path": "/user",
+      "params": [],
+      "body": "example"
+    },
+    {
+      "name": "createuserswithlistinput",
+      "description": "Creates list of users with given input array.",
+      "method": "POST",
+      "path": "/user/createWithList",
+      "params": [],
+      "body": "example"
+    },
+    {
+      "name": "loginuser",
+      "description": "Logs user into the system.",
+      "method": "GET",
+      "path": "/user/login",
+      "params": [
+        "username",
+        "password"
+      ]
+    },
+    {
+      "name": "logoutuser",
+      "description": "Logs out current logged in user session.",
+      "method": "GET",
+      "path": "/user/logout",
+      "params": []
+    },
+    {
+      "name": "getuserbyname",
+      "description": "Get user by user name.",
+      "method": "GET",
+      "path": "/user/{username}",
+      "params": [
+        "username"
+      ]
+    },
+    {
+      "name": "updateuser",
+      "description": "Update user resource.",
+      "method": "PUT",
+      "path": "/user/{username}",
+      "params": [
+        "username"
+      ],
+      "body": "example"
+    },
+    {
+      "name": "deleteuser",
+      "description": "Delete user resource.",
+      "method": "DELETE",
+      "path": "/user/{username}",
+      "params": [
+        "username"
+      ]
+    }
+  ]
+}

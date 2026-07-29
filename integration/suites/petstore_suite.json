@@ -1,0 +1,309 @@
+{
+  "name": "petstore-suite",
+  "cases": [
+    {
+      "name": "addpet-happy-path",
+      "entry": "petstore.addpet",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "updatepet-happy-path",
+      "entry": "petstore.updatepet",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "findpetsbystatus-happy-path",
+      "entry": "petstore.findpetsbystatus",
+      "params": {
+        "status": "available"
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "findpetsbystatus-error-case",
+      "entry": "petstore.findpetsbystatus",
+      "params": {
+        "status": "__REPLACE_ME__"
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "findpetsbytags-happy-path",
+      "entry": "petstore.findpetsbytags",
+      "params": {
+        "tags": "example"
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "findpetsbytags-error-case",
+      "entry": "petstore.findpetsbytags",
+      "params": {
+        "tags": "__REPLACE_ME__"
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "getpetbyid-happy-path",
+      "entry": "petstore.getpetbyid",
+      "params": {
+        "petId": 1
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "getpetbyid-error-case",
+      "entry": "petstore.getpetbyid",
+      "params": {
+        "petId": 999999999
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "updatepetwithform-happy-path",
+      "entry": "petstore.updatepetwithform",
+      "params": {
+        "petId": 1,
+        "name": "example",
+        "status": "example"
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "updatepetwithform-error-case",
+      "entry": "petstore.updatepetwithform",
+      "params": {
+        "petId": 999999999,
+        "name": "__REPLACE_ME__",
+        "status": "__REPLACE_ME__"
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "deletepet-happy-path",
+      "entry": "petstore.deletepet",
+      "params": {
+        "petId": 1
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "deletepet-error-case",
+      "entry": "petstore.deletepet",
+      "params": {
+        "petId": 999999999
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "uploadfile-happy-path",
+      "entry": "petstore.uploadfile",
+      "params": {
+        "petId": 1,
+        "additionalMetadata": "example"
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "uploadfile-error-case",
+      "entry": "petstore.uploadfile",
+      "params": {
+        "petId": 999999999,
+        "additionalMetadata": "__REPLACE_ME__"
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "getinventory-happy-path",
+      "entry": "petstore.getinventory",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "placeorder-happy-path",
+      "entry": "petstore.placeorder",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "getorderbyid-happy-path",
+      "entry": "petstore.getorderbyid",
+      "params": {
+        "orderId": 1
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "getorderbyid-error-case",
+      "entry": "petstore.getorderbyid",
+      "params": {
+        "orderId": 999999999
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "deleteorder-happy-path",
+      "entry": "petstore.deleteorder",
+      "params": {
+        "orderId": 1
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "deleteorder-error-case",
+      "entry": "petstore.deleteorder",
+      "params": {
+        "orderId": 999999999
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "createuser-happy-path",
+      "entry": "petstore.createuser",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "createuserswithlistinput-happy-path",
+      "entry": "petstore.createuserswithlistinput",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "loginuser-happy-path",
+      "entry": "petstore.loginuser",
+      "params": {
+        "username": "example",
+        "password": "example"
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "loginuser-error-case",
+      "entry": "petstore.loginuser",
+      "params": {
+        "username": "__REPLACE_ME__",
+        "password": "__REPLACE_ME__"
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "logoutuser-happy-path",
+      "entry": "petstore.logoutuser",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "getuserbyname-happy-path",
+      "entry": "petstore.getuserbyname",
+      "params": {
+        "username": "example"
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "getuserbyname-error-case",
+      "entry": "petstore.getuserbyname",
+      "params": {
+        "username": "__REPLACE_ME__"
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "updateuser-happy-path",
+      "entry": "petstore.updateuser",
+      "params": {
+        "username": "example"
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "updateuser-error-case",
+      "entry": "petstore.updateuser",
+      "params": {
+        "username": "__REPLACE_ME__"
+      },
+      "expect": {
+        "status": 400
+      }
+    },
+    {
+      "name": "deleteuser-happy-path",
+      "entry": "petstore.deleteuser",
+      "params": {
+        "username": "example"
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "deleteuser-error-case",
+      "entry": "petstore.deleteuser",
+      "params": {
+        "username": "__REPLACE_ME__"
+      },
+      "expect": {
+        "status": 400
+      }
+    }
+  ]
+}
