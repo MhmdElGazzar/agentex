@@ -7,7 +7,13 @@ Use the **swagger-import** skill to import endpoints from a spec.
 Arguments: $ARGUMENTS
 
 **Parse the arguments:**
-- First token: the spec source — a local file path or an `http(s)://` URL.
+- First token: the spec source.
+  - A local file path or an `http(s)://` URL — pass straight through to the script below.
+  - Anything else (a search phrase, or an `owner/api/version` reference) — treat it as a
+    SwaggerHub lookup via the **Swagger MCP connector**: `swagger_search_apis_and_domains`
+    (or `swagger_list_organizations` first, if the owner is ambiguous) to find the API, then
+    `swagger_get_api_definition(owner, api, version, resolved: true)` to fetch its JSON. Write
+    the result to a temp file and use that file's path as the source below.
 - Optional `--name <service>`: slug for the generated files and env-var prefix. If omitted,
   derive it from the spec's `info.title`.
 - If no source is given, ask the user for one rather than guessing.

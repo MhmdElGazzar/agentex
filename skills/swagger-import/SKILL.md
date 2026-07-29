@@ -21,6 +21,14 @@ scheme selection works.
 - **JSON only** — no YAML parser. Point at a local file or an `http(s)://` URL serving JSON.
   If the user only has YAML, tell them to convert it or use their spec host's JSON variant
   (e.g. `/v3/api-docs`, `/swagger.json`) — never guess at parsing YAML by hand.
+- **SwaggerHub-hosted specs** — if the spec lives in SwaggerHub (a private org API, not a
+  public URL), use the **Swagger MCP connector** instead of asking for a file/URL:
+  `swagger_search_apis_and_domains` (or `swagger_list_organizations` first, if the owner is
+  ambiguous) to find the API, then `swagger_get_api_definition(owner, api, version, resolved:
+  true)` to fetch its JSON. Write the result to a temp file and pass that file's path to
+  `import_swagger.js` below — the script only understands local paths and `http(s)://` URLs,
+  so this is a fetch-side step, not a script change. The connector is a spec **source**, not a
+  generator — it doesn't produce catalog/suite files itself.
 - Both **Swagger 2.0** and **OpenAPI 3.x** are supported (detected from the doc itself).
 - Postman collections are **not** supported by this skill (separate, not-yet-built work) —
   if asked, say so rather than attempting to reinterpret a Postman export as a Swagger doc.
@@ -38,6 +46,10 @@ Prints one JSON line: `{"result":"OK|BLOCKED", "catalogPath", "suitePath",
 BLOCKED). **Never overwrites** an existing catalog/suite file — a BLOCKED result telling the
 user to pick a different `--name` or remove/rename the existing file is expected behavior,
 not a bug.
+
+`<path-or-url>` is either a local file or an `http(s)://` URL. For SwaggerHub-hosted specs,
+resolve via the MCP connector first (see Scope above) and pass the staged temp file's path
+here — from the script's point of view it's just another local file.
 
 ## After a successful import
 
