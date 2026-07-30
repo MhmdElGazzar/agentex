@@ -19,6 +19,10 @@ commands behaves unexpectedly. Available tool docs:
   sessions/dashboard, and the `screenshot --filename=` and no-`requests` gotchas). Read before
   driving a browser.
 
+For a **design-vs-build** run (the user supplies a Figma link *and* a site URL), this skill owns
+only the build half. See `${CLAUDE_PLUGIN_ROOT}/skills/figma-integration/SKILL.md` §6 for the full
+cycle — that skill reads the design via REST, this one drives the page.
+
 Always-on rules (full details in the files above):
 - All browser actions go through `playwright-cli`; **parallel runs MUST each use their own
   `-s=<session>`** so browsers don't collide (sequential may use the default session).

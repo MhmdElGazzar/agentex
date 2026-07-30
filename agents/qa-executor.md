@@ -62,6 +62,12 @@ KB QUESTIONS (`kb:` in the spec)
 - A KB answer is ADVISORY CONTEXT ONLY — never evidence. Do NOT turn a `kb:` result into a
   PASS/FAIL verdict or fold it into the scenario tally.
 
+DESIGN-VS-BUILD (`figma:` in the spec) — NOT YOURS
+- You have NO `figma:` step contract. A design-vs-build comparison is orchestrator-only (see
+  the figma-integration skill §6), because it needs a Figma REST read you are not set up for.
+- If the spec contains a `figma:` step, do NOT improvise one and do NOT silently skip it.
+  Report it verbatim as BLOCKED ("figma: step is orchestrator-only") and run the other steps.
+
 EXECUTION RULES
 - Execute the scenarios in the TEST SPECIFICATION in the order written.
 - If the spec marks scenarios as a stateful chain, keep them strictly sequential in this one

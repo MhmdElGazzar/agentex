@@ -25,3 +25,9 @@ Target / scope: $ARGUMENTS
 - If the request says parallel / fast / regression / autonomous, use **parallel** mode and
   dispatch one `qa-executor` subagent per test file.
 - Read the skill's `references/playwright-cli.md` before the first browser action.
+
+**Figma in scope?** If the target/scope names a Figma URL — alone, or alongside a site URL to
+compare against — this is not a browser-testing run. Route to the **figma-integration** skill
+instead (`skills/figma-integration/SKILL.md`): §4 for a plain design read, §6 for a design-vs-build
+comparison. §6 is **orchestrator-only** — never delegate it to a `qa-executor` subagent, which has
+no `figma:` step contract and will only report it `BLOCKED`.
