@@ -2,7 +2,7 @@
 
 If your project has a knowledge base, you can ask it questions in plain language mid-test — or
 any time, standalone — instead of digging through docs yourself. The answer is **advisory
-only**: it helps you understand a flow, but it never counts as pass/fail proof. The call is explicit — the agent never queries the KB on its own initiative.
+only**: it helps you understand a flow, but it never counts as pass/fail proof. The call is explicit — Claude never queries the KB on its own initiative.
 
 ## Walkthrough
 

@@ -1,7 +1,7 @@
 # Browser Testing
 
 This is the core of AgenTeX: instead of clicking through a web app by hand to test it, you
-describe what to test and an agent drives a real browser through it for you — taking
+describe what to test and Claude drives a real browser through it for you — taking
 screenshots, checking for errors, and reporting back what passed and what didn't. It never
 touches your application's code — only test artifacts get written.
 
@@ -38,7 +38,9 @@ session **per spec file** (so unrelated scenarios run at the same time instead o
 another), then merges every session's results into one final report when they're all done.
 
 **One spec file = one browser session** — so keep a flow that depends on earlier steps (like
-login → action → assert) together in a single file rather than splitting it across files.
+login → action → assert) together in a single file rather than splitting it across files. If
+login itself is the slow part, see [Optimize Login](./optimize-login.md) to pay that cost once
+instead of every run.
 
 ## Writing your own specs
 
@@ -74,7 +76,7 @@ your project automatically. To add more coverage, drop another `.md` file next t
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
-| **Sequential** (default) | A natural-language request or `/execute-test <url>` | Human-in-the-loop. The agent pauses for your approval at each checkpoint. Best for exploratory / first-run testing. |
+| **Sequential** (default) | A natural-language request or `/execute-test <url>` | Human-in-the-loop. Claude pauses for your approval at each checkpoint. Best for exploratory / first-run testing. |
 | **Parallel** (autonomous) | "Run a parallel regression … from the specs in `test/suite1/`" | Spawns one `qa-executor` subagent per spec file, each in its own isolated browser session, then merges their defect lists into one report. Best for regression suites. |
 
 **Output layout:**

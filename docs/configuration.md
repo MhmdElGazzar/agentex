@@ -7,9 +7,9 @@ and `AZURE_DEVOPS_EXT_PAT` are read that way by design.
 
 ## Walkthrough: setting up your first project
 
-```bash
-cp .env.example .env
-```
+If you ran `/init-test`, your `.env` already exists in your project — just open it and fill in
+what you need. Otherwise, copy the plugin's [`.env.example`](../.env.example) to `.env` in your
+project root.
 
 Open `.env` and fill in only the section(s) you need right now — e.g. if you're just doing
 browser testing with no API/DB/Azure steps yet, you can leave everything but `QA_TARGET_URL`
@@ -44,7 +44,7 @@ automatically by `/init-test` — never commit it.
 | `AZURE_PROJECT` | Project name. |
 | `AZURE_TEAM` | Team name. |
 | `AZURE_ASSIGNEE` | Default assignee for created tasks. |
-| `AZURE_DEVOPS_EXT_PAT` | PAT for non-interactive auth — export in your shell; the agent never prints or passes it. |
+| `AZURE_DEVOPS_EXT_PAT` | PAT for non-interactive auth — export in your shell; Claude never prints or passes it. |
 
 ### KB Ask API
 

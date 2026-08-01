@@ -18,7 +18,7 @@ AgenTeX installs through the **`elgazzar-plugins`** marketplace. From Claude Cod
 
 ## 2. Install the browser driver
 
-In the project you want to test (the agent will offer to do this for you):
+In the project you want to test (Claude will offer to do this for you):
 
 ```bash
 npm install -D @playwright/cli
@@ -66,6 +66,16 @@ executions/execu_<timestamp>/
 ├── bugs/bug-list.md       # a merged list of every defect found
 └── ...                    # screenshots and logs backing up every result
 ```
+
+## Quick reference
+
+- Install: `/plugin marketplace add MhmdElGazzar/elgazzar-plugins` then
+  `/plugin install agentex@elgazzar-plugins`
+- Browser driver: `npm install -D @playwright/cli && npx playwright-cli install-browser chromium`
+- Scaffold: `/init-test`
+- Permissions: copy the `permissions` block from [`settings.example.json`](../settings.example.json)
+  into `.claude/settings.json`
+- Run: `/execute-test <url>`
 
 ## Next steps
 

@@ -1,6 +1,6 @@
 # Interactive HTML Report
 
-At the end of a run, you get more than a plain-text summary — AgenTeX also produces a
+At the end of a run, you get more than a plain-text summary — AgenTeX can also produce a
 standalone **`extent-report.html`**: a dark-themed dashboard you can open in any browser, no
 server or internet connection needed.
 
@@ -17,8 +17,8 @@ as-is — nobody else needs any special software to view it.
 
 ## Quick reference
 
-Generated automatically at the end of any run (one test case or a full batch) by the
-deterministic script:
+Generated at the end of a run (one test case or a full batch), via the extent-report skill,
+by the deterministic script:
 
 ```bash
 node skills/extent-report/scripts/make_html_report.js
