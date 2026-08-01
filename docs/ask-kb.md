@@ -37,7 +37,7 @@ or `kb:acme-store: <question>` inside a spec.
 | `KB_PROJECT` | Default project id (e.g. `acme-store`); a `kb:<project>:` step overrides it. |
 | `KB_ASK_API_KEY` | Shared secret sent as `x-api-key` (required when the server has it set). |
 
-**Behind the scenes:**
+**Behind the scenes** (the runner, `skills/ask-kb/scripts/ask_kb.js`):
 - Sends `x-api-key` from `KB_ASK_API_KEY` when set (never logged).
 - A `401` is reported as `BLOCKED` (not retried); `429` responses honor `Retry-After`
   automatically.
