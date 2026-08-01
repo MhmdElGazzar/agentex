@@ -1,7 +1,9 @@
 # Configuration
 
 AgenTeX reads its settings from a `.env` file in your project — nothing is hardcoded, and you
-only need to fill in what the features you actually use require.
+only need to fill in what the features you actually use require. Any variable can also be
+exported directly in your shell instead of `.env` if you prefer; secrets like `SQLCMDPASSWORD`
+and `AZURE_DEVOPS_EXT_PAT` are read that way by design.
 
 ## Walkthrough: setting up your first project
 
