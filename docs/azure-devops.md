@@ -27,8 +27,8 @@ mid-test — all through the `az` CLI, with your confirmation before anything is
 
 Claude looks at your sprint's User Stories one at a time, proposes an hours estimate for each
 (based on scenario count, fields, validations, integrations involved) — and **only after you
-confirm that story** — creates 5 `[Testing]` tasks on it: Requirement Review, Test Creation,
-Test Execution, Bug Review & Retest, Automation (iteration-inherited and assigned). Nothing is
+confirm that story** — creates 5 `[Testing]` tasks on it, all iteration-inherited and assigned:
+Requirement Review, Test Creation, Test Execution, Bug Review & Retest, Automation. Nothing is
 created without your say-so, and it never processes more than one story at a time without
 checking in. Target specific stories with `/estimate-story 12345 12346`.
 
