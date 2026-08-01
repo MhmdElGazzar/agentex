@@ -63,6 +63,7 @@ folder:
 executions/execu_<timestamp>/
 ├── report.md              # the final summary — what passed, what failed
 ├── extent-report.html     # an interactive dashboard version, open it in any browser
+├── bugs/bug-list.md       # a merged list of every defect found
 └── ...                    # screenshots and logs backing up every result
 ```
 
