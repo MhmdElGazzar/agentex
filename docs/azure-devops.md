@@ -47,7 +47,8 @@ runs.
 
 ## Walkthrough: filing a bug after a run
 
-Once a test/regression run has turned up defects, ask Claude to file them. For each one it:
+Once a test/regression run has turned up defects, ask Claude to file them as Azure DevOps
+**Bugs**. For each one it:
 - suggests a **severity + priority** based on what was observed (you pick the final values),
 - links it to the parent **User Story** (the only relation it ever adds, and only after
   validating the story exists),
