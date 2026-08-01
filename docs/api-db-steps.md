@@ -2,7 +2,8 @@
 
 Sometimes seeing something happen in the browser isn't proof enough — did the signup actually
 create a user in the database? Did the right thing happen server-side? `api:` and `db:` steps
-let a test scenario check that directly, without you writing any code.
+let a test scenario check that directly, seed test data your scenarios need, or verify state
+without you writing any code.
 
 ## Walkthrough
 
@@ -17,7 +18,8 @@ Say your signup-form spec adds these two lines to its scenario list:
 
 When Claude reaches scenario 2, it doesn't invent a request — it looks up `getUserByEmail` in
 your project's `integration/` folder (definitions you or a teammate wrote ahead of time), runs
-**exactly** that request, and reports PASS/FAIL/BLOCKED with the response saved as evidence.
+**exactly** that request, and reports a PASS/FAIL/BLOCKED JSON result, saved in the session's
+`logs/` folder as evidence.
 Scenario 3 works the same way against your database. If a step names something not in that
 catalog, it's reported as **BLOCKED** rather than guessed at — this is deliberate: Claude never
 composes its own SQL or HTTP request.
