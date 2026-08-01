@@ -1,13 +1,20 @@
 # Configuration
 
-Copy [`.env.example`](../.env.example) to `.env` (gitignored — never commit secrets) and fill in
-only what your flows use. Catalog files reference these **by name**; values live here or in your shell.
+AgenTeX reads its settings from a `.env` file in your project — nothing is hardcoded, and you
+only need to fill in what the features you actually use require.
+
+## Walkthrough: setting up your first project
 
 ```bash
 cp .env.example .env
 ```
 
-## Environment variables
+Open `.env` and fill in only the section(s) you need right now — e.g. if you're just doing
+browser testing with no API/DB/Azure steps yet, you can leave everything but `QA_TARGET_URL`
+empty and add the rest later when you turn on those features. `.env` is gitignored
+automatically by `/init-test` — never commit it.
+
+## Quick reference
 
 ### Target under test
 
@@ -49,12 +56,12 @@ cp .env.example .env
 
 Plugin manifests can't ship permission rules. Copy the `permissions` block from
 [`settings.example.json`](../settings.example.json) into your project's `.claude/settings.json`
-(merge with anything already there). This pre-approves the safe `playwright-cli` (and `az` / `curl` /
-`sqlcmd`) commands and denies secret reads / destructive actions.
+(merge with anything already there). This pre-approves the safe `playwright-cli` (and `az` /
+`curl` / `sqlcmd`) commands and denies secret reads / destructive actions.
 
 ## Secret-handling rules
 
 - Catalog files (`integration/*.json`) hold only env-var **names**, never values.
-- The agent may read config keys but must never print or pass secrets.
-- DB and PAT secrets are read from the environment (`SQLCMDPASSWORD`, `AZURE_DEVOPS_EXT_PAT`), never
-  placed on a command line.
+- Claude may read config keys but must never print or pass secrets.
+- DB and PAT secrets are read from the environment (`SQLCMDPASSWORD`, `AZURE_DEVOPS_EXT_PAT`),
+  never placed on a command line.
