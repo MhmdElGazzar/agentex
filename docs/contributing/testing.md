@@ -1,46 +1,34 @@
 # Testing
 
-AgenTeX has no shared test framework — each script that needs one ships a small,
-self-contained `<script>.test.js` next to it.
+## Script tests
 
-## Running tests
+**What:** a small, self-contained `<script>.test.js` next to any script that needs one — no
+shared test framework.
 
-Run a single skill's script test:
+**Why:** proves a runner's `PASS`/`FAIL`/`BLOCKED` behavior, and any safety rule enforced in
+code, actually hold.
 
-```
-node skills/ask-kb/scripts/ask_kb.test.js
-```
+**When:** the skill has a `scripts/` folder (deterministic/security-sensitive work).
 
-There's no single "run everything" command yet — run each `*.test.js` under
-`skills/*/scripts/` you've touched, plus any others if you're not sure what your change
-affects.
+**When not:** pure-judgment skills with no script — e.g. `extent-report` (assembles a static
+HTML dashboard from data already produced by a run) has nothing deterministic to unit-test.
 
-## What a script test looks like
+**How:** spin up a local `http` server (or DB fixture) as a stand-in, spawn the runner as a
+child process, assert on its one JSON line + exit code. No mocking framework, no shared
+fixtures file.
 
-Self-contained: it spins up a local `http` server (or SQL Server fixture, for DB scripts) as a
-stand-in for the real dependency, spawns the runner script as a child process with test
-arguments, and asserts on its single JSON line and exit code. No mocking framework, no shared
-fixtures file — everything the test needs is in that one file. See
-`skills/ask-kb/scripts/ask_kb.test.js` for a full example (happy path, config precedence,
-`404`/`401`/`429` handling, retries, secret-header handling), or the smaller
-`check_url.test.js` built in [Adding a Skill](./adding-a-skill.md).
+**Example:** `skills/ask-kb/scripts/ask_kb.test.js` (happy path, config precedence,
+`404`/`401`/`429`, retries, secret headers); the smaller `check_url.test.js` built in
+[Adding a Skill](./adding-a-skill.md).
 
-## What to assert
+**Pros/cons:** + catches regressions in safety rules, no framework overhead — but one more
+file to write per script.
 
-At minimum, cover:
+**Run it:** `node skills/<name>/scripts/<script>.test.js` — run every `.test.js` you touched
+(no single "run all" command yet).
 
-- The success path (`PASS`/`OK` result, correct fields, exit 0)
-- Each failure mode your runner maps to `FAIL` (exit 1)
-- Each precondition your runner maps to `BLOCKED` (exit 2) — missing args, missing env, etc.
-- Any safety rule enforced in code (catalog-only lookup, DDL ban, param sanitization,
-  secret-header presence/absence) — these are exactly the things a test should catch if a
-  future edit accidentally weakens them.
-
-## When a skill doesn't need a script test
-
-Skills that are pure judgment/workflow with no script — e.g. `extent-report`, which assembles a
-static HTML dashboard from data already produced by a run rather than calling out to anything
-external — have nothing deterministic to unit-test. If your skill has no `scripts/` folder, it
-doesn't need a `.test.js`.
+**Minimum coverage:** the success path, each `FAIL` mode, each `BLOCKED` precondition, and any
+safety rule enforced in code (catalog-only lookup, DDL ban, param sanitization, secret-header
+presence/absence).
 
 Next: [PR Workflow](./pr-workflow.md).

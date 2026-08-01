@@ -17,37 +17,39 @@ executions/   NOT shipped in the plugin — output folder created in the consume
 
 ## SKILL.md = judgment, references/ = mechanics
 
-Every skill splits into two layers:
+**What:** every skill splits into `SKILL.md` (judgment) and `references/*.md` (mechanics).
 
-- **`SKILL.md`** holds *judgment*: when to act, which mode to pick, what to check before
-  proceeding, how to report results. It's what Claude reads every time the skill is in play.
-- **`references/*.md`** holds *mechanics*: exact CLI flags, API request/response shapes,
-  gotchas. These are read on demand — "before the first use of that tool in a session" — not
-  loaded upfront, so `SKILL.md` stays short and skimmable.
+**Why:** keeps `SKILL.md` short and skimmable; tool details load only when needed.
 
-Example: `skills/browser-testing/SKILL.md` says to read `references/playwright-cli.md` before
-driving a browser for the first time, rather than inlining every `playwright-cli` flag into the
-main skill file.
+**When:** any skill that calls an external tool/API with real flags or a request shape.
+
+**When not:** trivial skills with no external tool — keep it all in `SKILL.md`.
+
+**How:** `SKILL.md` says "read `references/x.md` before the first use of tool X."
+
+**Example:** `browser-testing/SKILL.md` → read `references/playwright-cli.md` before driving a
+browser.
+
+**Pros/cons:** + short main file, on-demand detail — but one more file to keep in sync.
 
 ## Deterministic scripts do the mechanical work
 
-Where a step is mechanical, security-sensitive, or easy to get subtly wrong if an agent
-improvised it, AgenTeX moves that step into a small Node script instead of leaving it to agent
-reasoning:
+**What:** a small Node script does the mechanical/security-sensitive step instead of agent
+reasoning; it prints one JSON line — `{"result":"PASS|FAIL|BLOCKED", ...}` — and exits 0/1/2.
 
-- `skills/api-integration/scripts/run_api.js` — executes one cataloged API request: catalog
-  lookup, param validation, env resolution, the HTTP call, evidence logging, assertions.
-- `skills/db-integration/scripts/run_db.js` — the same shape for SQL Server queries, with a DDL
-  ban and parameter sanitization enforced in code (not something an agent is trusted to
-  self-police).
-- `skills/optimize-login/scripts/session.js` — verifies/saves/resumes a browser `storageState`.
-- `skills/browser-testing/scripts/{preflight,init_run,merge_run}.js` — tool checks, execution
-  tree scaffolding, bug-evidence merging.
+**Why:** the agent decides *what* to run; the script decides *whether it's allowed* and
+executes it the same way every time — consistent, and testable in isolation.
 
-**The pattern:** the agent decides *what* to run and reports the result; the script decides
-*whether it's allowed to run* and executes it exactly the same way every time. Every runner
-prints exactly one JSON line — `{"result":"PASS|FAIL|BLOCKED", ...}` — and sets its exit code
-(0/1/2) to match, so the calling skill can branch on it without parsing prose.
+**When:** the step is repeatable, security-sensitive, or easy to get subtly wrong if
+improvised (catalog checks, DDL bans, param sanitization, auth headers).
+
+**When not:** a one-off judgment call with nothing to enforce in code.
+
+**How:** skill calls `node scripts/<name>.js --flags`, branches on the JSON result/exit code.
+
+**Example:** `run_api.js`, `run_db.js`, `session.js`, `preflight.js`/`init_run.js`/`merge_run.js`.
+
+**Pros/cons:** + consistent, testable, safe — but needs a script + test to write and maintain.
 
 ## Execution output layout
 
@@ -66,18 +68,23 @@ of `mkdir`s — see [testing.md](./testing.md) for how scripts like this get tes
 
 ## Dispatching the qa-executor subagent
 
-`agents/qa-executor.md` defines a subagent whose job is to execute **one** test spec file in its
-own `playwright-cli` session, never touching application code. `skills/browser-testing/SKILL.md`
-dispatches it two ways:
+**What:** `agents/qa-executor.md` — a subagent that runs **one** test spec file in its own
+`playwright-cli` session, never touching application code.
 
-- **Sequential mode** (default): a single `default` session, human approves each checkpoint.
-- **Parallel mode**: one `qa-executor` per spec file, all dispatched in a single batch so they
-  run concurrently (queued automatically past ~6–8 concurrent sessions), each writing only into
-  its own `browser-sessions/<session>/` folder. The main agent then merges their reports into
-  one `report.md` and `bugs/`.
+**Why:** isolates and parallelizes browser sessions without bloating the main agent's context.
 
-This is the concrete case of "dispatch a subagent for isolated/parallel work" from
-[Claude Code 101](./claude-code-101.md).
+**When:** parallel/autonomous mode — one spec file, one subagent, one session.
+
+**When not:** sequential mode — a single `default` session, no dispatch needed.
+
+**How:** the main agent batches dispatch (one call, many subagents), injecting each one's
+`SESSION`/`SESSION_DIR`/`TARGET_URL`/`TEST_SPEC`.
+
+**Example:** `browser-testing/SKILL.md`'s parallel mode — ~6–8 sessions run concurrently, the
+rest queue automatically; the main agent then merges every report into one `report.md`/`bugs/`.
+
+**Pros/cons:** + real concurrency, isolated evidence per session — but needs a merge step to
+combine results.
 
 ## Where to go next
 

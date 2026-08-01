@@ -4,54 +4,96 @@ Rules established across AgenTeX's build-out. Follow these for any new skill, sc
 
 ## Naming
 
-- Skills are **noun-style**: `browser-testing`, `ask-kb`, `optimize-login` — what the
-  capability *is*.
-- Commands are **verb-style**: `/execute-test`, `/estimate-story`, `/design-test` — what the
-  user is asking to *do*.
+**What:** skills = noun-style (`browser-testing`, `ask-kb`); commands = verb-style
+(`/execute-test`, `/design-test`).
+
+**Why:** the name alone signals capability vs. action.
+
+**When:** every new skill/command.
+
+**When not:** never — always applies.
+
+**How:** `skills/<noun>/`, `commands/<verb>.md`.
+
+**Example:** `ask-kb` (skill) + `/ask-kb` (command).
+
+**Pros/cons:** + predictable, scannable — no real downside.
 
 ## Never ship employer/project-specific data
 
-The plugin is published and installed by strangers — it must stay fully generic. Never commit,
-even "as an example":
+**What:** no real org/project/team names, work-item IDs, work emails, vendor names, or sprint
+naming — anywhere, even as "examples."
 
-- Real organization, project, or team names
-- Real work-item/story IDs
-- Real work email addresses
-- Real vendor/integration names
-- Real sprint naming or cadences
+**Why:** the plugin is public; strangers install it.
 
-Config that varies per install resolves from `AZURE_*` / `KB_*` keys in `.env`, or is asked for
-once per session — never hardcoded. Project-specific conventions (like a team's test-case
-naming scheme) live in the **consumer's own project**, e.g. `.agentex/test-template.md`,
-scaffolded from a template the plugin ships — the template is generic, the filled-in copy is
-the user's own and never leaves their project.
+**When:** always, in this repo.
+
+**When not:** never — real values live only in the consumer's own project (`.agentex/`,
+gitignored there), never here.
+
+**How:** resolve config from `AZURE_*`/`KB_*` env keys, or ask once per session.
+
+**Example:** `.agentex/test-template.md` — generic template shipped, filled in by the user
+later in their own project.
+
+**Pros/cons:** + plugin stays publishable/reusable — but you can't hardcode a convenient
+real-world shortcut.
 
 ## Secrets stay in the environment
 
-Catalog files (`integration/*_api.json`, `*_db.json`) and skill code hold **env-var names**
-only (e.g. `tokenEnv: "MY_SERVICE_TOKEN"`), never values. Values live in `.env` (gitignored in
-the consumer's project) or the shell environment, and are never printed or logged by any runner
-script.
+**What:** catalog files and skill code hold **env-var names** only (e.g.
+`tokenEnv: "MY_SERVICE_TOKEN"}`), never values.
+
+**Why:** catalog files get committed; `.env`/the shell environment does not.
+
+**When:** any secret — tokens, passwords, API keys.
+
+**When not:** never — no exceptions.
+
+**How:** catalog references the var name; the runner resolves it from `.env`/env at run time.
+
+**Example:** `run_api.js`'s bearer/basic auth resolution.
+
+**Pros/cons:** + secrets never leak into git — but one more layer of indirection to trace.
 
 ## Catalog-only execution
 
-`api:` / `db:` test steps execute **only** requests/queries the user has defined ahead of time
-in their project's `integration/` catalog. An agent never composes its own SQL or HTTP request
-for these steps — a step naming an undefined entry is `BLOCKED`, not improvised. This is
-enforced in the runner scripts (`run_api.js`, `run_db.js`), not left to agent discipline.
+**What:** `api:`/`db:` test steps run only requests/queries predefined in the user's
+`integration/` catalog.
+
+**Why:** an agent must never improvise SQL/HTTP against a real system.
+
+**When:** any test step that calls an API or database.
+
+**When not:** never — an entry that isn't cataloged is `BLOCKED`, not worked around.
+
+**How:** enforced in `run_api.js`/`run_db.js` (allowlist lookup), not left to agent discipline.
+
+**Example:** `api: sample-api.get-todo(id=1) → expect HTTP 200`.
+
+**Pros/cons:** + no runaway/unintended requests — but every call needs a catalog entry first.
 
 ## Shared-reference rule
 
-Don't centralize a reference file "just in case." Move it into a shared location only when a
-**second consumer** actually appears — e.g. `azure-devops-cli.md` moved into
-`azure-integration/references/` once a second skill needed it, making `azure-integration` the
-shared "Azure toolbox."
+**What:** centralize a reference file only once a **second consumer** needs it.
+
+**Why:** avoids speculative shared modules nobody else uses yet.
+
+**When:** a second skill needs the same reference content.
+
+**When not:** only one skill uses it so far — keep it local to that skill.
+
+**How:** move the file into the shared skill's `references/`, update both skills' pointers.
+
+**Example:** `azure-devops-cli.md` moved into `azure-integration/references/` once a second
+skill needed it.
+
+**Pros/cons:** + no premature abstraction — but a brief window where content looks duplicated
+right before the move.
 
 ## Deterministic scripts print one JSON line
 
-Any script a skill dispatches via Bash should print exactly one JSON line —
-`{"result":"PASS|FAIL|BLOCKED", ...}` — and exit 0/1/2 to match, so the calling skill can branch
-on structured output instead of parsing prose. See [architecture.md](./architecture.md) and the
-worked example in [adding-a-skill.md](./adding-a-skill.md).
+Covered as its own concept in [Architecture](./architecture.md#deterministic-scripts-do-the-mechanical-work);
+worked example in [Adding a Skill](./adding-a-skill.md).
 
 Next: [Testing](./testing.md) or [PR Workflow](./pr-workflow.md).
