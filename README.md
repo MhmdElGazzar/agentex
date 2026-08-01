@@ -62,12 +62,9 @@ Every run writes to a timestamped `executions/execu_<timestamp>/` folder — `re
 
 ## Contributing
 
-Contributions are welcome. Each capability is a self-contained skill under `skills/<name>/`
-(a `SKILL.md` orchestrator plus `references/`, `scripts/`, `templates/`), surfaced by a thin command
-in `commands/`. Open issues and PRs on the
-[GitHub repository](https://github.com/MhmdElGazzar/elgazzar-plugins). Keep the plugin generic — no
-employer- or project-specific data; use the neutral placeholders in [`.env.example`](./.env.example).
-Run the bundled script tests (e.g. `node skills/ask-kb/scripts/ask_kb.test.js`) before submitting.
+New to the codebase? **[docs/contributing/](./docs/contributing/README.md)** teaches Claude
+Code concepts from zero, AgenTeX's architecture, and walks through adding a skill end to end.
+Open issues and PRs on the [GitHub repository](https://github.com/MhmdElGazzar/agentex).
 
 ## Contributors
 
