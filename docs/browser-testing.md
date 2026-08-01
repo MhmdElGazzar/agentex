@@ -66,7 +66,7 @@ Type: form validation — NO real account is created (validation-only)
 - Treat any console error or failed request as a defect even if the UI looks fine.
 ```
 
-Start from the samples in [`test/suite1/`](../test/suite1/) — `/init-test` copies them into
+Start from the samples in [`test/suite1/`](../test/suite1/) (see [`test/README.md`](../test/README.md) for how specs are organized) — `/init-test` copies them into
 your project automatically. To add more coverage, drop another `.md` file next to it (e.g.
 `login.md`, `checkout.md`); in parallel mode each becomes its own session.
 
