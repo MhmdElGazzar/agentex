@@ -28,9 +28,9 @@ mid-test — all through the `az` CLI, with your confirmation before anything is
 Claude looks at your sprint's User Stories one at a time, proposes an hours estimate for each
 (based on scenario count, fields, validations, integrations involved) — and **only after you
 confirm that story** — creates 5 `[Testing]` tasks on it: Requirement Review, Test Creation,
-Test Execution, Bug Review & Retest, Automation. Nothing is created without your say-so, and it
-never processes more than one story at a time without checking in. Target specific stories with
-`/estimate-story 12345 12346`.
+Test Execution, Bug Review & Retest, Automation (iteration-inherited and assigned). Nothing is
+created without your say-so, and it never processes more than one story at a time without
+checking in. Target specific stories with `/estimate-story 12345 12346`.
 
 ## Walkthrough: designing test cases
 
@@ -39,10 +39,11 @@ never processes more than one story at a time without checking in. Target specif
 ```
 
 Claude reads the story's acceptance criteria, breaks them into test conditions, and creates
-titled test cases in ADO with structured steps — then links them **Tested By** the story, and
-finishes with a coverage check (did every acceptance criterion end up covered?). Your project's
-own conventions (persona, journey step map, setup steps, languages, extra categories) live in
-`.agentex/test-template.md`, scaffolded automatically the first time this runs.
+titled test cases in ADO with structured steps (Steps XML) — then links them **Tested By** the
+story, and finishes with a coverage check (did every acceptance criterion end up covered?).
+Your project's own conventions (persona, journey step map, setup steps, languages, extra
+categories) live in `.agentex/test-template.md`, scaffolded automatically the first time this
+runs.
 
 ## Walkthrough: filing a bug after a run
 
@@ -53,10 +54,11 @@ Once a test/regression run has turned up defects, ask Claude to file them. For e
 - attaches and validates the screenshot evidence (structural check + a vision pass),
 - optionally marks the related test case **Failed**,
 
-then shows you everything as **one** consolidated confirmation before writing anything. Every
-write is first shown as the exact `az` command it would run (a dry run) — nothing executes
-until you approve it. Configuration comes from the `AZURE_*` keys in `.env`; anything unset is
-asked, never guessed.
+then shows you everything as **one** consolidated confirmation before writing anything. Reads
+run freely without confirmation; every write is first shown as the exact `az` command it would
+run (a dry run) — nothing executes until you approve it, then it runs with the `--execute`
+flag. Configuration comes from the `AZURE_*` keys in `.env`; anything unset is asked, never
+guessed.
 
 ## Reaching Azure resources mid-run
 
