@@ -1,23 +1,21 @@
 # Ask the Knowledge Base
 
-Query your project's **KB Ask API** for natural-language, advisory context — during a test run via
-a `kb:` step, or standalone via the `/ask-kb` command.
+If your project has a knowledge base, you can ask it questions in plain language mid-test — or
+any time, standalone — instead of digging through docs yourself. The answer is **advisory
+only**: it helps you understand a flow, but it never counts as pass/fail proof. The call is explicit — Claude never queries the KB on its own initiative.
 
-## How it works
+## Walkthrough
 
-The agent sends your question to the KB Ask API and reads the answer back as **advisory context
-only**. It informs testing and navigation (e.g. "how does the checkout flow work?") but is **never**
-used as PASS/FAIL evidence. The call is explicit — the agent never queries the KB on its own initiative.
+Standalone, any time:
 
-The runner (`skills/ask-kb/scripts/ask_kb.js`):
+```
+/ask-kb how does the checkout flow work?
+```
 
-- Sends the `x-api-key` header from `KB_ASK_API_KEY` when set (never logged).
-- Maps `401` to a non-retryable `BLOCKED`; honors `Retry-After` on `429`.
-- Surfaces the API's `cached` flag and documents the `sonnet` model default.
+Claude sends your question to the project's KB Ask API and shows you the answer along with its
+sources. If the KB doesn't cover it, you're told plainly rather than given a guessed answer.
 
-## During a test run
-
-A scenario step beginning with `kb:` (or "ask the KB", "what does the knowledge base say") triggers it:
+During a test run, add a `kb:` line to a scenario:
 
 ```markdown
 ## Scenarios
@@ -25,16 +23,13 @@ A scenario step beginning with `kb:` (or "ask the KB", "what does the knowledge 
 2. **Verify** — apply the flow described above and confirm the discounted total in the UI.
 ```
 
-Target a specific KB project inline: `kb:acme-store: <question>`.
+A scenario step beginning with `kb:` (or "ask the KB", "what does the knowledge base say") triggers it. Claude asks the KB first (informing how it approaches scenario 2), then goes and verifies the
+actual behavior in the browser — the KB answer is context, not the check itself.
 
-## Standalone
+To target a specific project's KB: `/ask-kb acme-store: what fields are required at checkout?`
+or `kb:acme-store: <question>` inside a spec.
 
-```
-/ask-kb how does the checkout flow work?
-/ask-kb acme-store: what fields are required at checkout?
-```
-
-## Configuration
+## Quick reference
 
 | Variable | Purpose |
 |----------|---------|
@@ -42,8 +37,13 @@ Target a specific KB project inline: `kb:acme-store: <question>`.
 | `KB_PROJECT` | Default project id (e.g. `acme-store`); a `kb:<project>:` step overrides it. |
 | `KB_ASK_API_KEY` | Shared secret sent as `x-api-key` (required when the server has it set). |
 
-## Reference
+**Behind the scenes** (the runner, `skills/ask-kb/scripts/ask_kb.js`):
+- Sends `x-api-key` from `KB_ASK_API_KEY` when set (never logged).
+- A `401` is reported as `BLOCKED` (not retried); `429` responses honor `Retry-After`
+  automatically.
+- The response's `cached` flag is surfaced; the API's default model is `sonnet`.
 
+**Reference:**
 - Skill: `skills/ask-kb/SKILL.md`
 - Command: `commands/ask-kb.md`
 - API contract & curl fallback: `skills/ask-kb/references/kb-ask-api.md`

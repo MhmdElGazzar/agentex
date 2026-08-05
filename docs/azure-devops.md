@@ -1,81 +1,80 @@
 # Azure DevOps QA
 
-Skills that bring AgenTeX into Azure DevOps: **QA effort estimation**, **test-case design**, and
-**bug filing** — plus an **Azure resource** helper for reaching cloud resources mid-run. All go
-through the `az` CLI.
+If your team tracks work in Azure DevOps, AgenTeX can estimate QA effort, generate test cases
+from a story's acceptance criteria, file bugs it finds during a run, and reach Azure resources
+mid-test — all through the `az` CLI, with your confirmation before anything is written.
 
-## Setup (one-time)
+## One-time setup
 
-1. Install `az` (see `skills/azure-integration/references/azure-cli.md`), then add the DevOps extension:
+1. Install `az` (see `skills/azure-integration/references/azure-cli.md`), then add the DevOps
+   extension:
    ```bash
    az extension add --name azure-devops
    ```
-2. Fill the `AZURE_*` keys in `.env` — `AZURE_URL` (org URL), `AZURE_PROJECT`, `AZURE_TEAM`, `AZURE_ASSIGNEE`.
+2. Fill the `AZURE_*` keys in `.env` — `AZURE_URL` (org URL), `AZURE_PROJECT`, `AZURE_TEAM`,
+   `AZURE_ASSIGNEE`.
 3. Authenticate: `az login`, or for non-interactive use export a PAT in your shell:
    ```bash
    export AZURE_DEVOPS_EXT_PAT=<your-pat>
    ```
-   The agent never prints or passes the PAT.
+   Claude never prints or passes the PAT anywhere.
 
-## Estimate QA effort — `/estimate-story`
-
-Analyzes your sprint's User Stories, proposes an hours estimate per story (based on scenarios,
-fields, validations, integrations…), and — **after you confirm each one** — creates 5 `[Testing]`
-tasks on it, iteration-inherited and assigned:
-
-> Requirement Review · Test Creation · Test Execution · Bug Review & Retest · Automation
+## Walkthrough: estimating a sprint
 
 ```
-/estimate-story                 # the current sprint's stories
-/estimate-story 12345 12346     # specific stories
+/estimate-story
 ```
 
-The agent processes **one story at a time** and never creates tasks without your confirmation.
+Claude looks at your sprint's User Stories one at a time, proposes an hours estimate for each
+(based on scenario count, fields, validations, integrations involved) — and **only after you
+confirm that story** — creates 5 `[Testing]` tasks on it, all iteration-inherited and assigned:
+Requirement Review, Test Creation, Test Execution, Bug Review & Retest, Automation. Nothing is
+created without your say-so, and it never processes more than one story at a time without
+checking in. Target specific stories with `/estimate-story 12345 12346`.
 
-- Skill: `skills/task-estimation/SKILL.md`
-
-## Design test cases — `/design-test`
-
-Analyzes a story's acceptance criteria into test conditions, maps them to titled test cases, creates
-them in ADO with structured steps (Steps XML), and links them **Tested By** to the story — ending
-with a coverage check.
+## Walkthrough: designing test cases
 
 ```
 /design-test 12345
 ```
 
-Project conventions (persona, journey step map, setup steps, languages, extra categories) live in
-your project at `.agentex/test-template.md`, scaffolded from the bundled template on first run.
+Claude reads the story's acceptance criteria, breaks them into test conditions, and creates
+titled test cases in ADO with structured steps (Steps XML) — then links them **Tested By** the
+story, and finishes with a coverage check (did every acceptance criterion end up covered?).
+Your project's own conventions (persona, journey step map, setup steps, languages, extra
+categories) live in `.agentex/test-template.md`, scaffolded automatically the first time this
+runs.
 
-- Skill: `skills/test-design/SKILL.md`
-- Mechanics: `skills/test-design/references/test-case-mechanics.md`
+## Walkthrough: filing a bug after a run
 
-## File bugs found during a run — `bug-report-azure`
+Once a test/regression run has turned up defects, ask Claude to file them as Azure DevOps
+**Bugs**. For each one it:
+- suggests a **severity + priority** based on what was observed (you pick the final values),
+- links it to the parent **User Story** (the only relation it ever adds, and only after
+  validating the story exists),
+- attaches and validates the screenshot evidence (structural check + a vision pass),
+- optionally marks the related test case **Failed**,
 
-After a test/regression run turns up defects, this skill files them as Azure DevOps **Bugs** via the
-`az` CLI — with one human confirmation before anything is written. For each selected defect it:
+then shows you everything as **one** consolidated confirmation before writing anything. Reads
+run freely without confirmation; every write is first shown as the exact `az` command it would
+run (a dry run) — nothing executes until you approve it, then it runs with the `--execute`
+flag. Configuration comes from the `AZURE_*` keys in `.env`; anything unset is asked, never
+guessed.
 
-- recommends a **severity + priority** from the observed impact (you choose the final values),
-- links the bug to its parent **User Story** (validated first — the only relation it ever adds),
-- validates screenshots (structural check + a vision pass) and **attaches** them,
-- optionally records a **Failed** outcome on the related test case,
+## Reaching Azure resources mid-run
 
-all rolled into **one** consolidated confirmation. Reads run freely; every write is a dry run that
-prints the exact `az` command until you approve, then executes with `--execute`. Config comes from
-the `AZURE_*` keys in `.env`; anything unset is asked, never guessed.
+Beyond DevOps, Claude can also read Azure resources directly during a run — logging in, discovering
+resources, and checking a deployment, tailing App Service logs, reading a Storage blob or Key Vault
+secret, getting AKS credentials — through the same `az` CLI, e.g. "check if the latest deployment
+succeeded" or "tail the app's logs."
 
-- Skill: `skills/bug-report-azure/SKILL.md`
-- Reference: `skills/bug-report-azure/references/azure-devops.md`
+## Quick reference
 
-## Reach Azure resources mid-run
+| Capability | Skill | Reference |
+|---|---|---|
+| Estimate QA effort (`/estimate-story`) | `skills/task-estimation/SKILL.md` | — |
+| Design test cases (`/design-test`) | `skills/test-design/SKILL.md` | `skills/test-design/references/test-case-mechanics.md` |
+| File bugs (`bug-report-azure`) | `skills/bug-report-azure/SKILL.md` | `skills/bug-report-azure/references/azure-devops.md` |
+| Azure resources | `skills/azure-integration/SKILL.md` | `skills/azure-integration/references/azure-cli.md`, `azure-devops-cli.md` |
 
-The `azure-integration` skill lets a test/QA run reach Azure via `az` — login/auth, discovery, and
-reading App Service, Storage, Key Vault, and AKS resources (e.g. verify a deployment, tail app logs,
-read a blob/secret, get AKS credentials).
-
-- Skill: `skills/azure-integration/SKILL.md`
-- Reference: `skills/azure-integration/references/azure-cli.md`, `azure-devops-cli.md`
-
-## Reference
-
-- Configuration: see [configuration](./configuration.md)
+Configuration: see [configuration](./configuration.md)

@@ -33,7 +33,7 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 | **Browser testing** | An agent plans scenarios, drives a real `playwright-cli` browser, screenshots each one, and reports defects — sequential (approve each step) or parallel (one `qa-executor` subagent per spec file). | [browser-testing](./docs/browser-testing.md) |
 | **API & DB steps** | `api:` / `db:` scenario steps run **only** the named, parameterized requests/queries in your `integration/` catalog — the agent never composes its own SQL or HTTP; DDL is refused. | [api-db-steps](./docs/api-db-steps.md) |
 | **Ask the KB** | `kb:` steps (or `/ask-kb`) query your project's KB Ask API for advisory context — informs testing, **never** used as PASS/FAIL evidence. | [ask-kb](./docs/ask-kb.md) |
-| **Optimize login** | Pay a web app's login once per session: drive it live, verify by landmark (never by URL), save the browser session, and reload it into a fresh browser to continue. | [`skills/optimize-login/SKILL.md`](./skills/optimize-login/SKILL.md) |
+| **Optimize login** | Pay a web app's login once per session: drive it live, verify by landmark (never by URL), save the browser session, and reload it into a fresh browser to continue. | [optimize-login](./docs/optimize-login.md) |
 | **Figma designs** | Read a Figma design via the Figma REST API → user stories & test conditions grounded in the screen's real (effectively-visible) text; render a frame as a baseline and compare it against the live build. Optionally sync design↔code via the official `@figma/code-connect` CLI. | [`skills/figma-integration/SKILL.md`](./skills/figma-integration/SKILL.md) |
 | **Azure DevOps planning** | `/estimate-story` estimates QA effort and creates 5 `[Testing]` tasks per story; `/design-test` turns story ACs into linked test cases — both via the `az` CLI, with confirmation. | [azure-devops](./docs/azure-devops.md) |
 | **Azure DevOps bug filing** | After a run, `bug-report-azure` files found defects as ADO **Bugs** via the `az` CLI — recommends severity/priority, links each to its parent User Story, validates & attaches screenshots, optionally fails the related test case; all behind one confirmation. | [azure-devops](./docs/azure-devops.md) |
@@ -63,12 +63,9 @@ Every run writes to a timestamped `executions/execu_<timestamp>/` folder — `re
 
 ## Contributing
 
-Contributions are welcome. Each capability is a self-contained skill under `skills/<name>/`
-(a `SKILL.md` orchestrator plus `references/`, `scripts/`, `templates/`), surfaced by a thin command
-in `commands/`. Open issues and PRs on the
-[GitHub repository](https://github.com/MhmdElGazzar/elgazzar-plugins). Keep the plugin generic — no
-employer- or project-specific data; use the neutral placeholders in [`.env.example`](./.env.example).
-Run the bundled script tests (e.g. `node skills/ask-kb/scripts/ask_kb.test.js`) before submitting.
+New to the codebase? **[docs/contributing/](./docs/contributing/README.md)** teaches Claude
+Code concepts from zero, AgenTeX's architecture, and walks through adding a skill end to end.
+Open issues and PRs on the [GitHub repository](https://github.com/MhmdElGazzar/agentex).
 
 ## Contributors
 
