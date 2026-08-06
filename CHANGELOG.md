@@ -2,6 +2,24 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.12.0] — 2026-08-06
+### Added
+- **Interactive Setup Wizard** — `/init-test` now launches a local web-based setup wizard
+  (`http://127.0.0.1:7373/setup`) immediately after scaffolding files. A dark-mode RTL
+  Arabic UI guides the user through 8 ordered steps: project basics, test environment,
+  test users (dynamic list), Azure DevOps, DB connection, API integration, AI file import
+  (BRD/PDF/Word → Claude extracts fields automatically), and a review & save screen.
+  Results are written directly to `config/project.json` and `environments/<env>.json`.
+- `scripts/wizard/schema.json` — portable wizard step/field definition shared between
+  the local plugin server and the planned website wizard (Phase 2).
+- `scripts/wizard/engine.js` — config file mapper and validator with no external
+  dependencies; usable by both the local server and a future web app.
+- `scripts/wizard/ui.html` — self-contained wizard UI supporting `mode=local` (writes
+  files via local server) and `mode=web` (downloads JSON files as a ZIP — Phase 2).
+- `scripts/wizard/server.js` — zero-dependency Node.js HTTP server that serves the
+  wizard UI, handles save/schema/config/extract/done API endpoints, and opens the
+  browser automatically (Windows/macOS/Linux).
+
 ## [0.11.0] — 2026-08-06
 ### Added
 - **Project config files** — settings split out of `.env` into their proper homes: new
