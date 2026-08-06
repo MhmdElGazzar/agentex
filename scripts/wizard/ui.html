@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AgenTeX — إعداد المشروع</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+/* ── Reset & Tokens ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-0:      #0d0f14;
+  --bg-1:      #13161e;
+  --bg-2:      #1a1e2a;
+  --bg-3:      #222636;
+  --border:    rgba(255,255,255,.07);
+  --border-hi: rgba(255,255,255,.13);
+  --accent:    #6c63ff;
+  --accent-hi: #8b85ff;
+  --accent-glow: rgba(108,99,255,.25);
+  --success:   #22c55e;
+  --warning:   #f59e0b;
+  --danger:    #ef4444;
+  --text-1:    #f0f2ff;
+  --text-2:    #a0a8c0;
+  --text-3:    #606880;
+  --radius:    12px;
+  --radius-lg: 18px;
+  --font:      'Cairo', sans-serif;
+  --mono:      'JetBrains Mono', monospace;
+  --transition: 200ms cubic-bezier(.4,0,.2,1);
+}
+
+html { font-family: var(--font); background: var(--bg-0); color: var(--text-1); }
+body { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.app { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.header {
+  padding: 18px 32px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(13,15,20,.8);
+  backdrop-filter: blur(12px);
+  display: flex; align-items: center; gap: 16px;
+  position: sticky; top: 0; z-index: 100;
+}
+.header-logo { display: flex; align-items: center; gap: 10px; }
+.logo-mark {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; box-shadow: 0 0 20px var(--accent-glow);
+}
+.logo-name { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+.logo-sub  { font-size: 12px; color: var(--text-3); margin-top: -2px; }
+.header-spacer { flex: 1; }
+.step-counter { font-size: 13px; color: var(--text-2); }
+.step-counter span { color: var(--text-1); font-weight: 600; }
+
+/* ── Progress Track ─────────────────────────────────────────────────────── */
+.progress-wrap {
+  padding: 0 32px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.progress-wrap::-webkit-scrollbar { display: none; }
+
+.steps-track {
+  display: flex; align-items: center; gap: 0;
+  padding: 20px 0; min-width: max-content;
+}
+.step-node {
+  display: flex; flex-direction: column; align-items: center;
+  cursor: pointer; gap: 8px; position: relative;
+}
+.step-node + .step-node::before {
+  content: '';
+  position: absolute; right: 100%; top: 20px;
+  width: 40px; height: 2px;
+  background: var(--border-hi);
+  transition: background var(--transition);
+}
+.step-node.done + .step-node::before { background: var(--accent); }
+
+.step-bubble {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700;
+  background: var(--bg-3); border: 2px solid var(--border-hi);
+  transition: all var(--transition); position: relative;
+}
+.step-node.active .step-bubble {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 18px var(--accent-glow);
+  transform: scale(1.12);
+}
+.step-node.done .step-bubble {
+  background: var(--bg-3); border-color: var(--success); color: var(--success);
+}
+.step-node.optional .step-bubble { opacity: .7; }
+.step-label { font-size: 11px; color: var(--text-3); white-space: nowrap; text-align: center; max-width: 72px; }
+.step-node.active .step-label { color: var(--text-1); font-weight: 600; }
+.step-node.done .step-label { color: var(--text-2); }
+.step-spacer { width: 40px; flex-shrink: 0; }
+
+/* ── Main Content ───────────────────────────────────────────────────────── */
+.main { display: flex; justify-content: center; align-items: flex-start; padding: 40px 24px; }
+.panel {
+  width: 100%; max-width: 680px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,.4);
+}
+
+/* ── Panel Header ───────────────────────────────────────────────────────── */
+.panel-head {
+  padding: 28px 32px 24px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--bg-2), var(--bg-1));
+  display: flex; align-items: flex-start; gap: 16px;
+}
+.panel-icon { font-size: 36px; line-height: 1; flex-shrink: 0; margin-top: 2px; }
+.panel-title { font-size: 22px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+.panel-desc { font-size: 14px; color: var(--text-2); line-height: 1.6; }
+.optional-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 20px;
+  background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.3);
+  font-size: 11px; color: var(--warning); font-weight: 600;
+  margin-right: 10px; vertical-align: middle;
+}
+
+/* ── Panel Body ─────────────────────────────────────────────────────────── */
+.panel-body { padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; }
+
+/* ── Field ──────────────────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field-label {
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+  display: flex; align-items: center; gap: 6px;
+}
+.field-label .req { color: var(--danger); font-size: 11px; }
+.field-hint { font-size: 12px; color: var(--text-3); margin-top: -4px; }
+
+.field input, .field select, .field textarea {
+  width: 100%; padding: 12px 16px;
+  background: var(--bg-2); color: var(--text-1);
+  border: 1.5px solid var(--border-hi);
+  border-radius: var(--radius); font-family: var(--font); font-size: 14px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  outline: none;
+}
+.field input::placeholder, .field textarea::placeholder { color: var(--text-3); }
+.field input:focus, .field select:focus, .field textarea:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.field input[type="password"] { font-family: var(--mono); letter-spacing: 2px; }
+.field select { appearance: none; cursor: pointer; }
+.field select option { background: var(--bg-2); }
+.field input[type="number"] { -moz-appearance: textfield; }
+
+/* ── Two-column grid ─────────────────────────────────────────────────────── */
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 520px) { .field-grid { grid-template-columns: 1fr; } }
+
+/* ── Dynamic List (Users) ───────────────────────────────────────────────── */
+.user-list { display: flex; flex-direction: column; gap: 12px; }
+.user-card {
+  background: var(--bg-2); border: 1px solid var(--border-hi);
+  border-radius: var(--radius); padding: 16px; position: relative;
+}
+.user-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+}
+.user-card-title { font-size: 13px; font-weight: 600; color: var(--text-1); }
+.btn-remove-user {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.25);
+  color: var(--danger); cursor: pointer; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all var(--transition);
+}
+.btn-remove-user:hover { background: rgba(239,68,68,.25); }
+.btn-add-user {
+  padding: 10px 18px; border-radius: var(--radius);
+  background: rgba(108,99,255,.1); border: 1.5px dashed rgba(108,99,255,.4);
+  color: var(--accent); font-family: var(--font); font-size: 14px;
+  cursor: pointer; transition: all var(--transition); font-weight: 600;
+  display: flex; align-items: center; gap: 8px; width: fit-content;
+}
+.btn-add-user:hover { background: rgba(108,99,255,.18); border-color: var(--accent); }
+
+/* ── AI Import Step ─────────────────────────────────────────────────────── */
+.dropzone {
+  border: 2px dashed rgba(108,99,255,.4);
+  border-radius: var(--radius-lg);
+  padding: 48px 24px; text-align: center;
+  transition: all var(--transition); cursor: pointer;
+  background: rgba(108,99,255,.04);
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color: var(--accent); background: rgba(108,99,255,.1);
+}
+.dropzone-icon { font-size: 48px; margin-bottom: 16px; }
+.dropzone-title { font-size: 16px; font-weight: 700; color: var(--text-1); margin-bottom: 8px; }
+.dropzone-sub { font-size: 13px; color: var(--text-2); margin-bottom: 20px; }
+.dropzone-types { font-size: 11px; color: var(--text-3); font-family: var(--mono); }
+
+.file-chosen {
+  display: none;
+  background: var(--bg-2); border: 1px solid var(--success);
+  border-radius: var(--radius); padding: 16px 20px;
+  flex-direction: column; gap: 12px;
+}
+.file-chosen.show { display: flex; }
+.file-info { display: flex; align-items: center; gap: 12px; }
+.file-icon { font-size: 28px; }
+.file-name { font-size: 14px; font-weight: 600; color: var(--text-1); }
+.file-size { font-size: 12px; color: var(--text-3); }
+.btn-extract {
+  padding: 12px 24px; border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  border: none; color: white; font-family: var(--font); font-size: 14px;
+  font-weight: 700; cursor: pointer; transition: opacity var(--transition);
+  display: flex; align-items: center; gap: 8px;
+}
+.btn-extract:hover { opacity: .88; }
+.btn-extract:disabled { opacity: .45; cursor: not-allowed; }
+
+.extract-result {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  display: none; flex-direction: column; gap: 12px;
+}
+.extract-result.show { display: flex; }
+.extract-result-title { font-size: 13px; font-weight: 600; color: var(--success); display: flex; align-items: center; gap: 6px; }
+.extract-preview { font-family: var(--mono); font-size: 12px; color: var(--text-2); line-height: 1.6; max-height: 200px; overflow-y: auto; }
+
+/* ── Review Step ────────────────────────────────────────────────────────── */
+.review-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.review-tab {
+  padding: 8px 18px; border-radius: var(--radius);
+  background: var(--bg-2); border: 1px solid var(--border-hi);
+  color: var(--text-2); font-family: var(--font); font-size: 13px;
+  cursor: pointer; transition: all var(--transition); font-weight: 600;
+}
+.review-tab.active { background: var(--accent); border-color: var(--accent); color: white; }
+.code-block {
+  background: var(--bg-0); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px;
+  font-family: var(--mono); font-size: 12px; color: #a8d5a2;
+  line-height: 1.7; overflow: auto; max-height: 320px;
+  white-space: pre;
+}
+.review-actions { display: flex; gap: 10px; }
+.btn-copy {
+  padding: 9px 18px; border-radius: var(--radius);
+  background: var(--bg-3); border: 1px solid var(--border-hi);
+  color: var(--text-1); font-family: var(--font); font-size: 13px;
+  cursor: pointer; transition: all var(--transition); font-weight: 600;
+}
+.btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Footer Nav ─────────────────────────────────────────────────────────── */
+.panel-foot {
+  padding: 20px 32px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg-2);
+}
+.foot-left { flex: 1; display: flex; gap: 10px; }
+
+.btn {
+  padding: 12px 24px; border-radius: var(--radius);
+  font-family: var(--font); font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: all var(--transition);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-ghost { background: transparent; border: 1.5px solid var(--border-hi); color: var(--text-2); }
+.btn-ghost:hover { border-color: var(--border-hi); color: var(--text-1); background: var(--bg-3); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  border: none; color: white;
+  box-shadow: 0 4px 16px rgba(108,99,255,.35);
+}
+.btn-primary:hover { box-shadow: 0 6px 24px rgba(108,99,255,.5); transform: translateY(-1px); }
+.btn-primary:active { transform: none; }
+.btn-success { background: linear-gradient(135deg, #16a34a, #15803d); border: none; color: white; }
+.btn-skip {
+  background: transparent; border: none;
+  color: var(--text-3); font-family: var(--font); font-size: 13px;
+  cursor: pointer; padding: 8px 4px; transition: color var(--transition);
+}
+.btn-skip:hover { color: var(--text-2); }
+
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: var(--bg-2); border: 1px solid var(--border-hi);
+  border-radius: var(--radius); padding: 12px 20px;
+  font-size: 14px; color: var(--text-1);
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  transition: transform 300ms cubic-bezier(.34,1.56,.64,1);
+  z-index: 1000; display: flex; align-items: center; gap: 10px;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.success { border-color: rgba(34,197,94,.4); }
+.toast.error   { border-color: rgba(239,68,68,.4); }
+
+/* ── Loading Spinner ────────────────────────────────────────────────────── */
+.spinner {
+  width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.2);
+  border-top-color: white; border-radius: 50%;
+  animation: spin .6s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.panel-body { animation: fadeSlide .25s ease; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-logo">
+      <div class="logo-mark">⚡</div>
+      <div>
+        <div class="logo-name">AgenTeX</div>
+        <div class="logo-sub">إعداد المشروع</div>
+      </div>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="step-counter">الخطوة <span id="hdr-current">1</span> من <span id="hdr-total">8</span></div>
+  </header>
+
+  <!-- Steps Track -->
+  <div class="progress-wrap">
+    <div class="steps-track" id="steps-track"></div>
+  </div>
+
+  <!-- Main Panel -->
+  <main class="main">
+    <div class="panel">
+      <div class="panel-head" id="panel-head">
+        <div class="panel-icon" id="panel-icon">🏗️</div>
+        <div>
+          <div class="panel-title" id="panel-title">بيانات المشروع</div>
+          <div class="panel-desc" id="panel-desc">المعلومات الأساسية عن مشروعك</div>
+        </div>
+      </div>
+      <div class="panel-body" id="panel-body"></div>
+      <div class="panel-foot" id="panel-foot"></div>
+    </div>
+  </main>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+// mode: "local" → saves to local server | "web" → downloads ZIP
+const MODE = window.WIZARD_MODE || 'local';
+const API  = window.WIZARD_API  || '';   // base URL for local mode
+
+// ── State ─────────────────────────────────────────────────────────────────
+let schema   = null;
+let answers  = {};
+let current  = 0;
+let users    = [
+  { handle: 'valid_user',   phone: '', role: 'customer' },
+  { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
+];
+let reviewTab = 0;
+let extractedData = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  schema = await loadSchema();
+  document.getElementById('hdr-total').textContent = schema.steps.length;
+  buildTrack();
+  renderStep();
+}
+
+async function loadSchema() {
+  if (MODE === 'local') {
+    const r = await fetch(`${API}/api/schema`);
+    return r.json();
+  } else {
+    // In web mode, schema is inlined at build time via window.WIZARD_SCHEMA
+    return window.WIZARD_SCHEMA;
+  }
+}
+
+// ── Progress Track ────────────────────────────────────────────────────────
+function buildTrack() {
+  const track = document.getElementById('steps-track');
+  track.innerHTML = '';
+  schema.steps.forEach((step, i) => {
+    if (i > 0) {
+      const sp = document.createElement('div');
+      sp.className = 'step-spacer';
+      track.appendChild(sp);
+    }
+    const node = document.createElement('div');
+    node.className = `step-node${i === current ? ' active' : ''}${step.optional ? ' optional' : ''}`;
+    node.dataset.idx = i;
+    node.innerHTML = `
+      <div class="step-bubble">${i < current ? '✓' : step.icon || (i+1)}</div>
+      <div class="step-label">${step.title}</div>`;
+    node.addEventListener('click', () => { if (i < current || isDone(i)) goTo(i); });
+    if (i < current) node.classList.add('done');
+    track.appendChild(node);
+  });
+}
+
+function isDone(i) {
+  // A step is accessible if it's before current or equals current
+  return i <= current;
+}
+
+// ── Render Step ───────────────────────────────────────────────────────────
+function renderStep() {
+  const step = schema.steps[current];
+  document.getElementById('hdr-current').textContent = current + 1;
+  document.getElementById('panel-icon').textContent  = step.icon || '📝';
+  document.getElementById('panel-title').textContent = step.title;
+  document.getElementById('panel-desc').innerHTML    =
+    step.optional
+      ? `${step.description} <span class="optional-badge">⚡ اختياري</span>`
+      : step.description;
+
+  buildTrack();
+
+  const body = document.getElementById('panel-body');
+  body.innerHTML = '';
+
+  if (step.type === 'ai-extract') {
+    body.appendChild(renderAIStep(step));
+  } else if (step.type === 'review') {
+    body.appendChild(renderReviewStep());
+  } else if (step.type === 'dynamic-list') {
+    body.appendChild(renderUsersStep(step));
+  } else {
+    renderFields(step, body);
+  }
+
+  renderFooter(step);
+}
+
+// ── Render Fields (normal steps) ──────────────────────────────────────────
+function renderFields(step, container) {
+  if (!step.fields) return;
+
+  const needsGrid = (step.fields.length >= 4) && step.id !== 'test-users';
+  const wrap = needsGrid ? Object.assign(document.createElement('div'), { className: 'field-grid' }) : container;
+  if (needsGrid) container.appendChild(wrap);
+
+  step.fields.forEach(field => {
+    const div = document.createElement('div');
+    div.className = 'field';
+    div.innerHTML = `
+      <label class="field-label">
+        ${field.label}
+        ${field.required ? '<span class="req">*</span>' : ''}
+      </label>
+      ${field.hint ? `<div class="field-hint">${field.hint}</div>` : ''}
+      ${buildInput(field)}`;
+    const input = div.querySelector('input,select,textarea');
+    if (input) {
+      if (answers[field.key] !== undefined) input.value = answers[field.key];
+      else if (field.default !== undefined) input.value = field.default;
+      input.addEventListener('change', () => { answers[field.key] = input.value; });
+      input.addEventListener('input',  () => { answers[field.key] = input.value; });
+    }
+    wrap.appendChild(div);
+  });
+}
+
+function buildInput(field) {
+  if (field.type === 'select') {
+    const opts = field.options.map(o =>
+      `<option value="${o.value}">${o.label}</option>`).join('');
+    return `<select id="f-${field.key}">${opts}</select>`;
+  }
+  const type = field.type === 'password' ? 'password'
+             : field.type === 'email'    ? 'email'
+             : field.type === 'number'   ? 'number'
+             : field.type === 'url'      ? 'url'
+             : 'text';
+  return `<input id="f-${field.key}" type="${type}" placeholder="${field.placeholder || ''}" />`;
+}
+
+// ── Render Users (dynamic list) ───────────────────────────────────────────
+function renderUsersStep(step) {
+  answers['users'] = users;
+  const wrap = document.createElement('div');
+  wrap.className = 'user-list';
+  wrap.id = 'user-list';
+  renderUserCards(wrap);
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-add-user';
+  addBtn.innerHTML = '+ إضافة مستخدم';
+  addBtn.onclick = () => {
+    users.push({ handle: '', phone: '', role: '' });
+    answers['users'] = users;
+    renderUserCards(document.getElementById('user-list'));
+  };
+
+  const outer = document.createElement('div');
+  outer.style.display = 'flex'; outer.style.flexDirection = 'column'; outer.style.gap = '16px';
+  outer.appendChild(wrap);
+  outer.appendChild(addBtn);
+  return outer;
+}
+
+function renderUserCards(wrap) {
+  wrap.innerHTML = '';
+  users.forEach((user, idx) => {
+    const card = document.createElement('div');
+    card.className = 'user-card';
+    card.innerHTML = `
+      <div class="user-card-head">
+        <div class="user-card-title">👤 مستخدم ${idx + 1}</div>
+        ${users.length > 1 ? `<button class="btn-remove-user" data-idx="${idx}">✕</button>` : ''}
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label class="field-label">المعرّف <span class="req">*</span></label>
+          <input type="text" placeholder="valid_user" value="${user.handle || ''}"
+            oninput="users[${idx}].handle=this.value;answers['users']=users" />
+        </div>
+        <div class="field">
+          <label class="field-label">الدور</label>
+          <input type="text" placeholder="customer" value="${user.role || ''}"
+            oninput="users[${idx}].role=this.value;answers['users']=users" />
+        </div>
+        <div class="field">
+          <label class="field-label">الهاتف</label>
+          <input type="text" placeholder="0550000001" value="${user.phone || ''}"
+            oninput="users[${idx}].phone=this.value;answers['users']=users" />
+        </div>
+        <div class="field">
+          <label class="field-label">البريد الإلكتروني</label>
+          <input type="email" placeholder="test@example.com" value="${user.email || ''}"
+            oninput="users[${idx}].email=this.value;answers['users']=users" />
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label class="field-label">ملاحظات</label>
+          <input type="text" placeholder="for negative login scenarios" value="${user.notes || ''}"
+            oninput="users[${idx}].notes=this.value;answers['users']=users" />
+        </div>
+      </div>`;
+    card.querySelector('.btn-remove-user')?.addEventListener('click', () => {
+      users.splice(idx, 1);
+      answers['users'] = users;
+      renderUserCards(document.getElementById('user-list'));
+    });
+    wrap.appendChild(card);
+  });
+}
+
+// ── Render AI Import Step ─────────────────────────────────────────────────
+function renderAIStep(step) {
+  const wrap = document.createElement('div');
+  wrap.style.display = 'flex'; wrap.style.flexDirection = 'column'; wrap.style.gap = '16px';
+  wrap.innerHTML = `
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone-icon">📄</div>
+      <div class="dropzone-title">اسحب الملف هنا أو انقر للاختيار</div>
+      <div class="dropzone-sub">سيستخلص Claude البيانات تلقائياً</div>
+      <div class="dropzone-types">.md · .txt · .pdf · .docx · .doc</div>
+      <input type="file" id="file-input" accept=".md,.txt,.pdf,.docx,.doc"
+        style="display:none" />
+    </div>
+    <div class="file-chosen" id="file-chosen">
+      <div class="file-info">
+        <div class="file-icon">📋</div>
+        <div>
+          <div class="file-name" id="file-name">—</div>
+          <div class="file-size" id="file-size">—</div>
+        </div>
+      </div>
+      <button class="btn-extract" id="btn-extract">
+        <span>🤖 استخلاص البيانات بالـ AI</span>
+      </button>
+    </div>
+    <div class="extract-result" id="extract-result">
+      <div class="extract-result-title">✅ تم الاستخلاص — راجع البيانات:</div>
+      <div class="extract-preview" id="extract-preview"></div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" id="btn-apply">تطبيق البيانات</button>
+        <button class="btn btn-ghost" id="btn-retry">إعادة الاختيار</button>
+      </div>
+    </div>`;
+
+  // Wire events after insertion
+  setTimeout(() => {
+    const dz  = document.getElementById('dropzone');
+    const inp = document.getElementById('file-input');
+    const fc  = document.getElementById('file-chosen');
+    const er  = document.getElementById('extract-result');
+
+    dz.addEventListener('click', () => inp.click());
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.classList.remove('drag-over');
+      handleFile(e.dataTransfer.files[0]);
+    });
+    inp.addEventListener('change', () => handleFile(inp.files[0]));
+
+    document.getElementById('btn-extract')?.addEventListener('click', runExtract);
+    document.getElementById('btn-apply')?.addEventListener('click', applyExtracted);
+    document.getElementById('btn-retry')?.addEventListener('click', () => {
+      fc.classList.remove('show'); er.classList.remove('show');
+      dz.style.display = '';
+    });
+  }, 50);
+
+  return wrap;
+}
+
+function handleFile(file) {
+  if (!file) return;
+  document.getElementById('file-name').textContent = file.name;
+  document.getElementById('file-size').textContent = formatBytes(file.size);
+  document.getElementById('file-chosen').classList.add('show');
+  document.getElementById('dropzone').style.display = 'none';
+  document.getElementById('extract-result').classList.remove('show');
+  window._pendingFile = file;
+}
+
+async function runExtract() {
+  const btn = document.getElementById('btn-extract');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div><span>جاري الاستخلاص...</span>';
+  try {
+    if (MODE === 'local') {
+      const fd = new FormData();
+      fd.append('file', window._pendingFile);
+      const r = await fetch(`${API}/api/extract`, { method: 'POST', body: fd });
+      extractedData = await r.json();
+    } else {
+      // In web mode: read file client-side, call Claude API
+      extractedData = await extractClientSide(window._pendingFile);
+    }
+    document.getElementById('extract-preview').textContent =
+      JSON.stringify(extractedData, null, 2);
+    document.getElementById('extract-result').classList.add('show');
+  } catch(e) {
+    showToast('❌ فشل الاستخلاص: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>🤖 استخلاص البيانات بالـ AI</span>';
+  }
+}
+
+async function extractClientSide(file) {
+  // Web mode: read as text (for .md/.txt) — PDF/DOCX need server in real impl
+  const text = await file.text();
+  // Placeholder: return raw text preview (real impl would call Claude API)
+  return { _raw: text.substring(0, 500) + (text.length > 500 ? '...' : '') };
+}
+
+function applyExtracted() {
+  if (!extractedData) return;
+  // Merge extracted into answers
+  function flatMerge(obj, prefix='') {
+    for (const [k,v] of Object.entries(obj || {})) {
+      const key = prefix ? `${prefix}.${k}` : k;
+      if (v && typeof v === 'object' && !Array.isArray(v)) { flatMerge(v, key); }
+      else if (!answers[key]) { answers[key] = v; }
+    }
+  }
+  flatMerge(extractedData);
+  if (Array.isArray(extractedData.users) && extractedData.users.length > 0) {
+    users = extractedData.users;
+    answers['users'] = users;
+  }
+  showToast('✅ تم تطبيق البيانات المستخلصة');
+  next();
+}
+
+// ── Render Review Step ────────────────────────────────────────────────────
+function renderReviewStep() {
+  const { projectConfig, envConfig, envName } = buildConfigsFromAnswers();
+  const configs = [
+    { label: 'config/project.json', data: projectConfig },
+    { label: `environments/${envName}.json`, data: envConfig },
+  ];
+  reviewTab = 0;
+
+  const wrap = document.createElement('div');
+  wrap.style.display = 'flex'; wrap.style.flexDirection = 'column'; wrap.style.gap = '16px';
+
+  const tabs = document.createElement('div');
+  tabs.className = 'review-tabs';
+  configs.forEach((c, i) => {
+    const t = document.createElement('button');
+    t.className = `review-tab${i === 0 ? ' active' : ''}`;
+    t.textContent = c.label;
+    t.onclick = () => {
+      reviewTab = i;
+      wrap.querySelectorAll('.review-tab').forEach((el,j) =>
+        el.classList.toggle('active', j === i));
+      codeBlock.textContent = JSON.stringify(configs[i].data, null, 2);
+    };
+    tabs.appendChild(t);
+  });
+
+  const codeBlock = document.createElement('pre');
+  codeBlock.className = 'code-block';
+  codeBlock.textContent = JSON.stringify(configs[0].data, null, 2);
+
+  const actions = document.createElement('div');
+  actions.className = 'review-actions';
+  actions.innerHTML = `
+    <button class="btn-copy" onclick="navigator.clipboard.writeText(document.querySelector('.code-block').textContent);showToast('✅ تم النسخ')">📋 نسخ</button>`;
+
+  wrap.appendChild(tabs);
+  wrap.appendChild(codeBlock);
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+// ── Footer Nav ────────────────────────────────────────────────────────────
+function renderFooter(step) {
+  const foot = document.getElementById('panel-foot');
+  const isFirst = current === 0;
+  const isLast  = current === schema.steps.length - 1;
+
+  foot.innerHTML = '';
+
+  const left = document.createElement('div');
+  left.className = 'foot-left';
+
+  if (!isFirst) {
+    const back = document.createElement('button');
+    back.className = 'btn btn-ghost';
+    back.innerHTML = '→ السابق';
+    back.onclick = prev;
+    left.appendChild(back);
+  }
+  foot.appendChild(left);
+
+  if (step.optional && !isLast) {
+    const skip = document.createElement('button');
+    skip.className = 'btn-skip';
+    skip.textContent = 'تخطي هذه الخطوة';
+    skip.onclick = () => goTo(current + 1);
+    foot.appendChild(skip);
+  }
+
+  const nextBtn = document.createElement('button');
+  if (isLast) {
+    nextBtn.className = 'btn btn-success';
+    nextBtn.innerHTML = '💾 حفظ وإغلاق';
+    nextBtn.onclick = saveAndClose;
+  } else {
+    nextBtn.className = 'btn btn-primary';
+    nextBtn.innerHTML = '← التالي';
+    nextBtn.onclick = next;
+  }
+  foot.appendChild(nextBtn);
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────
+function next() {
+  if (current < schema.steps.length - 1) goTo(current + 1);
+}
+function prev() {
+  if (current > 0) goTo(current - 1);
+}
+function goTo(idx) {
+  collectCurrentAnswers();
+  current = idx;
+  renderStep();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function collectCurrentAnswers() {
+  // Collect all inputs in panel-body
+  document.querySelectorAll('#panel-body input, #panel-body select, #panel-body textarea')
+    .forEach(el => {
+      if (el.id && el.id.startsWith('f-')) {
+        answers[el.id.slice(2)] = el.value;
+      }
+    });
+  answers['users'] = users;
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────
+async function saveAndClose() {
+  collectCurrentAnswers();
+  const { projectConfig, envConfig, envName } = buildConfigsFromAnswers();
+  if (MODE === 'local') {
+    try {
+      const r = await fetch(`${API}/api/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectConfig, envConfig, envName }),
+      });
+      const res = await r.json();
+      if (res.ok) {
+        showToast('✅ تم الحفظ بنجاح!', 'success');
+        setTimeout(() => fetch(`${API}/api/done`), 1500);
+      } else {
+        showToast('❌ ' + (res.error || 'خطأ في الحفظ'), 'error');
+      }
+    } catch(e) { showToast('❌ ' + e.message, 'error'); }
+  } else {
+    // Web mode: download ZIP
+    downloadConfigs(projectConfig, envConfig, envName);
+    showToast('✅ تم تحميل الملفات!', 'success');
+  }
+}
+
+// ── Web Mode: ZIP Download ────────────────────────────────────────────────
+function downloadConfigs(projectConfig, envConfig, envName) {
+  // Download config/project.json
+  downloadJSON(projectConfig, 'project.json');
+  setTimeout(() => downloadJSON(envConfig, `${envName}.json`), 300);
+}
+function downloadJSON(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob), download: filename
+  });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── Build Configs (client-side mirror of engine.js) ───────────────────────
+function buildConfigsFromAnswers() {
+  const envName = answers['defaultEnvironment'] || 'qa';
+
+  const projectConfig = {
+    name: answers['name'] || 'my-project',
+    defaultEnvironment: envName,
+    login: { mode: answers['login.mode'] || 'session' },
+  };
+
+  if (answers['azure.org'] || answers['azure.project']) {
+    projectConfig.azure = {
+      org: answers['azure.org'] || '',
+      project: answers['azure.project'] || '',
+      team: answers['azure.team'] || '',
+      assignee: answers['azure.assignee'] || '',
+    };
+  }
+
+  const envConfig = {
+    portalUrl: answers['portalUrl'] || '',
+    defaults: {
+      otp: answers['defaults.otp'] || '0000',
+      password: answers['defaults.password'] || 'Test@1234',
+    },
+    users: buildUsersObj(),
+  };
+
+  if (answers['db.server']) {
+    envConfig.db = {
+      server: answers['db.server'],
+      port: Number(answers['db.port']) || 1433,
+      name: answers['db.name'] || '',
+      user: answers['db.user'] || '',
+      password: { envSecret: answers['db.passwordEnvVar'] || 'SQLCMDPASSWORD' },
+    };
+  }
+
+  if (answers['api.baseUrl']) {
+    envConfig.api = {
+      baseUrl: answers['api.baseUrl'],
+      token: { envSecret: answers['api.tokenEnvVar'] || 'API_TOKEN' },
+    };
+  }
+
+  return { projectConfig, envConfig, envName };
+}
+
+function buildUsersObj() {
+  const obj = {};
+  for (const u of (answers['users'] || users)) {
+    if (!u.handle) continue;
+    const e = {};
+    if (u.phone) e.phone = u.phone;
+    if (u.email) e.email = u.email;
+    if (u.role)  e.role  = u.role;
+    if (u.notes) e.notes = u.notes;
+    obj[u.handle] = e;
+  }
+  return obj;
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
+}
+
+let toastTimer;
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast show${type ? ' ' + type : ''}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

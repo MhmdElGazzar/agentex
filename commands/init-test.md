@@ -25,7 +25,33 @@ Do these steps, then report what was created:
    Relay its `[created]`/`[skipped]` summary to the user. If `node` is missing, tell the
    user to install Node.js first (playwright-cli needs it anyway) instead of replicating
    the steps by hand.
-2. **Project config** — tell the user to fill in `config/project.json` and `environments/qa.json` with their real values (Azure org/project/team, portal URL, test users, database and API targets). Secrets (PAT, DB password, API token, KB key) go in `.env`. The agent may read all three files but must NEVER print, log, or pass secret values anywhere.
+
+2. **Launch the Setup Wizard** to guide the user through filling in their project config:
+
+   ```
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/wizard/server.js" "${PROJECT_ROOT}"
+   ```
+
+   This starts a local web server and opens the browser automatically at
+   `http://127.0.0.1:7373/setup`. Tell the user:
+   > "فتحت Setup Wizard في المتصفح — عبّي بيانات مشروعك بالترتيب وهيتم حفظ الملفات تلقائياً."
+
+   Wait silently for the wizard to complete. The server shuts down automatically when the
+   user clicks "حفظ وإغلاق" (the browser calls `/api/done`). You will see:
+   `[setup-wizard] ✅ Done. Closing server.`
+   in the terminal output when it finishes.
+
+   **If the user uploaded a file (BRD/PDF/Word) in the AI Import step:**
+   - The server will write a file path to stdout: `[setup-wizard] 📄 extract-request: <path>`
+   - Read that file and extract the project data fields as JSON matching the schema in
+     `${CLAUDE_PLUGIN_ROOT}/scripts/wizard/schema.json` (use the `aiHint` on each field
+     as guidance). POST the extracted JSON to `http://127.0.0.1:7373/api/extract` with
+     `Content-Type: application/json`. The wizard will display it as a preview for the
+     user to confirm before applying.
+
+   **If the wizard is already complete (user skipped it or ran `/init-test` again):**
+   skip this step entirely.
+
 3. **Integration catalog** — tell the user the files in `./integration/` define the ONLY
    API calls / DB queries test steps can execute (`api:`/`db:` steps in specs) and to
    replace the samples with their own services.
