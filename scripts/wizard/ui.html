@@ -440,6 +440,8 @@ let extractedData = null;
 // so fields the wizard doesn't manage survive.
 let existingProject = null;
 let existingEnv     = null;
+let loadedEnvName   = null;   // environment the prefill came from
+let currentEnvSelection = null;
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 async function init() {
@@ -461,6 +463,11 @@ async function loadExistingConfig() {
   catch { return; }
   const proj = cfg && cfg.projectConfig;
   const env  = cfg && cfg.envConfig;
+  if (cfg && cfg.unreadable && cfg.unreadable.length) {
+    // Say it out loud: saving would replace a file we could not read.
+    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقري:\n\n${cfg.unreadable.join('\n')}\n\n` +
+          `لو كملت وحفظت هتتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.`);
+  }
   if (!proj && !env) return;
 
   existingProject = proj || null;
@@ -478,30 +485,66 @@ async function loadExistingConfig() {
     }
   }
 
-  if (env) {
-    if (env.portalUrl) answers['portalUrl'] = env.portalUrl;
-    if (env.defaults) {
-      if (env.defaults.otp)      answers['defaults.otp']      = env.defaults.otp;
-      if (env.defaults.password) answers['defaults.password'] = env.defaults.password;
-    }
-    if (env.db) {
-      if (env.db.server) answers['db.server'] = env.db.server;
-      if (env.db.port)   answers['db.port']   = String(env.db.port);
-      if (env.db.name)   answers['db.name']   = env.db.name;
-      if (env.db.user)   answers['db.user']   = env.db.user;
-      if (env.db.password && env.db.password.envSecret) answers['db.passwordEnvVar'] = env.db.password.envSecret;
-    }
-    if (env.api) {
-      if (env.api.baseUrl) answers['api.baseUrl'] = env.api.baseUrl;
-      if (env.api.token && env.api.token.envSecret) answers['api.tokenEnvVar'] = env.api.token.envSecret;
-    }
-    const entries = Object.entries(env.users || {});
-    if (entries.length) {
-      users = entries.map(([handle, u]) => ({ handle, phone: u.phone || '', role: u.role || '', email: u.email || '', notes: u.notes || '' }));
-      answers['users'] = users;
-    }
-  }
+  if (env) fillEnvironmentAnswers(env);
+  loadedEnvName = answers['defaultEnvironment'];
   showToast('📂 تم تحميل إعدادات المشروع الحالية');
+}
+
+/** Environment-scoped answer keys — everything that belongs to ONE environment file. */
+const ENV_SCOPED_KEYS = [
+  'portalUrl', 'defaults.otp', 'defaults.password',
+  'db.server', 'db.port', 'db.name', 'db.user', 'db.passwordEnvVar',
+  'api.baseUrl', 'api.tokenEnvVar',
+];
+
+const starterUsers = () => ([
+  { handle: 'valid_user',   phone: '', role: 'customer' },
+  { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
+]);
+
+function fillEnvironmentAnswers(env) {
+  if (env.portalUrl) answers['portalUrl'] = env.portalUrl;
+  if (env.defaults) {
+    if (env.defaults.otp)      answers['defaults.otp']      = env.defaults.otp;
+    if (env.defaults.password) answers['defaults.password'] = env.defaults.password;
+  }
+  if (env.db) {
+    if (env.db.server) answers['db.server'] = env.db.server;
+    if (env.db.port)   answers['db.port']   = String(env.db.port);
+    if (env.db.name)   answers['db.name']   = env.db.name;
+    if (env.db.user)   answers['db.user']   = env.db.user;
+    if (env.db.password && env.db.password.envSecret) answers['db.passwordEnvVar'] = env.db.password.envSecret;
+  }
+  if (env.api) {
+    if (env.api.baseUrl) answers['api.baseUrl'] = env.api.baseUrl;
+    if (env.api.token && env.api.token.envSecret) answers['api.tokenEnvVar'] = env.api.token.envSecret;
+  }
+  const entries = Object.entries(env.users || {});
+  if (entries.length) {
+    users = entries.map(([handle, u]) => ({ handle, phone: u.phone || '', role: u.role || '', email: u.email || '', notes: u.notes || '' }));
+    answers['users'] = users;
+  }
+}
+
+/**
+ * Typing a different environment name means a NEW environment file. It starts
+ * empty — inheriting the loaded environment's portal/db/api would quietly point
+ * the new environment at the old one's database. Typing the original name back
+ * restores what was loaded.
+ */
+function onEnvironmentNameChanged(newName) {
+  if (!existingEnv || !loadedEnvName || newName === currentEnvSelection) return;
+  currentEnvSelection = newName;
+
+  if (newName === loadedEnvName) {
+    fillEnvironmentAnswers(existingEnv);
+    showToast(`↩️ رجعنا لبيئة «${loadedEnvName}» بإعداداتها المحفوظة`);
+    return;
+  }
+  for (const key of ENV_SCOPED_KEYS) delete answers[key];
+  users = starterUsers();
+  answers['users'] = users;
+  showToast(`🆕 بيئة جديدة «${newName}» — الحقول فاضية عشان متورثش إعدادات «${loadedEnvName}»`);
 }
 
 async function loadSchema() {
@@ -757,7 +800,10 @@ function buildField(field) {
       // untouched field with a default — e.g. a preselected <select> — is
       // "filled" for validation, not just visually.
       if (answers[field.key] === undefined && inp.value !== '') answers[field.key] = inp.value;
-      inp.addEventListener('change', () => { answers[field.key] = inp.value; });
+      inp.addEventListener('change', () => {
+        answers[field.key] = inp.value;
+        if (field.key === 'defaultEnvironment') onEnvironmentNameChanged(inp.value.trim());
+      });
       inp.addEventListener('input',  () => { answers[field.key] = inp.value; });
     }
   }
@@ -1099,7 +1145,10 @@ function buildConfigs() {
   // kb.org, custom fields) survive a re-run instead of being silently dropped.
   const proj = Object.assign({}, existingProject, {
     name: answers['name'] || 'my-project',
-    defaultEnvironment: envName,
+    // Adding another environment must not silently re-point the project: the
+    // existing default stands, and only a brand-new project takes its first
+    // environment as the default.
+    defaultEnvironment: (existingProject && existingProject.defaultEnvironment) || envName,
     login: Object.assign({}, existingProject && existingProject.login, { mode: answers['login.mode'] || 'session' }),
   });
   if (answers['azure.org'] || answers['azure.project']) {
@@ -1117,9 +1166,9 @@ function buildConfigs() {
     });
   }
 
-  // Only merge the environment file back when we're rewriting the SAME environment;
-  // a different name is a new environment file, which starts clean.
-  const envBase = (existingEnv && existingProject && existingProject.defaultEnvironment === envName) ? existingEnv : null;
+  // Merge back only when rewriting the environment we loaded; a different name
+  // is a new environment file, which starts clean.
+  const envBase = (existingEnv && loadedEnvName === envName) ? existingEnv : null;
   const env = Object.assign({}, envBase, {
     portalUrl: answers['portalUrl'] || '',
     defaults: Object.assign({}, envBase && envBase.defaults, {

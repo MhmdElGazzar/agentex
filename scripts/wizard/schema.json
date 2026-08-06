@@ -21,13 +21,14 @@
         },
         {
           "key": "defaultEnvironment",
-          "label": "البيئة الافتراضية",
-          "labelEn": "Default Environment",
+          "label": "البيئة (اسم الملف)",
+          "labelEn": "Environment",
           "type": "text",
           "placeholder": "qa",
           "default": "qa",
           "required": true,
-          "aiHint": "default test environment name (e.g. qa, staging, uat)"
+          "aiHint": "environment name being configured (e.g. qa, staging, uat)",
+          "hint": "اسم البيئة اللي هتتكتب: qa أو uat أو live. البيئة الافتراضية للمشروع بتفضل زي ما هي."
         },
         {
           "key": "login.mode",
@@ -37,8 +38,14 @@
           "required": true,
           "default": "session",
           "options": [
-            { "value": "session", "label": "Session (موصى به — مرة واحدة لكل جلسة)" },
-            { "value": "per-test", "label": "Per-Test (تسجيل دخول في كل اختبار)" }
+            {
+              "value": "session",
+              "label": "Session (موصى به — مرة واحدة لكل جلسة)"
+            },
+            {
+              "value": "per-test",
+              "label": "Per-Test (تسجيل دخول في كل اختبار)"
+            }
           ],
           "aiHint": "login strategy: session-based or per-test"
         }
@@ -147,8 +154,16 @@
         ]
       },
       "defaults": [
-        { "handle": "valid_user", "phone": "", "role": "customer" },
-        { "handle": "expired_user", "phone": "", "notes": "for negative login scenarios" }
+        {
+          "handle": "valid_user",
+          "phone": "",
+          "role": "customer"
+        },
+        {
+          "handle": "expired_user",
+          "phone": "",
+          "notes": "for negative login scenarios"
+        }
       ]
     },
     {
@@ -325,7 +340,13 @@
       "icon": "🤖",
       "type": "ai-extract",
       "optional": true,
-      "acceptedTypes": [".md", ".txt", ".pdf", ".docx", ".doc"],
+      "acceptedTypes": [
+        ".md",
+        ".txt",
+        ".pdf",
+        ".docx",
+        ".doc"
+      ],
       "extractionPrompt": "Extract the following fields from this document and return as JSON matching our wizard schema: project name, portal URL, Azure DevOps org/project/team/assignee, test users (phone/email/role), database server/port/name/user, API base URL. Return only valid JSON, no explanation.",
       "previewable": true
     },
@@ -338,8 +359,14 @@
       "icon": "✅",
       "type": "review",
       "outputs": [
-        { "label": "config/project.json", "key": "projectConfig" },
-        { "label": "environments/{defaultEnvironment}.json", "key": "envConfig" }
+        {
+          "label": "config/project.json",
+          "key": "projectConfig"
+        },
+        {
+          "label": "environments/{defaultEnvironment}.json",
+          "key": "envConfig"
+        }
       ]
     }
   ]

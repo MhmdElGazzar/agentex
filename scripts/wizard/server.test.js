@@ -123,6 +123,17 @@ const post = (route, body, headers = {}) =>
     assert.ok(!dotenv.includes('tok-test'), 'old value replaced, not duplicated');
   });
 
+  await test('an existing but unreadable config file is reported, not ignored', async () => {
+    fs.writeFileSync(path.join(projectDir, 'config', 'project.json'), '{ broken json');
+    const r = await fetch(`${BASE}/api/config`, { headers: { 'X-Wizard-Token': TOKEN } });
+    const data = await r.json();
+    assert.strictEqual(data.projectConfig, null);
+    assert.deepStrictEqual(data.unreadable, ['config/project.json']);
+    // Restore for the tests that follow.
+    fs.writeFileSync(path.join(projectDir, 'config', 'project.json'),
+      JSON.stringify({ name: 'demo', defaultEnvironment: 'qa' }));
+  });
+
   await test('malformed JSON is a clean 400, not a crash', async () => {
     const r = await post('/api/save', '{ not json');
     assert.strictEqual(r.status, 400);

@@ -94,7 +94,13 @@ server = http.createServer((req, res) => {
     const envName = existingProj?.defaultEnvironment || 'qa';
     const envCfgPath = path.join(projectRoot, 'environments', `${envName}.json`);
     const existingEnv = safeReadJSON(envCfgPath);
-    respondJSON(res, 200, { projectConfig: existingProj, envConfig: existingEnv, envName });
+    // A file that exists but won't parse is NOT the same as no file: saying
+    // nothing would let the wizard quietly overwrite whatever it couldn't read.
+    const unreadable = [
+      [projCfgPath, existingProj, 'config/project.json'],
+      [envCfgPath, existingEnv, `environments/${envName}.json`],
+    ].filter(([p, parsed]) => parsed === null && fs.existsSync(p)).map(([, , label]) => label);
+    respondJSON(res, 200, { projectConfig: existingProj, envConfig: existingEnv, envName, unreadable });
     return;
   }
 
