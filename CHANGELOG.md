@@ -2,6 +2,14 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.10.0] — 2026-08-06
+### Changed
+- `/init-test` file scaffolding now runs as a bundled script (`scripts/init.js`) in a single
+  call instead of agent-performed steps — deterministic, idempotent (`[created]`/`[skipped]`
+  report, never overwrites, `CLAUDE.md`/`.gitignore` append-only), and it refuses to run
+  inside the plugin folder itself. The command keeps the conversational steps (fill `.env`
+  values, permissions reminder, playwright preflight) as agent instructions.
+
 ## [0.9.0] — 2026-07-28
 ### Added
 - `optimize-login` skill: pay a web application's login cost once per session instead of once
