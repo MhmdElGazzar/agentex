@@ -97,16 +97,19 @@ An environment is one self-consistent unit — portal, DB, API, users move toget
     "password": "Test@1234",
     "captcha": "disabled"
   },
-  "users": [
-    {
-      "name": "qa tester",
+  "users": {
+    "valid_user": {
       "phone": "0550000001",
       "role": "customer",
       "idNumber": "1234567890",
       "password": { "envSecret": "QA_TESTER_PASSWORD" },
       "notes": "sponsor with active contract policies"
+    },
+    "expired_user": {
+      "phone": "0550000002",
+      "notes": "subscription expired — for negative login scenarios"
     }
-  ],
+  },
   "db": {
     "server": "uat-db02.tis.local",
     "port": 1434,
@@ -137,8 +140,10 @@ An environment is one self-consistent unit — portal, DB, API, users move toget
 - `defaults.password` is the environment's shared test credential: a user without
   their own `password` logs in with it. If the default credential is actually
   sensitive, write it as `{ "envSecret": "..." }` instead of a plain value.
-- User objects are free-form beyond `name` (required): `phone`, `role`, `idNumber`,
-  `notes`, and any project-specific fields are passed through to the executor.
+- `users` is an object keyed by a descriptive handle (`valid_user`, `expired_user`,
+  `no_policy_user`, …). The key is how test specs and skills refer to the user
+  ("login as expired_user"). Each user's fields are free-form (`phone`, `role`,
+  `idNumber`, `notes`, project-specific extras) and passed through to the executor.
 
 ## Environment selection at run time
 

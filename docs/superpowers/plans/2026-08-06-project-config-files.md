@@ -872,9 +872,10 @@ git commit -m "feat(ask-kb): kb settings from config/project.json kb block, KB_*
     "otp": "0000",
     "password": "Test@1234"
   },
-  "users": [
-    { "name": "qa tester", "phone": "0550000001", "role": "customer" }
-  ],
+  "users": {
+    "valid_user": { "phone": "0550000001", "role": "customer" },
+    "expired_user": { "phone": "0550000002", "notes": "for negative login scenarios" }
+  },
   "db": {
     "server": "localhost",
     "port": 1433,
@@ -1065,10 +1066,13 @@ Resolve once, before any browser action, in this order:
    user gave; no defaults/users available.
 
 From the environment file: `portalUrl` is the target; `defaults` (fixed OTP, shared
-test password, captcha flag, …) and `users` (test accounts) are the test data for
-every scenario in the run. A user without a `password` field logs in with
-`defaults.password`. A `{ "envSecret": "NAME" }` value means: read variable `NAME`
-from `.env` — never print it.
+test password, captcha flag, …) and `users` are the test data for every scenario in
+the run. `users` is keyed by a descriptive handle — a spec step like "login as
+expired_user" means the `users.expired_user` entry. A user without a `password`
+field logs in with `defaults.password`. A `{ "envSecret": "NAME" }` value means:
+read variable `NAME` from `.env` — never print it. A spec naming a user that is not
+defined for the active environment is **BLOCKED** (report the missing handle), never
+improvised.
 
 Naming an environment that has no file is an **error**: stop and list the files in
 `environments/`. Never silently fall back to another environment. Record the active
@@ -1172,7 +1176,7 @@ Fill them in:
 |---|---|
 | `portalUrl` | The target under test (required). |
 | `defaults` | Non-secret static test values: `otp`, `password` (shared test credential), `captcha`, plus any project-specific keys. |
-| `users` | Test accounts: `name` (required), `phone`, `role`, `idNumber`, `password`, `notes`, … A user without `password` uses `defaults.password`. |
+| `users` | Test accounts keyed by a descriptive handle (`valid_user`, `expired_user`, …) that specs refer to ("login as expired_user"). Fields free-form: `phone`, `role`, `idNumber`, `password`, `notes`, … A user without `password` uses `defaults.password`. |
 | `db` | `server`, `port`, `name`, `user`, `password` — for cataloged `db:` steps. |
 | `api` | `baseUrl`, `token` — for cataloged `api:` steps. |
 
