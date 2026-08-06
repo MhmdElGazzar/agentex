@@ -33,8 +33,8 @@ or `kb:acme-store: <question>` inside a spec.
 
 | Variable | Purpose |
 |----------|---------|
-| `KB_ASK_BASE_URL` | KB Ask API host (host only, e.g. `http://localhost:3000`). |
-| `KB_PROJECT` | Default project id (e.g. `acme-store`); a `kb:<project>:` step overrides it. |
+| `KB_ASK_BASE_URL` | KB Ask API host (host only, e.g. `http://localhost:3000`); fallback when not in `config/project.json` `kb.baseUrl`. |
+| `KB_PROJECT` | Default project id (e.g. `acme-store`); fallback when not in `config/project.json` `kb.project`; a `kb:<project>:` step overrides it. |
 | `KB_ASK_API_KEY` | Shared secret sent as `x-api-key` (required when the server has it set). |
 
 **Behind the scenes** (the runner, `skills/ask-kb/scripts/ask_kb.js`):

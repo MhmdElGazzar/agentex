@@ -36,7 +36,9 @@ db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
 
 - Each `<name>.<entry>(params)` must be **defined first** in `integration/*_api.json` /
   `*_db.json` — the agent only executes cataloged entries, never its own SQL/HTTP.
-- Secrets are never in the catalog — files name env vars; values live in `.env`/your shell.
+- Secrets are never in the catalog or config files — they name env vars
+  (`{ "envSecret": "…" }` / `tokenEnv`); values live in `.env`/your shell. Connection
+  details live in `environments/<env>.json`.
 
 ## Rules the agent already follows
 
@@ -54,7 +56,9 @@ db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
 
 ## Azure DevOps (optional)
 
-AgenTeX can also work your ADO backlog — fill the `AZURE_*` keys in `.env` first:
+AgenTeX can also work your ADO backlog — fill the `azure` block in `config/project.json` first
+(org/project/team/assignee); legacy `AZURE_*` keys in `.env` still work as a fallback. The PAT
+always stays in `.env` as `AZURE_DEVOPS_EXT_PAT`:
 
 - `/design-test <story-ids>` — analyze a story's ACs and create linked test cases
   (project conventions live in `.agentex/test-template.md`, scaffolded on first run).

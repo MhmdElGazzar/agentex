@@ -37,7 +37,7 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 | **Azure DevOps planning** | `/estimate-story` estimates QA effort and creates 5 `[Testing]` tasks per story; `/design-test` turns story ACs into linked test cases — both via the `az` CLI, with confirmation. | [azure-devops](./docs/azure-devops.md) |
 | **Azure DevOps bug filing** | After a run, `bug-report-azure` files found defects as ADO **Bugs** via the `az` CLI — recommends severity/priority, links each to its parent User Story, validates & attaches screenshots, optionally fails the related test case; all behind one confirmation. | [azure-devops](./docs/azure-devops.md) |
 | **HTML report** | At the end of a run, generates a standalone, self-contained `extent-report.html` dashboard (donut chart, status cards, expandable per-test-case steps). | [extent-report](./docs/extent-report.md) |
-| **Configuration** | A keys-only `.env` drives targets and integrations; catalog files hold only env-var *names*, so secrets stay in the environment. | [configuration](./docs/configuration.md) |
+| **Configuration** | Three homes, one each: `config/project.json` (project settings), `environments/<env>.json` (targets, users, integrations), and a secrets-only `.env` — legacy keys-only `.env` projects still work untouched. | [configuration](./docs/configuration.md) |
 
 See [docs/](./docs/) for the full reference on any feature.
 

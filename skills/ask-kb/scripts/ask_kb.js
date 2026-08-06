@@ -26,9 +26,10 @@ function parseArgs(argv) {
   return o;
 }
 
+// kb settings: config/project.json "kb" block (new home) + agentex.config.json (legacy).
 function loadKbConfig(cwd) {
-  try { return JSON.parse(fs.readFileSync(path.join(cwd, 'agentex.config.json'), 'utf8')).kb || {}; }
-  catch { return {}; }
+  const read = f => { try { return JSON.parse(fs.readFileSync(path.join(cwd, ...f), 'utf8')).kb || {}; } catch { return {}; } };
+  return { proj: read(['config', 'project.json']), legacy: read(['agentex.config.json']) };
 }
 
 // Resolve an env var from process.env, falling back to a KEY=value line in the
@@ -85,23 +86,23 @@ async function askKb({ baseUrl, project, question, org, model, apiKey, timeoutMs
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cwd = process.cwd();
-  const cfg = loadKbConfig(cwd);
+  const { proj, legacy } = loadKbConfig(cwd);
 
   const question = typeof args.question === 'string' ? args.question : null;
-  // Project precedence: --project flag → KB_PROJECT (env/.env) → kb.project in config.
-  const project = (typeof args.project === 'string' ? args.project : null) || resolveEnv(cwd, 'KB_PROJECT') || cfg.project || null;
-  // Org precedence: --org flag → KB_ORG (env/.env) → kb.org in config → generic default.
-  const org = (typeof args.org === 'string' ? args.org : null) || resolveEnv(cwd, 'KB_ORG') || cfg.org || 'acme';
-  const model = (typeof args.model === 'string' ? args.model : null) || cfg.model || 'opus';
-  const timeoutMs = Number(cfg.timeout_ms) > 0 ? Number(cfg.timeout_ms) : 120000;
-  const retries = Number.isInteger(cfg.retries) ? cfg.retries : 2;
+  // Precedence: --flag → config/project.json kb.* → KB_* (env/.env) → legacy agentex.config.json kb.* → default.
+  const project = (typeof args.project === 'string' ? args.project : null) || proj.project || resolveEnv(cwd, 'KB_PROJECT') || legacy.project || null;
+  const org = (typeof args.org === 'string' ? args.org : null) || proj.org || resolveEnv(cwd, 'KB_ORG') || legacy.org || 'acme';
+  const model = (typeof args.model === 'string' ? args.model : null) || proj.model || legacy.model || 'opus';
+  const cfgNum = (a, b, ok, dflt) => (ok(a) ? a : ok(b) ? b : dflt);
+  const timeoutMs = cfgNum(Number(proj.timeout_ms), Number(legacy.timeout_ms), n => n > 0, 120000);
+  const retries = cfgNum(proj.retries, legacy.retries, Number.isInteger, 2);
   const logPath = typeof args.log === 'string' ? args.log : null;
-  const baseUrl = resolveEnv(cwd, 'KB_ASK_BASE_URL');
-  const apiKey = resolveEnv(cwd, 'KB_ASK_API_KEY'); // optional — sent as x-api-key when present
+  const baseUrl = proj.baseUrl || resolveEnv(cwd, 'KB_ASK_BASE_URL');
+  const apiKey = resolveEnv(cwd, 'KB_ASK_API_KEY'); // secret — .env only, never JSON
 
   if (!question) out({ result: 'BLOCKED', reason: 'question is required', project }, 2);
-  if (!project) out({ result: 'BLOCKED', reason: 'no project: pass --project, set KB_PROJECT in .env, or kb.project in agentex.config.json' }, 2);
-  if (!baseUrl) out({ result: 'BLOCKED', reason: 'KB_ASK_BASE_URL is not set (env or .env)' }, 2);
+  if (!project) out({ result: 'BLOCKED', reason: 'no project: pass --project, set kb.project in config/project.json, or KB_PROJECT in .env' }, 2);
+  if (!baseUrl) out({ result: 'BLOCKED', reason: 'no KB base URL: set kb.baseUrl in config/project.json or KB_ASK_BASE_URL in .env' }, 2);
 
   const r = await askKb({ baseUrl, project, question, org, model, apiKey, timeoutMs, retries });
 

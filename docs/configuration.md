@@ -1,69 +1,81 @@
 # Configuration
 
-AgenTeX reads its settings from a `.env` file in your project — nothing is hardcoded, and you
-only need to fill in what the features you actually use require. Any variable can also be
-exported directly in your shell instead of `.env` if you prefer; secrets like `SQLCMDPASSWORD`
-and `AZURE_DEVOPS_EXT_PAT` are read that way by design.
+Project data falls into three kinds, each with one home:
+
+| Kind | Examples | Home |
+|---|---|---|
+| Secrets | PAT, passwords, API tokens | `.env` (**only** these) |
+| Project settings | Azure org/project/team, login mode, KB settings | `config/project.json` |
+| Environment data | portal URL, DB, API, test users, default OTP | `environments/<env>.json` |
+
+**The JSON files never contain a secret.** A secret-valued field (`password`,
+`token`) is either a plain string — acceptable only for team-known throwaway test
+credentials like a shared QA password — or `{ "envSecret": "NAME" }` naming the
+`.env` variable that holds the real value.
+
+**Legacy projects keep working.** Everything below resolves the new files first and
+falls back to the old `.env` variables (`QA_TARGET_URL`, `DB_*`, `AZURE_*`, `KB_*`)
+when the files or blocks are missing.
 
 ## Walkthrough: setting up your first project
 
-If you ran `/init-test`, your `.env` already exists in your project — just open it and fill in
-what you need. Otherwise, copy the plugin's [`.env.example`](../.env.example) to `.env` in your
-project root.
+`/init-test` scaffolds all three: `config/project.json`, a sample
+`environments/qa.json`, and a secrets-only `.env` (gitignored automatically).
+Fill them in:
 
-Open `.env` and fill in only the section(s) you need right now — e.g. if you're just doing
-browser testing with no API/DB/Azure steps yet, you can leave everything but `QA_TARGET_URL`
-empty and add the rest later when you turn on those features. `.env` is gitignored
-automatically by `/init-test` — never commit it.
+1. `config/project.json` — your Azure org/project/team (if you use ADO), the KB
+   block (if you use `kb:` steps), and `defaultEnvironment`.
+2. `environments/qa.json` — your portal URL, test users, defaults, and the `db` /
+   `api` blocks if specs use `db:` / `api:` steps. Copy it to `uat.json` / `live.json`
+   for more environments.
+3. `.env` — the actual secret values.
 
-## Quick reference
+## `config/project.json`
 
-### Target under test
+| Key | Purpose |
+|---|---|
+| `name` | Project name. |
+| `defaultEnvironment` | Environment used when a run doesn't name one. |
+| `azure.org` / `.project` / `.team` / `.assignee` | Azure DevOps settings (see [azure-devops.md](./azure-devops.md)); optional extras: `areaPath`, `iterationPath`, `bugTemplateId`, `testPlanId`, `valueArea`, `environment`, `bugCategory`, `apiVersion`. |
+| `kb.baseUrl` / `.project` / `.org` | KB Ask settings (see [ask-kb.md](./ask-kb.md)). |
+| `login.mode` | `"session"` = reuse saved optimize-login sessions; `"fresh"` = log in every run. |
 
-| Variable | Purpose |
-|----------|---------|
-| `QA_TARGET_URL` | Default target under test. |
+## `environments/<env>.json`
 
-### Integrations (`integration/` catalog)
+| Key | Purpose |
+|---|---|
+| `portalUrl` | The target under test (required). |
+| `defaults` | Non-secret static test values: `otp`, `password` (shared test credential), `captcha`, plus any project-specific keys. |
+| `users` | Test accounts keyed by a descriptive handle (`valid_user`, `expired_user`, …) that specs refer to ("login as expired_user"). Fields free-form: `phone`, `role`, `idNumber`, `password`, `notes`, … A user without `password` uses `defaults.password`. |
+| `db` | `server`, `port`, `name`, `user`, `password` — for cataloged `db:` steps. |
+| `api` | `baseUrl`, `token` — for cataloged `api:` steps. |
 
-| Variable | Purpose |
-|----------|---------|
-| `API_BASE_URL` | Base URL for cataloged `api:` requests. |
-| `API_TOKEN` | Auth token for cataloged API requests. |
-| `DB_SERVER` | SQL Server host for cataloged `db:` queries. |
-| `DB_PORT` | DB port — leave empty for the default `1433`. |
-| `DB_NAME` | Database name. |
-| `DB_USER` | Database user. |
-| `SQLCMDPASSWORD` | DB password — read natively by `sqlcmd` from the env; **never** passed on the command line. Export in your shell. |
+Selecting the environment at run time: "run on uat" / `env: uat` in a spec →
+`environments/uat.json`; otherwise `defaultEnvironment`. Naming an environment
+that has no file is an error (available environments are listed) — never a silent
+fallback.
 
-### Azure DevOps
-
-| Variable | Purpose |
-|----------|---------|
-| `AZURE_URL` | Org URL, e.g. `https://dev.azure.com/your-org`. |
-| `AZURE_PROJECT` | Project name. |
-| `AZURE_TEAM` | Team name. |
-| `AZURE_ASSIGNEE` | Default assignee for created tasks. |
-| `AZURE_DEVOPS_EXT_PAT` | PAT for non-interactive auth — export in your shell; Claude never prints or passes it. |
-
-### KB Ask API
+## `.env` — secrets only
 
 | Variable | Purpose |
 |----------|---------|
-| `KB_ASK_BASE_URL` | KB Ask API host (host only). |
-| `KB_PROJECT` | Default project id; a `kb:<project>:` step overrides it. |
-| `KB_ASK_API_KEY` | Shared secret sent as `x-api-key` (required when the server has it set). |
+| `AZURE_PAT` | Azure DevOps PAT — export as `AZURE_DEVOPS_EXT_PAT` in your shell; never printed or passed. |
+| `SQLCMDPASSWORD` | DB password — read natively by `sqlcmd` from the env; never on a command line. |
+| `API_TOKEN` | Bearer token for cataloged `api:` requests. |
+| `KB_ASK_API_KEY` | KB Ask shared secret (`x-api-key`). |
+| *(your own)* | Any variable referenced by an `{ "envSecret": "…" }` field — e.g. `SQLCMDPASSWORD_UAT`, `QA_TESTER_PASSWORD`. |
 
 ## Permissions
 
 Plugin manifests can't ship permission rules. Copy the `permissions` block from
-[`settings.example.json`](../settings.example.json) into your project's `.claude/settings.json`
-(merge with anything already there). This pre-approves the safe `playwright-cli` (and `az` /
-`curl` / `sqlcmd`) commands and denies secret reads / destructive actions.
+[`settings.example.json`](../settings.example.json) into your project's
+`.claude/settings.json` (merge with anything already there). This pre-approves the
+safe `playwright-cli` (and `az` / `curl` / `sqlcmd`) commands and denies secret
+reads / destructive actions.
 
 ## Secret-handling rules
 
-- Catalog files (`integration/*.json`) hold only env-var **names**, never values.
+- JSON config files and catalog files hold env-var **names**, never secret values.
 - Claude may read config keys but must never print or pass secrets.
-- DB and PAT secrets are read from the environment (`SQLCMDPASSWORD`, `AZURE_DEVOPS_EXT_PAT`),
-  never placed on a command line.
+- DB and PAT secrets are read from the environment (`SQLCMDPASSWORD`,
+  `AZURE_DEVOPS_EXT_PAT`), never placed on a command line.

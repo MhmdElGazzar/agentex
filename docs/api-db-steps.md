@@ -32,22 +32,24 @@ own service's requests/queries.
 **Safety rules:**
 - Writes (POST/PUT/DELETE) run if they're cataloged — the catalog is the authorization.
 - **DDL** (`DROP` / `TRUNCATE` / `ALTER`) is refused **even if cataloged** — enforced in code.
-- Secrets stay in env — catalog files hold only env-var *names*; values live in `.env` or your
-  shell.
+- Secrets stay in env — catalog files hold only env-var *names*, and `environments/<env>.json`
+  secret fields use `{ "envSecret": "NAME" }` references (a plain value is allowed only for
+  throwaway shared test credentials); real values live in `.env` or your shell.
 
 **API steps** — `api:` (or "verify via API", "call the endpoint")
 - Catalog: `integration/*_api.json` files
 - Runner: `skills/api-integration/scripts/run_api.js`
 - Catalog sample: `skills/api-integration/templates/sample_api.json`
-- Env: `API_BASE_URL`, `API_TOKEN`
+- Config: the active environment's `api` block (`baseUrl`, `token`); legacy
+  `API_BASE_URL`/`API_TOKEN` in `.env` as fallback
 - Reference: `skills/api-integration/references/api-requests.md`
 
 **DB steps** — `db:` (or "check the database", "verify the row")
 - Catalog: `integration/*_db.json` files
 - Runner: `skills/db-integration/scripts/run_db.js`
 - Catalog sample: `skills/db-integration/templates/sample_db.json`
-- Env: `DB_SERVER`, `DB_PORT` (default `1433`), `DB_NAME`, `DB_USER`; password via
-  `SQLCMDPASSWORD` (never on the command line)
+- Config: the active environment's `db` block (`server`, `port`, `name`, `user`,
+  `password`); legacy `DB_*` in `.env` as fallback
 - Reference: `skills/db-integration/references/sqlcmd.md`
 
 **Reference:**

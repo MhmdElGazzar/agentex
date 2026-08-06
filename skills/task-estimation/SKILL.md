@@ -32,14 +32,14 @@ for the whole session. Do not bake an organization, project, team, or email into
 
 | Setting | Source | Example |
 |---|---|---|
-| Organization URL | `AZURE_URL` / ask | `https://dev.azure.com/<org>` |
-| Project | `AZURE_PROJECT` / ask | `My Project` |
-| Team | `AZURE_TEAM` / ask | `My Project Team` |
-| Default assignee | `AZURE_ASSIGNEE` / ask | `qa.engineer@example.com` |
+| Organization URL | `azure.org` (`config/project.json`) → `AZURE_URL` / ask | `https://dev.azure.com/<org>` |
+| Project | `azure.project` (`config/project.json`) → `AZURE_PROJECT` / ask | `My Project` |
+| Team | `azure.team` (`config/project.json`) → `AZURE_TEAM` / ask | `My Project Team` |
+| Default assignee | `azure.assignee` (`config/project.json`) → `AZURE_ASSIGNEE` / ask | `qa.engineer@example.com` |
 | PAT (auth) | `AZURE_DEVOPS_EXT_PAT` env in the user's shell — **never** print or pass it | — |
 
-(See `.env.example` for these keys. You may read `.env` to resolve the config values above,
-but NEVER print, log, or pass the PAT (or any secret) anywhere — auth flows through the
+(Config lives in `config/project.json`'s `azure` block or legacy `AZURE_*` keys in `.env`.
+NEVER print, log, or pass the PAT (or any secret) anywhere — auth flows through the
 `AZURE_DEVOPS_EXT_PAT` env var that the user exports in their shell.)
 
 ## Task template

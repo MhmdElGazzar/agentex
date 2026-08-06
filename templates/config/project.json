@@ -1,0 +1,15 @@
+{
+  "name": "my-project",
+  "defaultEnvironment": "qa",
+  "azure": {
+    "org": "",
+    "project": "",
+    "team": "",
+    "assignee": ""
+  },
+  "kb": {
+    "baseUrl": "",
+    "project": ""
+  },
+  "login": { "mode": "session" }
+}

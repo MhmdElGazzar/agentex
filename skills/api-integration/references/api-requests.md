@@ -60,6 +60,9 @@ Rules:
   `tokenEnv`) — pass them as shell variables; **never echo their values** and never write the
   Authorization header value into the report (the raw log keeps headers you *send* out of it —
   log response status/headers/body only; if you must log the command, redact the token).
+- When the project defines `environments/<env>.json` with an `api` block, its
+  `baseUrl`/`token` override the catalog's env refs; `--env <name>` selects the
+  environment.
 - URL-encode parameter values that go into the path/query (`--data-urlencode` for query params).
 - `auth.type` values: `bearer` (header shown above), `basic` (`-u "$USER:$PASS"`), `none`.
 - Timeout every call: `--max-time 30`.

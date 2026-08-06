@@ -101,6 +101,12 @@ if (fs.existsSync(integrationDir)) {
                    path.join(integrationDir, 'sample_db.json'));
 }
 
+// ── 4b. Project config + environments (new layout; .env keeps only secrets) ──
+copyFileIfAbsent(path.join(pluginRoot, 'templates', 'config', 'project.json'),
+                 path.join(projectRoot, 'config', 'project.json'));
+copyFileIfAbsent(path.join(pluginRoot, 'templates', 'environments', 'qa.json'),
+                 path.join(projectRoot, 'environments', 'qa.json'));
+
 // ── 5. CLAUDE.md guidance (append-only) ──────────────────────────────────────
 const BULLET = [
   '- `executions/` holds generated test-run artifacts (reports, screenshots, logs).',

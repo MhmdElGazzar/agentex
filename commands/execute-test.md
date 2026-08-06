@@ -14,6 +14,11 @@ Target / scope: $ARGUMENTS
   copied from `${CLAUDE_PLUGIN_ROOT}/test/suite1/`, tell the user to adapt it, then continue.
 - If no suite is named, use the specs the user points at, or default to `./test/suite1/`.
 
+**Environment (if named in the arguments):**
+- "on uat" / "env uat" selects `environments/uat.json` as the active environment;
+  otherwise the project's `defaultEnvironment` applies (legacy projects: `.env`).
+  An environment with no file is an error — list `environments/` and stop.
+
 **Before running:**
 - If the current project has no `test/` directory (or it has no spec files), scaffold a
   starting point first — run the same steps as `/init-test` (copy the bundled samples from

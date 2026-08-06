@@ -10,24 +10,24 @@ team template and hang off the right User Story — with a human confirming ever
 board-changing step. This is the closing gate of a test run.
 
 This skill is **decoupled from any specific team or product**. Everything team-specific is a
-placeholder resolved at runtime from the AgenTeX `.env` (never hardcoded in the skill):
+placeholder resolved at runtime from `config/project.json`'s `azure` block or legacy `AZURE_*` 
+keys in `.env` (never hardcoded in the skill):
 
-| Placeholder | Meaning | Resolved from (`.env` key) |
+| Placeholder | Meaning | Resolved from |
 |---|---|---|
-| `{{ORG_URL}}` | Azure DevOps org URL | `AZURE_URL` / `az` defaults |
-| `{{PROJECT_NAME}}` | Project | `AZURE_PROJECT` / `az` defaults |
-| `{{TEAM_NAME}}` | Team | `AZURE_TEAM` |
-| `{{AREA_PATH}}` | Area Path | `AZURE_AREA_PATH` or inherited from the parent story |
-| `{{ITERATION_PATH}}` | Iteration Path | `AZURE_ITERATION_PATH` or inherited from the parent story |
-| `{{TEMPLATE_BUG_ID}}` | Reference bug the template mirrors | `AZURE_BUG_TEMPLATE_ID` (optional) |
-| `{{ASSIGNEE_EMAIL}}` | Bug assignee options | `AZURE_ASSIGNEE` (comma-separated for several) — **always asked** |
-| `{{TEST_PLAN_ID}}` / `{{TEST_SUITE_ID}}` | Related test plan / suite | `AZURE_TEST_PLAN_ID` — **always asked** |
-| `{{ENVIRONMENT}}` / `{{BUG_CATEGORY}}` | Custom fields | `AZURE_ENVIRONMENT` / `AZURE_BUG_CATEGORY` or asked |
+| `{{ORG_URL}}` | Azure DevOps org URL | `azure.org` (`config/project.json`) → `AZURE_URL` → `az` defaults |
+| `{{PROJECT_NAME}}` | Project | `azure.project` (`config/project.json`) → `AZURE_PROJECT` → `az` defaults |
+| `{{TEAM_NAME}}` | Team | `azure.team` (`config/project.json`) → `AZURE_TEAM` |
+| `{{AREA_PATH}}` | Area Path | `azure.areaPath` (`config/project.json`) → `AZURE_AREA_PATH` or inherited from the parent story |
+| `{{ITERATION_PATH}}` | Iteration Path | `azure.iterationPath` (`config/project.json`) → `AZURE_ITERATION_PATH` or inherited from the parent story |
+| `{{TEMPLATE_BUG_ID}}` | Reference bug the template mirrors | `azure.bugTemplateId` (`config/project.json`) → `AZURE_BUG_TEMPLATE_ID` (optional) |
+| `{{ASSIGNEE_EMAIL}}` | Bug assignee options | `azure.assignee` (`config/project.json`) → `AZURE_ASSIGNEE` (comma-separated) — **always asked** |
+| `{{TEST_PLAN_ID}}` / `{{TEST_SUITE_ID}}` | Related test plan / suite | `azure.testPlanId` (`config/project.json`) → `AZURE_TEST_PLAN_ID` — **always asked** |
+| `{{ENVIRONMENT}}` / `{{BUG_CATEGORY}}` | Custom fields | `azure.environment` / `azure.bugCategory` (`config/project.json`) → `AZURE_ENVIRONMENT` / `AZURE_BUG_CATEGORY` or asked |
 
-Config lives in the repo-root `.env` — the same keys-only file every AgenTeX integration uses
-(copy `.env.example` → `.env`, fill in the `AZURE_*` keys; the PAT is read by `az` from
-`AZURE_DEVOPS_EXT_PAT`, never by this skill). Anything left unset is **asked**, never inferred —
-see constraint 8.
+Config lives in `config/project.json`'s `azure` block (primary) or legacy `AZURE_*` keys in `.env`.
+The PAT is read by `az` from `AZURE_DEVOPS_EXT_PAT`, never by this skill. Anything left unset is
+**asked**, never inferred — see constraint 8.
 
 ## Tooling: az CLI only
 

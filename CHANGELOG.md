@@ -2,6 +2,28 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.11.0] — 2026-08-06
+### Added
+- **Project config files** — settings split out of `.env` into their proper homes: new
+  `config/project.json` (Azure org/project/team, KB settings, `login.mode`,
+  `defaultEnvironment`) and `environments/<env>.json` (`portalUrl`, `defaults`, `users`
+  keyed by descriptive handle, `db`, `api`). Full walkthrough and key reference in
+  `docs/configuration.md`.
+- `{ "envSecret": "NAME" }` convention: any secret-valued field in the JSON config
+  (`password`, `token`) is either a plain string (team-known throwaway test credential)
+  or a reference naming the `.env` variable holding the real value — the JSON files
+  themselves never carry a secret.
+- `--env` flag on `run_db.js` / `run_api.js` selects `environments/<env>.json` for the
+  run; naming an environment with no file is an error (available environments are
+  listed), never a silent fallback.
+- `/init-test` scaffolding now creates `config/project.json` and a sample
+  `environments/qa.json` alongside the (now secrets-only) `.env`.
+
+### Changed
+- `.env` becomes secrets-only. Every reader resolves the new config files first and
+  falls back to the old `.env` variables (`QA_TARGET_URL`, `DB_*`, `AZURE_*`, `KB_*`)
+  when the files or blocks are missing, so existing projects keep working unchanged.
+
 ## [0.10.0] — 2026-08-06
 ### Changed
 - `/init-test` file scaffolding now runs as a bundled script (`scripts/init.js`) in a single
