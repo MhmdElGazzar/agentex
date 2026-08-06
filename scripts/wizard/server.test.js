@@ -18,8 +18,14 @@ async function test(name, fn) {
   catch (e) { failures.push(name); console.error(`  FAIL - ${name}: ${e.message}`); }
 }
 
-const post = (route, body, headers = { 'Content-Type': 'application/json' }) =>
-  fetch(`${BASE}${route}`, { method: 'POST', headers, body: typeof body === 'string' ? body : JSON.stringify(body) });
+let TOKEN = '';   // read from the served page, like a browser would
+
+const post = (route, body, headers = {}) =>
+  fetch(`${BASE}${route}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Wizard-Token': TOKEN, ...headers },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
 
 (async () => {
   const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv-'));
@@ -28,6 +34,29 @@ const post = (route, body, headers = { 'Content-Type': 'application/json' }) =>
   child.stdout.on('data', d => { stdout += d; });
   await new Promise(r => {
     const t = setInterval(() => { if (stdout.includes('Wizard running')) { clearInterval(t); r(); } }, 100);
+  });
+
+  // The page carries the token; a browser on another site cannot read it.
+  TOKEN = (await (await fetch(`${BASE}/setup`)).text()).match(/const TOKEN = '([a-f0-9]+)'/)[1];
+
+  await test('an API call without the page token is refused', async () => {
+    const read = await fetch(`${BASE}/api/config`);
+    assert.strictEqual(read.status, 403, 'cross-site read must be refused');
+    // A simple POST (text/plain needs no CORS preflight) must not write files.
+    const write = await fetch(`${BASE}/api/save`, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        projectConfig: { name: 'evil' }, envConfig: { portalUrl: 'https://evil.example' },
+        envName: 'qa', secrets: { EVIL_KEY: 'pwned' },
+      }),
+    });
+    assert.strictEqual(write.status, 403);
+    assert.ok(!fs.existsSync(path.join(projectDir, 'config', 'project.json')), 'nothing written');
+  });
+
+  await test('responses carry no wildcard CORS header', async () => {
+    const r = await fetch(`${BASE}/setup`);
+    assert.strictEqual(r.headers.get('access-control-allow-origin'), null);
   });
 
   await test('extracts Arabic labels sent over HTTP (UTF-8, not latin1)', async () => {
@@ -97,7 +126,7 @@ const post = (route, body, headers = { 'Content-Type': 'application/json' }) =>
   await test('malformed JSON is a clean 400, not a crash', async () => {
     const r = await post('/api/save', '{ not json');
     assert.strictEqual(r.status, 400);
-    const alive = await fetch(`${BASE}/api/schema`);
+    const alive = await fetch(`${BASE}/api/schema`, { headers: { 'X-Wizard-Token': TOKEN } });
     assert.strictEqual(alive.status, 200, 'server still serving after bad input');
   });
 

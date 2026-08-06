@@ -415,6 +415,15 @@ body { min-height: 100vh; }
 /* ── Config ─────────────────────────────────────────────────────────────── */
 const MODE = window.WIZARD_MODE || 'local';
 const API  = window.WIZARD_API  || '';
+const TOKEN = window.WIZARD_TOKEN || '';
+
+/** Every API call carries this run's token — the server rejects calls without it. */
+function apiFetch(path, opts = {}) {
+  return fetch(`${API}${path}`, {
+    ...opts,
+    headers: { ...(opts.headers || {}), 'X-Wizard-Token': TOKEN },
+  });
+}
 
 /* ── State ──────────────────────────────────────────────────────────────── */
 let schema   = null;
@@ -448,7 +457,7 @@ async function init() {
 async function loadExistingConfig() {
   if (MODE !== 'local') return;
   let cfg;
-  try { cfg = await (await fetch(`${API}/api/config`)).json(); }
+  try { cfg = await (await apiFetch('/api/config')).json(); }
   catch { return; }
   const proj = cfg && cfg.projectConfig;
   const env  = cfg && cfg.envConfig;
@@ -497,7 +506,7 @@ async function loadExistingConfig() {
 
 async function loadSchema() {
   if (MODE === 'local') {
-    const r = await fetch(`${API}/api/schema`);
+    const r = await apiFetch('/api/schema');
     return r.json();
   }
   return window.WIZARD_SCHEMA;
@@ -600,7 +609,7 @@ async function extractFromPaste() {
 
   try {
     if (MODE === 'local') {
-      const r = await fetch(`${API}/api/extract`, {
+      const r = await apiFetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -845,11 +854,11 @@ function renderAIStep(_step) {
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
   wrap.innerHTML = `
     <div class="dropzone" id="dz">
-      <input type="file" id="fi" accept=".md,.txt,.pdf,.docx,.doc" style="display:none" />
+      <input type="file" id="fi" accept=".md,.txt,.env,.json,.yml,.yaml,.pdf,.docx,.doc" style="display:none" />
       <div class="dz-icon">📄</div>
       <div class="dz-title">اسحب الملف هنا أو انقر للاختيار</div>
       <div class="dz-sub">سيستخلص Claude البيانات تلقائياً</div>
-      <div class="dz-types">.md · .txt · .pdf · .docx · .doc</div>
+      <div class="dz-types">.env · .md · .txt · .json · .pdf · .docx</div>
     </div>
     <div class="file-ready" id="file-ready">
       <div style="font-size:28px">📋</div>
@@ -900,7 +909,7 @@ async function runExtract() {
   try {
     if (MODE === 'local') {
       const fd = new FormData(); fd.append('file', window._file);
-      const r = await fetch(`${API}/api/extract`, { method:'POST', body:fd });
+      const r = await apiFetch('/api/extract', { method:'POST', body:fd });
       extractedData = await r.json();
     } else {
       const t = await window._file.text();
@@ -921,7 +930,10 @@ function resetFile() {
 
 function applyAndContinue() {
   if (extractedData) applyExtracted(extractedData);
-  goTo(current + 1);
+  // Back to the first step, not straight to review: extraction fills what it
+  // found, and the user still has to see — and complete — the rest.
+  showToast('✅ تم تعبئة الحقول — راجعها خطوة بخطوة');
+  goTo(0);
 }
 
 function applyExtracted(data) {
@@ -1155,7 +1167,7 @@ async function saveAndClose() {
 
   if (MODE === 'local') {
     try {
-      const r = await fetch(`${API}/api/save`, {
+      const r = await apiFetch('/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectConfig, envConfig, envName, secrets }),
@@ -1167,7 +1179,7 @@ async function saveAndClose() {
         if (card) card.innerHTML =
           '<div class="paste-mode"><h2>✅ تم الإعداد بنجاح</h2>' +
           '<p>تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — يمكنك إغلاق هذا التبويب والعودة إلى التيرمنال.</p></div>';
-        setTimeout(() => fetch(`${API}/api/done`).catch(() => {}), 1500);
+        setTimeout(() => apiFetch('/api/done').catch(() => {}), 1500);
       } else { showToast('❌ ' + (res.error || 'خطأ'), 'error'); }
     } catch(e) { showToast('❌ ' + e.message, 'error'); }
   } else {

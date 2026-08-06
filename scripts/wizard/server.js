@@ -8,6 +8,7 @@
 'use strict';
 
 const http   = require('http');
+const crypto = require('crypto');
 const fs     = require('fs');
 const path   = require('path');
 const { execSync } = require('child_process');
@@ -23,6 +24,9 @@ const FORCE       = args.includes('--force');
 const HOST        = '127.0.0.1';
 const BASE_URL    = `http://${HOST}:${PORT}`;
 const WIZARD_URL  = `${BASE_URL}/setup`;
+
+// Per-run secret the served page carries; API calls must echo it back.
+const TOKEN       = crypto.randomBytes(24).toString('hex');
 
 const pluginRoot  = path.resolve(__dirname, '..', '..');
 const schemaPath  = path.join(__dirname, 'schema.json');
@@ -47,15 +51,26 @@ server = http.createServer((req, res) => {
   // ── GET /setup  →  serve wizard HTML ───────────────────────────────────
   if (method === 'GET' && url.pathname === '/setup') {
     let html = fs.readFileSync(uiPath, 'utf8');
-    // Inject mode and API base into the page
+    // Inject mode, API base, and this run's token into the page.
     html = html.replace(
       "const MODE = window.WIZARD_MODE || 'local';",
       "const MODE = 'local';"
     ).replace(
       "const API  = window.WIZARD_API  || '';",
       `const API  = '${BASE_URL}';`
+    ).replace(
+      "const TOKEN = window.WIZARD_TOKEN || '';",
+      `const TOKEN = '${TOKEN}';`
     );
     respond(res, 200, 'text/html; charset=utf-8', html);
+    return;
+  }
+
+  // Everything else under /api/ is for this wizard's own page only. Without
+  // this, any site open in the user's browser could read the project config
+  // and write its files (a simple POST needs no CORS preflight).
+  if (url.pathname.startsWith('/api/') && req.headers['x-wizard-token'] !== TOKEN) {
+    respondJSON(res, 403, { error: 'forbidden — this API only serves the wizard page' });
     return;
   }
 
@@ -241,8 +256,9 @@ function writeSecrets(envPath, secrets) {
 function respond(res, status, ct, body) {
   res.writeHead(status, {
     'Content-Type': ct,
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    // No CORS: the UI is same-origin. A wildcard here let any page open in the
+    // user's browser read this project's config and write its files.
+    'X-Content-Type-Options': 'nosniff',
   });
   res.end(body);
 }
