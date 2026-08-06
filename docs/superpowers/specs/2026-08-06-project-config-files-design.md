@@ -28,9 +28,10 @@ Project data falls into three kinds, each with one home:
 | Project settings | Azure org/project/team, login mode, KB project | `config/project.json` |
 | Environment data | portal URL, DB, API, test users, default OTP | `environments/<env>.json` |
 
-**Golden rule: the new JSON files never contain a secret.** A secret field holds the
-*name* of an `.env` variable (`"passwordEnv": "SQLCMDPASSWORD"`), never the value —
-the same convention the `integration/` catalog already uses.
+**Golden rule: the new JSON files never contain a secret.** A secret-valued field
+holds a reference object naming the `.env` variable —
+`"password": { "envSecret": "SQLCMDPASSWORD" }` — never the value itself; the same
+spirit as the `integration/` catalog's `*Env` keys.
 
 ## Project layout
 
@@ -93,6 +94,7 @@ An environment is one self-consistent unit — portal, DB, API, users move toget
   "portalUrl": "https://uat.tameeni.com",
   "defaults": {
     "otp": "0000",
+    "password": "Test@1234",
     "captcha": "disabled"
   },
   "users": [
@@ -101,7 +103,7 @@ An environment is one self-consistent unit — portal, DB, API, users move toget
       "phone": "0550000001",
       "role": "customer",
       "idNumber": "1234567890",
-      "passwordEnv": "QA_TESTER_PASSWORD",
+      "password": { "envSecret": "QA_TESTER_PASSWORD" },
       "notes": "sponsor with active contract policies"
     }
   ],
@@ -110,23 +112,31 @@ An environment is one self-consistent unit — portal, DB, API, users move toget
     "port": 1434,
     "name": "TameeniDomesticQC",
     "user": "eslam.fawzy",
-    "passwordEnv": "SQLCMDPASSWORD"
+    "password": { "envSecret": "SQLCMDPASSWORD" }
   },
   "api": {
     "baseUrl": "https://uat-api.tameeni.com",
-    "tokenEnv": "API_TOKEN"
+    "token": { "envSecret": "API_TOKEN" }
   }
 }
 ```
 
 - Every field except `portalUrl` is optional. An environment without DB checks has
   no `db` block (this encodes the wizard's "need API? / need DB?" answers).
-- `defaults` are non-secret static test-environment values (fixed OTP, captcha
-  bypass flag) written as plain values. Free-form: keys beyond `otp`/`captcha` are
-  allowed and passed through to the executor as-is.
-- `*Env` fields (`passwordEnv`, `tokenEnv`) name `.env` variables. Two environments
-  with different DB passwords use different names (`SQLCMDPASSWORD_UAT`,
-  `SQLCMDPASSWORD_LIVE`); a `*Env` field may be omitted when no secret is needed.
+- `defaults` are non-secret static test-environment values (fixed OTP, shared
+  default password, captcha bypass flag) written as plain values. Free-form: keys
+  beyond `otp`/`password`/`captcha` are allowed and passed through to the executor
+  as-is.
+- **Secret references:** a secret-valued field (`password`, `token`) takes one of
+  two shapes. A plain string is the literal value — acceptable only for team-known
+  throwaway test credentials (like a shared QA default password). An object
+  `{ "envSecret": "NAME" }` names the `.env` variable holding the real value. Two
+  environments with different DB passwords simply name different variables
+  (`SQLCMDPASSWORD_UAT`, `SQLCMDPASSWORD_LIVE`); omit the field entirely when no
+  secret is needed.
+- `defaults.password` is the environment's shared test credential: a user without
+  their own `password` logs in with it. If the default credential is actually
+  sensitive, write it as `{ "envSecret": "..." }` instead of a plain value.
 - User objects are free-form beyond `name` (required): `phone`, `role`, `idNumber`,
   `notes`, and any project-specific fields are passed through to the executor.
 
@@ -164,7 +174,7 @@ AZURE_PAT=
 SQLCMDPASSWORD=
 API_TOKEN=
 KB_ASK_API_KEY=
-QA_TESTER_PASSWORD=          # per-user secrets referenced via passwordEnv
+QA_TESTER_PASSWORD=          # referenced from JSON via { "envSecret": ... }
 ```
 
 ## Out of scope
