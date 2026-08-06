@@ -19,6 +19,7 @@ const args        = process.argv.slice(2);
 const projectRoot = path.resolve(args.find(a => !a.startsWith('--')) || process.cwd());
 const portArg     = args.find(a => a.startsWith('--port='));
 const PORT        = portArg ? parseInt(portArg.split('=')[1]) : 7373;
+const FORCE       = args.includes('--force');
 const HOST        = '127.0.0.1';
 const BASE_URL    = `http://${HOST}:${PORT}`;
 const WIZARD_URL  = `${BASE_URL}/setup`;
@@ -28,7 +29,7 @@ const schemaPath  = path.join(__dirname, 'schema.json');
 const uiPath      = path.join(__dirname, 'ui.html');
 
 // Reject running inside the plugin itself
-if (projectRoot === pluginRoot) {
+if (!FORCE && projectRoot === pluginRoot) {
   console.error('[setup-wizard] error: cannot run from the plugin root — run from your project');
   process.exit(1);
 }
@@ -75,14 +76,14 @@ server = http.createServer((req, res) => {
     return;
   }
 
-  // ── POST /api/save  →  write config files ──────────────────────────────
+  // ── POST /api/save  →  write config files + secrets → .env ─────────────
   if (method === 'POST' && url.pathname === '/api/save') {
     readBody(req, body => {
       let payload;
       try { payload = JSON.parse(body); }
       catch { respondJSON(res, 400, { ok: false, error: 'Invalid JSON' }); return; }
 
-      const { projectConfig, envConfig, envName } = payload;
+      const { projectConfig, envConfig, envName, secrets } = payload;
       if (!projectConfig || !envConfig || !envName) {
         respondJSON(res, 400, { ok: false, error: 'Missing projectConfig, envConfig, or envName' });
         return;
@@ -106,6 +107,12 @@ server = http.createServer((req, res) => {
           JSON.stringify(envConfig, null, 2) + '\n',
           'utf8'
         );
+
+        // Write secrets → .env silently (no UI mention)
+        if (secrets && Object.keys(secrets).length > 0) {
+          writeSecrets(path.join(projectRoot, '.env'), secrets);
+          console.log(`[setup-wizard] 🔐 Secrets written to .env`);
+        }
 
         console.log(`[setup-wizard] ✅ Saved:`);
         console.log(`  config/project.json`);
@@ -171,6 +178,27 @@ server.on('error', err => {
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+/**
+ * Write secrets into .env — creates the file if absent, updates existing keys,
+ * appends new ones. Never exposes this flow to the UI.
+ */
+function writeSecrets(envPath, secrets) {
+  let lines = [];
+  if (fs.existsSync(envPath)) {
+    lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+  }
+
+  for (const [key, value] of Object.entries(secrets)) {
+    if (!value) continue; // skip empty secrets
+    const idx = lines.findIndex(l => l.match(new RegExp(`^${key}\\s*=`)));
+    const line = `${key}=${value}`;
+    if (idx >= 0) lines[idx] = line;
+    else lines.push(line);
+  }
+
+  fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf8');
+}
+
 function respond(res, status, ct, body) {
   res.writeHead(status, {
     'Content-Type': ct,

@@ -196,6 +196,16 @@
           "placeholder": "qa@example.com",
           "required": false,
           "aiHint": "default assignee email for bugs"
+        },
+        {
+          "key": "azure.pat",
+          "label": "Azure DevOps PAT Token",
+          "type": "password",
+          "placeholder": "ghp_xxxxxxxxxxxx",
+          "required": false,
+          "secret": true,
+          "envKey": "AZURE_PAT",
+          "aiHint": "Azure DevOps personal access token"
         }
       ]
     },
@@ -246,14 +256,23 @@
         },
         {
           "key": "db.passwordEnvVar",
-          "label": "متغير كلمة المرور (في .env)",
-          "labelEn": "Password Env Var (.env)",
+          "label": "متغير كلمة المرور",
+          "labelEn": "Password Env Var",
           "type": "text",
           "placeholder": "SQLCMDPASSWORD",
           "default": "SQLCMDPASSWORD",
           "required": false,
-          "hint": "اسم المتغير فقط — القيمة في .env",
           "aiHint": "environment variable name for DB password"
+        },
+        {
+          "key": "db.password",
+          "label": "كلمة مرور قاعدة البيانات",
+          "type": "password",
+          "placeholder": "••••••••",
+          "required": false,
+          "secret": true,
+          "envKey": "SQLCMDPASSWORD",
+          "aiHint": "database password"
         }
       ]
     },
@@ -277,14 +296,23 @@
         },
         {
           "key": "api.tokenEnvVar",
-          "label": "متغير الـ Token (في .env)",
-          "labelEn": "Token Env Var (.env)",
+          "label": "متغير الـ Token",
+          "labelEn": "Token Env Var",
           "type": "text",
           "placeholder": "API_TOKEN",
           "default": "API_TOKEN",
           "required": false,
-          "hint": "اسم المتغير فقط — القيمة في .env",
           "aiHint": "environment variable name for API bearer token"
+        },
+        {
+          "key": "api.token",
+          "label": "API Token",
+          "type": "password",
+          "placeholder": "Bearer xxxxxxxxxxxx",
+          "required": false,
+          "secret": true,
+          "envKey": "API_TOKEN",
+          "aiHint": "API bearer token"
         }
       ]
     },
