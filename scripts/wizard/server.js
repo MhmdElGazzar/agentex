@@ -12,7 +12,7 @@ const fs     = require('fs');
 const path   = require('path');
 const { execSync } = require('child_process');
 
-const { buildConfigs, validate } = require('./engine.js');
+const { buildConfigs, validate, validateConfigs } = require('./engine.js');
 
 // ── CLI args ──────────────────────────────────────────────────────────────
 const args        = process.argv.slice(2);
@@ -59,6 +59,13 @@ server = http.createServer((req, res) => {
     return;
   }
 
+  // ── GET /favicon.ico  →  204 (keeps the browser console free of 404s) ──
+  if (method === 'GET' && url.pathname === '/favicon.ico') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   // ── GET /api/schema  →  return wizard schema ────────────────────────────
   if (method === 'GET' && url.pathname === '/api/schema') {
     respondJSON(res, 200, schema);
@@ -86,6 +93,14 @@ server = http.createServer((req, res) => {
       const { projectConfig, envConfig, envName, secrets } = payload;
       if (!projectConfig || !envConfig || !envName) {
         respondJSON(res, 400, { ok: false, error: 'Missing projectConfig, envConfig, or envName' });
+        return;
+      }
+
+      // Never trust the browser: re-validate, and reject an envName that could
+      // escape environments/ (it becomes a file name below).
+      const errors = validateConfigs(projectConfig, envConfig, envName);
+      if (errors.length) {
+        respondJSON(res, 400, { ok: false, error: errors.join('; ') });
         return;
       }
 

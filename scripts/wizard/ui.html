@@ -373,6 +373,7 @@ body { min-height: 100vh; }
   display: flex; align-items: center; gap: 8px;
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
+.toast.error { background: #C0392B; color: #FFFFFF; }
 
 /* ── Animations ─────────────────────────────────────────────────────────── */
 @keyframes fadeUp {
@@ -682,6 +683,10 @@ function buildField(field) {
       inp.classList.add('secret-input');
       inp.addEventListener('input', () => { secrets[field.envKey] = inp.value; });
     } else {
+      // Seed the answer with the rendered value (defaults included) so an
+      // untouched field with a default — e.g. a preselected <select> — is
+      // "filled" for validation, not just visually.
+      if (answers[field.key] === undefined && inp.value !== '') answers[field.key] = inp.value;
       inp.addEventListener('change', () => { answers[field.key] = inp.value; });
       inp.addEventListener('input',  () => { answers[field.key] = inp.value; });
     }
@@ -960,7 +965,35 @@ function renderFooter(step) {
 }
 
 /* ── Navigation ──────────────────────────────────────────────────────────── */
-function next() { collectAnswers(); if (current < schema.steps.length-1) goTo(current+1); }
+// Block advancing while the current step has invalid values (required / url / email).
+// Mirrors engine.js validate(); the server re-checks on save as defense-in-depth.
+function validateStep() {
+  const step = schema.steps[current];
+  const errs = [];
+  for (const f of (step.fields || [])) {
+    const v = String(answers[f.key] ?? '').trim();
+    if (f.required && !v) { errs.push(`«${f.label || f.key}» مطلوب`); continue; }
+    if (!v) continue;
+    if (f.type === 'url') {
+      let ok = false;
+      try { const u = new URL(v); ok = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
+      if (!ok) errs.push(`«${f.label || f.key}» يجب أن يكون رابط http(s) صحيحاً`);
+    }
+    if (f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+      errs.push(`«${f.label || f.key}» بريد إلكتروني غير صحيح`);
+    }
+  }
+  if (step.type === 'dynamic-list') {
+    for (const u of users) {
+      const hasData = u.phone || u.email || u.role || u.notes;
+      if (hasData && !String(u.handle || '').trim()) { errs.push('كل مستخدم يحتاج «معرّف» قبل المتابعة'); break; }
+    }
+  }
+  if (errs.length) showToast('❌ ' + errs[0], 'error');
+  return errs.length === 0;
+}
+
+function next() { collectAnswers(); if (!validateStep()) return; if (current < schema.steps.length-1) goTo(current+1); }
 function prev() { collectAnswers(); if (current > 0) goTo(current-1); }
 
 function goTo(idx) {
@@ -1058,7 +1091,11 @@ async function saveAndClose() {
       const res = await r.json();
       if (res.ok) {
         showToast('✅ تم الحفظ بنجاح!');
-        setTimeout(() => fetch(`${API}/api/done`), 1500);
+        const card = document.getElementById('card');
+        if (card) card.innerHTML =
+          '<div class="paste-mode"><h2>✅ تم الإعداد بنجاح</h2>' +
+          '<p>تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — يمكنك إغلاق هذا التبويب والعودة إلى التيرمنال.</p></div>';
+        setTimeout(() => fetch(`${API}/api/done`).catch(() => {}), 1500);
       } else { showToast('❌ ' + (res.error || 'خطأ'), 'error'); }
     } catch(e) { showToast('❌ ' + e.message, 'error'); }
   } else {
@@ -1088,7 +1125,7 @@ let _tt;
 function showToast(msg, type='') {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.className = `toast show`;
+  t.className = `toast show${type ? ' ' + type : ''}`;
   clearTimeout(_tt); _tt = setTimeout(() => t.classList.remove('show'), 3000);
 }
 

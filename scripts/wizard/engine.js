@@ -133,6 +133,35 @@ function validate(answers, steps) {
   return errors;
 }
 
+const ENV_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,30}$/;
+
+function isHttpUrl(u) {
+  try { const x = new URL(u); return x.protocol === 'http:' || x.protocol === 'https:'; }
+  catch { return false; }
+}
+
+/**
+ * Server-side validation of the built configs (defense-in-depth: the UI validates
+ * per step, but /api/save must never trust the browser).
+ * envName is also the target file name — reject anything that could escape
+ * environments/ (path traversal).
+ * Returns array of error strings (empty = valid).
+ */
+function validateConfigs(projectConfig, envConfig, envName) {
+  const errors = [];
+  if (!projectConfig || typeof projectConfig !== 'object') errors.push('projectConfig is required');
+  else if (!String(projectConfig.name || '').trim()) errors.push('project name is required');
+  if (!ENV_NAME_RE.test(String(envName || ''))) {
+    errors.push('envName must be lowercase letters/digits/-/_ (max 31 chars)');
+  }
+  if (!envConfig || typeof envConfig !== 'object') errors.push('envConfig is required');
+  else {
+    if (!isHttpUrl(envConfig.portalUrl)) errors.push('portalUrl must be a valid http(s) URL');
+    if (envConfig.api && !isHttpUrl(envConfig.api.baseUrl)) errors.push('api.baseUrl must be a valid http(s) URL');
+  }
+  return errors;
+}
+
 /**
  * Merge AI-extracted partial answers into the existing answers object.
  * Extracted values only fill keys that are currently empty.
@@ -171,4 +200,4 @@ function flattenObject(obj, prefix = '') {
   return result;
 }
 
-module.exports = { buildConfigs, validate, mergeExtracted, flattenObject };
+module.exports = { buildConfigs, validate, validateConfigs, isHttpUrl, mergeExtracted, flattenObject };
