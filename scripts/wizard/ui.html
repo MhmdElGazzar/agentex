@@ -427,11 +427,72 @@ let users    = [
 let current      = -1;      // -1 = intro screen
 let importMode   = null;    // 'file' | 'paste' | 'steps'
 let extractedData = null;
+// Config already on disk (re-run of the wizard) — the base saving merges onto,
+// so fields the wizard doesn't manage survive.
+let existingProject = null;
+let existingEnv     = null;
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 async function init() {
   schema = await loadSchema();
+  await loadExistingConfig();
   renderIntro();
+}
+
+/**
+ * Re-running the wizard on a configured project must show what is already there,
+ * not a blank form. Flatten the saved files back into `answers` (and `users`), and
+ * remember the untouched parts of project.json so saving can't drop hand-added
+ * fields the wizard has no input for (e.g. azure.areaPath).
+ */
+async function loadExistingConfig() {
+  if (MODE !== 'local') return;
+  let cfg;
+  try { cfg = await (await fetch(`${API}/api/config`)).json(); }
+  catch { return; }
+  const proj = cfg && cfg.projectConfig;
+  const env  = cfg && cfg.envConfig;
+  if (!proj && !env) return;
+
+  existingProject = proj || null;
+  existingEnv     = env  || null;
+
+  if (proj) {
+    if (proj.name) answers['name'] = proj.name;
+    answers['defaultEnvironment'] = cfg.envName || proj.defaultEnvironment || 'qa';
+    if (proj.login && proj.login.mode) answers['login.mode'] = proj.login.mode;
+    for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']]]) {
+      for (const k of keys) {
+        const v = proj[group] && proj[group][k];
+        if (v) answers[`${group}.${k}`] = v;
+      }
+    }
+  }
+
+  if (env) {
+    if (env.portalUrl) answers['portalUrl'] = env.portalUrl;
+    if (env.defaults) {
+      if (env.defaults.otp)      answers['defaults.otp']      = env.defaults.otp;
+      if (env.defaults.password) answers['defaults.password'] = env.defaults.password;
+    }
+    if (env.db) {
+      if (env.db.server) answers['db.server'] = env.db.server;
+      if (env.db.port)   answers['db.port']   = String(env.db.port);
+      if (env.db.name)   answers['db.name']   = env.db.name;
+      if (env.db.user)   answers['db.user']   = env.db.user;
+      if (env.db.password && env.db.password.envSecret) answers['db.passwordEnvVar'] = env.db.password.envSecret;
+    }
+    if (env.api) {
+      if (env.api.baseUrl) answers['api.baseUrl'] = env.api.baseUrl;
+      if (env.api.token && env.api.token.envSecret) answers['api.tokenEnvVar'] = env.api.token.envSecret;
+    }
+    const entries = Object.entries(env.users || {});
+    if (entries.length) {
+      users = entries.map(([handle, u]) => ({ handle, phone: u.phone || '', role: u.role || '', email: u.email || '', notes: u.notes || '' }));
+      answers['users'] = users;
+    }
+  }
+  showToast('📂 تم تحميل إعدادات المشروع الحالية');
 }
 
 async function loadSchema() {
@@ -1022,28 +1083,39 @@ function collectAnswers() {
 /* ── Build Configs ───────────────────────────────────────────────────────── */
 function buildConfigs() {
   const envName = answers['defaultEnvironment'] || 'qa';
-  const proj = {
+  // Start from what's on disk so keys the wizard has no input for (azure.areaPath,
+  // kb.org, custom fields) survive a re-run instead of being silently dropped.
+  const proj = Object.assign({}, existingProject, {
     name: answers['name'] || 'my-project',
     defaultEnvironment: envName,
-    login: { mode: answers['login.mode'] || 'session' },
-  };
+    login: Object.assign({}, existingProject && existingProject.login, { mode: answers['login.mode'] || 'session' }),
+  });
   if (answers['azure.org'] || answers['azure.project']) {
-    proj.azure = {
+    proj.azure = Object.assign({}, existingProject && existingProject.azure, {
       org:      answers['azure.org']      || '',
       project:  answers['azure.project']  || '',
       team:     answers['azure.team']     || '',
       assignee: answers['azure.assignee'] || '',
-    };
+    });
+  }
+  if (answers['kb.baseUrl'] || answers['kb.project']) {
+    proj.kb = Object.assign({}, existingProject && existingProject.kb, {
+      baseUrl: answers['kb.baseUrl'] || '',
+      project: answers['kb.project'] || '',
+    });
   }
 
-  const env = {
+  // Only merge the environment file back when we're rewriting the SAME environment;
+  // a different name is a new environment file, which starts clean.
+  const envBase = (existingEnv && existingProject && existingProject.defaultEnvironment === envName) ? existingEnv : null;
+  const env = Object.assign({}, envBase, {
     portalUrl: answers['portalUrl'] || '',
-    defaults: {
+    defaults: Object.assign({}, envBase && envBase.defaults, {
       otp:      answers['defaults.otp']      || '0000',
       password: answers['defaults.password'] || 'Test@1234',
-    },
+    }),
     users: buildUsersObj(),
-  };
+  });
   if (answers['db.server']) {
     env.db = {
       server: answers['db.server'],
