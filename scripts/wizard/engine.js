@@ -133,6 +133,132 @@ function validate(answers, steps) {
   return errors;
 }
 
+/* ── Text extraction ──────────────────────────────────────────────────────
+ * Turn pasted/uploaded text (an old .env, a BRD paragraph, a handover note)
+ * into schema-shaped answers. Deterministic and offline: it reads only what is
+ * plainly stated and leaves everything else for the user to fill in.
+ * Secrets are never extracted — passwords/tokens/PATs belong in .env, typed by
+ * the user into the wizard's own secret fields.
+ */
+
+// Canonical .env variable names → wizard answer keys.
+const ENV_KEY_MAP = {
+  QA_TARGET_URL: 'portalUrl', QA_URL: 'portalUrl', PORTAL_URL: 'portalUrl',
+  APP_URL: 'portalUrl', TARGET_URL: 'portalUrl', UAT_URL: 'portalUrl',
+  PROJECT_NAME: 'name',
+  AZURE_URL: 'azure.org', AZURE_ORG: 'azure.org', AZURE_DEVOPS_ORG: 'azure.org',
+  AZURE_PROJECT: 'azure.project', AZURE_TEAM: 'azure.team', AZURE_ASSIGNEE: 'azure.assignee',
+  DB_SERVER: 'db.server', DB_HOST: 'db.server', DB_PORT: 'db.port',
+  DB_NAME: 'db.name', DB_DATABASE: 'db.name', DB_USER: 'db.user', DB_USERNAME: 'db.user',
+  API_BASE_URL: 'api.baseUrl', API_URL: 'api.baseUrl',
+  KB_ASK_BASE_URL: 'kb.baseUrl', KB_PROJECT: 'kb.project',
+  OTP: 'defaults.otp', DEFAULT_OTP: 'defaults.otp', CAPTCHA: 'defaults.captcha',
+};
+
+// Grouped lines: "DB: server=x, name=y" / "Azure Org: o, Project: p".
+const GROUPS = [
+  [/^\s*(?:db|database|قاعدة\s*البيانات)\b/i, {
+    server: 'db.server', host: 'db.server', port: 'db.port',
+    name: 'db.name', database: 'db.name', user: 'db.user', username: 'db.user',
+  }],
+  [/^\s*(?:api)\b/i, { baseurl: 'api.baseUrl', base_url: 'api.baseUrl', url: 'api.baseUrl', api: 'api.baseUrl' }],
+  [/^\s*(?:azure|أزور)\b/i, {
+    org: 'azure.org', organization: 'azure.org', 'azure org': 'azure.org',
+    project: 'azure.project', team: 'azure.team', assignee: 'azure.assignee',
+  }],
+  [/^\s*(?:kb|knowledge\s*base)\b/i, { baseurl: 'kb.baseUrl', url: 'kb.baseUrl', project: 'kb.project' }],
+];
+
+// Standalone "label: value" lines.
+const LABELS = [
+  [/^(?:اسم\s*المشروع|المشروع|project\s*name)$/i, 'name'],
+  [/^(?:رابط\s*التطبيق|الرابط|portal\s*url|app\s*url|target\s*url|website|site)$/i, 'portalUrl'],
+  [/^(?:البيئة(?:\s*الافتراضية)?|environment|default\s*environment|env)$/i, 'defaultEnvironment'],
+  [/^(?:otp|رمز\s*التحقق|كلمة\s*المرور\s*المؤقتة)$/i, 'defaults.otp'],
+];
+
+const stripQuotes = (s) => String(s).trim().replace(/^["']|["']$/g, '').trim();
+
+/** Split "a=1, b: 2" into [key, value] pairs. */
+function pairsIn(segment) {
+  const out = [];
+  for (const part of segment.split(/[,،;؛|]/)) {
+    const m = part.match(/^\s*([^:=]{1,40}?)\s*[:=]\s*(.+?)\s*$/);
+    if (m) out.push([m[1].trim().toLowerCase(), stripQuotes(m[2])]);
+  }
+  return out;
+}
+
+function extractFromText(text) {
+  const out = {};
+  const set = (key, val) => { if (key && val && out[key] === undefined) out[key] = val; };
+  const lines = String(text || '').split(/\r?\n/);
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    // .env style — KEY=value (canonical names only, so no guessing).
+    const envMatch = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (envMatch && ENV_KEY_MAP[envMatch[1].toUpperCase()]) {
+      set(ENV_KEY_MAP[envMatch[1].toUpperCase()], stripQuotes(envMatch[2]));
+      continue;
+    }
+
+    // Grouped line — "DB: server=x, name=y".
+    const group = GROUPS.find(([re]) => re.test(line));
+    if (group) {
+      const [, fieldMap] = group;
+      // Drop the group token first, or it is read as the first pair's label
+      // ("DB: server=x" → label "DB", value "server=x").
+      const body = line.replace(/^\s*[^\s:=]+\s*:?\s*/, '');
+      const pairs = pairsIn(body);
+      let matched = false;
+      for (const [k, v] of pairs) {
+        const key = fieldMap[k] || fieldMap[k.replace(/\s+/g, '_')];
+        if (key) { set(key, v); matched = true; }
+      }
+      // "API: https://…" — a bare URL after the group token.
+      if (!matched) {
+        const url = body.match(/https?:\/\/\S+/);
+        if (url) set(fieldMap.url || fieldMap.baseurl, url[0]);
+      }
+      continue;
+    }
+
+    // Plain "label: value".
+    const m = line.match(/^\s*([^:=]{1,40}?)\s*[:=]\s*(.+?)\s*$/);
+    if (m) {
+      const label = m[1].trim();
+      const hit = LABELS.find(([re]) => re.test(label));
+      if (hit) set(hit[1], stripQuotes(m[2]));
+    }
+  }
+
+  const users = extractUsers(text);
+  if (users.length) out.users = users;
+  return out;
+}
+
+/** Users written as `handle (phone)` or `handle (email)` anywhere in the text. */
+function extractUsers(text) {
+  const users = [];
+  const seen = new Set();
+  const re = /\b([a-z][a-z0-9_]{2,30})\s*\(\s*([^)]{5,60}?)\s*\)/gi;
+  let m;
+  while ((m = re.exec(String(text || '')))) {
+    const handle = m[1];
+    const detail = m[2].trim();
+    if (seen.has(handle)) continue;
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(detail);
+    const digits = detail.replace(/\D/g, '');
+    if (!isEmail && digits.length < 6) continue;   // not a phone, not an email → not a user
+    seen.add(handle);
+    users.push(isEmail ? { handle, email: detail } : { handle, phone: detail });
+  }
+  return users;
+}
+
 const ENV_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,30}$/;
 
 function isHttpUrl(u) {
@@ -200,4 +326,7 @@ function flattenObject(obj, prefix = '') {
   return result;
 }
 
-module.exports = { buildConfigs, validate, validateConfigs, isHttpUrl, mergeExtracted, flattenObject };
+module.exports = {
+  buildConfigs, validate, validateConfigs, isHttpUrl,
+  extractFromText, extractUsers, mergeExtracted, flattenObject,
+};

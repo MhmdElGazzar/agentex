@@ -12,7 +12,7 @@ const fs     = require('fs');
 const path   = require('path');
 const { execSync } = require('child_process');
 
-const { buildConfigs, validate, validateConfigs } = require('./engine.js');
+const { buildConfigs, validate, validateConfigs, extractFromText } = require('./engine.js');
 
 // ── CLI args ──────────────────────────────────────────────────────────────
 const args        = process.argv.slice(2);
@@ -85,9 +85,9 @@ server = http.createServer((req, res) => {
 
   // ── POST /api/save  →  write config files + secrets → .env ─────────────
   if (method === 'POST' && url.pathname === '/api/save') {
-    readBody(req, body => {
+    readBody(req, buf => {
       let payload;
-      try { payload = JSON.parse(body); }
+      try { payload = JSON.parse(buf.toString('utf8')); }
       catch { respondJSON(res, 400, { ok: false, error: 'Invalid JSON' }); return; }
 
       const { projectConfig, envConfig, envName, secrets } = payload;
@@ -140,24 +140,48 @@ server = http.createServer((req, res) => {
     return;
   }
 
-  // ── POST /api/extract  →  receive AI-extracted data ─────────────────────
-  // In Phase 1, Claude reads the file and POSTs the extracted JSON here.
-  // The wizard shows it as a preview before the user confirms.
+  // ── POST /api/extract  →  turn pasted text / an uploaded file into answers ──
+  // { text } or a text-ish upload is parsed here and returned as schema-shaped
+  // answers for the wizard's preview. Structured JSON (posted by Claude after
+  // reading a PDF/Word file) is passed straight through.
   if (method === 'POST' && url.pathname === '/api/extract') {
-    // Handle multipart (file upload from browser) OR plain JSON (from Claude)
     const ct = req.headers['content-type'] || '';
     if (ct.includes('application/json')) {
-      readBody(req, body => {
-        try {
-          const data = JSON.parse(body);
-          respondJSON(res, 200, data);
-        } catch { respondJSON(res, 400, { error: 'Invalid JSON' }); }
+      readBody(req, buf => {
+        let data;
+        try { data = JSON.parse(buf.toString('utf8')); }
+        catch { respondJSON(res, 400, { error: 'Invalid JSON' }); return; }
+        if (data && typeof data.text === 'string') {
+          const extracted = extractFromText(data.text);
+          console.log(`[setup-wizard] 🔍 extracted ${Object.keys(extracted).length} field(s) from pasted text`);
+          respondJSON(res, 200, extracted);
+        } else {
+          respondJSON(res, 200, data);   // already-structured answers
+        }
       });
     } else {
-      // Multipart: just acknowledge — Claude handles the actual extraction
-      // via init-test.md command flow
-      readBody(req, () => {
-        respondJSON(res, 200, { _status: 'file-received', _note: 'Claude will extract and POST back' });
+      // Browser file upload (multipart). Text-ish files are parsed here; binary
+      // ones (PDF/Word) are saved and announced on stdout so Claude can read them
+      // and POST the structured answers back (see commands/init-test.md).
+      readBody(req, buf => {
+        // Byte-preserving view for splitting the multipart envelope; the file's
+        // own bytes are re-decoded as UTF-8 only once we know it is text.
+        const { filename, content } = parseSingleFileUpload(buf.toString('binary'));
+        if (isProbablyText(content)) {
+          const text = Buffer.from(content, 'binary').toString('utf8');
+          const extracted = extractFromText(text);
+          console.log(`[setup-wizard] 🔍 extracted ${Object.keys(extracted).length} field(s) from ${filename || 'upload'}`);
+          respondJSON(res, 200, extracted);
+          return;
+        }
+        try {
+          const tmp = path.join(projectRoot, `.agentex-upload-${Date.now()}-${(filename || 'file').replace(/[^\w.\-]/g, '_')}`);
+          fs.writeFileSync(tmp, Buffer.from(content, 'binary'));
+          console.log(`[setup-wizard] 📄 extract-request: ${tmp}`);
+          respondJSON(res, 200, { _status: 'file-received', _path: tmp, _note: 'Claude will extract and POST the answers back' });
+        } catch (e) {
+          respondJSON(res, 500, { error: e.message });
+        }
       });
     }
     return;
@@ -227,10 +251,38 @@ function respondJSON(res, status, data) {
   respond(res, status, 'application/json; charset=utf-8', JSON.stringify(data));
 }
 
+/**
+ * Hand the caller the raw body Buffer — the encoding is theirs to choose.
+ * JSON must decode as UTF-8 (latin1 would mangle Arabic); a binary upload must
+ * stay byte-for-byte, so multipart uses 'binary'.
+ */
 function readBody(req, cb) {
-  let body = '';
-  req.on('data', chunk => { body += chunk; });
-  req.on('end', () => cb(body));
+  const chunks = [];
+  req.on('data', chunk => chunks.push(chunk));
+  req.on('end', () => cb(Buffer.concat(chunks)));
+}
+
+/**
+ * Pull the first file part out of a multipart/form-data body.
+ * Minimal by design — the wizard uploads exactly one file.
+ */
+function parseSingleFileUpload(raw) {
+  const head = raw.indexOf('\r\n\r\n');
+  if (head === -1) return { filename: '', content: raw };
+  const headers = raw.slice(0, head);
+  const nameMatch = headers.match(/filename="([^"]*)"/i);
+  const boundaryEnd = raw.indexOf('\r\n--', head);
+  const content = raw.slice(head + 4, boundaryEnd === -1 ? undefined : boundaryEnd);
+  return { filename: nameMatch ? nameMatch[1] : '', content };
+}
+
+/** Treat as text when it decodes as UTF-8 without NUL bytes / heavy control noise. */
+function isProbablyText(s) {
+  if (!s) return false;
+  const sample = s.slice(0, 4000);
+  if (sample.indexOf('\u0000') !== -1) return false;
+  const controls = (sample.match(/[\x01-\x08\x0E-\x1F]/g) || []).length;
+  return controls / sample.length < 0.05;
 }
 
 function safeReadJSON(filePath) {
