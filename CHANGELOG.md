@@ -2,6 +2,24 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **`figma-integration` skill** — read a Figma design via the Figma REST API and turn it into
+  user stories & test conditions that feed `test-design` / `browser-testing`; render a frame as
+  a PNG baseline and run a full design-vs-build comparison against a live page (classified
+  differences with severities). Optionally sync design↔code via Figma's official
+  `@figma/code-connect` CLI (Code Connect). Read-only by default, confirm-before-publish.
+- `skills/figma-integration/scripts/extract_visible_text.js` — extracts only **effectively
+  visible** TEXT layers. Figma files carry text that never renders (deprecated variants, layers
+  at `opacity: 0`); extracting it fabricates requirements. Opacity is *inherited*, so a
+  `visible === false` check alone misses it — the runner multiplies opacity down the tree.
+  Verified on a real file: 113 raw layers → 102 effectively visible.
+- `skills/figma-integration/scripts/extract_visible_text.test.js` — 10 `assert`-based cases that
+  import the runner (no framework, no dependency), so logic and test cannot drift.
+- `test-design` now hands off to `figma-integration` when a story carries a Figma link.
+- `qa-executor` reports a `figma:` step as **BLOCKED** instead of silently skipping it — the
+  design-vs-build cycle is orchestrator-only.
+
 ## [0.12.0] — 2026-08-06
 ### Added
 - **Interactive Setup Wizard** — `/init-test` now launches a local web-based setup wizard
