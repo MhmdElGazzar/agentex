@@ -4,7 +4,7 @@
 //
 // Usage:
 //   node run_db.js --entry <file-name>.<query-name> [--param k=v ...]
-//     [--expect-rows N] [--expect-min-rows N] [--catalog ./integration] --log <path>
+//     [--env <environment-name>] [--expect-rows N] [--expect-min-rows N] [--catalog ./integration] --log <path>
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL|BLOCKED", ...}. Exit: 0 PASS, 1 FAIL, 2 BLOCKED.
 const fs = require('fs');
@@ -17,11 +17,12 @@ function blocked(reason, extra) { out({ result: 'BLOCKED', reason, ...extra }, 2
 // ---- args ----
 const args = process.argv.slice(2);
 const params = {};
-let entry, logPath, catalog = './integration', expectRows, expectMinRows;
+let entry, logPath, catalog = './integration', expectRows, expectMinRows, envName;
 for (let i = 0; i < args.length; i++) {
   const a = args[i], v = () => args[++i];
   if (a === '--entry') entry = v();
   else if (a === '--param') { const p = v(); const eq = p.indexOf('='); params[p.slice(0, eq)] = p.slice(eq + 1); }
+  else if (a === '--env') envName = v();
   else if (a === '--expect-rows') expectRows = parseInt(v(), 10);
   else if (a === '--expect-min-rows') expectMinRows = parseInt(v(), 10);
   else if (a === '--catalog') catalog = v();
@@ -61,27 +62,23 @@ for (const [k, v] of Object.entries(params)) {
 const unresolved = sql.match(/\{[a-zA-Z0-9_]+\}/);
 if (unresolved) blocked(`unresolved placeholder ${unresolved[0]} in query`);
 
-// ---- connection from env (values never printed; password only via SQLCMDPASSWORD) ----
-const conn = def.connection || {};
-function envVal(key, label) {
-  const name = conn[key];
-  if (!name) return undefined;
-  if (!process.env[name]) blocked(`env var ${name} (${label}) is not set`);
-  return process.env[name];
-}
-const server = envVal('serverEnv', 'server');
-if (!server) blocked('catalog connection.serverEnv missing or env not set');
-const port = conn.portEnv && process.env[conn.portEnv] ? process.env[conn.portEnv] : '';
-const srv = port ? `${server},${port}` : server;
-const db = envVal('databaseEnv', 'database');
-const user = envVal('userEnv', 'user');
+// ---- connection: active environment's db block first, legacy catalog env names second ----
+const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
+let c;
+try { c = pc.resolveDbConnection(process.cwd(), envName, def.connection); }
+catch (e) { blocked(e.message); }
+if (c.user && !c.password) blocked(`DB password is not set — set ${c.passwordHint} in .env (never on the command line)`);
+const srv = c.port ? `${c.server},${c.port}` : c.server;
 
 const cmdArgs = ['-S', srv, '-C', '-b', '-h', '-1', '-W', '-s', '|', '-Q', sql];
-if (db) cmdArgs.splice(2, 0, '-d', db);
-if (user) cmdArgs.splice(2, 0, '-U', user); // password comes from SQLCMDPASSWORD (inherited env)
+if (c.database) cmdArgs.splice(2, 0, '-d', c.database);
+if (c.user) cmdArgs.splice(2, 0, '-U', c.user); // password only via SQLCMDPASSWORD in the child env
 
 // ---- execute ----
-const r = spawnSync('sqlcmd', cmdArgs, { encoding: 'utf8', timeout: 30000 });
+const r = spawnSync('sqlcmd', cmdArgs, {
+  encoding: 'utf8', timeout: 30000,
+  env: c.password ? { ...process.env, SQLCMDPASSWORD: c.password } : process.env,
+});
 if (r.error && r.error.code === 'ENOENT') blocked('sqlcmd is not installed — see the db-integration reference for install steps (winget install -e --id Microsoft.Sqlcmd)');
 const output = (r.stdout || '') + (r.stderr ? `\nSTDERR:\n${r.stderr}` : '');
 fs.mkdirSync(path.dirname(logPath), { recursive: true });

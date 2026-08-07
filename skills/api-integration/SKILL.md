@@ -18,7 +18,7 @@ by the bundled runner script (deterministic, enforces the safety rules in code):
 node ${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js \
   --entry <file-name>.<request-name> --param key=value [--param ...] \
   [--expect-status 200] [--expect-field <dot.path>] [--expect-equals <dot.path>=<value>] \
-  --log <SESSION_DIR>/logs/<scenario>-<entry>.log
+  [--env <environment-name>] --log <SESSION_DIR>/logs/<scenario>-<entry>.log
 ```
 
 It loads the catalog, validates params, resolves env vars, performs the request, writes the
@@ -42,6 +42,15 @@ Definitions live in the **consumer project** at **`./integration/`** (`<service>
 api: <file-name>.<request-name>(param=value, ...) → <expectation>
 ```
 Example: `api: sample-api.get-todo(id=1) → expect HTTP 200 and title present`
+
+## Where the target comes from
+
+1. **`environments/<env>.json` `api` block** of the active environment
+   (`--env <name>`, omitted = the project's `defaultEnvironment`):
+   `{ "baseUrl": "https://…", "token": { "envSecret": "API_TOKEN" } }`.
+   The token reference is resolved from `.env` — never a value in JSON.
+2. **Legacy fallback** — the catalog's `${API_BASE_URL}` refs and `auth` block,
+   exactly as before. Old projects keep working untouched.
 
 ## Safety rules (also enforced by the runner)
 

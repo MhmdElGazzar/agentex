@@ -17,7 +17,8 @@ skills.
 - ⚠️ Do NOT pass a PAT as a flag — it leaks into history/logs and is blocked as a credential leak.
 
 ## Configure defaults (once per session)
-Avoids repeating `--org` / `--project` on every command. Use the resolved config values:
+Resolve org/project/team from `config/project.json`'s `azure` block first (legacy `AZURE_*` keys in `.env` as fallback), then export them as shell vars for the commands below.
+Avoids repeating `--org` / `--project` on every command:
 ```bash
 az devops configure --defaults \
   organization="$AZURE_URL" \

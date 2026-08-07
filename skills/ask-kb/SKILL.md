@@ -22,7 +22,7 @@ It resolves config, performs the request, writes the evidence log, and prints ON
 
 ## Step syntax in test specs
 
-    kb: <question>              # uses the default project from agentex.config.json
+    kb: <question>              # uses the default project from config/project.json (legacy agentex.config.json is a fallback)
     kb:<project>: <question>    # inline project override
 
 Examples:
@@ -32,16 +32,18 @@ Examples:
 
 ## Configuration (consumer project)
 
-`.env` holds the connection, default project, and the API key:
+Settings live in `config/project.json`'s `kb` block (`baseUrl`, `project`, `org`); the
+matching `KB_*` variables in `.env` are the fallback when a key is missing there. Only
+`KB_ASK_API_KEY` is a real secret and lives in `.env` alone:
 
 | `.env` key | Example | Notes |
 |---|---|---|
-| `KB_ASK_BASE_URL` | `http://localhost:3000` | endpoint host (host only) |
-| `KB_PROJECT` | `acme-store` | default project id; `kb:<project>:` overrides per step |
-| `KB_ORG` | `acme` | org slug sent with each request; `--org` overrides. Blank ⇒ config `kb.org` ⇒ generic default |
+| `KB_ASK_BASE_URL` | `http://localhost:3000` | endpoint host (host only); fallback when not in `config/project.json` `kb.baseUrl` |
+| `KB_PROJECT` | `acme-store` | fallback project id; overridden by `config/project.json` `kb.project`; `kb:<project>:` overrides per step |
+| `KB_ORG` | `acme` | fallback org slug; overridden by `config/project.json` `kb.org`; `--org` flag takes precedence. Blank ⇒ config ⇒ generic default |
 | `KB_ASK_API_KEY` | `<secret>` | shared secret; sent as the `x-api-key` header. Required when the server has it set (else `401`). Leave blank only for an unauthenticated dev server. Never logged/printed. |
 
-`agentex.config.json` → `kb` block tunes the rest (missing key = documented default):
+`config/project.json` → `kb` block tunes the rest (legacy `agentex.config.json` still honored; missing key = documented default):
 
 | Key | Default | Notes |
 |---|---|---|
@@ -50,7 +52,7 @@ Examples:
 | `timeout_ms` | `120000` | client timeout (guide requires ≥120s) |
 | `retries` | `2` | 429/5xx + network/timeout; `429` honors `Retry-After`, else exponential backoff |
 
-Project precedence: `--project` flag → `KB_PROJECT` (`.env`) → `kb.project` in `agentex.config.json`.
+Project precedence: `--project` flag → `kb.project` in `config/project.json` → `KB_PROJECT` (`.env`) → legacy `agentex.config.json`.
 
 ## Result handling
 
@@ -68,8 +70,10 @@ Project precedence: `--project` flag → `KB_PROJECT` (`.env`) → `kb.project` 
   execution skill's `VerifyEvidence`. It informs understanding only.
 - **No improvised requests.** The runner only ever hits the one KB Ask endpoint with the
   documented body. It composes nothing else.
-- **Secrets stay in env.** Only `KB_ASK_BASE_URL`, `KB_PROJECT`, and `KB_ASK_API_KEY` are
-  referenced; `KB_ASK_API_KEY` is sent as `x-api-key` and never logged or printed.
+- **The API key is the only real secret.** The runner also reads `kb.baseUrl` /
+  `kb.project` / `kb.org` from `config/project.json` (or their `KB_*` fallbacks in
+  `.env`) — those aren't secret. `KB_ASK_API_KEY` stays env-only, sent as `x-api-key`,
+  and is never logged or printed.
 
 ## Preflight
 

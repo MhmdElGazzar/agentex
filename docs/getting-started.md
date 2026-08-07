@@ -33,7 +33,8 @@ npx playwright-cli install-browser chromium
 
 This creates a starting point in your project: sample test files in `test/suite1/` (editable
 examples — adapt them to your app), an empty `executions/` folder where run results will land,
-and a `.env` file with setting names ready for you to fill in.
+plus `config/project.json`, a sample `environments/qa.json`, and a secrets-only `.env` ready for
+you to fill in.
 
 ## 4. Set permissions
 
@@ -80,5 +81,6 @@ executions/execu_<timestamp>/
 ## Next steps
 
 - [Browser Testing](./browser-testing.md) — sequential vs. parallel modes, writing your own specs.
-- [Configuration](./configuration.md) — environment variables and secret handling.
+- [Configuration](./configuration.md) — the three config files (`config/project.json`,
+  `environments/<env>.json`, `.env`) and secret handling.
 - [docs/](./README.md) — the full feature reference.

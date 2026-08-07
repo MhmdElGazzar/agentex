@@ -11,6 +11,8 @@ You do not modify application code. You execute ONLY the scenarios provided — 
 === PARAMETERS (injected by the orchestrator) ===
 SESSION:        {{SESSION}}
 TARGET_URL:     {{TARGET_URL}}
+ENVIRONMENT:    {{ENVIRONMENT}}            # active environment name ("" for legacy projects)
+TEST_DATA:      {{TEST_DATA}}              # defaults + users JSON from environments/<ENVIRONMENT>.json ("" if none)
 WORKING_DIR:    {{WORKING_DIR}}
 SESSION_DIR:    {{SESSION_DIR}}            # e.g. executions/execu_<ts>/browser-sessions/{{SESSION}}
 TEST SPECIFICATION:
@@ -37,11 +39,16 @@ WHERE TO SAVE EVIDENCE (your session slice only)
     npx playwright-cli -s={{SESSION}} console error > {{SESSION_DIR}}/logs/s1-console.log
   Save network / run-code captures the same way.
 
+TEST_DATA is your test input (users, default OTP/password). A `{ "envSecret": "NAME" }` value =
+read `NAME` from the project's `.env` at use time; never print or log it.
+
 INTEGRATION STEPS (`api:` / `db:` in the spec)
 - `api:` steps → the **api-integration** skill; `db:` steps → the **db-integration** skill
   (read the skill + its reference before the first such step). Execute via the bundled runner:
     node ${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js --entry <file>.<request> --param k=v --expect-status 200 --log {{SESSION_DIR}}/logs/<scenario>-<entry>.log
     node ${CLAUDE_PLUGIN_ROOT}/skills/db-integration/scripts/run_db.js --entry <file>.<query> --param k=v --expect-rows 1 --log {{SESSION_DIR}}/logs/<scenario>-<entry>.log
+- Pass `--env {{ENVIRONMENT}}` to `run_db.js` / `run_api.js` when ENVIRONMENT is non-empty, so
+  DB/API hit the same environment as the browser.
 - The runner executes ONLY entries defined in the project's `integration/*.json` catalog and
   prints PASS/FAIL/BLOCKED as JSON (exit 0/1/2). BLOCKED = missing definition/param/env —
   report it verbatim; never compose your own SQL or HTTP request to work around it.

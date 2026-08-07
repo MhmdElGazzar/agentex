@@ -11,8 +11,8 @@ mid-test — all through the `az` CLI, with your confirmation before anything is
    ```bash
    az extension add --name azure-devops
    ```
-2. Fill the `AZURE_*` keys in `.env` — `AZURE_URL` (org URL), `AZURE_PROJECT`, `AZURE_TEAM`,
-   `AZURE_ASSIGNEE`.
+2. Fill the `azure` block in `config/project.json` — `org`, `project`, `team`, `assignee` (legacy
+   `AZURE_*` keys in `.env` still work).
 3. Authenticate: `az login`, or for non-interactive use export a PAT in your shell:
    ```bash
    export AZURE_DEVOPS_EXT_PAT=<your-pat>

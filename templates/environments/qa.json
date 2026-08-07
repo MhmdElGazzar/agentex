@@ -1,0 +1,22 @@
+{
+  "portalUrl": "https://example.com",
+  "defaults": {
+    "otp": "0000",
+    "password": "Test@1234"
+  },
+  "users": {
+    "valid_user": { "phone": "0550000001", "role": "customer" },
+    "expired_user": { "phone": "0550000002", "notes": "for negative login scenarios" }
+  },
+  "db": {
+    "server": "localhost",
+    "port": 1433,
+    "name": "my-database",
+    "user": "qa_user",
+    "password": { "envSecret": "SQLCMDPASSWORD" }
+  },
+  "api": {
+    "baseUrl": "https://jsonplaceholder.typicode.com",
+    "token": { "envSecret": "API_TOKEN" }
+  }
+}

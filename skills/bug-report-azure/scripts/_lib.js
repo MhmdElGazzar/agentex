@@ -2,10 +2,10 @@
 //
 // This skill is PRODUCT/TEAM AGNOSTIC. Nothing team-specific is hardcoded: org,
 // project, area path, template id, assignees, environment, etc. are resolved at
-// runtime from the AgenTeX `.env` (the plugin convention — keys-only file, values
-// exported into the shell), and anything still unset is left as a {{PLACEHOLDER}}
-// for the caller to ask about. There is NO config.json — config lives in `.env`
-// alongside every other AgenTeX integration (see the repo-root `.env.example`).
+// runtime from `config/project.json`'s `azure` block (primary) with legacy `AZURE_*`
+// keys in `.env` as fallback, and anything still unset is left as a {{PLACEHOLDER}}
+// for the caller to ask about. See docs/azure-devops.md for setup. JSON values are
+// stringified; note `bugTemplateId` (JSON) → `templateBugId` (internal).
 //
 // TOOLING: every Azure interaction goes through the Azure CLI (`az`). There are NO
 // direct REST/API calls here. Reads run freely; writes only run behind --execute and
@@ -17,36 +17,45 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-// ---- config from .env (plugin convention: env-var names, resolved at runtime) ----
+// ---- config: config/project.json "azure" block first, legacy AZURE_* env fallback ----
 
-// Read one env var, trimmed; empty/whitespace => null.
+const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
+
+// Read one env var (process.env → .env), trimmed; empty => null.
 function env(name) {
-  const v = process.env[name];
-  if (v === undefined || v === null) return null;
-  const t = String(v).trim();
-  return t === '' ? null : t;
+  const v = pc.readEnvVar(process.cwd(), name);
+  return v === null || v === '' ? null : v;
 }
 
-// Resolve config from the AgenTeX `.env` Azure keys. Anything null is ASKED at
-// runtime or inherited from the parent story — never silently guessed.
+// One value: azure block key first, env var second; empty/missing => null.
+function pick(az, key, envName) {
+  const j = az[key];
+  if (j !== undefined && j !== null && String(j).trim() !== '') return String(j).trim();
+  return env(envName);
+}
+
+// Resolve config. Anything null is ASKED at runtime or inherited from the parent
+// story — never silently guessed.
 function loadConfig() {
+  const az = pc.loadProjectConfig(process.cwd()).azure || {};
   return {
-    org: (env('AZURE_URL') || '').replace(/\/+$/, '') || null, // {{ORG_URL}}
-    project: env('AZURE_PROJECT'),                             // {{PROJECT_NAME}}
-    team: env('AZURE_TEAM'),                                   // {{TEAM_NAME}}
-    areaPath: env('AZURE_AREA_PATH'),                          // {{AREA_PATH}} (else inherit from story)
-    iterationPath: env('AZURE_ITERATION_PATH'),               // {{ITERATION_PATH}}
-    templateBugId: env('AZURE_BUG_TEMPLATE_ID'),              // {{TEMPLATE_BUG_ID}}
-    // One or more assignees, comma-separated (e.g. AZURE_ASSIGNEE=a@x.com,b@x.com). Always asked.
-    assignees: (env('AZURE_ASSIGNEE') || '')
+    org: (pick(az, 'org', 'AZURE_URL') || '').replace(/\/+$/, '') || null, // {{ORG_URL}}
+    project: pick(az, 'project', 'AZURE_PROJECT'),                         // {{PROJECT_NAME}}
+    team: pick(az, 'team', 'AZURE_TEAM'),                                  // {{TEAM_NAME}}
+    areaPath: pick(az, 'areaPath', 'AZURE_AREA_PATH'),                     // {{AREA_PATH}}
+    iterationPath: pick(az, 'iterationPath', 'AZURE_ITERATION_PATH'),      // {{ITERATION_PATH}}
+    templateBugId: pick(az, 'bugTemplateId', 'AZURE_BUG_TEMPLATE_ID'),     // {{TEMPLATE_BUG_ID}}
+    // One or more assignees, comma-separated. Always asked.
+    assignees: (pick(az, 'assignee', 'AZURE_ASSIGNEE') || '')
       .split(',').map((s) => s.trim()).filter(Boolean),
-    valueArea: env('AZURE_VALUE_AREA') || 'Business',
-    environment: env('AZURE_ENVIRONMENT'),                    // {{ENVIRONMENT}} (Custom.Environment)
-    bugCategory: env('AZURE_BUG_CATEGORY'),                   // {{BUG_CATEGORY}} (Custom.BugCategory)
-    testPlanId: env('AZURE_TEST_PLAN_ID'),                    // {{TEST_PLAN_ID}}
-    apiVersion: env('AZURE_API_VERSION') || '7.1',
+    valueArea: pick(az, 'valueArea', 'AZURE_VALUE_AREA') || 'Business',
+    environment: pick(az, 'environment', 'AZURE_ENVIRONMENT'),             // {{ENVIRONMENT}}
+    bugCategory: pick(az, 'bugCategory', 'AZURE_BUG_CATEGORY'),            // {{BUG_CATEGORY}}
+    testPlanId: pick(az, 'testPlanId', 'AZURE_TEST_PLAN_ID'),              // {{TEST_PLAN_ID}}
+    apiVersion: pick(az, 'apiVersion', 'AZURE_API_VERSION') || '7.1',
   };
 }
 

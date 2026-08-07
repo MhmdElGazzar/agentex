@@ -20,6 +20,54 @@ All notable changes to AgenTeX are documented here.
 - `qa-executor` reports a `figma:` step as **BLOCKED** instead of silently skipping it — the
   design-vs-build cycle is orchestrator-only.
 
+## [0.12.0] — 2026-08-06
+### Added
+- **Interactive Setup Wizard** — `/init-test` now launches a local web-based setup wizard
+  (`http://127.0.0.1:7373/setup`) immediately after scaffolding files. A dark-mode RTL
+  Arabic UI guides the user through 8 ordered steps: project basics, test environment,
+  test users (dynamic list), Azure DevOps, DB connection, API integration, AI file import
+  (BRD/PDF/Word → Claude extracts fields automatically), and a review & save screen.
+  Results are written directly to `config/project.json` and `environments/<env>.json`.
+- `scripts/wizard/schema.json` — portable wizard step/field definition shared between
+  the local plugin server and the planned website wizard (Phase 2).
+- `scripts/wizard/engine.js` — config file mapper and validator with no external
+  dependencies; usable by both the local server and a future web app.
+- `scripts/wizard/ui.html` — self-contained wizard UI supporting `mode=local` (writes
+  files via local server) and `mode=web` (downloads JSON files as a ZIP — Phase 2).
+- `scripts/wizard/server.js` — zero-dependency Node.js HTTP server that serves the
+  wizard UI, handles save/schema/config/extract/done API endpoints, and opens the
+  browser automatically (Windows/macOS/Linux).
+
+## [0.11.0] — 2026-08-06
+### Added
+- **Project config files** — settings split out of `.env` into their proper homes: new
+  `config/project.json` (Azure org/project/team, KB settings, `login.mode`,
+  `defaultEnvironment`) and `environments/<env>.json` (`portalUrl`, `defaults`, `users`
+  keyed by descriptive handle, `db`, `api`). Full walkthrough and key reference in
+  `docs/configuration.md`.
+- `{ "envSecret": "NAME" }` convention: any secret-valued field in the JSON config
+  (`password`, `token`) is either a plain string (team-known throwaway test credential)
+  or a reference naming the `.env` variable holding the real value — the JSON files
+  themselves never carry a secret.
+- `--env` flag on `run_db.js` / `run_api.js` selects `environments/<env>.json` for the
+  run; naming an environment with no file is an error (available environments are
+  listed), never a silent fallback.
+- `/init-test` scaffolding now creates `config/project.json` and a sample
+  `environments/qa.json` alongside the (now secrets-only) `.env`.
+
+### Changed
+- `.env` becomes secrets-only. Every reader resolves the new config files first and
+  falls back to the old `.env` variables (`QA_TARGET_URL`, `DB_*`, `AZURE_*`, `KB_*`)
+  when the files or blocks are missing, so existing projects keep working unchanged.
+
+## [0.10.0] — 2026-08-06
+### Changed
+- `/init-test` file scaffolding now runs as a bundled script (`scripts/init.js`) in a single
+  call instead of agent-performed steps — deterministic, idempotent (`[created]`/`[skipped]`
+  report, never overwrites, `CLAUDE.md`/`.gitignore` append-only), and it refuses to run
+  inside the plugin folder itself. The command keeps the conversational steps (fill `.env`
+  values, permissions reminder, playwright preflight) as agent instructions.
+
 ## [0.9.0] — 2026-07-28
 ### Added
 - `optimize-login` skill: pay a web application's login cost once per session instead of once

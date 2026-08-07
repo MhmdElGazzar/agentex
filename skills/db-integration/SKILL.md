@@ -17,12 +17,12 @@ is done by the bundled runner script (deterministic, enforces the safety rules i
 ```
 node ${CLAUDE_PLUGIN_ROOT}/skills/db-integration/scripts/run_db.js \
   --entry <file-name>.<query-name> --param key=value [--param ...] \
-  [--expect-rows N] [--expect-min-rows N] \
+  [--env <environment-name>] [--expect-rows N] [--expect-min-rows N] \
   --log <SESSION_DIR>/logs/<scenario>-<entry>.log
 ```
 
-It loads the catalog, validates & escapes params, refuses DDL, resolves the connection from
-env vars, runs sqlcmd, writes the evidence log, checks expectations, and prints one JSON line:
+It loads the catalog, validates & escapes params, refuses DDL, resolves the connection (active
+environment's db block, else legacy catalog env vars), runs sqlcmd, writes the evidence log, checks expectations, and prints one JSON line:
 `{"result":"PASS|FAIL|BLOCKED", ...}` (exit 0/1/2). Read
 **`${CLAUDE_PLUGIN_ROOT}/skills/db-integration/references/sqlcmd.md`** for the catalog format,
 connection env vars, sqlcmd install/preflight, and the manual fallback.
@@ -42,6 +42,17 @@ Definitions live in the **consumer project** at **`./integration/`** (`<database
 db: <file-name>.<query-name>(param=value, ...) → <expectation>
 ```
 Example: `db: sample-db.todo-by-title(title=qa-test-item) → expect 1 row`
+
+## Where the connection comes from
+
+1. **`environments/<env>.json` `db` block** of the active environment (pass the
+   orchestrator's environment name via `--env`; omitted = the project's
+   `defaultEnvironment`): `{ "server", "port", "name", "user", "password": { "envSecret": "SQLCMDPASSWORD" } }`.
+2. **Legacy fallback** — the catalog's `connection` block naming `.env` vars
+   (`serverEnv` …) exactly as before. Old projects keep working untouched.
+
+The password is never in a JSON file: `db.password` is a `{ "envSecret": "NAME" }`
+reference resolved from `.env` and handed to sqlcmd only through its environment.
 
 ## Safety rules (also enforced by the runner)
 

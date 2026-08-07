@@ -37,7 +37,7 @@ the session afterward, same as usual, so you only do it once.
 - Check a saved session without running a full test:
   ```
   node ${CLAUDE_PLUGIN_ROOT}/skills/optimize-login/scripts/session.js resume \
-    --state test/.auth/<app>-state.json \
+    --state test/.auth/<app>-<environment>-state.json \
     --url   https://app.example.com/dashboard \
     --absent "role=button[name='Login']"
   ```

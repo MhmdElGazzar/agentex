@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AgenTeX — إعداد المشروع</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+/* ── Reset & Tokens ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-page:   #f0f2f9;
+  --bg-card:   #ffffff;
+  --bg-input:  #f7f8fc;
+  --bg-hover:  #f0f2f9;
+  --bg-muted:  #eef0f8;
+  --border:    #dde1f0;
+  --border-hi: #c8cee6;
+  --accent:    #5b50f0;
+  --accent-lt: #ede8ff;
+  --accent-hi: #4338ca;
+  --success:   #16a34a;
+  --success-lt:#dcfce7;
+  --warning:   #d97706;
+  --warning-lt:#fef3c7;
+  --danger:    #dc2626;
+  --danger-lt: #fee2e2;
+  --text-1:    #1a1d2e;
+  --text-2:    #4a5068;
+  --text-3:    #8a92b2;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.05);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.1), 0 4px 12px rgba(0,0,0,.06);
+  --radius:    10px;
+  --radius-lg: 16px;
+  --font:      'Cairo', sans-serif;
+  --mono:      'JetBrains Mono', monospace;
+  --ease:      cubic-bezier(.4,0,.2,1);
+}
+
+html { font-family: var(--font); background: var(--bg-page); color: var(--text-1); }
+body { min-height: 100vh; }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.header {
+  background: var(--bg-card); border-bottom: 1px solid var(--border);
+  padding: 14px 28px; display: flex; align-items: center; gap: 14px;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: var(--shadow-sm);
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-mark {
+  width: 34px; height: 34px; border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; box-shadow: 0 2px 8px rgba(91,80,240,.3);
+}
+.logo-name { font-size: 17px; font-weight: 800; color: var(--text-1); }
+.logo-sub  { font-size: 11px; color: var(--text-3); }
+.spacer    { flex: 1; }
+.step-pill {
+  background: var(--accent-lt); color: var(--accent);
+  font-size: 12px; font-weight: 700; padding: 4px 12px;
+  border-radius: 20px; display: none;
+}
+.step-pill.show { display: block; }
+
+/* ── Progress bar ───────────────────────────────────────────────────────── */
+.progress-bar-wrap {
+  height: 3px; background: var(--border);
+  position: sticky; top: 63px; z-index: 99;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--accent);
+  transition: width .4s var(--ease); width: 0%;
+}
+
+/* ── Steps track ────────────────────────────────────────────────────────── */
+.steps-scroll {
+  background: var(--bg-card); border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none; display: none;
+}
+.steps-scroll.show { display: block; }
+.steps-scroll::-webkit-scrollbar { display: none; }
+.steps-track {
+  display: flex; align-items: flex-start; padding: 16px 28px;
+  gap: 0; min-width: max-content;
+}
+.snode {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 6px; cursor: pointer; position: relative; min-width: 72px;
+}
+.snode + .snode::before {
+  content: '';
+  position: absolute; right: 100%; top: 17px;
+  width: calc(100% - 0px); height: 2px;
+  background: var(--border); transition: background .3s;
+  left: auto; right: auto;
+  width: 28px; right: 100%; margin-right: -14px;
+}
+.snode-connector {
+  width: 28px; height: 2px; background: var(--border);
+  flex-shrink: 0; margin-top: 18px; transition: background .3s;
+}
+.snode-connector.done { background: var(--accent); }
+.sbubble {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; border: 2px solid var(--border);
+  background: var(--bg-card); color: var(--text-3);
+  transition: all .25s var(--ease); position: relative;
+}
+.snode.active .sbubble {
+  background: var(--accent); border-color: var(--accent);
+  color: white; box-shadow: 0 0 0 4px rgba(91,80,240,.15);
+  transform: scale(1.1);
+}
+.snode.done .sbubble { background: var(--success-lt); border-color: var(--success); color: var(--success); }
+.slabel { font-size: 11px; color: var(--text-3); text-align: center; max-width: 72px; line-height: 1.3; }
+.snode.active .slabel { color: var(--accent); font-weight: 700; }
+.snode.done .slabel { color: var(--text-2); }
+
+/* ── Main ───────────────────────────────────────────────────────────────── */
+.main { display: flex; justify-content: center; padding: 32px 16px 48px; }
+.card {
+  width: 100%; max-width: 660px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+/* ── Import mode selector (intro screen) ─────────────────────────────────── */
+.intro {
+  padding: 40px 36px;
+  display: flex; flex-direction: column; gap: 28px;
+}
+.intro-title { font-size: 24px; font-weight: 800; color: var(--text-1); }
+.intro-sub { font-size: 14px; color: var(--text-2); line-height: 1.7; margin-top: -18px; }
+
+.mode-grid { display: flex; flex-direction: column; gap: 12px; }
+.mode-card {
+  border: 2px solid var(--border); border-radius: var(--radius-lg);
+  padding: 20px 22px; cursor: pointer;
+  display: flex; align-items: center; gap: 18px;
+  transition: all .2s var(--ease); background: var(--bg-card);
+  position: relative; overflow: hidden;
+}
+.mode-card:hover { border-color: var(--accent); background: var(--accent-lt); }
+.mode-card.selected { border-color: var(--accent); background: var(--accent-lt); }
+.mode-card.selected::after {
+  content: '✓'; position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: white; font-size: 12px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 22px; text-align: center;
+}
+.mode-icon { font-size: 32px; flex-shrink: 0; }
+.mode-title { font-size: 15px; font-weight: 700; color: var(--text-1); margin-bottom: 3px; }
+.mode-desc { font-size: 13px; color: var(--text-2); line-height: 1.5; }
+
+.btn-start {
+  padding: 14px; border-radius: var(--radius-lg);
+  background: var(--accent); border: none; color: white;
+  font-family: var(--font); font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: all .2s var(--ease);
+  box-shadow: 0 4px 12px rgba(91,80,240,.3);
+}
+.btn-start:hover { background: var(--accent-hi); box-shadow: 0 6px 20px rgba(91,80,240,.4); }
+
+/* ── Paste mode ─────────────────────────────────────────────────────────── */
+.paste-mode { padding: 32px 36px; display: flex; flex-direction: column; gap: 20px; }
+.paste-mode h2 { font-size: 20px; font-weight: 800; }
+.paste-mode p { font-size: 14px; color: var(--text-2); line-height: 1.7; margin-top: -12px; }
+.paste-area {
+  width: 100%; min-height: 220px; padding: 16px;
+  background: var(--bg-input); border: 1.5px solid var(--border);
+  border-radius: var(--radius); font-family: var(--font); font-size: 14px;
+  color: var(--text-1); resize: vertical; outline: none;
+  transition: border-color .2s, box-shadow .2s; line-height: 1.7;
+}
+.paste-area:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91,80,240,.1); }
+.paste-area::placeholder { color: var(--text-3); }
+
+/* ── Card Header ────────────────────────────────────────────────────────── */
+.card-head {
+  padding: 24px 32px 20px; border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, #f8f9ff 0%, var(--bg-card) 100%);
+  display: flex; align-items: flex-start; gap: 14px;
+}
+.head-icon { font-size: 32px; flex-shrink: 0; margin-top: 2px; }
+.head-title { font-size: 20px; font-weight: 800; color: var(--text-1); margin-bottom: 4px; }
+.head-desc { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.optional-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 10px; border-radius: 20px;
+  background: var(--warning-lt); border: 1px solid rgba(217,119,6,.25);
+  font-size: 11px; color: var(--warning); font-weight: 700;
+  margin-right: 8px; vertical-align: middle;
+}
+
+/* ── Card Body ──────────────────────────────────────────────────────────── */
+.card-body { padding: 24px 32px; display: flex; flex-direction: column; gap: 18px; }
+
+/* ── Field ──────────────────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field-label {
+  font-size: 13px; font-weight: 700; color: var(--text-2);
+  display: flex; align-items: center; gap: 5px;
+}
+.req { color: var(--danger); font-size: 11px; }
+.field-hint { font-size: 12px; color: var(--text-3); }
+.field-secret-note {
+  font-size: 11px; color: var(--text-3);
+  display: flex; align-items: center; gap: 4px;
+}
+.field-secret-note::before { content: '🔒'; font-size: 10px; }
+
+.field input, .field select, .field textarea {
+  width: 100%; padding: 11px 14px;
+  background: var(--bg-input); color: var(--text-1);
+  border: 1.5px solid var(--border); border-radius: var(--radius);
+  font-family: var(--font); font-size: 14px;
+  transition: border-color .2s, box-shadow .2s; outline: none;
+}
+.field input::placeholder, .field textarea::placeholder { color: var(--text-3); }
+.field input:focus, .field select:focus, .field textarea:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91,80,240,.1);
+  background: var(--bg-card);
+}
+.field input[type="password"] { font-family: var(--mono); letter-spacing: 1px; }
+.field select { appearance: none; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a92b2' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 12px center; padding-left: 36px; }
+.field input[type="number"] { -moz-appearance: textfield; }
+.field input.secret-input { border-color: rgba(217,119,6,.3); background: #fffbf0; }
+.field input.secret-input:focus { border-color: var(--warning); box-shadow: 0 0 0 3px rgba(217,119,6,.1); }
+
+.field-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 500px) { .field-grid-2 { grid-template-columns: 1fr; } }
+
+/* Section divider */
+.section-divider {
+  font-size: 11px; font-weight: 700; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .8px;
+  display: flex; align-items: center; gap: 10px; margin: 4px 0;
+}
+.section-divider::before, .section-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+
+/* ── Users ──────────────────────────────────────────────────────────────── */
+.user-list { display: flex; flex-direction: column; gap: 10px; }
+.user-card {
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+}
+.user-card-head {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+}
+.user-card-label { font-size: 13px; font-weight: 700; color: var(--text-1); display: flex; align-items: center; gap: 6px; }
+.btn-rm {
+  width: 26px; height: 26px; border-radius: 7px;
+  background: var(--danger-lt); border: 1px solid rgba(220,38,38,.2);
+  color: var(--danger); cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s;
+}
+.btn-rm:hover { background: #fecaca; }
+.btn-add {
+  padding: 10px 16px; border-radius: var(--radius);
+  background: var(--bg-card); border: 1.5px dashed var(--border-hi);
+  color: var(--accent); font-family: var(--font); font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: all .2s; display: flex; align-items: center; gap: 6px;
+  width: fit-content;
+}
+.btn-add:hover { border-color: var(--accent); background: var(--accent-lt); }
+
+/* ── AI Import Step ─────────────────────────────────────────────────────── */
+.dropzone {
+  border: 2px dashed var(--border-hi);
+  border-radius: var(--radius-lg); padding: 44px 24px; text-align: center;
+  transition: all .2s; cursor: pointer; background: var(--bg-input);
+}
+.dropzone:hover, .dropzone.over { border-color: var(--accent); background: var(--accent-lt); }
+.dz-icon { font-size: 44px; margin-bottom: 14px; }
+.dz-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.dz-sub { font-size: 13px; color: var(--text-2); margin-bottom: 16px; }
+.dz-types { font-size: 11px; color: var(--text-3); font-family: var(--mono); }
+
+.file-ready {
+  background: var(--success-lt); border: 1px solid rgba(22,163,74,.25);
+  border-radius: var(--radius); padding: 16px 20px;
+  display: none; align-items: center; gap: 14px;
+}
+.file-ready.show { display: flex; }
+.file-ready-info { flex: 1; }
+.file-ready-name { font-size: 14px; font-weight: 700; }
+.file-ready-size { font-size: 12px; color: var(--text-3); }
+
+.extract-preview {
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  display: none; flex-direction: column; gap: 10px;
+}
+.extract-preview.show { display: flex; }
+.ep-title { font-size: 13px; font-weight: 700; color: var(--success); }
+.ep-code { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); line-height: 1.7; max-height: 180px; overflow-y: auto; }
+
+/* ── Review Step ────────────────────────────────────────────────────────── */
+.rtabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.rtab {
+  padding: 7px 16px; border-radius: var(--radius);
+  background: var(--bg-muted); border: 1px solid var(--border);
+  font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--text-2);
+  cursor: pointer; transition: all .2s;
+}
+.rtab.active { background: var(--accent); border-color: var(--accent); color: white; }
+.code-view {
+  background: #1e2030; border-radius: var(--radius); padding: 18px;
+  font-family: var(--mono); font-size: 12px; color: #a9dc76;
+  line-height: 1.7; overflow: auto; max-height: 300px; white-space: pre;
+}
+.btn-copy {
+  padding: 8px 16px; border-radius: var(--radius);
+  background: var(--bg-muted); border: 1px solid var(--border);
+  font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--text-2);
+  cursor: pointer; transition: all .2s;
+}
+.btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Card Footer ────────────────────────────────────────────────────────── */
+.card-foot {
+  padding: 18px 32px; border-top: 1px solid var(--border);
+  background: var(--bg-muted);
+  display: flex; align-items: center; gap: 10px;
+}
+.foot-left { flex: 1; display: flex; gap: 8px; }
+
+.btn {
+  padding: 11px 22px; border-radius: var(--radius);
+  font-family: var(--font); font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: all .2s;
+  display: inline-flex; align-items: center; gap: 7px; border: none;
+}
+.btn-outline { background: var(--bg-card); border: 1.5px solid var(--border); color: var(--text-2); }
+.btn-outline:hover { border-color: var(--border-hi); color: var(--text-1); }
+.btn-primary { background: var(--accent); color: white; box-shadow: 0 3px 10px rgba(91,80,240,.25); }
+.btn-primary:hover { background: var(--accent-hi); box-shadow: 0 5px 16px rgba(91,80,240,.35); }
+.btn-success { background: var(--success); color: white; }
+.btn-success:hover { background: #15803d; }
+.btn-ghost { background: none; border: none; color: var(--text-3); font-family: var(--font); font-size: 13px; cursor: pointer; padding: 8px; }
+.btn-ghost:hover { color: var(--text-2); }
+.btn-text {
+  background: none; border: none; color: var(--accent);
+  font-family: var(--font); font-size: 13px; font-weight: 700;
+  cursor: pointer; padding: 8px 4px; text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── Spinner ────────────────────────────────────────────────────────────── */
+.spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .5s linear infinite; }
+.spin-accent { border-color: rgba(91,80,240,.2); border-top-color: var(--accent); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: var(--text-1); color: white;
+  border-radius: var(--radius); padding: 12px 20px; font-size: 14px; font-weight: 600;
+  box-shadow: var(--shadow-lg); z-index: 9999;
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+  display: flex; align-items: center; gap: 8px;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.error { background: #C0392B; color: #FFFFFF; }
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.card-body, .paste-mode, .intro { animation: fadeUp .22s ease; }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <div class="logo-mark">⚡</div>
+    <div>
+      <div class="logo-name">AgenTeX</div>
+      <div class="logo-sub">إعداد المشروع</div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="step-pill" id="hdr-pill">الخطوة 1 من 8</div>
+</header>
+
+<div class="progress-bar-wrap">
+  <div class="progress-bar-fill" id="prog-fill"></div>
+</div>
+
+<div class="steps-scroll" id="steps-scroll">
+  <div class="steps-track" id="steps-track"></div>
+</div>
+
+<main class="main">
+  <div class="card" id="card"></div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ── Config ─────────────────────────────────────────────────────────────── */
+const MODE = window.WIZARD_MODE || 'local';
+const API  = window.WIZARD_API  || '';
+const TOKEN = window.WIZARD_TOKEN || '';
+
+/** Every API call carries this run's token — the server rejects calls without it. */
+function apiFetch(path, opts = {}) {
+  return fetch(`${API}${path}`, {
+    ...opts,
+    headers: { ...(opts.headers || {}), 'X-Wizard-Token': TOKEN },
+  });
+}
+
+/* ── State ──────────────────────────────────────────────────────────────── */
+let schema   = null;
+let answers  = {};
+let secrets  = {};          // ← written to .env silently
+let users    = [
+  { handle: 'valid_user',   phone: '', role: 'customer' },
+  { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
+];
+let current      = -1;      // -1 = intro screen
+let importMode   = null;    // 'file' | 'paste' | 'steps'
+let extractedData = null;
+// Config already on disk (re-run of the wizard) — the base saving merges onto,
+// so fields the wizard doesn't manage survive.
+let existingProject = null;
+let existingEnv     = null;
+let loadedEnvName   = null;   // environment the prefill came from
+let currentEnvSelection = null;
+
+/* ── Init ───────────────────────────────────────────────────────────────── */
+async function init() {
+  schema = await loadSchema();
+  await loadExistingConfig();
+  renderIntro();
+}
+
+/**
+ * Re-running the wizard on a configured project must show what is already there,
+ * not a blank form. Flatten the saved files back into `answers` (and `users`), and
+ * remember the untouched parts of project.json so saving can't drop hand-added
+ * fields the wizard has no input for (e.g. azure.areaPath).
+ */
+async function loadExistingConfig() {
+  if (MODE !== 'local') return;
+  let cfg;
+  try { cfg = await (await apiFetch('/api/config')).json(); }
+  catch { return; }
+  const proj = cfg && cfg.projectConfig;
+  const env  = cfg && cfg.envConfig;
+  if (cfg && cfg.unreadable && cfg.unreadable.length) {
+    // Say it out loud: saving would replace a file we could not read.
+    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقري:\n\n${cfg.unreadable.join('\n')}\n\n` +
+          `لو كملت وحفظت هتتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.`);
+  }
+  if (!proj && !env) return;
+
+  existingProject = proj || null;
+  existingEnv     = env  || null;
+
+  if (proj) {
+    if (proj.name) answers['name'] = proj.name;
+    answers['defaultEnvironment'] = cfg.envName || proj.defaultEnvironment || 'qa';
+    if (proj.login && proj.login.mode) answers['login.mode'] = proj.login.mode;
+    for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']]]) {
+      for (const k of keys) {
+        const v = proj[group] && proj[group][k];
+        if (v) answers[`${group}.${k}`] = v;
+      }
+    }
+  }
+
+  if (env) fillEnvironmentAnswers(env);
+  loadedEnvName = answers['defaultEnvironment'];
+  showToast('📂 تم تحميل إعدادات المشروع الحالية');
+}
+
+/** Environment-scoped answer keys — everything that belongs to ONE environment file. */
+const ENV_SCOPED_KEYS = [
+  'portalUrl', 'defaults.otp', 'defaults.password',
+  'db.server', 'db.port', 'db.name', 'db.user', 'db.passwordEnvVar',
+  'api.baseUrl', 'api.tokenEnvVar',
+];
+
+const starterUsers = () => ([
+  { handle: 'valid_user',   phone: '', role: 'customer' },
+  { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
+]);
+
+function fillEnvironmentAnswers(env) {
+  if (env.portalUrl) answers['portalUrl'] = env.portalUrl;
+  if (env.defaults) {
+    if (env.defaults.otp)      answers['defaults.otp']      = env.defaults.otp;
+    if (env.defaults.password) answers['defaults.password'] = env.defaults.password;
+  }
+  if (env.db) {
+    if (env.db.server) answers['db.server'] = env.db.server;
+    if (env.db.port)   answers['db.port']   = String(env.db.port);
+    if (env.db.name)   answers['db.name']   = env.db.name;
+    if (env.db.user)   answers['db.user']   = env.db.user;
+    if (env.db.password && env.db.password.envSecret) answers['db.passwordEnvVar'] = env.db.password.envSecret;
+  }
+  if (env.api) {
+    if (env.api.baseUrl) answers['api.baseUrl'] = env.api.baseUrl;
+    if (env.api.token && env.api.token.envSecret) answers['api.tokenEnvVar'] = env.api.token.envSecret;
+  }
+  const entries = Object.entries(env.users || {});
+  if (entries.length) {
+    users = entries.map(([handle, u]) => ({ handle, phone: u.phone || '', role: u.role || '', email: u.email || '', notes: u.notes || '' }));
+    answers['users'] = users;
+  }
+}
+
+/**
+ * Typing a different environment name means a NEW environment file. It starts
+ * empty — inheriting the loaded environment's portal/db/api would quietly point
+ * the new environment at the old one's database. Typing the original name back
+ * restores what was loaded.
+ */
+function onEnvironmentNameChanged(newName) {
+  if (!existingEnv || !loadedEnvName || newName === currentEnvSelection) return;
+  currentEnvSelection = newName;
+
+  if (newName === loadedEnvName) {
+    fillEnvironmentAnswers(existingEnv);
+    showToast(`↩️ رجعنا لبيئة «${loadedEnvName}» بإعداداتها المحفوظة`);
+    return;
+  }
+  for (const key of ENV_SCOPED_KEYS) delete answers[key];
+  users = starterUsers();
+  answers['users'] = users;
+  showToast(`🆕 بيئة جديدة «${newName}» — الحقول فاضية عشان متورثش إعدادات «${loadedEnvName}»`);
+}
+
+async function loadSchema() {
+  if (MODE === 'local') {
+    const r = await apiFetch('/api/schema');
+    return r.json();
+  }
+  return window.WIZARD_SCHEMA;
+}
+
+/* ── Intro Screen ───────────────────────────────────────────────────────── */
+function renderIntro() {
+  current = -1;
+  updateProgress();
+  document.getElementById('hdr-pill').classList.remove('show');
+  document.getElementById('steps-scroll').classList.remove('show');
+
+  document.getElementById('card').innerHTML = `
+    <div class="intro">
+      <div>
+        <div class="intro-title">مرحباً بك في AgenTeX 👋</div>
+        <div class="intro-sub">اختر الطريقة التي تريد إعداد مشروعك بها:</div>
+      </div>
+
+      <div class="mode-grid">
+        <div class="mode-card" id="mc-file" onclick="selectMode('file')">
+          <div class="mode-icon">📄</div>
+          <div>
+            <div class="mode-title">رفع ملف</div>
+            <div class="mode-desc">ارفع BRD أو Word أو PDF وسيستخلص Claude البيانات تلقائياً</div>
+          </div>
+        </div>
+        <div class="mode-card" id="mc-paste" onclick="selectMode('paste')">
+          <div class="mode-icon">📋</div>
+          <div>
+            <div class="mode-title">لصق تفاصيل</div>
+            <div class="mode-desc">الصق وصف المشروع أو أي نص وسيحلله Claude ويستخلص البيانات</div>
+          </div>
+        </div>
+        <div class="mode-card" id="mc-steps" onclick="selectMode('steps')">
+          <div class="mode-icon">📝</div>
+          <div>
+            <div class="mode-title">خطوة بخطوة</div>
+            <div class="mode-desc">أملأ بيانات مشروعك خطوة بخطوة بشكل يدوي</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-start" onclick="startWizard()" id="btn-start" disabled>
+        ابدأ الإعداد ←
+      </button>
+    </div>`;
+}
+
+function selectMode(m) {
+  importMode = m;
+  document.querySelectorAll('.mode-card').forEach(el => el.classList.remove('selected'));
+  document.getElementById(`mc-${m}`).classList.add('selected');
+  document.getElementById('btn-start').disabled = false;
+}
+
+function startWizard() {
+  if (!importMode) return;
+  if (importMode === 'paste') { renderPasteMode(); return; }
+  if (importMode === 'file')  { goTo(findStepIdx('ai-import')); return; }
+  goTo(0);
+}
+
+/* ── Paste Mode ─────────────────────────────────────────────────────────── */
+function renderPasteMode() {
+  document.getElementById('hdr-pill').classList.remove('show');
+  document.getElementById('steps-scroll').classList.remove('show');
+  document.getElementById('card').innerHTML = `
+    <div class="paste-mode">
+      <div>
+        <h2>📋 لصق تفاصيل المشروع</h2>
+        <p>الصق أي وصف أو مستند أو تفاصيل عن مشروعك في الحقل أدناه وسيستخلص Claude البيانات تلقائياً.</p>
+      </div>
+      <textarea class="paste-area" id="paste-text"
+        placeholder="مثال: اسم المشروع: تطبيق الإدارة&#10;الرابط: https://app.example.com&#10;Azure Org: myorg, Project: MyProject&#10;مستخدمون: valid_user (0550000001), admin (0550000002)&#10;..."></textarea>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary" id="btn-extract-paste" onclick="extractFromPaste()">
+          🤖 استخلاص البيانات
+        </button>
+        <button class="btn btn-outline" onclick="renderIntro()">← رجوع</button>
+      </div>
+      <div class="extract-preview" id="paste-preview">
+        <div class="ep-title">✅ تم الاستخلاص — راجع البيانات:</div>
+        <div class="ep-code" id="paste-preview-code"></div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button class="btn btn-primary" onclick="applyAndStart()">تطبيق والمتابعة ←</button>
+          <button class="btn btn-outline" onclick="document.getElementById('paste-preview').classList.remove('show')">إعادة المحاولة</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function extractFromPaste() {
+  const text = document.getElementById('paste-text').value.trim();
+  if (!text) { showToast('الرجاء لصق النص أولاً', 'warn'); return; }
+
+  const btn = document.getElementById('btn-extract-paste');
+  btn.innerHTML = '<div class="spin"></div> جارٍ الاستخلاص...';
+  btn.disabled = true;
+
+  try {
+    if (MODE === 'local') {
+      const r = await apiFetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      extractedData = await r.json();
+    } else {
+      extractedData = { _raw: text.substring(0, 300) };
+    }
+    document.getElementById('paste-preview-code').textContent =
+      JSON.stringify(extractedData, null, 2);
+    document.getElementById('paste-preview').classList.add('show');
+  } catch(e) {
+    showToast('فشل الاستخلاص: ' + e.message, 'error');
+  } finally {
+    btn.innerHTML = '🤖 استخلاص البيانات';
+    btn.disabled = false;
+  }
+}
+
+function applyAndStart() {
+  if (extractedData) applyExtracted(extractedData);
+  goTo(0);
+}
+
+/* ── Steps Track ────────────────────────────────────────────────────────── */
+function buildTrack() {
+  const track = document.getElementById('steps-track');
+  track.innerHTML = '';
+  schema.steps.forEach((step, i) => {
+    if (i > 0) {
+      const conn = document.createElement('div');
+      conn.className = `snode-connector${i <= current ? ' done' : ''}`;
+      track.appendChild(conn);
+    }
+    const node = document.createElement('div');
+    node.className = `snode${i === current ? ' active' : ''}${i < current ? ' done' : ''}`;
+    node.innerHTML = `
+      <div class="sbubble">${i < current ? '✓' : step.icon || (i+1)}</div>
+      <div class="slabel">${step.title}</div>`;
+    node.onclick = () => { if (i <= current) goTo(i); };
+    track.appendChild(node);
+  });
+}
+
+function updateProgress() {
+  const total = schema ? schema.steps.length : 1;
+  const pct   = current < 0 ? 0 : Math.round(((current + 1) / total) * 100);
+  document.getElementById('prog-fill').style.width = pct + '%';
+  const pill = document.getElementById('hdr-pill');
+  if (current >= 0) {
+    pill.textContent = `الخطوة ${current + 1} من ${total}`;
+    pill.classList.add('show');
+  } else {
+    pill.classList.remove('show');
+  }
+}
+
+/* ── Render Step ────────────────────────────────────────────────────────── */
+function renderStep() {
+  updateProgress();
+  buildTrack();
+  document.getElementById('steps-scroll').classList.add('show');
+
+  const step = schema.steps[current];
+  const card = document.getElementById('card');
+  card.innerHTML = '';
+
+  // Head
+  const head = document.createElement('div');
+  head.className = 'card-head';
+  head.innerHTML = `
+    <div class="head-icon">${step.icon || '📝'}</div>
+    <div>
+      <div class="head-title">
+        ${step.title}
+        ${step.optional ? '<span class="optional-pill">⚡ اختياري</span>' : ''}
+      </div>
+      <div class="head-desc">${step.description}</div>
+    </div>`;
+  card.appendChild(head);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'card-body';
+  if (step.type === 'ai-extract') body.appendChild(renderAIStep(step));
+  else if (step.type === 'review') body.appendChild(renderReviewStep());
+  else if (step.type === 'dynamic-list') body.appendChild(renderUsersStep(step));
+  else renderFields(step, body);
+  card.appendChild(body);
+
+  // Footer
+  card.appendChild(renderFooter(step));
+}
+
+/* ── Fields ─────────────────────────────────────────────────────────────── */
+function renderFields(step, container) {
+  if (!step.fields) return;
+
+  // Group: regular fields, then secrets at the bottom
+  const regular = step.fields.filter(f => !f.secret);
+  const secretFs = step.fields.filter(f => f.secret);
+
+  const needsGrid = regular.length >= 4;
+  const wrap = needsGrid
+    ? Object.assign(document.createElement('div'), { className: 'field-grid-2' })
+    : container;
+  if (needsGrid) container.appendChild(wrap);
+
+  regular.forEach(f => wrap.appendChild(buildField(f)));
+
+  if (secretFs.length > 0) {
+    if (needsGrid) container.appendChild(wrap);
+    const div = document.createElement('div');
+    div.className = 'section-divider';
+    div.textContent = 'بيانات الاتصال';
+    container.appendChild(div);
+    secretFs.forEach(f => container.appendChild(buildField(f)));
+  }
+}
+
+function buildField(field) {
+  const div = document.createElement('div');
+  div.className = 'field';
+
+  const savedVal = field.secret
+    ? (secrets[field.envKey] || '')
+    : (answers[field.key] !== undefined ? answers[field.key] : (field.default ?? ''));
+
+  div.innerHTML = `
+    <label class="field-label">
+      ${field.label}
+      ${field.required ? '<span class="req">*</span>' : ''}
+    </label>
+    ${field.hint ? `<div class="field-hint">${field.hint}</div>` : ''}
+    ${buildInput(field, savedVal)}
+    ${field.secret ? `<div class="field-secret-note">محفوظ بشكل آمن</div>` : ''}`;
+
+  const inp = div.querySelector('input,select,textarea');
+  if (inp) {
+    if (field.secret) {
+      inp.classList.add('secret-input');
+      inp.addEventListener('input', () => { secrets[field.envKey] = inp.value; });
+    } else {
+      // Seed the answer with the rendered value (defaults included) so an
+      // untouched field with a default — e.g. a preselected <select> — is
+      // "filled" for validation, not just visually.
+      if (answers[field.key] === undefined && inp.value !== '') answers[field.key] = inp.value;
+      inp.addEventListener('change', () => {
+        answers[field.key] = inp.value;
+        if (field.key === 'defaultEnvironment') onEnvironmentNameChanged(inp.value.trim());
+      });
+      inp.addEventListener('input',  () => { answers[field.key] = inp.value; });
+    }
+  }
+  return div;
+}
+
+function buildInput(field, val) {
+  if (field.type === 'select') {
+    const opts = field.options.map(o =>
+      `<option value="${o.value}"${val===o.value?' selected':''}>${o.label}</option>`).join('');
+    return `<select>${opts}</select>`;
+  }
+  const t = { password:'password', email:'email', number:'number', url:'url' }[field.type] || 'text';
+  return `<input type="${t}" value="${esc(val)}" placeholder="${esc(field.placeholder||'')}" />`;
+}
+
+function esc(s) { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+/* ── Users Step ─────────────────────────────────────────────────────────── */
+function renderUsersStep(_step) {
+  answers['users'] = users;
+  const outer = document.createElement('div');
+  outer.style.cssText = 'display:flex;flex-direction:column;gap:14px';
+
+  const list = document.createElement('div');
+  list.className = 'user-list'; list.id = 'user-list';
+  refreshUserCards(list);
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-add';
+  addBtn.innerHTML = '+ إضافة مستخدم';
+  addBtn.onclick = () => {
+    users.push({ handle:'', phone:'', role:'' });
+    answers['users'] = users;
+    refreshUserCards(document.getElementById('user-list'));
+  };
+
+  outer.appendChild(list);
+  outer.appendChild(addBtn);
+  return outer;
+}
+
+function refreshUserCards(list) {
+  list.innerHTML = '';
+  users.forEach((u, i) => {
+    const card = document.createElement('div');
+    card.className = 'user-card';
+    card.innerHTML = `
+      <div class="user-card-head">
+        <div class="user-card-label">👤 مستخدم ${i+1}</div>
+        ${users.length > 1
+          ? `<button class="btn-rm" onclick="removeUser(${i})">✕</button>` : ''}
+      </div>
+      <div class="field-grid-2">
+        <div class="field">
+          <label class="field-label">المعرّف <span class="req">*</span></label>
+          <input type="text" placeholder="valid_user" value="${esc(u.handle)}"
+            oninput="users[${i}].handle=this.value;answers['users']=users" />
+        </div>
+        <div class="field">
+          <label class="field-label">الدور</label>
+          <input type="text" placeholder="customer" value="${esc(u.role||'')}"
+            oninput="users[${i}].role=this.value;answers['users']=users" />
+        </div>
+        <div class="field">
+          <label class="field-label">الهاتف</label>
+          <input type="text" placeholder="0550000001" value="${esc(u.phone||'')}"
+            oninput="users[${i}].phone=this.value;answers['users']=users" />
+        </div>
+        <div class="field">
+          <label class="field-label">البريد الإلكتروني</label>
+          <input type="email" placeholder="test@example.com" value="${esc(u.email||'')}"
+            oninput="users[${i}].email=this.value;answers['users']=users" />
+        </div>
+        <div class="field" style="grid-column:1/-1">
+          <label class="field-label">ملاحظات</label>
+          <input type="text" placeholder="مثال: حساب منتهي الصلاحية" value="${esc(u.notes||'')}"
+            oninput="users[${i}].notes=this.value;answers['users']=users" />
+        </div>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+function removeUser(i) {
+  users.splice(i, 1);
+  answers['users'] = users;
+  refreshUserCards(document.getElementById('user-list'));
+}
+
+/* ── AI File Import Step ─────────────────────────────────────────────────── */
+function renderAIStep(_step) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
+  wrap.innerHTML = `
+    <div class="dropzone" id="dz">
+      <input type="file" id="fi" accept=".md,.txt,.env,.json,.yml,.yaml,.pdf,.docx,.doc" style="display:none" />
+      <div class="dz-icon">📄</div>
+      <div class="dz-title">اسحب الملف هنا أو انقر للاختيار</div>
+      <div class="dz-sub">سيستخلص Claude البيانات تلقائياً</div>
+      <div class="dz-types">.env · .md · .txt · .json · .pdf · .docx</div>
+    </div>
+    <div class="file-ready" id="file-ready">
+      <div style="font-size:28px">📋</div>
+      <div class="file-ready-info">
+        <div class="file-ready-name" id="fn">—</div>
+        <div class="file-ready-size" id="fs">—</div>
+      </div>
+      <button class="btn btn-primary" id="btn-ex" onclick="runExtract()">
+        🤖 استخلاص البيانات
+      </button>
+    </div>
+    <div class="extract-preview" id="ep">
+      <div class="ep-title">✅ تم الاستخلاص — راجع البيانات قبل التطبيق:</div>
+      <div class="ep-code" id="ep-code"></div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn btn-primary" onclick="applyAndContinue()">تطبيق والمتابعة ←</button>
+        <button class="btn btn-outline" onclick="resetFile()">اختيار ملف آخر</button>
+      </div>
+    </div>`;
+
+  setTimeout(() => {
+    const dz = document.getElementById('dz');
+    const fi = document.getElementById('fi');
+    dz.onclick = () => fi.click();
+    dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+    dz.ondragleave = () => dz.classList.remove('over');
+    dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); pickFile(e.dataTransfer.files[0]); };
+    fi.onchange = () => pickFile(fi.files[0]);
+  }, 50);
+
+  return wrap;
+}
+
+function pickFile(file) {
+  if (!file) return;
+  window._file = file;
+  document.getElementById('fn').textContent = file.name;
+  document.getElementById('fs').textContent = fmtBytes(file.size);
+  document.getElementById('file-ready').classList.add('show');
+  document.getElementById('dz').style.display = 'none';
+  document.getElementById('ep').classList.remove('show');
+}
+
+async function runExtract() {
+  const btn = document.getElementById('btn-ex');
+  btn.innerHTML = '<div class="spin"></div>';
+  btn.disabled = true;
+  try {
+    if (MODE === 'local') {
+      const fd = new FormData(); fd.append('file', window._file);
+      const r = await apiFetch('/api/extract', { method:'POST', body:fd });
+      extractedData = await r.json();
+    } else {
+      const t = await window._file.text();
+      extractedData = { _raw: t.substring(0,500) };
+    }
+    document.getElementById('ep-code').textContent = JSON.stringify(extractedData, null, 2);
+    document.getElementById('ep').classList.add('show');
+  } catch(e) { showToast('فشل الاستخلاص: ' + e.message, 'error'); }
+  finally { btn.innerHTML = '🤖 استخلاص البيانات'; btn.disabled = false; }
+}
+
+function resetFile() {
+  window._file = null;
+  document.getElementById('file-ready').classList.remove('show');
+  document.getElementById('ep').classList.remove('show');
+  document.getElementById('dz').style.display = '';
+}
+
+function applyAndContinue() {
+  if (extractedData) applyExtracted(extractedData);
+  // Back to the first step, not straight to review: extraction fills what it
+  // found, and the user still has to see — and complete — the rest.
+  showToast('✅ تم تعبئة الحقول — راجعها خطوة بخطوة');
+  goTo(0);
+}
+
+function applyExtracted(data) {
+  function flat(obj, p='') {
+    for (const [k,v] of Object.entries(obj||{})) {
+      const key = p ? `${p}.${k}` : k;
+      if (v && typeof v==='object' && !Array.isArray(v)) flat(v, key);
+      else if (!answers[key]) answers[key] = v;
+    }
+  }
+  flat(data);
+  if (Array.isArray(data.users) && data.users.length > 0) {
+    users = data.users; answers['users'] = users;
+  }
+}
+
+/* ── Review Step ─────────────────────────────────────────────────────────── */
+function renderReviewStep() {
+  const { projectConfig, envConfig, envName } = buildConfigs();
+  const tabs = [
+    { label: 'config/project.json',            data: projectConfig },
+    { label: `environments/${envName}.json`,   data: envConfig },
+  ];
+  let activeTab = 0;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
+
+  const tabBar = document.createElement('div');
+  tabBar.className = 'rtabs';
+  tabs.forEach((t, i) => {
+    const btn = document.createElement('button');
+    btn.className = `rtab${i===0?' active':''}`;
+    btn.textContent = t.label;
+    btn.onclick = () => {
+      activeTab = i;
+      tabBar.querySelectorAll('.rtab').forEach((el,j) => el.classList.toggle('active',j===i));
+      code.textContent = JSON.stringify(tabs[i].data, null, 2);
+    };
+    tabBar.appendChild(btn);
+  });
+
+  const code = document.createElement('pre');
+  code.className = 'code-view';
+  code.textContent = JSON.stringify(tabs[0].data, null, 2);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'btn-copy';
+  copyBtn.textContent = '📋 نسخ';
+  copyBtn.onclick = () => { navigator.clipboard.writeText(code.textContent); showToast('✅ تم النسخ'); };
+
+  wrap.appendChild(tabBar);
+  wrap.appendChild(code);
+  wrap.appendChild(copyBtn);
+  return wrap;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+function renderFooter(step) {
+  const isFirst = current === 0;
+  const isLast  = current === schema.steps.length - 1;
+
+  const foot = document.createElement('div');
+  foot.className = 'card-foot';
+
+  const left = document.createElement('div');
+  left.className = 'foot-left';
+
+  // Back
+  if (!isFirst) {
+    const back = document.createElement('button');
+    back.className = 'btn btn-outline';
+    back.innerHTML = '→ السابق';
+    back.onclick = prev;
+    left.appendChild(back);
+  } else {
+    const home = document.createElement('button');
+    home.className = 'btn-ghost';
+    home.innerHTML = '← الرئيسية';
+    home.onclick = renderIntro;
+    left.appendChild(home);
+  }
+  foot.appendChild(left);
+
+  // Skip
+  if (step.optional && !isLast) {
+    const skip = document.createElement('button');
+    skip.className = 'btn-text';
+    skip.textContent = 'تخطي';
+    skip.onclick = () => goTo(current + 1);
+    foot.appendChild(skip);
+  }
+
+  // Next / Save
+  const nextBtn = document.createElement('button');
+  nextBtn.className = isLast ? 'btn btn-success' : 'btn btn-primary';
+  nextBtn.innerHTML = isLast ? '💾 حفظ' : '← التالي';
+  nextBtn.onclick = isLast ? saveAndClose : next;
+  foot.appendChild(nextBtn);
+
+  return foot;
+}
+
+/* ── Navigation ──────────────────────────────────────────────────────────── */
+// Block advancing while the current step has invalid values (required / url / email).
+// Mirrors engine.js validate(); the server re-checks on save as defense-in-depth.
+function validateStep() {
+  const step = schema.steps[current];
+  const errs = [];
+  for (const f of (step.fields || [])) {
+    const v = String(answers[f.key] ?? '').trim();
+    if (f.required && !v) { errs.push(`«${f.label || f.key}» مطلوب`); continue; }
+    if (!v) continue;
+    if (f.type === 'url') {
+      let ok = false;
+      try { const u = new URL(v); ok = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
+      if (!ok) errs.push(`«${f.label || f.key}» يجب أن يكون رابط http(s) صحيحاً`);
+    }
+    if (f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+      errs.push(`«${f.label || f.key}» بريد إلكتروني غير صحيح`);
+    }
+  }
+  if (step.type === 'dynamic-list') {
+    for (const u of users) {
+      const hasData = u.phone || u.email || u.role || u.notes;
+      if (hasData && !String(u.handle || '').trim()) { errs.push('كل مستخدم يحتاج «معرّف» قبل المتابعة'); break; }
+    }
+  }
+  if (errs.length) showToast('❌ ' + errs[0], 'error');
+  return errs.length === 0;
+}
+
+function next() { collectAnswers(); if (!validateStep()) return; if (current < schema.steps.length-1) goTo(current+1); }
+function prev() { collectAnswers(); if (current > 0) goTo(current-1); }
+
+function goTo(idx) {
+  collectAnswers();
+  current = idx;
+  renderStep();
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+function findStepIdx(id) {
+  return schema.steps.findIndex(s => s.id === id);
+}
+
+function collectAnswers() {
+  document.querySelectorAll('#card input:not(.secret-input), #card select, #card textarea')
+    .forEach(el => {
+      if (el.id && el.id.startsWith('f-')) answers[el.id.slice(2)] = el.value;
+    });
+  document.querySelectorAll('#card input.secret-input')
+    .forEach(el => {
+      if (el.dataset.envkey) secrets[el.dataset.envkey] = el.value;
+    });
+  answers['users'] = users;
+}
+
+/* ── Build Configs ───────────────────────────────────────────────────────── */
+function buildConfigs() {
+  const envName = answers['defaultEnvironment'] || 'qa';
+  // Start from what's on disk so keys the wizard has no input for (azure.areaPath,
+  // kb.org, custom fields) survive a re-run instead of being silently dropped.
+  const proj = Object.assign({}, existingProject, {
+    name: answers['name'] || 'my-project',
+    // Adding another environment must not silently re-point the project: the
+    // existing default stands, and only a brand-new project takes its first
+    // environment as the default.
+    defaultEnvironment: (existingProject && existingProject.defaultEnvironment) || envName,
+    login: Object.assign({}, existingProject && existingProject.login, { mode: answers['login.mode'] || 'session' }),
+  });
+  if (answers['azure.org'] || answers['azure.project']) {
+    proj.azure = Object.assign({}, existingProject && existingProject.azure, {
+      org:      answers['azure.org']      || '',
+      project:  answers['azure.project']  || '',
+      team:     answers['azure.team']     || '',
+      assignee: answers['azure.assignee'] || '',
+    });
+  }
+  if (answers['kb.baseUrl'] || answers['kb.project']) {
+    proj.kb = Object.assign({}, existingProject && existingProject.kb, {
+      baseUrl: answers['kb.baseUrl'] || '',
+      project: answers['kb.project'] || '',
+    });
+  }
+
+  // Merge back only when rewriting the environment we loaded; a different name
+  // is a new environment file, which starts clean.
+  const envBase = (existingEnv && loadedEnvName === envName) ? existingEnv : null;
+  const env = Object.assign({}, envBase, {
+    portalUrl: answers['portalUrl'] || '',
+    defaults: Object.assign({}, envBase && envBase.defaults, {
+      otp:      answers['defaults.otp']      || '0000',
+      password: answers['defaults.password'] || 'Test@1234',
+    }),
+    users: buildUsersObj(),
+  });
+  if (answers['db.server']) {
+    env.db = {
+      server: answers['db.server'],
+      port:   Number(answers['db.port']) || 1433,
+      name:   answers['db.name']   || '',
+      user:   answers['db.user']   || '',
+      password: { envSecret: answers['db.passwordEnvVar'] || 'SQLCMDPASSWORD' },
+    };
+  }
+  if (answers['api.baseUrl']) {
+    env.api = {
+      baseUrl: answers['api.baseUrl'],
+      token:   { envSecret: answers['api.tokenEnvVar'] || 'API_TOKEN' },
+    };
+  }
+  return { projectConfig: proj, envConfig: env, envName };
+}
+
+function buildUsersObj() {
+  const obj = {};
+  for (const u of (answers['users'] || users)) {
+    if (!u.handle) continue;
+    const e = {};
+    if (u.phone) e.phone = u.phone;
+    if (u.email) e.email = u.email;
+    if (u.role)  e.role  = u.role;
+    if (u.notes) e.notes = u.notes;
+    obj[u.handle] = e;
+  }
+  return obj;
+}
+
+/* ── Save ────────────────────────────────────────────────────────────────── */
+async function saveAndClose() {
+  collectAnswers();
+  const { projectConfig, envConfig, envName } = buildConfigs();
+
+  if (MODE === 'local') {
+    try {
+      const r = await apiFetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectConfig, envConfig, envName, secrets }),
+      });
+      const res = await r.json();
+      if (res.ok) {
+        showToast('✅ تم الحفظ بنجاح!');
+        const card = document.getElementById('card');
+        if (card) card.innerHTML =
+          '<div class="paste-mode"><h2>✅ تم الإعداد بنجاح</h2>' +
+          '<p>تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — يمكنك إغلاق هذا التبويب والعودة إلى التيرمنال.</p></div>';
+        setTimeout(() => apiFetch('/api/done').catch(() => {}), 1500);
+      } else { showToast('❌ ' + (res.error || 'خطأ'), 'error'); }
+    } catch(e) { showToast('❌ ' + e.message, 'error'); }
+  } else {
+    // Web mode
+    dlJSON(projectConfig, 'project.json');
+    setTimeout(() => dlJSON(envConfig, `${envName}.json`), 300);
+    showToast('✅ تم تحميل الملفات!');
+  }
+}
+
+function dlJSON(data, name) {
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),
+    download: name,
+  });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ── Utils ───────────────────────────────────────────────────────────────── */
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1)+' KB';
+  return (b/1048576).toFixed(1)+' MB';
+}
+
+let _tt;
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast show${type ? ' ' + type : ''}`;
+  clearTimeout(_tt); _tt = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+/* ── Boot ─────────────────────────────────────────────────────────────────── */
+init();
+</script>
+</body>
+</html>

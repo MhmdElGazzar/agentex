@@ -21,7 +21,10 @@ Find out by looking, not by assuming.
 
 1. **Look at the real login.** Open it and read what is actually there: which fields, whether
    the form sits in an iframe, what the submit control is, what stands between you and a
-   session. Never write the script from memory or from another application's login.
+   session. Never write the script from memory or from another application's login. Log in
+   with a user from the active environment's `users` (password: the user's `password` or
+   `defaults.password`; `login.mode` in `config/project.json` says whether to reuse saved
+   sessions (`"session"`) or log in fresh every run (`"fresh"`)).
 2. **Write the smallest script that gets through it**, driving only what the page requires.
 3. **Prove you are in** — by a landmark, never by the URL (see below).
 4. **Save the session** (`storageState`).
@@ -37,7 +40,7 @@ Steps 3–5 are identical in every application and ship with this skill:
 To check a saved session without writing any project code:
 
     node ${CLAUDE_PLUGIN_ROOT}/skills/optimize-login/scripts/session.js resume \
-      --state test/.auth/<app>-state.json \
+      --state test/.auth/<app>-<environment>-state.json \
       --url   https://app.example.com/dashboard \
       --absent "role=button[name='Login']"
 
@@ -99,3 +102,5 @@ the next one will be strange in its own way.
 
 A saved session is a bearer token in a file: whoever holds it is logged in as that user. Keep
 these in a git-ignored directory (`test/.auth/` by convention here) and never commit one.
+Sessions are saved per environment — `test/.auth/<app>-<environment>-state.json` (e.g.
+`myapp-qa-state.json`); a session saved on one environment is never resumed on another.

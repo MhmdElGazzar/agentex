@@ -49,6 +49,11 @@ The catalog file names the env vars; the user sets the values in `.env`/shell:
 }
 ```
 
+> The `connection` block is the **legacy** path. When the project defines
+> `environments/<env>.json` with a `db` block, the runner uses that instead
+> (see SKILL.md "Where the connection comes from"); `--env <name>` selects the
+> environment.
+
 ```bash
 # Password comes ONLY from the SQLCMDPASSWORD env var (sqlcmd reads it natively).
 # NEVER pass -P — a password on the command line leaks into logs/history.

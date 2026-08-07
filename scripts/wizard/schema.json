@@ -1,0 +1,373 @@
+{
+  "version": "1.0",
+  "steps": [
+    {
+      "id": "project-basics",
+      "title": "بيانات المشروع",
+      "titleEn": "Project Basics",
+      "description": "المعلومات الأساسية عن مشروعك",
+      "descriptionEn": "Core information about your project",
+      "icon": "🏗️",
+      "target": "config/project.json",
+      "fields": [
+        {
+          "key": "name",
+          "label": "اسم المشروع",
+          "labelEn": "Project Name",
+          "type": "text",
+          "placeholder": "my-app",
+          "required": true,
+          "aiHint": "project name or system name"
+        },
+        {
+          "key": "defaultEnvironment",
+          "label": "البيئة (اسم الملف)",
+          "labelEn": "Environment",
+          "type": "text",
+          "placeholder": "qa",
+          "default": "qa",
+          "required": true,
+          "aiHint": "environment name being configured (e.g. qa, staging, uat)",
+          "hint": "اسم البيئة اللي هتتكتب: qa أو uat أو live. البيئة الافتراضية للمشروع بتفضل زي ما هي."
+        },
+        {
+          "key": "login.mode",
+          "label": "نمط تسجيل الدخول",
+          "labelEn": "Login Mode",
+          "type": "select",
+          "required": true,
+          "default": "session",
+          "options": [
+            {
+              "value": "session",
+              "label": "Session (موصى به — مرة واحدة لكل جلسة)"
+            },
+            {
+              "value": "per-test",
+              "label": "Per-Test (تسجيل دخول في كل اختبار)"
+            }
+          ],
+          "aiHint": "login strategy: session-based or per-test"
+        }
+      ]
+    },
+    {
+      "id": "environment",
+      "title": "بيئة الاختبار",
+      "titleEn": "Test Environment",
+      "description": "رابط التطبيق وإعدادات الجلسة",
+      "descriptionEn": "App URL and session defaults",
+      "icon": "🌐",
+      "target": "environments/{defaultEnvironment}.json",
+      "fields": [
+        {
+          "key": "portalUrl",
+          "label": "رابط التطبيق (Portal URL)",
+          "labelEn": "Portal URL",
+          "type": "url",
+          "placeholder": "https://app.example.com",
+          "required": true,
+          "aiHint": "application URL, portal URL, base URL for testing"
+        },
+        {
+          "key": "defaults.password",
+          "label": "كلمة المرور الافتراضية",
+          "labelEn": "Default Password",
+          "type": "password",
+          "placeholder": "Test@1234",
+          "default": "Test@1234",
+          "required": false,
+          "aiHint": "default test account password"
+        },
+        {
+          "key": "defaults.otp",
+          "label": "OTP الافتراضي",
+          "labelEn": "Default OTP",
+          "type": "text",
+          "placeholder": "0000",
+          "default": "0000",
+          "required": false,
+          "aiHint": "default OTP or verification code for test accounts"
+        }
+      ]
+    },
+    {
+      "id": "test-users",
+      "title": "مستخدمو الاختبار",
+      "titleEn": "Test Users",
+      "description": "بيانات الحسابات المستخدمة في الاختبارات",
+      "descriptionEn": "Test account credentials and roles",
+      "icon": "👥",
+      "target": "environments/{defaultEnvironment}.json",
+      "type": "dynamic-list",
+      "listKey": "users",
+      "minItems": 1,
+      "itemTemplate": {
+        "key": "{handle}",
+        "fields": [
+          {
+            "key": "handle",
+            "label": "معرّف الحساب",
+            "labelEn": "Account Handle",
+            "type": "text",
+            "placeholder": "valid_user",
+            "required": true,
+            "hint": "مثال: valid_user, admin_user, expired_user",
+            "aiHint": "user handle or identifier"
+          },
+          {
+            "key": "phone",
+            "label": "رقم الهاتف",
+            "labelEn": "Phone",
+            "type": "text",
+            "placeholder": "0550000001",
+            "required": false,
+            "aiHint": "test account phone number"
+          },
+          {
+            "key": "email",
+            "label": "البريد الإلكتروني",
+            "labelEn": "Email",
+            "type": "email",
+            "placeholder": "test@example.com",
+            "required": false,
+            "aiHint": "test account email"
+          },
+          {
+            "key": "role",
+            "label": "الدور",
+            "labelEn": "Role",
+            "type": "text",
+            "placeholder": "customer",
+            "required": false,
+            "aiHint": "user role (e.g. customer, admin, manager)"
+          },
+          {
+            "key": "notes",
+            "label": "ملاحظات",
+            "labelEn": "Notes",
+            "type": "text",
+            "placeholder": "for negative login scenarios",
+            "required": false,
+            "aiHint": "notes about this test account"
+          }
+        ]
+      },
+      "defaults": [
+        {
+          "handle": "valid_user",
+          "phone": "",
+          "role": "customer"
+        },
+        {
+          "handle": "expired_user",
+          "phone": "",
+          "notes": "for negative login scenarios"
+        }
+      ]
+    },
+    {
+      "id": "azure-devops",
+      "title": "Azure DevOps",
+      "titleEn": "Azure DevOps",
+      "description": "إعدادات ربط Azure DevOps لإنشاء الـ bugs والـ test plans",
+      "descriptionEn": "Azure DevOps settings for bug filing and test plans",
+      "icon": "☁️",
+      "target": "config/project.json",
+      "optional": true,
+      "fields": [
+        {
+          "key": "azure.org",
+          "label": "Organization",
+          "labelEn": "Organization",
+          "type": "text",
+          "placeholder": "my-org",
+          "required": false,
+          "aiHint": "Azure DevOps organization name"
+        },
+        {
+          "key": "azure.project",
+          "label": "Project",
+          "labelEn": "Project",
+          "type": "text",
+          "placeholder": "My Project",
+          "required": false,
+          "aiHint": "Azure DevOps project name"
+        },
+        {
+          "key": "azure.team",
+          "label": "Team",
+          "labelEn": "Team",
+          "type": "text",
+          "placeholder": "My Team",
+          "required": false,
+          "aiHint": "Azure DevOps team name"
+        },
+        {
+          "key": "azure.assignee",
+          "label": "المسؤول الافتراضي",
+          "labelEn": "Default Assignee",
+          "type": "email",
+          "placeholder": "qa@example.com",
+          "required": false,
+          "aiHint": "default assignee email for bugs"
+        },
+        {
+          "key": "azure.pat",
+          "label": "Azure DevOps PAT Token",
+          "type": "password",
+          "placeholder": "ghp_xxxxxxxxxxxx",
+          "required": false,
+          "secret": true,
+          "envKey": "AZURE_PAT",
+          "aiHint": "Azure DevOps personal access token"
+        }
+      ]
+    },
+    {
+      "id": "db-connection",
+      "title": "قاعدة البيانات",
+      "titleEn": "Database Connection",
+      "description": "إعدادات الاتصال بقاعدة البيانات (اختياري)",
+      "descriptionEn": "Database connection settings (optional)",
+      "icon": "🗄️",
+      "target": "environments/{defaultEnvironment}.json",
+      "optional": true,
+      "fields": [
+        {
+          "key": "db.server",
+          "label": "Server",
+          "type": "text",
+          "placeholder": "localhost",
+          "required": false,
+          "aiHint": "database server hostname or IP"
+        },
+        {
+          "key": "db.port",
+          "label": "Port",
+          "type": "number",
+          "placeholder": "1433",
+          "default": 1433,
+          "required": false,
+          "aiHint": "database port number"
+        },
+        {
+          "key": "db.name",
+          "label": "اسم قاعدة البيانات",
+          "labelEn": "Database Name",
+          "type": "text",
+          "placeholder": "my-database",
+          "required": false,
+          "aiHint": "database name"
+        },
+        {
+          "key": "db.user",
+          "label": "المستخدم",
+          "labelEn": "Username",
+          "type": "text",
+          "placeholder": "qa_user",
+          "required": false,
+          "aiHint": "database username"
+        },
+        {
+          "key": "db.passwordEnvVar",
+          "label": "متغير كلمة المرور",
+          "labelEn": "Password Env Var",
+          "type": "text",
+          "placeholder": "SQLCMDPASSWORD",
+          "default": "SQLCMDPASSWORD",
+          "required": false,
+          "aiHint": "environment variable name for DB password"
+        },
+        {
+          "key": "db.password",
+          "label": "كلمة مرور قاعدة البيانات",
+          "type": "password",
+          "placeholder": "••••••••",
+          "required": false,
+          "secret": true,
+          "envKey": "SQLCMDPASSWORD",
+          "aiHint": "database password"
+        }
+      ]
+    },
+    {
+      "id": "api-integration",
+      "title": "API Integration",
+      "titleEn": "API Integration",
+      "description": "إعدادات الـ REST API (اختياري)",
+      "descriptionEn": "REST API settings (optional)",
+      "icon": "🔌",
+      "target": "environments/{defaultEnvironment}.json",
+      "optional": true,
+      "fields": [
+        {
+          "key": "api.baseUrl",
+          "label": "Base URL",
+          "type": "url",
+          "placeholder": "https://api.example.com",
+          "required": false,
+          "aiHint": "API base URL"
+        },
+        {
+          "key": "api.tokenEnvVar",
+          "label": "متغير الـ Token",
+          "labelEn": "Token Env Var",
+          "type": "text",
+          "placeholder": "API_TOKEN",
+          "default": "API_TOKEN",
+          "required": false,
+          "aiHint": "environment variable name for API bearer token"
+        },
+        {
+          "key": "api.token",
+          "label": "API Token",
+          "type": "password",
+          "placeholder": "Bearer xxxxxxxxxxxx",
+          "required": false,
+          "secret": true,
+          "envKey": "API_TOKEN",
+          "aiHint": "API bearer token"
+        }
+      ]
+    },
+    {
+      "id": "ai-import",
+      "title": "استيراد من ملف",
+      "titleEn": "Import from File",
+      "description": "ارفع BRD أو Word أو PDF وسيستخلص Claude البيانات تلقائياً",
+      "descriptionEn": "Upload a BRD, Word, or PDF file for AI-powered data extraction",
+      "icon": "🤖",
+      "type": "ai-extract",
+      "optional": true,
+      "acceptedTypes": [
+        ".md",
+        ".txt",
+        ".pdf",
+        ".docx",
+        ".doc"
+      ],
+      "extractionPrompt": "Extract the following fields from this document and return as JSON matching our wizard schema: project name, portal URL, Azure DevOps org/project/team/assignee, test users (phone/email/role), database server/port/name/user, API base URL. Return only valid JSON, no explanation.",
+      "previewable": true
+    },
+    {
+      "id": "review",
+      "title": "مراجعة وحفظ",
+      "titleEn": "Review & Save",
+      "description": "راجع الإعدادات قبل الحفظ",
+      "descriptionEn": "Review your configuration before saving",
+      "icon": "✅",
+      "type": "review",
+      "outputs": [
+        {
+          "label": "config/project.json",
+          "key": "projectConfig"
+        },
+        {
+          "label": "environments/{defaultEnvironment}.json",
+          "key": "envConfig"
+        }
+      ]
+    }
+  ]
+}

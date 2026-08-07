@@ -26,6 +26,17 @@ function fixtureCwd(kb) {
   return dir;
 }
 
+// Fixture with the new config/project.json (and optionally the legacy file too).
+function fixtureCwd2({ projectKb, legacyKb }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'askkb-'));
+  if (legacyKb) fs.writeFileSync(path.join(dir, 'agentex.config.json'), JSON.stringify({ kb: legacyKb }));
+  if (projectKb) {
+    fs.mkdirSync(path.join(dir, 'config'));
+    fs.writeFileSync(path.join(dir, 'config', 'project.json'), JSON.stringify({ kb: projectKb }));
+  }
+  return dir;
+}
+
 function run(cwd, env, args) {
   return new Promise((resolve) => {
     const p = spawn('node', [RUNNER, ...args], { cwd, env: { ...process.env, ...env } });
@@ -215,6 +226,39 @@ async function test(name, fn) {
     assert.strictEqual(r.json.status, 401);
     assert.ok(!r.json.transient, '401 must not be marked transient');
     assert.strictEqual(calls, 1, '401 must not be retried');
+  });
+
+  // 2c. config/project.json kb block beats env and legacy agentex.config.json
+  await test('config/project.json kb block wins over env and legacy config', async () => {
+    let seen = null;
+    const srv = await server((req, res, body) => {
+      seen = JSON.parse(body);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ success: true, answer: 'x', sources: [], hasContext: true, isNoAnswer: false }));
+    });
+    const port = srv.address().port;
+    const cwd = fixtureCwd2({
+      projectKb: { project: 'proj-json', org: 'org-json' },
+      legacyKb: { project: 'legacy', org: 'legacy-org' },
+    });
+    await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_PROJECT: 'env-proj', KB_ORG: 'env-org' }, ['--question', 'Q']);
+    srv.close();
+    assert.strictEqual(seen.project, 'proj-json');
+    assert.strictEqual(seen.org, 'org-json');
+  });
+
+  // 2d. kb.baseUrl in config/project.json used when KB_ASK_BASE_URL is unset
+  await test('kb.baseUrl in config/project.json reaches the server', async () => {
+    const srv = await server((req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ success: true, answer: 'x', sources: [], hasContext: true, isNoAnswer: false }));
+    });
+    const port = srv.address().port;
+    const cwd = fixtureCwd2({ projectKb: { baseUrl: `http://127.0.0.1:${port}`, project: 'p1' } });
+    const r = await run(cwd, { KB_ASK_BASE_URL: '' }, ['--question', 'Q']);
+    srv.close();
+    assert.strictEqual(r.code, 0);
+    assert.strictEqual(r.json.result, 'OK');
   });
 
   console.log(`\n${passed} passed`);

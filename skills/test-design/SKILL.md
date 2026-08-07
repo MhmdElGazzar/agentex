@@ -30,16 +30,17 @@ when to confirm). Command mechanics live in the references — **read them befor
 
 ## Configuration (never hardcode)
 
-Same resolution as the task-estimation skill — from the user's message, `.env` (`AZURE_*` keys),
-or an existing `az devops configure --defaults`; **ask once** for anything missing and reuse it
-all session. Never bake an organization, project, team, or email into commands.
+Same resolution as the task-estimation skill — from the user's message, `config/project.json`'s
+`azure` block or legacy `.env` (`AZURE_*` keys), or an existing `az devops configure --defaults`;
+**ask once** for anything missing and reuse it all session. Never bake an organization, project,
+team, or email into commands.
 
 | Setting | Source |
 |---|---|
-| Organization URL | `AZURE_URL` / ask |
-| Project | `AZURE_PROJECT` / ask |
-| Team | `AZURE_TEAM` / ask |
-| Assignee | `AZURE_ASSIGNEE` / ask |
+| Organization URL | `azure.org` (`config/project.json`) → `AZURE_URL` / ask |
+| Project | `azure.project` (`config/project.json`) → `AZURE_PROJECT` / ask |
+| Team | `azure.team` (`config/project.json`) → `AZURE_TEAM` / ask |
+| Assignee | `azure.assignee` (`config/project.json`) → `AZURE_ASSIGNEE` / ask |
 | PAT (auth) | `AZURE_DEVOPS_EXT_PAT` env in the user's shell — never print or pass it |
 
 ## Project conventions file

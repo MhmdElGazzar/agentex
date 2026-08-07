@@ -4,7 +4,7 @@
 // Usage:
 //   node run_api.js --entry <file-name>.<request-name> [--param k=v ...]
 //     [--expect-status 200] [--expect-field dot.path] [--expect-equals dot.path=value]
-//     [--catalog ./integration] --log <path>
+//     [--env <environment-name>] [--catalog ./integration] --log <path>
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL|BLOCKED", ...}. Exit: 0 PASS, 1 FAIL, 2 BLOCKED.
 // Secrets: env values (tokens) are used for the request but never printed or logged.
@@ -20,7 +20,7 @@ function outAsync(obj, code) { console.log(JSON.stringify(obj)); process.exitCod
 // ---- args ----
 const args = process.argv.slice(2);
 const params = {};
-let entry, logPath, catalog = './integration', expectStatus, expectFields = [], expectEquals = [];
+let entry, logPath, catalog = './integration', expectStatus, expectFields = [], expectEquals = [], envName;
 for (let i = 0; i < args.length; i++) {
   const a = args[i], v = () => args[++i];
   if (a === '--entry') entry = v();
@@ -28,6 +28,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--expect-status') expectStatus = parseInt(v(), 10);
   else if (a === '--expect-field') expectFields.push(v());
   else if (a === '--expect-equals') { const p = v(); const eq = p.indexOf('='); expectEquals.push([p.slice(0, eq), p.slice(eq + 1)]); }
+  else if (a === '--env') envName = v();
   else if (a === '--catalog') catalog = v();
   else if (a === '--log') logPath = v();
 }
@@ -55,14 +56,19 @@ const declared = req.params || [];
 for (const k of Object.keys(params)) if (!declared.includes(k)) blocked(`param "${k}" is not declared for ${entry} (declared: ${declared.join(', ') || 'none'})`);
 for (const k of declared) if (!(k in params)) blocked(`missing value for declared param "${k}"`);
 
-// ---- env resolution (values never printed) ----
+// ---- target: active environment's api block first, catalog ${ENV_VAR} refs second ----
 function resolveEnvRefs(s) {
   return s.replace(/\$\{([A-Z0-9_]+)\}/g, (_, name) => {
     if (!process.env[name]) blocked(`env var ${name} is not set (referenced by catalog "${fileName}")`);
     return process.env[name];
   });
 }
-const baseUrl = resolveEnvRefs(def.baseUrl || '');
+const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
+let target = null;
+try { target = pc.resolveApiTarget(process.cwd(), envName); }
+catch (e) { blocked(e.message); }
+if (target && target.hasToken && !target.token) blocked(`${target.tokenHint} (api token) is not set`);
+const baseUrl = target ? target.baseUrl : resolveEnvRefs(def.baseUrl || '');
 let urlPath = req.path || '';
 for (const [k, v] of Object.entries(params)) urlPath = urlPath.split(`{${k}}`).join(encodeURIComponent(v));
 const unresolved = urlPath.match(/\{[a-zA-Z0-9_]+\}/);
@@ -71,7 +77,9 @@ const url = baseUrl.replace(/\/$/, '') + urlPath;
 
 const headers = { 'Accept': 'application/json' };
 const auth = def.auth || { type: 'none' };
-if (auth.type === 'bearer') {
+if (target && target.token) {
+  headers['Authorization'] = `Bearer ${target.token}`; // environment token wins
+} else if (auth.type === 'bearer') {
   const tok = process.env[auth.tokenEnv];
   if (!tok) blocked(`env var ${auth.tokenEnv} (bearer token) is not set`);
   headers['Authorization'] = `Bearer ${tok}`;
