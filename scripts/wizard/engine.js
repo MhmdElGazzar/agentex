@@ -128,6 +128,10 @@ function validate(answers, steps) {
           errors.push(`"${field.label || field.key}" must be a valid email`);
         }
       }
+      if (field.pattern && answers[field.key] &&
+          !new RegExp(field.pattern).test(String(answers[field.key]))) {
+        errors.push(`"${field.label || field.key}" has an invalid format`);
+      }
     }
   }
   return errors;

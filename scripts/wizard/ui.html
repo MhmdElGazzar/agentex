@@ -1137,6 +1137,9 @@ function validateStep() {
     if (f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
       errs.push(`«${f.label || f.key}» بريد إلكتروني غير صحيح`);
     }
+    if (f.pattern && !new RegExp(f.pattern).test(v)) {
+      errs.push(`«${f.label || f.key}»: ${f.patternMsg || 'قيمة غير صالحة'}`);
+    }
   }
   if (step.type === 'dynamic-list') {
     for (const u of users) {

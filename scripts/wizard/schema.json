@@ -27,6 +27,8 @@
           "placeholder": "qa",
           "default": "qa",
           "required": true,
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,30}$",
+          "patternMsg": "حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف",
           "aiHint": "environment name being configured (e.g. qa, staging, uat)",
           "hint": "اسم البيئة اللي هتتكتب: qa أو uat أو live. البيئة الافتراضية للمشروع بتفضل زي ما هي."
         },
@@ -277,6 +279,8 @@
           "placeholder": "SQLCMDPASSWORD",
           "default": "SQLCMDPASSWORD",
           "required": false,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
           "aiHint": "environment variable name for DB password"
         },
         {
@@ -318,6 +322,8 @@
           "placeholder": "API_TOKEN",
           "default": "API_TOKEN",
           "required": false,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
           "aiHint": "environment variable name for API bearer token"
         },
         {

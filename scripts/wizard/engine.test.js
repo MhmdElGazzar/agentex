@@ -2,7 +2,7 @@
 // Tests for the wizard engine — extraction, validation, config building.
 // Run: node scripts/wizard/engine.test.js
 const assert = require('node:assert');
-const { extractFromText, validateConfigs, buildConfigs, mergeExtracted } = require('./engine.js');
+const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate } = require('./engine.js');
 
 let passed = 0; const failures = [];
 function test(name, fn) {
@@ -77,6 +77,22 @@ test('extracts users written with emails, ignores non-user parentheses', () => {
 test('empty or unrecognised text yields no invented values', () => {
   assert.deepStrictEqual(extractFromText(''), {});
   assert.deepStrictEqual(extractFromText('just some prose with no settings at all'), {});
+});
+
+test('validate enforces field patterns, and the schema declares them where it matters', () => {
+  const steps = [{ id: 's', fields: [
+    { key: 'defaultEnvironment', label: 'env', pattern: '^[a-z0-9][a-z0-9_-]{0,30}$' },
+  ]}];
+  assert.deepStrictEqual(validate({ defaultEnvironment: 'qa' }, steps), []);
+  assert.match(validate({ defaultEnvironment: 'QA App!!' }, steps).join(), /env/);
+
+  const schema = require('./schema.json');
+  const fields = schema.steps.flatMap(s => s.fields || []);
+  for (const key of ['defaultEnvironment', 'db.passwordEnvVar', 'api.tokenEnvVar']) {
+    const f = fields.find(x => x.key === key);
+    assert.ok(f && f.pattern, `${key} must declare a pattern (garbage was only rejected at save, in English)`);
+    assert.ok(f.patternMsg, `${key} must carry a localized pattern message`);
+  }
 });
 
 // ── mergeExtracted ────────────────────────────────────────────────────────
