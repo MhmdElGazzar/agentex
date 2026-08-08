@@ -2,7 +2,7 @@
 // Tests for the wizard engine — extraction, validation, config building.
 // Run: node scripts/wizard/engine.test.js
 const assert = require('node:assert');
-const { extractFromText, validateConfigs, buildConfigs } = require('./engine.js');
+const { extractFromText, validateConfigs, buildConfigs, mergeExtracted } = require('./engine.js');
 
 let passed = 0; const failures = [];
 function test(name, fn) {
@@ -77,6 +77,33 @@ test('extracts users written with emails, ignores non-user parentheses', () => {
 test('empty or unrecognised text yields no invented values', () => {
   assert.deepStrictEqual(extractFromText(''), {});
   assert.deepStrictEqual(extractFromText('just some prose with no settings at all'), {});
+});
+
+// ── mergeExtracted ────────────────────────────────────────────────────────
+test('mergeExtracted merges users by handle — never replaces the list', () => {
+  const answers = { users: [
+    { handle: 'valid_user', phone: '0550000001' },
+    { handle: 'admin_user', role: 'admin' },
+  ]};
+  const merged = mergeExtracted(answers, { users: [
+    { handle: 'admin_user', phone: '0559990009', role: 'super' },
+    { handle: 'import_user', phone: '0559990001' },
+  ]});
+  assert.deepStrictEqual(merged.users, [
+    { handle: 'valid_user', phone: '0550000001' },
+    { handle: 'admin_user', role: 'admin', phone: '0559990009' },  // empty field filled, existing kept
+    { handle: 'import_user', phone: '0559990001' },
+  ]);
+});
+
+test('mergeExtracted takes extracted users when there are none yet, and fills empty scalars only', () => {
+  const merged = mergeExtracted({ name: 'kept' }, {
+    name: 'ignored', portalUrl: 'https://x.example',
+    users: [{ handle: 'import_user', phone: '0559990001' }],
+  });
+  assert.strictEqual(merged.name, 'kept');
+  assert.strictEqual(merged.portalUrl, 'https://x.example');
+  assert.deepStrictEqual(merged.users, [{ handle: 'import_user', phone: '0559990001' }]);
 });
 
 // ── schema shape ──────────────────────────────────────────────────────────

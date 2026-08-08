@@ -290,7 +290,9 @@ function validateConfigs(projectConfig, envConfig, envName) {
 
 /**
  * Merge AI-extracted partial answers into the existing answers object.
- * Extracted values only fill keys that are currently empty.
+ * Extracted values only fill keys that are currently empty; users MERGE by
+ * handle — an import must never clobber users the user typed or that were
+ * loaded from an existing config (saving afterwards would erase them on disk).
  * @param {object} answers   - current wizard answers
  * @param {object} extracted - AI-extracted partial data
  * @returns {object}         - merged answers
@@ -298,15 +300,38 @@ function validateConfigs(projectConfig, envConfig, envName) {
 function mergeExtracted(answers, extracted) {
   const merged = { ...answers };
   for (const [key, value] of Object.entries(flattenObject(extracted))) {
+    if (key === 'users') continue;   // arrays are handled below, never as scalars
     if (value !== null && value !== undefined && value !== '' && !merged[key]) {
       merged[key] = value;
     }
   }
-  // Merge users array specially
-  if (Array.isArray(extracted.users) && (!merged.users || merged.users.length === 0)) {
-    merged.users = extracted.users;
+  if (Array.isArray(extracted.users) && extracted.users.length > 0) {
+    merged.users = (Array.isArray(merged.users) && merged.users.length > 0)
+      ? mergeUsers(merged.users, extracted.users)
+      : extracted.users.map(u => ({ ...u }));
   }
   return merged;
+}
+
+/**
+ * Merge imported users into an existing list, keyed by handle.
+ * Existing entries win; an import only fills their empty fields. New handles
+ * are appended. The existing list is not mutated.
+ */
+function mergeUsers(existing, imported) {
+  const out = existing.map(u => ({ ...u }));
+  for (const ext of (imported || [])) {
+    if (!ext || !ext.handle) continue;
+    const hit = out.find(u => u.handle === ext.handle);
+    if (hit) {
+      for (const [k, v] of Object.entries(ext)) {
+        if (v && !hit[k]) hit[k] = v;
+      }
+    } else {
+      out.push({ ...ext });
+    }
+  }
+  return out;
 }
 
 /**
@@ -328,5 +353,5 @@ function flattenObject(obj, prefix = '') {
 
 module.exports = {
   buildConfigs, validate, validateConfigs, isHttpUrl,
-  extractFromText, extractUsers, mergeExtracted, flattenObject,
+  extractFromText, extractUsers, mergeExtracted, mergeUsers, flattenObject,
 };

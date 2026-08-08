@@ -433,6 +433,9 @@ let users    = [
   { handle: 'valid_user',   phone: '', role: 'customer' },
   { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
 ];
+// True while `users` is still the untouched starter placeholders. An import may
+// replace placeholders; it must MERGE into anything the user typed or loaded.
+let usersPristine = true;
 let current      = -1;      // -1 = intro screen
 let importMode   = null;    // 'file' | 'paste' | 'steps'
 let extractedData = null;
@@ -523,6 +526,7 @@ function fillEnvironmentAnswers(env) {
   if (entries.length) {
     users = entries.map(([handle, u]) => ({ handle, phone: u.phone || '', role: u.role || '', email: u.email || '', notes: u.notes || '' }));
     answers['users'] = users;
+    usersPristine = false;
   }
 }
 
@@ -543,6 +547,7 @@ function onEnvironmentNameChanged(newName) {
   }
   for (const key of ENV_SCOPED_KEYS) delete answers[key];
   users = starterUsers();
+  usersPristine = true;
   answers['users'] = users;
   showToast(`🆕 بيئة جديدة «${newName}» — الحقول فاضية عشان متورثش إعدادات «${loadedEnvName}»`);
 }
@@ -886,7 +891,7 @@ function renderUsersStep(_step) {
   addBtn.innerHTML = '+ إضافة مستخدم';
   addBtn.onclick = () => {
     users.push({ handle:'', phone:'', role:'' });
-    answers['users'] = users;
+    usersDirty();
     refreshUserCards(document.getElementById('user-list'));
   };
 
@@ -910,27 +915,27 @@ function refreshUserCards(list) {
         <div class="field">
           <label class="field-label">المعرّف <span class="req">*</span></label>
           <input type="text" placeholder="valid_user" value="${esc(u.handle)}"
-            oninput="users[${i}].handle=this.value;answers['users']=users" />
+            oninput="users[${i}].handle=this.value;usersDirty()" />
         </div>
         <div class="field">
           <label class="field-label">الدور</label>
           <input type="text" placeholder="customer" value="${esc(u.role||'')}"
-            oninput="users[${i}].role=this.value;answers['users']=users" />
+            oninput="users[${i}].role=this.value;usersDirty()" />
         </div>
         <div class="field">
           <label class="field-label">الهاتف</label>
           <input type="text" placeholder="0550000001" value="${esc(u.phone||'')}"
-            oninput="users[${i}].phone=this.value;answers['users']=users" />
+            oninput="users[${i}].phone=this.value;usersDirty()" />
         </div>
         <div class="field">
           <label class="field-label">البريد الإلكتروني</label>
           <input type="email" placeholder="test@example.com" value="${esc(u.email||'')}"
-            oninput="users[${i}].email=this.value;answers['users']=users" />
+            oninput="users[${i}].email=this.value;usersDirty()" />
         </div>
         <div class="field" style="grid-column:1/-1">
           <label class="field-label">ملاحظات</label>
           <input type="text" placeholder="مثال: حساب منتهي الصلاحية" value="${esc(u.notes||'')}"
-            oninput="users[${i}].notes=this.value;answers['users']=users" />
+            oninput="users[${i}].notes=this.value;usersDirty()" />
         </div>
       </div>`;
     list.appendChild(card);
@@ -939,8 +944,14 @@ function refreshUserCards(list) {
 
 function removeUser(i) {
   users.splice(i, 1);
-  answers['users'] = users;
+  usersDirty();
   refreshUserCards(document.getElementById('user-list'));
+}
+
+/** Any manual change to the list means it is no longer placeholder data. */
+function usersDirty() {
+  usersPristine = false;
+  answers['users'] = users;
 }
 
 /* ── File pick / extract (used by the file-import screen) ─────────────────── */
@@ -985,12 +996,27 @@ function applyExtracted(data) {
     for (const [k,v] of Object.entries(obj||{})) {
       const key = p ? `${p}.${k}` : k;
       if (v && typeof v==='object' && !Array.isArray(v)) flat(v, key);
-      else if (!answers[key]) answers[key] = v;
+      else if (key !== 'users' && !answers[key]) answers[key] = v;
     }
   }
   flat(data);
   if (Array.isArray(data.users) && data.users.length > 0) {
-    users = data.users; answers['users'] = users;
+    // Mirror of engine.js mergeUsers(): imports MERGE by handle — they never
+    // replace users the user typed or that came from an existing config
+    // (saving afterwards would erase them on disk). Only the untouched
+    // starter placeholders give way to an import.
+    if (usersPristine) {
+      users = data.users.map(u => ({ ...u }));
+    } else {
+      for (const ext of data.users) {
+        if (!ext || !ext.handle) continue;
+        const hit = users.find(u => u.handle === ext.handle);
+        if (hit) { for (const [k,v] of Object.entries(ext)) { if (v && !hit[k]) hit[k] = v; } }
+        else users.push({ ...ext });
+      }
+    }
+    usersPristine = false;
+    answers['users'] = users;
   }
 }
 
