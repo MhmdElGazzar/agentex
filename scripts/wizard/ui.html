@@ -1200,20 +1200,13 @@ function buildConfigs() {
     defaultEnvironment: (existingProject && existingProject.defaultEnvironment) || envName,
     login: Object.assign({}, existingProject && existingProject.login, { mode: answers['login.mode'] || 'session' }),
   });
-  if (answers['azure.org'] || answers['azure.project']) {
-    proj.azure = Object.assign({}, existingProject && existingProject.azure, {
-      org:      answers['azure.org']      || '',
-      project:  answers['azure.project']  || '',
-      team:     answers['azure.team']     || '',
-      assignee: answers['azure.assignee'] || '',
-    });
-  }
-  if (answers['kb.baseUrl'] || answers['kb.project']) {
-    proj.kb = Object.assign({}, existingProject && existingProject.kb, {
-      baseUrl: answers['kb.baseUrl'] || '',
-      project: answers['kb.project'] || '',
-    });
-  }
+  // Managed keys mirror the screen EXACTLY: a value sets the key, an empty
+  // field unsets it — clearing Org must not resurrect the saved value, and
+  // filling only Team/Assignee must not drop them. Hand-added keys the wizard
+  // has no input for are preserved; a block disappears only when nothing is
+  // left in it.
+  setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
+  setManagedBlock(proj, 'kb', ['baseUrl', 'project']);
 
   // Merge back only when rewriting the environment we loaded; a different name
   // is a new environment file, which starts clean.
@@ -1234,14 +1227,29 @@ function buildConfigs() {
       user:   answers['db.user']   || '',
       password: { envSecret: answers['db.passwordEnvVar'] || 'SQLCMDPASSWORD' },
     };
+  } else {
+    delete env.db;    // cleared on screen → removed from the file, not restored
   }
   if (answers['api.baseUrl']) {
     env.api = {
       baseUrl: answers['api.baseUrl'],
       token:   { envSecret: answers['api.tokenEnvVar'] || 'API_TOKEN' },
     };
+  } else {
+    delete env.api;
   }
   return { projectConfig: proj, envConfig: env, envName };
+}
+
+/** Write a group's managed keys from answers into target — set or unset, screen wins. */
+function setManagedBlock(target, group, keys) {
+  const block = Object.assign({}, existingProject && existingProject[group]);
+  for (const k of keys) {
+    const v = String(answers[`${group}.${k}`] || '').trim();
+    if (v) block[k] = v; else delete block[k];
+  }
+  if (Object.keys(block).length) target[group] = block;
+  else delete target[group];
 }
 
 function buildUsersObj() {
