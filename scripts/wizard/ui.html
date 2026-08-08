@@ -1146,6 +1146,10 @@ function validateStep() {
       const hasData = u.phone || u.email || u.role || u.notes;
       if (hasData && !String(u.handle || '').trim()) { errs.push('كل مستخدم يحتاج «معرّف» قبل المتابعة'); break; }
     }
+    const withHandle = users.filter(u => String(u.handle || '').trim()).length;
+    if (withHandle < (step.minItems || 1)) {
+      errs.push('أضف مستخدم اختبار واحداً على الأقل (بمعرّف)');
+    }
   }
   if (errs.length) showToast('❌ ' + errs[0], 'error');
   return errs.length === 0;

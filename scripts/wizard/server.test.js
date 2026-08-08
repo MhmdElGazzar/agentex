@@ -147,7 +147,7 @@ const post = (route, body, headers = {}) =>
     fs.appendFileSync(path.join(projectDir, '.env'), 'KEEP_ME=untouched\n');
     await post('/api/save', {
       projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
-      envConfig: { portalUrl: 'https://ok.example' },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
       envName: 'qa', secrets: { API_TOKEN: 'tok-updated' },
     });
     const dotenv = fs.readFileSync(path.join(projectDir, '.env'), 'utf8');
@@ -192,6 +192,18 @@ const post = (route, body, headers = {}) =>
     // Restore for the tests that follow.
     fs.writeFileSync(path.join(projectDir, 'config', 'project.json'),
       JSON.stringify({ name: 'demo', defaultEnvironment: 'qa' }));
+  });
+
+  await test('refuses to save an empty users object (would wipe saved users)', async () => {
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      envConfig: { portalUrl: 'https://ok.example', users: {} },
+      envName: 'qa', secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /user/i);
+    const env = JSON.parse(fs.readFileSync(path.join(projectDir, 'environments', 'qa.json'), 'utf8'));
+    assert.ok(Object.keys(env.users).length > 0, 'saved users untouched');
   });
 
   await test('malformed JSON is a clean 400, not a crash', async () => {

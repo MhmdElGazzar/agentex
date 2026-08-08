@@ -288,6 +288,12 @@ function validateConfigs(projectConfig, envConfig, envName) {
   else {
     if (!isHttpUrl(envConfig.portalUrl)) errors.push('portalUrl must be a valid http(s) URL');
     if (envConfig.api && !isHttpUrl(envConfig.api.baseUrl)) errors.push('api.baseUrl must be a valid http(s) URL');
+    // Schema declares minItems: 1 — an empty users object reaching disk would
+    // wipe every saved user on a re-run.
+    if (!envConfig.users || typeof envConfig.users !== 'object' ||
+        Object.keys(envConfig.users).length === 0) {
+      errors.push('at least one test user is required');
+    }
   }
   return errors;
 }

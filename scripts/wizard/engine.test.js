@@ -133,8 +133,18 @@ test('schema has 7 numbered steps and no ai-import step', () => {
 
 // ── validateConfigs ───────────────────────────────────────────────────────
 test('validateConfigs accepts a well-formed payload', () => {
-  const errs = validateConfigs({ name: 'demo' }, { portalUrl: 'https://ok.example' }, 'qa');
+  const errs = validateConfigs(
+    { name: 'demo' },
+    { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+    'qa',
+  );
   assert.deepStrictEqual(errs, []);
+});
+
+test('validateConfigs rejects an empty or missing users object (minItems: 1)', () => {
+  const proj = { name: 'd' };
+  assert.match(validateConfigs(proj, { portalUrl: 'https://ok.example', users: {} }, 'qa').join(), /user/i);
+  assert.match(validateConfigs(proj, { portalUrl: 'https://ok.example' }, 'qa').join(), /user/i);
 });
 
 test('validateConfigs rejects bad url, bad env name, missing name', () => {
@@ -142,7 +152,7 @@ test('validateConfigs rejects bad url, bad env name, missing name', () => {
   assert.match(validateConfigs({ name: 'd' }, { portalUrl: 'https://ok.example' }, '../evil').join(), /envName/);
   assert.match(validateConfigs({}, { portalUrl: 'https://ok.example' }, 'qa').join(), /name/);
   assert.match(
-    validateConfigs({ name: 'd' }, { portalUrl: 'https://ok.example', api: { baseUrl: 'bad' } }, 'qa').join(),
+    validateConfigs({ name: 'd' }, { portalUrl: 'https://ok.example', users: { u: {} }, api: { baseUrl: 'bad' } }, 'qa').join(),
     /api\.baseUrl/,
   );
 });
