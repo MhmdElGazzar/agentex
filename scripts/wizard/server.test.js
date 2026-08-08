@@ -77,6 +77,39 @@ const post = (route, body, headers = {}) =>
     assert.strictEqual(data.portalUrl, 'https://x.example');
   });
 
+  await test('rejects a binary upload honestly and leaves no temp files', async () => {
+    const boundary = '----wizardtest';
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="fake-brd.pdf"\r\nContent-Type: application/pdf\r\n\r\n`),
+      Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00, 0x01, 0x02, 0x00, 0x00, 0x03]),   // %PDF + NULs
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const r = await fetch(`${BASE}/api/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'X-Wizard-Token': TOKEN },
+      body,
+    });
+    assert.strictEqual(r.status, 415, 'binary upload must be refused, not faked as success');
+    const data = await r.json();
+    assert.ok(data.error, 'refusal carries an error');
+    const litter = fs.readdirSync(projectDir).filter(f => f.startsWith('.agentex-upload-'));
+    assert.deepStrictEqual(litter, [], 'no temp upload files left behind');
+  });
+
+  await test('a text file upload still extracts fields', async () => {
+    const boundary = '----wizardtest2';
+    const body = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="notes.txt"\r\n\r\nPROJECT_NAME=upload-demo\nQA_TARGET_URL=https://up.example\n\r\n--${boundary}--\r\n`;
+    const r = await fetch(`${BASE}/api/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'X-Wizard-Token': TOKEN },
+      body,
+    });
+    assert.strictEqual(r.status, 200);
+    const data = await r.json();
+    assert.strictEqual(data.name, 'upload-demo');
+    assert.strictEqual(data.portalUrl, 'https://up.example');
+  });
+
   await test('rejects an invalid portalUrl on save', async () => {
     const r = await post('/api/save', {
       projectConfig: { name: 'demo' }, envConfig: { portalUrl: 'nope' }, envName: 'qa', secrets: {},

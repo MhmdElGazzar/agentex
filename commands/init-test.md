@@ -41,13 +41,9 @@ Do these steps, then report what was created:
    `[setup-wizard] ✅ Done. Closing server.`
    in the terminal output when it finishes.
 
-   **If the user uploaded a file (BRD/PDF/Word) in the AI Import step:**
-   - The server will write a file path to stdout: `[setup-wizard] 📄 extract-request: <path>`
-   - Read that file and extract the project data fields as JSON matching the schema in
-     `${CLAUDE_PLUGIN_ROOT}/scripts/wizard/schema.json` (use the `aiHint` on each field
-     as guidance). POST the extracted JSON to `http://127.0.0.1:7373/api/extract` with
-     `Content-Type: application/json`. The wizard will display it as a preview for the
-     user to confirm before applying.
+   **File / paste import:** the wizard extracts data from pasted text and uploaded
+   text files (`.md`, `.txt`, `.env`, …) entirely on its own. Binary files (PDF/Word)
+   are rejected with a clear message in the UI — no action needed from you.
 
    **If the wizard is already complete (user skipped it or ran `/init-test` again):**
    skip this step entirely.

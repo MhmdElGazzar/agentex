@@ -189,28 +189,25 @@ server = http.createServer((req, res) => {
         }
       });
     } else {
-      // Browser file upload (multipart). Text-ish files are parsed here; binary
-      // ones (PDF/Word) are saved and announced on stdout so Claude can read them
-      // and POST the structured answers back (see commands/init-test.md).
+      // Browser file upload (multipart). Only text-ish files can be parsed
+      // here; binary ones (PDF/Word) are refused honestly instead of faking a
+      // successful extraction (and no temp copy is ever written).
       readBody(req, buf => {
         // Byte-preserving view for splitting the multipart envelope; the file's
         // own bytes are re-decoded as UTF-8 only once we know it is text.
         const { filename, content } = parseSingleFileUpload(buf.toString('binary'));
-        if (isProbablyText(content)) {
-          const text = Buffer.from(content, 'binary').toString('utf8');
-          const extracted = extractFromText(text);
-          console.log(`[setup-wizard] 🔍 extracted ${Object.keys(extracted).length} field(s) from ${filename || 'upload'}`);
-          respondJSON(res, 200, extracted);
+        if (!isProbablyText(content)) {
+          console.log(`[setup-wizard] ⛔ rejected binary upload: ${filename || '(unnamed)'} — text files only`);
+          respondJSON(res, 415, {
+            error: 'binary-not-supported',
+            message: 'ملفات PDF/Word غير مدعومة حالياً — ارفع ملفاً نصياً (.md أو .txt أو .env) أو الصق المحتوى في وضع اللصق',
+          });
           return;
         }
-        try {
-          const tmp = path.join(projectRoot, `.agentex-upload-${Date.now()}-${(filename || 'file').replace(/[^\w.\-]/g, '_')}`);
-          fs.writeFileSync(tmp, Buffer.from(content, 'binary'));
-          console.log(`[setup-wizard] 📄 extract-request: ${tmp}`);
-          respondJSON(res, 200, { _status: 'file-received', _path: tmp, _note: 'Claude will extract and POST the answers back' });
-        } catch (e) {
-          respondJSON(res, 500, { error: e.message });
-        }
+        const text = Buffer.from(content, 'binary').toString('utf8');
+        const extracted = extractFromText(text);
+        console.log(`[setup-wizard] 🔍 extracted ${Object.keys(extracted).length} field(s) from ${filename || 'upload'}`);
+        respondJSON(res, 200, extracted);
       });
     }
     return;

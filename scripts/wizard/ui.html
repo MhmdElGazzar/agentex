@@ -700,11 +700,11 @@ function renderFileMode() {
         <p>ارفع ملفاً نصياً (BRD بصيغة .md أو .txt، أو ملف .env قديم) وسيستخلص Claude البيانات تلقائياً.</p>
       </div>
       <div class="dropzone" id="dz">
-        <input type="file" id="fi" accept=".md,.txt,.env,.json,.yml,.yaml,.pdf,.docx,.doc" style="display:none" />
+        <input type="file" id="fi" accept=".md,.txt,.env,.json,.yml,.yaml" style="display:none" />
         <div class="dz-icon">📄</div>
         <div class="dz-title">اسحب الملف هنا أو انقر للاختيار</div>
-        <div class="dz-sub">سيستخلص Claude البيانات تلقائياً</div>
-        <div class="dz-types">.env · .md · .txt · .json · .pdf · .docx</div>
+        <div class="dz-sub">ملفات نصية فقط — ملفات PDF/Word غير مدعومة حالياً</div>
+        <div class="dz-types">.env · .md · .txt · .json · .yml</div>
       </div>
       <div class="file-ready" id="file-ready">
         <div style="font-size:28px">📋</div>
@@ -979,7 +979,13 @@ async function runExtract() {
     if (MODE === 'local') {
       const fd = new FormData(); fd.append('file', window._file);
       const r = await apiFetch('/api/extract', { method:'POST', body:fd });
-      extractedData = await r.json();
+      const data = await r.json();
+      if (!r.ok || data.error) {
+        // e.g. a binary PDF/Word — refuse honestly, never fake a success preview.
+        showToast('❌ ' + (data.message || data.error || 'فشل الاستخلاص'), 'error');
+        return;
+      }
+      extractedData = data;
     } else {
       const t = await window._file.text();
       extractedData = { _raw: t.substring(0,500) };
@@ -1002,7 +1008,7 @@ function applyExtracted(data) {
     for (const [k,v] of Object.entries(obj||{})) {
       const key = p ? `${p}.${k}` : k;
       if (v && typeof v==='object' && !Array.isArray(v)) flat(v, key);
-      else if (key !== 'users' && !answers[key]) answers[key] = v;
+      else if (key !== 'users' && !key.startsWith('_') && !answers[key]) answers[key] = v;
     }
   }
   flat(data);
