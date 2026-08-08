@@ -428,7 +428,7 @@ function apiFetch(path, opts = {}) {
 /* ── State ──────────────────────────────────────────────────────────────── */
 let schema   = null;
 let answers  = {};
-let secrets  = {};          // ← written to .env silently
+let secrets  = {};          // keyed by FIELD key; mapped to env var names at save → .env
 let users    = [
   { handle: 'valid_user',   phone: '', role: 'customer' },
   { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
@@ -832,7 +832,7 @@ function buildField(field) {
   div.className = 'field';
 
   const savedVal = field.secret
-    ? (secrets[field.envKey] || '')
+    ? (secrets[field.key] || '')
     : (answers[field.key] !== undefined ? answers[field.key] : (field.default ?? ''));
 
   div.innerHTML = `
@@ -848,7 +848,7 @@ function buildField(field) {
   if (inp) {
     if (field.secret) {
       inp.classList.add('secret-input');
-      inp.addEventListener('input', () => { secrets[field.envKey] = inp.value; });
+      inp.addEventListener('input', () => { secrets[field.key] = inp.value; });
     } else {
       // Seed the answer with the rendered value (defaults included) so an
       // untouched field with a default — e.g. a preselected <select> — is
@@ -1147,15 +1147,31 @@ function goTo(idx) {
 }
 
 function collectAnswers() {
-  document.querySelectorAll('#card input:not(.secret-input), #card select, #card textarea')
-    .forEach(el => {
-      if (el.id && el.id.startsWith('f-')) answers[el.id.slice(2)] = el.value;
-    });
-  document.querySelectorAll('#card input.secret-input')
-    .forEach(el => {
-      if (el.dataset.envkey) secrets[el.dataset.envkey] = el.value;
-    });
+  // Field inputs sync through their own listeners; only the users list needs
+  // an explicit refresh here.
   answers['users'] = users;
+}
+
+/**
+ * Map typed secrets (keyed by field key) to the env var names they will live
+ * under in .env. When the step has a sibling "env var name" answer (envKeyFrom
+ * — e.g. db.passwordEnvVar), THAT name wins: it is the one the JSON's
+ * envSecret references, so writing anywhere else produces a broken config.
+ */
+function buildSecretsPayload() {
+  const out = {};
+  for (const step of schema.steps) {
+    for (const f of (step.fields || [])) {
+      if (!f.secret || !secrets[f.key]) continue;
+      let envKey = f.envKey;
+      if (f.envKeyFrom) {
+        const chosen = String(answers[f.envKeyFrom] || '').trim();
+        if (chosen) envKey = chosen;
+      }
+      out[envKey] = secrets[f.key];
+    }
+  }
+  return out;
 }
 
 /* ── Build Configs ───────────────────────────────────────────────────────── */
@@ -1239,7 +1255,7 @@ async function saveAndClose() {
       const r = await apiFetch('/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectConfig, envConfig, envName, secrets }),
+        body: JSON.stringify({ projectConfig, envConfig, envName, secrets: buildSecretsPayload() }),
       });
       const res = await r.json();
       if (res.ok) {

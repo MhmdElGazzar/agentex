@@ -125,6 +125,14 @@ server = http.createServer((req, res) => {
         return;
       }
 
+      // Secret keys become `KEY=value` lines in .env (and a RegExp in the
+      // upsert) — only plain identifiers are allowed through.
+      const badSecretKeys = Object.keys(secrets || {}).filter(k => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k));
+      if (badSecretKeys.length) {
+        respondJSON(res, 400, { ok: false, error: `invalid secret env var name(s): ${badSecretKeys.join(', ')}` });
+        return;
+      }
+
       try {
         // Write config/project.json
         const projDir = path.join(projectRoot, 'config');

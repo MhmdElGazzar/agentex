@@ -123,6 +123,33 @@ const post = (route, body, headers = {}) =>
     assert.ok(!dotenv.includes('tok-test'), 'old value replaced, not duplicated');
   });
 
+  await test('rejects secret env var names that are not valid identifiers', async () => {
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: { 'MY BAD KEY!': 'x' },
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /env var/i);
+    const dotenv = fs.readFileSync(path.join(projectDir, '.env'), 'utf8');
+    assert.ok(!dotenv.includes('MY BAD KEY!'), 'garbage key must not reach .env');
+  });
+
+  await test('writes the secret under the user-chosen env var name', async () => {
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      envConfig: {
+        portalUrl: 'https://ok.example',
+        users: { valid_user: { phone: '1' } },
+        db: { server: 'db.local', port: 1433, name: '', user: '', password: { envSecret: 'MY_DB_PASS' } },
+      },
+      envName: 'qa', secrets: { MY_DB_PASS: 'FakeDbPass123' },
+    });
+    assert.strictEqual(r.status, 200);
+    const dotenv = fs.readFileSync(path.join(projectDir, '.env'), 'utf8');
+    assert.match(dotenv, /^MY_DB_PASS=FakeDbPass123$/m, '.env key must match the envSecret the JSON references');
+  });
+
   await test('an existing but unreadable config file is reported, not ignored', async () => {
     fs.writeFileSync(path.join(projectDir, 'config', 'project.json'), '{ broken json');
     const r = await fetch(`${BASE}/api/config`, { headers: { 'X-Wizard-Token': TOKEN } });
