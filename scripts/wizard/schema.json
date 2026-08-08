@@ -75,10 +75,11 @@
           "key": "defaults.password",
           "label": "كلمة المرور الافتراضية",
           "labelEn": "Default Password",
-          "type": "password",
+          "type": "text",
           "placeholder": "Test@1234",
           "default": "Test@1234",
           "required": false,
+          "hint": "كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سراً حقيقياً)",
           "aiHint": "default test account password"
         },
         {
@@ -218,7 +219,7 @@
           "key": "azure.pat",
           "label": "Azure DevOps PAT Token",
           "type": "password",
-          "placeholder": "ghp_xxxxxxxxxxxx",
+          "placeholder": "Personal Access Token من dev.azure.com",
           "required": false,
           "secret": true,
           "envKey": "AZURE_PAT",
