@@ -419,6 +419,11 @@ const TOKEN = window.WIZARD_TOKEN || '';
 
 /** Every API call carries this run's token — the server rejects calls without it. */
 function apiFetch(path, opts = {}) {
+  // After save the server shuts itself down; nothing but the shutdown ping may
+  // go out, or every click turns into a confusing "Failed to fetch".
+  if (finished && path !== '/api/done') {
+    return Promise.reject(new Error('wizard already finished'));
+  }
   return fetch(`${API}${path}`, {
     ...opts,
     headers: { ...(opts.headers || {}), 'X-Wizard-Token': TOKEN },
@@ -437,6 +442,7 @@ let users    = [
 // replace placeholders; it must MERGE into anything the user typed or loaded.
 let usersPristine = true;
 let current      = -1;      // -1 = intro screen
+let finished     = false;   // true after a successful save — the wizard is over
 let importMode   = null;    // 'file' | 'paste' | 'steps'
 let extractedData = null;
 // Config already on disk (re-run of the wizard) — the base saving merges onto,
@@ -1140,6 +1146,7 @@ function next() { collectAnswers(); if (!validateStep()) return; if (current < s
 function prev() { collectAnswers(); if (current > 0) goTo(current-1); }
 
 function goTo(idx) {
+  if (finished) return;   // the wizard is over — nothing to navigate to
   collectAnswers();
   current = idx;
   renderStep();
@@ -1259,11 +1266,7 @@ async function saveAndClose() {
       });
       const res = await r.json();
       if (res.ok) {
-        showToast('✅ تم الحفظ بنجاح!');
-        const card = document.getElementById('card');
-        if (card) card.innerHTML =
-          '<div class="paste-mode"><h2>✅ تم الإعداد بنجاح</h2>' +
-          '<p>تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — يمكنك إغلاق هذا التبويب والعودة إلى التيرمنال.</p></div>';
+        finishWizard();
         setTimeout(() => apiFetch('/api/done').catch(() => {}), 1500);
       } else { showToast('❌ ' + (res.error || 'خطأ'), 'error'); }
     } catch(e) { showToast('❌ ' + e.message, 'error'); }
@@ -1273,6 +1276,26 @@ async function saveAndClose() {
     setTimeout(() => dlJSON(envConfig, `${envName}.json`), 300);
     showToast('✅ تم تحميل الملفات!');
   }
+}
+
+/**
+ * Terminal done state. The server exits right after save (one-shot, per-run
+ * token) — so every editing surface must go away with it: steps track, header
+ * pill, footer buttons. What remains is a static success screen with no way
+ * to fire another API call.
+ */
+function finishWizard() {
+  finished = true;
+  document.getElementById('steps-scroll').classList.remove('show');
+  document.getElementById('hdr-pill').classList.remove('show');
+  document.getElementById('prog-fill').style.width = '100%';
+  document.getElementById('card').innerHTML =
+    '<div class="paste-mode"><h2>✅ تم الإعداد بنجاح</h2>' +
+    '<p>تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — أغلق هذا التبويب وارجع إلى التيرمنال.</p>' +
+    '<p style="font-size:13px;color:var(--text-3)">لأي تعديل لاحق (إضافة مستخدمين مثلاً) شغّل المعالج من جديد — سيحمّل الإعدادات المحفوظة ويكمل من حيث وقفت.</p>' +
+    '</div>';
+  showToast('✅ تم الحفظ بنجاح!');
+  window.scrollTo({ top: 0 });
 }
 
 function dlJSON(data, name) {
