@@ -394,7 +394,7 @@ body { min-height: 100vh; }
     </div>
   </div>
   <div class="spacer"></div>
-  <div class="step-pill" id="hdr-pill">الخطوة 1 من 8</div>
+  <div class="step-pill" id="hdr-pill">الخطوة 1 من 7</div>
 </header>
 
 <div class="progress-bar-wrap">
@@ -609,7 +609,7 @@ function selectMode(m) {
 function startWizard() {
   if (!importMode) return;
   if (importMode === 'paste') { renderPasteMode(); return; }
-  if (importMode === 'file')  { goTo(findStepIdx('ai-import')); return; }
+  if (importMode === 'file')  { renderFileMode(); return; }
   goTo(0);
 }
 
@@ -674,7 +674,57 @@ async function extractFromPaste() {
 
 function applyAndStart() {
   if (extractedData) applyExtracted(extractedData);
+  showToast('✅ تم تعبئة الحقول — راجعها خطوة بخطوة');
   goTo(0);
+}
+
+/* ── File Import Mode (dedicated screen, like paste mode) ─────────────────── */
+function renderFileMode() {
+  document.getElementById('hdr-pill').classList.remove('show');
+  document.getElementById('steps-scroll').classList.remove('show');
+  document.getElementById('card').innerHTML = `
+    <div class="paste-mode">
+      <div>
+        <h2>📄 استيراد من ملف</h2>
+        <p>ارفع ملفاً نصياً (BRD بصيغة .md أو .txt، أو ملف .env قديم) وسيستخلص Claude البيانات تلقائياً.</p>
+      </div>
+      <div class="dropzone" id="dz">
+        <input type="file" id="fi" accept=".md,.txt,.env,.json,.yml,.yaml,.pdf,.docx,.doc" style="display:none" />
+        <div class="dz-icon">📄</div>
+        <div class="dz-title">اسحب الملف هنا أو انقر للاختيار</div>
+        <div class="dz-sub">سيستخلص Claude البيانات تلقائياً</div>
+        <div class="dz-types">.env · .md · .txt · .json · .pdf · .docx</div>
+      </div>
+      <div class="file-ready" id="file-ready">
+        <div style="font-size:28px">📋</div>
+        <div class="file-ready-info">
+          <div class="file-ready-name" id="fn">—</div>
+          <div class="file-ready-size" id="fs">—</div>
+        </div>
+        <button class="btn btn-primary" id="btn-ex" onclick="runExtract()">
+          🤖 استخلاص البيانات
+        </button>
+      </div>
+      <div class="extract-preview" id="ep">
+        <div class="ep-title">✅ تم الاستخلاص — راجع البيانات قبل التطبيق:</div>
+        <div class="ep-code" id="ep-code"></div>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="btn btn-primary" onclick="applyAndStart()">تطبيق والمتابعة ←</button>
+          <button class="btn btn-outline" onclick="resetFile()">اختيار ملف آخر</button>
+        </div>
+      </div>
+      <div><button class="btn btn-outline" onclick="renderIntro()">← رجوع</button></div>
+    </div>`;
+  // Bind synchronously: this markup is already in the document, so there is no
+  // render race (the old step-based version bound via setTimeout(…, 50) and
+  // could fire after the card DOM had been replaced — a reproducible TypeError).
+  const dz = document.getElementById('dz');
+  const fi = document.getElementById('fi');
+  dz.onclick = () => fi.click();
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+  dz.ondragleave = () => dz.classList.remove('over');
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); pickFile(e.dataTransfer.files[0]); };
+  fi.onchange = () => pickFile(fi.files[0]);
 }
 
 /* ── Steps Track ────────────────────────────────────────────────────────── */
@@ -737,8 +787,7 @@ function renderStep() {
   // Body
   const body = document.createElement('div');
   body.className = 'card-body';
-  if (step.type === 'ai-extract') body.appendChild(renderAIStep(step));
-  else if (step.type === 'review') body.appendChild(renderReviewStep());
+  if (step.type === 'review') body.appendChild(renderReviewStep());
   else if (step.type === 'dynamic-list') body.appendChild(renderUsersStep(step));
   else renderFields(step, body);
   card.appendChild(body);
@@ -894,50 +943,7 @@ function removeUser(i) {
   refreshUserCards(document.getElementById('user-list'));
 }
 
-/* ── AI File Import Step ─────────────────────────────────────────────────── */
-function renderAIStep(_step) {
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
-  wrap.innerHTML = `
-    <div class="dropzone" id="dz">
-      <input type="file" id="fi" accept=".md,.txt,.env,.json,.yml,.yaml,.pdf,.docx,.doc" style="display:none" />
-      <div class="dz-icon">📄</div>
-      <div class="dz-title">اسحب الملف هنا أو انقر للاختيار</div>
-      <div class="dz-sub">سيستخلص Claude البيانات تلقائياً</div>
-      <div class="dz-types">.env · .md · .txt · .json · .pdf · .docx</div>
-    </div>
-    <div class="file-ready" id="file-ready">
-      <div style="font-size:28px">📋</div>
-      <div class="file-ready-info">
-        <div class="file-ready-name" id="fn">—</div>
-        <div class="file-ready-size" id="fs">—</div>
-      </div>
-      <button class="btn btn-primary" id="btn-ex" onclick="runExtract()">
-        🤖 استخلاص البيانات
-      </button>
-    </div>
-    <div class="extract-preview" id="ep">
-      <div class="ep-title">✅ تم الاستخلاص — راجع البيانات قبل التطبيق:</div>
-      <div class="ep-code" id="ep-code"></div>
-      <div style="display:flex;gap:8px;margin-top:6px">
-        <button class="btn btn-primary" onclick="applyAndContinue()">تطبيق والمتابعة ←</button>
-        <button class="btn btn-outline" onclick="resetFile()">اختيار ملف آخر</button>
-      </div>
-    </div>`;
-
-  setTimeout(() => {
-    const dz = document.getElementById('dz');
-    const fi = document.getElementById('fi');
-    dz.onclick = () => fi.click();
-    dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
-    dz.ondragleave = () => dz.classList.remove('over');
-    dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); pickFile(e.dataTransfer.files[0]); };
-    fi.onchange = () => pickFile(fi.files[0]);
-  }, 50);
-
-  return wrap;
-}
-
+/* ── File pick / extract (used by the file-import screen) ─────────────────── */
 function pickFile(file) {
   if (!file) return;
   window._file = file;
@@ -972,14 +978,6 @@ function resetFile() {
   document.getElementById('file-ready').classList.remove('show');
   document.getElementById('ep').classList.remove('show');
   document.getElementById('dz').style.display = '';
-}
-
-function applyAndContinue() {
-  if (extractedData) applyExtracted(extractedData);
-  // Back to the first step, not straight to review: extraction fills what it
-  // found, and the user still has to see — and complete — the rest.
-  showToast('✅ تم تعبئة الحقول — راجعها خطوة بخطوة');
-  goTo(0);
 }
 
 function applyExtracted(data) {
@@ -1120,10 +1118,6 @@ function goTo(idx) {
   current = idx;
   renderStep();
   window.scrollTo({ top:0, behavior:'smooth' });
-}
-
-function findStepIdx(id) {
-  return schema.steps.findIndex(s => s.id === id);
 }
 
 function collectAnswers() {

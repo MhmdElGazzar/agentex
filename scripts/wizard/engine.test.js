@@ -79,6 +79,15 @@ test('empty or unrecognised text yields no invented values', () => {
   assert.deepStrictEqual(extractFromText('just some prose with no settings at all'), {});
 });
 
+// ── schema shape ──────────────────────────────────────────────────────────
+test('schema has 7 numbered steps and no ai-import step', () => {
+  const schema = require('./schema.json');
+  assert.strictEqual(schema.steps.length, 7);
+  assert.ok(!schema.steps.some(s => s.id === 'ai-import'), 'ai-import must not be a numbered step');
+  assert.ok(!schema.steps.some(s => s.type === 'ai-extract'), 'no ai-extract step type in the flow');
+  assert.strictEqual(schema.steps[schema.steps.length - 1].type, 'review', 'review stays last');
+});
+
 // ── validateConfigs ───────────────────────────────────────────────────────
 test('validateConfigs accepts a well-formed payload', () => {
   const errs = validateConfigs({ name: 'demo' }, { portalUrl: 'https://ok.example' }, 'qa');

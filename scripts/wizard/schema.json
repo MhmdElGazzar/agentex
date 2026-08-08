@@ -332,25 +332,6 @@
       ]
     },
     {
-      "id": "ai-import",
-      "title": "استيراد من ملف",
-      "titleEn": "Import from File",
-      "description": "ارفع BRD أو Word أو PDF وسيستخلص Claude البيانات تلقائياً",
-      "descriptionEn": "Upload a BRD, Word, or PDF file for AI-powered data extraction",
-      "icon": "🤖",
-      "type": "ai-extract",
-      "optional": true,
-      "acceptedTypes": [
-        ".md",
-        ".txt",
-        ".pdf",
-        ".docx",
-        ".doc"
-      ],
-      "extractionPrompt": "Extract the following fields from this document and return as JSON matching our wizard schema: project name, portal URL, Azure DevOps org/project/team/assignee, test users (phone/email/role), database server/port/name/user, API base URL. Return only valid JSON, no explanation.",
-      "previewable": true
-    },
-    {
       "id": "review",
       "title": "مراجعة وحفظ",
       "titleEn": "Review & Save",
