@@ -539,13 +539,39 @@ function fillEnvironmentAnswers(env) {
 /**
  * Typing a different environment name means a NEW environment file. It starts
  * empty — inheriting the loaded environment's portal/db/api would quietly point
- * the new environment at the old one's database. Typing the original name back
- * restores what was loaded.
+ * the new environment at the old one's database. Switching back restores what
+ * you had IN THIS SESSION (including users added minutes ago), falling back to
+ * the on-disk snapshot only if the name was never visited.
  */
+const envSession = {};   // per-environment in-session edits, keyed by env name
+
+function snapshotEnvSession(name) {
+  if (!name) return;
+  const snap = { users: users.map(u => ({ ...u })), usersPristine };
+  for (const k of ENV_SCOPED_KEYS) if (answers[k] !== undefined) snap[k] = answers[k];
+  envSession[name] = snap;
+}
+
+function restoreEnvSession(snap) {
+  for (const k of ENV_SCOPED_KEYS) {
+    if (snap[k] !== undefined) answers[k] = snap[k]; else delete answers[k];
+  }
+  users = snap.users.map(u => ({ ...u }));
+  usersPristine = snap.usersPristine;
+  answers['users'] = users;
+}
+
 function onEnvironmentNameChanged(newName) {
   if (!existingEnv || !loadedEnvName || newName === currentEnvSelection) return;
+  snapshotEnvSession(currentEnvSelection || loadedEnvName);
   currentEnvSelection = newName;
 
+  const snap = envSession[newName];
+  if (snap) {
+    restoreEnvSession(snap);
+    showToast(`↩️ رجعنا لبيئة «${newName}» بتعديلات هذه الجلسة`);
+    return;
+  }
   if (newName === loadedEnvName) {
     fillEnvironmentAnswers(existingEnv);
     showToast(`↩️ رجعنا لبيئة «${loadedEnvName}» بإعداداتها المحفوظة`);
