@@ -12,22 +12,41 @@
 //   (a) create-case : create a Test Case + add it to a suite (user asked for a NEW case)
 //   (b) fail        : record a Failed test *result* on a test point + link TC->bug
 //
+// DRY RUN = EXECUTE, ONE CODE PATH. Both modes walk the same branches with the same data;
+// `EXECUTE` is threaded into every write and each helper prints the request it WOULD send
+// instead of sending it (see invokeWithBody). Ids that only exist after a write are printed
+// as `<runId>` / `<newTcId>` placeholders, the same way create-bug.js prints `<newBugId>`.
+// The previous hand-written preview block listed three of the four writes `fail` performs —
+// it silently omitted the PATCH that closes the run — so "the exact commands" was untrue.
+//
+// PARTIAL WRITES ARE REPORTED, NEVER SWALLOWED. Both commands write more than once, and a
+// failure after the first write leaves something real on the board: a Test Case not yet in
+// its suite, or a test run still InProgress. Each such point names the id it created and what
+// to finish by hand, rather than dying as if nothing had happened. Nothing is auto-retried.
+//
 // Subcommands:
 //   list-suites  --plan <id>
 //   list-cases   --plan <id> [--suite <id>]                 # read only
 //   find-case    --plan <id> --testcase <id>                # validate exists + locate point (read only)
-//   create-case  --plan <id> --suite <id> --title "..." [--area "..."] [--execute]
+//   create-case  --plan <id> --suite <id> --title "..." [--area "..."] [--allow-duplicate] [--execute]
 //   fail         --plan <id> --testcase <id> --bug <id> [--comment "..."] [--run-name "..."] [--execute]
 //
-// Config/auth come from the AgenTeX `.env` (AZURE_* keys) via _lib.js; the PAT is read by
-// `az` from AZURE_DEVOPS_EXT_PAT — never by this script.
+// `--allow-duplicate` covers both "a same-title Test Case exists" and "the duplicate check
+// itself could not run" — without it, either one stops an --execute run (constraint 7).
+//
+// Config/auth come from the AgenTeX `.env` via _lib.js, which accepts both the AZURE_URL /
+// AZURE_PROJECT and AZURE_DEVOPS_ORG_URL / AZURE_DEVOPS_DEFAULT_PROJECT naming conventions.
+// Every call in THIS script goes through `az`, which reads its own PAT from
+// AZURE_DEVOPS_EXT_PAT — this script never touches a secret. (_lib.js does read one, but
+// only for the two direct-HTTPS calls in create-bug.js's path, which this script never
+// uses: binary attachment upload and the ReproSteps patch. See _lib.js `resolvePat`.)
 
 'use strict';
 
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { loadConfig, orgArgs, az, parseArgs, showWorkItem, findByTitle } = require('./_lib.js');
+const { loadConfig, orgArgs, az, parseArgs, showWorkItem, findByTitle, createBug } = require('./_lib.js');
 
 const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0];
@@ -36,6 +55,35 @@ const API = cfg.apiVersion;
 
 const need = (k) => { if (!args[k]) { console.error(`ERROR: --${k} is required`); process.exit(2); } return args[k]; };
 const orgFlag = cfg.org ? ['--org', cfg.org] : [];
+
+// Unique path for each `--in-file` payload. The names used to be keyed on the test case id
+// alone (`run-<tc>.json`), so two runs touching the same test case — or two bug filings in
+// parallel — could overwrite each other's body between writeFileSync and the az call.
+const tmpFile = (name) => path.join(os.tmpdir(), `${name}-${process.pid}-${Date.now()}.json`);
+
+// "This suite holds no such point" comes back as a 404, and hitting it is NORMAL while
+// scanning every suite in a plan for one test case. Everything else — an auth failure, a bad
+// project, a route that moved — is a real error that constraint 9 says the user must see.
+// Collapsing both into `null` is what made an unauthorized PAT read as "no test point".
+const NOT_FOUND = /\b404\b|TF401349|TF401019|does not exist|could not be found|\bnot found\b/i;
+const isNotFound = (e) => NOT_FOUND.test(String((e && e.message) || ''));
+
+// One `az devops invoke ... --in-file` write, on the SAME code path in both modes: with
+// execute=false it prints the exact command it would run plus the payload that file will
+// carry, and sends nothing. This is what keeps the dry run from drifting from the real run.
+function invokeWithBody(name, argv, body, execute) {
+  const tmp = tmpFile(name);
+  const full = [...argv, '--in-file', tmp, ...orgFlag, '-o', 'json'];
+  if (!execute) {
+    az(full, { write: true, execute: false });
+    console.log(`    --in-file will hold: ${JSON.stringify(body)}`);
+    console.log('    (written immediately before the call, deleted right after)');
+    return { json: null };
+  }
+  fs.writeFileSync(tmp, JSON.stringify(body));
+  try { return az(full, { write: true, execute: true }); }
+  finally { fs.rmSync(tmp, { force: true }); }
+}
 
 // --- read helpers (via az devops invoke --area testplan) ---------------------
 function listSuites(plan) {
@@ -59,7 +107,11 @@ function pointForCase(plan, suite, testcase) {
       '--route-parameters', `project=${cfg.project || ''}`, `planId=${plan}`, `suiteId=${suite}`,
       '--query-parameters', `testCaseId=${testcase}`, '--api-version', API, ...orgFlag, '-o', 'json']);
     return (r.json?.value || [])[0] || null;
-  } catch { return null; }
+  } catch (e) {
+    // Only a genuine not-found means "no point here" — see isNotFound.
+    if (isNotFound(e)) return null;
+    throw e;
+  }
 }
 
 function findPoint(plan, testcase) {
@@ -84,7 +136,12 @@ function findPoint(plan, testcase) {
     const suites = args.suite ? [{ id: args.suite, name: '(given)' }] : listSuites(plan);
     for (const s of suites) {
       let cases = [];
-      try { cases = casesInSuite(plan, s.id); } catch { continue; }
+      // A suite that legitimately has no cases 404s; anything else is a real failure and
+      // must not be listed away as an empty suite (constraint 9).
+      try { cases = casesInSuite(plan, s.id); } catch (e) {
+        if (isNotFound(e)) continue;
+        throw e;
+      }
       if (!cases.length) continue;
       console.log(`\nSuite ${s.id}  ${s.name}:`);
       for (const c of cases) {
@@ -119,15 +176,45 @@ function findPoint(plan, testcase) {
     const plan = need('plan'); const suite = need('suite'); const title = need('title');
     const area = args.area || cfg.areaPath || null;
 
-    // idempotency: an identically-titled Test Case already there?
+    // PREFLIGHT (read-only). The Test Case is created first and added to the suite second, so
+    // a bad plan or a suite belonging to a DIFFERENT plan would leave an orphaned Test Case
+    // behind — and nothing downstream would catch it, because the `suite entries` write route
+    // takes only suiteId and never sees planId at all. Listing the plan's suites validates
+    // both in a single read: the plan must exist to list, and the suite must appear in that
+    // list to belong to it. Cheap, and it moves the failure to BEFORE the first write.
+    let suites;
+    try { suites = listSuites(plan); } catch (e) {
+      console.error(`ERROR: could not read the suites of plan ${plan} — nothing was created.\n${e.message}`);
+      process.exit(1);
+    }
+    if (!suites.some((s) => String(s.id) === String(suite))) {
+      console.error(`ERROR: suite ${suite} is not in plan ${plan} — nothing was created. `
+        + `Ask the user which suite to use. Suites in this plan:`);
+      for (const s of suites) console.error(`  suite ${s.id}  ${s.name}  (${s.suiteType || ''})`);
+      process.exit(2);
+    }
+
+    // idempotency: an identically-titled Test Case already there? A failed query is NOT the
+    // same as "none found" — swallowing it silently turned constraint 7 into a no-op, so it
+    // is recorded and gated below, the same way create-bug.js gates it for Bugs.
     let dupes = [];
-    try { dupes = findByTitle(cfg, 'Test Case', title); } catch { /* non-fatal */ }
+    let dupeCheckError = null;
+    try { dupes = findByTitle(cfg, 'Test Case', title); } catch (e) {
+      dupeCheckError = e.message.split('\n')[0];
+    }
 
     console.log('=== PLAN (create test case) ===');
     console.log('Title :', title);
-    console.log('Plan  :', plan, ' Suite:', suite);
+    console.log('Plan  :', plan, ' Suite:', suite, ' (suite confirmed to belong to this plan)');
     console.log('Area  :', area || '(project default)');
-    if (dupes.length) {
+    if (dupeCheckError) {
+      console.log(`⚠ IDEMPOTENCY CHECK FAILED — could not query existing Test Cases: ${dupeCheckError}`);
+      if (args.execute && !args['allow-duplicate']) {
+        console.error('REFUSING to create without a completed duplicate check (skill constraint 7). '
+          + 'Fix the query (org/project/auth), or confirm with the user and pass --allow-duplicate.');
+        process.exit(2);
+      }
+    } else if (dupes.length) {
       console.log(`⚠ IDEMPOTENCY: existing Test Case(s) with this title: #${dupes.join(', #')}`);
       if (args.execute && !args['allow-duplicate']) {
         console.error('REFUSING possible duplicate. Confirm with the user, then pass --allow-duplicate.');
@@ -135,34 +222,45 @@ function findPoint(plan, testcase) {
       }
     }
 
-    const createArgv = ['boards', 'work-item', 'create', '--type', 'Test Case', '--title', title, ...orgArgs(cfg)];
-    if (area) { createArgv.push('--fields', `System.AreaPath=${area}`); }
-    createArgv.push('-o', 'json');
+    // ONE code path for both modes — see the header. In dry mode the create prints instead of
+    // running and the id is a placeholder, so the suite-add command below is printed with the
+    // identical shape it will really have.
+    const EXECUTE = Boolean(args.execute);
+    console.log('\n--- az write commands ---');
 
-    if (!args.execute) {
-      console.log('\n--- az write commands ---');
-      az(createArgv, { write: true, execute: false });
-      az(['devops', 'invoke', '--area', 'testplan', '--resource', 'suite entries',
-        '--route-parameters', `project=${cfg.project || ''}`, `suiteId=${suite}`,
-        '--http-method', 'PATCH', '--api-version', API, '--in-file', '<[{ "id": <newTcId> }]>',
-        ...orgFlag], { write: true, execute: false });
+    // Created through the same `az devops invoke` JSON-Patch route as the Bug (_lib.js
+    // createBug) rather than `az boards work-item create --title "<title>"`, for the same
+    // reason the WIQL moved: the typed command put the user's title on the command line,
+    // where cmd.exe expands %NAME% with no way to escape it — a Test Case would have been
+    // created under a title nobody typed. The payload goes in a file; no shell parses it.
+    const fields = [];
+    if (area) fields.push(`System.AreaPath=${area}`);
+    const created = createBug(cfg, { type: 'Test Case', title, fields, execute: EXECUTE });
+    if (!created.ok) { console.error(`FAILED: could not create the Test Case.\n${created.error}`); process.exit(1); }
+    const tcId = EXECUTE ? created.id : '<newTcId>';
+    if (EXECUTE && !tcId) { console.error('FAILED: could not read new test case id.'); process.exit(1); }
+
+    // add to the suite. Under --execute the Test Case EXISTS from here on, so a failure has to
+    // name it — an unreported orphan is invisible on the board and nobody goes looking for it.
+    try {
+      invokeWithBody(`suite-add-${tcId}`,
+        ['devops', 'invoke', '--area', 'testplan', '--resource', 'suite entries',
+          '--route-parameters', `project=${cfg.project || ''}`, `suiteId=${suite}`,
+          '--http-method', 'PATCH', '--api-version', API],
+        [{ id: EXECUTE ? Number(tcId) : tcId }], EXECUTE);
+    } catch (e) {
+      if (!EXECUTE) throw e;
+      console.error(`\nFAILED: Test Case #${tcId} WAS created, but adding it to suite ${suite} failed:`);
+      console.error(`  ${e.message}`);
+      console.error(`  It exists but is in no suite. Add it to the suite manually, or delete it and re-run.`);
+      console.log('TC_ID=' + tcId);
+      process.exit(1);
+    }
+
+    if (!EXECUTE) {
       console.log('\nDRY RUN — nothing written. Re-run with --execute after user confirms.');
       return;
     }
-
-    console.log('\n--- az write commands ---');
-    const created = az(createArgv, { write: true, execute: true });
-    const tcId = created.json?.id;
-    if (!tcId) { console.error('FAILED: could not read new test case id.'); process.exit(1); }
-
-    // add to the suite
-    const tmp = path.join(os.tmpdir(), `suite-add-${tcId}.json`);
-    fs.writeFileSync(tmp, JSON.stringify([{ id: Number(tcId) }]));
-    az(['devops', 'invoke', '--area', 'testplan', '--resource', 'suite entries',
-      '--route-parameters', `project=${cfg.project || ''}`, `suiteId=${suite}`,
-      '--http-method', 'PATCH', '--api-version', API, '--in-file', tmp, ...orgFlag, '-o', 'json'],
-    { write: true, execute: true });
-    fs.rmSync(tmp, { force: true });
 
     console.log(`\n✅ Created Test Case #${tcId} and added it to suite ${suite}.`);
     console.log('TC_ID=' + tcId);
@@ -186,62 +284,74 @@ function findPoint(plan, testcase) {
     const runBody = { name: args['run-name'] || `Regression fail — TC ${tc} (Bug ${bug})`,
       plan: { id: String(plan) }, pointIds: [Number(hit.point.id)], automated: false, state: 'InProgress' };
 
-    if (!args.execute) {
-      console.log('\n--- az write commands ---');
-      az(['devops', 'invoke', '--area', 'test', '--resource', 'runs', '--http-method', 'POST',
-        '--route-parameters', `project=${cfg.project || ''}`, '--api-version', API,
-        '--in-file', `<${JSON.stringify(runBody)}>`, ...orgFlag], { write: true, execute: false });
-      az(['devops', 'invoke', '--area', 'test', '--resource', 'results', '--http-method', 'PATCH',
-        '--route-parameters', `project=${cfg.project || ''}`, 'runId=<runId>', '--api-version', API,
-        '--in-file', '<[{id,outcome:Failed,state:Completed,associatedBugs:[{id:bug}]}]>', ...orgFlag],
-      { write: true, execute: false });
+    // FOUR writes, one code path for both modes (see the header). The old dry run listed only
+    // three of them — it omitted the PATCH that closes the run — so what the user confirmed was
+    // not what ran.
+    const EXECUTE = Boolean(args.execute);
+    console.log('\n--- az write commands ---');
+
+    // 1) create a manual run over the point
+    const run = invokeWithBody(`run-${tc}`,
+      ['devops', 'invoke', '--area', 'test', '--resource', 'runs', '--http-method', 'POST',
+        '--route-parameters', `project=${cfg.project || ''}`, '--api-version', API],
+      runBody, EXECUTE);
+    const runId = EXECUTE ? run.json?.id : '<runId>';
+    if (EXECUTE && !runId) {
+      console.error('FAILED: could not read the new test run id from az output.'); process.exit(1);
+    }
+
+    // From here a test run EXISTS on the board and is InProgress. Anything failing below
+    // leaves it hanging open, so it is reported by id instead of surfacing as a bare error.
+    let rid = '<resultId>';
+    try {
+      // 2) read the result id, then PATCH it to Failed + associate the bug. Do NOT guess an id —
+      //    PATCHing the wrong result would corrupt an unrelated record. (A read, so it only runs
+      //    for real; the dry run has no run to read and prints the placeholder instead.)
+      if (EXECUTE) {
+        const results = az(['devops', 'invoke', '--area', 'test', '--resource', 'results',
+          '--route-parameters', `project=${cfg.project || ''}`, `runId=${runId}`,
+          '--api-version', API, ...orgFlag, '-o', 'json']);
+        rid = results.json?.value?.[0]?.id;
+        if (!rid) throw new Error('the run was created but carries no test result to mark Failed.');
+      }
+      invokeWithBody(`result-${tc}`,
+        ['devops', 'invoke', '--area', 'test', '--resource', 'results', '--http-method', 'PATCH',
+          '--route-parameters', `project=${cfg.project || ''}`, `runId=${runId}`, '--api-version', API],
+        [{ id: rid, outcome: 'Failed', state: 'Completed', comment, associatedBugs: [{ id: String(bug) }] }],
+        EXECUTE);
+
+      // 3) complete the run
+      invokeWithBody(`run-complete-${tc}`,
+        ['devops', 'invoke', '--area', 'test', '--resource', 'runs', '--http-method', 'PATCH',
+          '--route-parameters', `project=${cfg.project || ''}`, `runId=${runId}`, '--api-version', API],
+        { state: 'Completed' }, EXECUTE);
+    } catch (e) {
+      if (!EXECUTE) throw e;
+      console.error(`\nFAILED: test run ${runId} WAS created, but recording the Failed outcome did not complete:`);
+      console.error(`  ${e.message}`);
+      console.error(`  Run ${runId} is still InProgress in Azure DevOps — open it, mark the result, and `
+        + `complete the run manually. Nothing was auto-retried.`);
+      process.exit(1);
+    }
+
+    // 4) durable work-item link TC -> bug ("tested by" == TestedBy-Reverse on the TC). This is
+    //    the second and last relation type the skill ever creates — see SKILL.md constraint 3.
+    try {
       az(['boards', 'work-item', 'relation', 'add', '--id', String(tc), '--relation-type', 'tested by',
-        '--target-id', String(bug), ...orgArgs(cfg)], { write: true, execute: false });
+        '--target-id', String(bug), ...orgArgs(cfg), '-o', 'json'], { write: true, execute: EXECUTE });
+    } catch (e) {
+      if (!EXECUTE) throw e;
+      console.error(`\nFAILED: the Failed result WAS recorded (run ${runId}, result ${rid}), but linking `
+        + `TC ${tc} -> Bug #${bug} failed:`);
+      console.error(`  ${e.message}`);
+      console.error(`  Add the "tested by" link manually; the test result itself is complete.`);
+      process.exit(1);
+    }
+
+    if (!EXECUTE) {
       console.log('\nDRY RUN — nothing written. Re-run with --execute after user confirms.');
       return;
     }
-
-    console.log('\n--- az write commands ---');
-    // 1) create a manual run over the point
-    let tmp = path.join(os.tmpdir(), `run-${tc}.json`);
-    fs.writeFileSync(tmp, JSON.stringify(runBody));
-    const run = az(['devops', 'invoke', '--area', 'test', '--resource', 'runs', '--http-method', 'POST',
-      '--route-parameters', `project=${cfg.project || ''}`, '--api-version', API,
-      '--in-file', tmp, ...orgFlag, '-o', 'json'], { write: true, execute: true });
-    fs.rmSync(tmp, { force: true });
-    const runId = run.json?.id;
-    if (!runId) { console.error('FAILED: could not read the new test run id from az output.'); process.exit(1); }
-
-    // 2) read the result id, then PATCH it to Failed + associate the bug. Do NOT guess an id —
-    //    PATCHing the wrong result would corrupt an unrelated record.
-    const results = az(['devops', 'invoke', '--area', 'test', '--resource', 'results',
-      '--route-parameters', `project=${cfg.project || ''}`, `runId=${runId}`,
-      '--api-version', API, ...orgFlag, '-o', 'json']);
-    const rid = results.json?.value?.[0]?.id;
-    if (!rid) {
-      console.error(`FAILED: run ${runId} was created but no test result was found to mark Failed. `
-        + `Inspect run ${runId} in Azure DevOps and complete it manually.`);
-      process.exit(1);
-    }
-    tmp = path.join(os.tmpdir(), `result-${tc}.json`);
-    fs.writeFileSync(tmp, JSON.stringify([{ id: rid, outcome: 'Failed', state: 'Completed',
-      comment, associatedBugs: [{ id: String(bug) }] }]));
-    az(['devops', 'invoke', '--area', 'test', '--resource', 'results', '--http-method', 'PATCH',
-      '--route-parameters', `project=${cfg.project || ''}`, `runId=${runId}`, '--api-version', API,
-      '--in-file', tmp, ...orgFlag, '-o', 'json'], { write: true, execute: true });
-    fs.rmSync(tmp, { force: true });
-
-    // 3) complete the run
-    tmp = path.join(os.tmpdir(), `run-complete-${tc}.json`);
-    fs.writeFileSync(tmp, JSON.stringify({ state: 'Completed' }));
-    az(['devops', 'invoke', '--area', 'test', '--resource', 'runs', '--http-method', 'PATCH',
-      '--route-parameters', `project=${cfg.project || ''}`, `runId=${runId}`, '--api-version', API,
-      '--in-file', tmp, ...orgFlag, '-o', 'json'], { write: true, execute: true });
-    fs.rmSync(tmp, { force: true });
-
-    // 4) durable work-item link TC -> bug ("tested by" == TestedBy-Reverse on the TC)
-    az(['boards', 'work-item', 'relation', 'add', '--id', String(tc), '--relation-type', 'tested by',
-      '--target-id', String(bug), ...orgArgs(cfg), '-o', 'json'], { write: true, execute: true });
 
     console.log(`\n✅ Recorded Failed result for TC ${tc} (run ${runId}, result ${rid}); linked to Bug #${bug}.`);
     return;
