@@ -2,6 +2,21 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **`/define-flow` — guided flow definition.** The flow is defined by doing it, not by
+  writing it: an agent-led session proposes each step, executes it in a live browser the
+  moment the user agrees, and the user asserts the actual outcome before the next step is
+  defined. Forward-only correction, one sitting; values a step surfaces are captured
+  symbolically so fresh runs resolve them live; integration steps stay catalog-only; the
+  session writes no `executions/` evidence (only the offered validation run does). Output
+  is a normal natural-language spec (stateful chain, existing conventions) saved under the
+  project's suite folder and runnable unmodified via `/execute-test`. Pointing the command
+  at an existing spec walks it step by step, clarifies unclear steps with the user, and
+  saves the defined flow as a new file — the original gains only a top note pointing to it.
+- Eval cases `trigger-define-flow`, `discipline-define-flow-execute-before-next`,
+  `discipline-define-flow-forward-only`, `discipline-define-flow-symbolic-values`.
+
 ## [0.14.0] — 2026-08-13
 ### Added
 - **`/update-agentex` — project migration command.** Updating the plugin never

@@ -31,6 +31,7 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 | Feature | How it works | Docs |
 |---------|--------------|------|
 | **Browser testing** | An agent plans scenarios, drives a real `playwright-cli` browser, screenshots each one, and reports defects — sequential (approve each step) or parallel (one `qa-executor` subagent per spec file). | [browser-testing](./docs/browser-testing.md) |
+| **Define flow** | `/define-flow` builds a spec by doing it: an agent-led session proposes each step, executes it live the moment you agree, and you assert the real outcome before the next step — the saved spec follows the normal conventions and runs unmodified via `/execute-test`. Point it at an existing spec to walk it through and clarify it. | [define-flow](./docs/define-flow.md) |
 | **API & DB steps** | `api:` / `db:` scenario steps run **only** the named, parameterized requests/queries in your `integration/` catalog — the agent never composes its own SQL or HTTP; DDL is refused. | [api-db-steps](./docs/api-db-steps.md) |
 | **Ask the KB** | `kb:` steps (or `/ask-kb`) query your project's KB Ask API for advisory context — informs testing, **never** used as PASS/FAIL evidence. | [ask-kb](./docs/ask-kb.md) |
 | **Optimize login** | Pay a web app's login once per session: drive it live, verify by landmark (never by URL), save the browser session, and reload it into a fresh browser to continue. | [optimize-login](./docs/optimize-login.md) |
@@ -52,6 +53,7 @@ Run a parallel regression against https://example.com from the specs in test/sui
 
 # Slash commands:
 /execute-test https://example.com
+/define-flow https://example.com     # build a spec step by step, executing each step live
 /estimate-story 12345 12346
 /design-test 12345
 /ask-kb acme-store: how does the checkout flow work?
