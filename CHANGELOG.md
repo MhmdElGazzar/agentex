@@ -2,6 +2,37 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **`/update-agentex` — project migration command.** Updating the plugin never
+  updated the consumer project; now one command migrates a project scaffolded by ANY
+  older version to the installed version's conventions. A bundled engine
+  (`scripts/migrate.js` + one state-detecting module per migration under
+  `scripts/migrations/`) does every file change deterministically: renames
+  `integrations/` → `integration/`, absorbs legacy `agentex.config.json` KB settings,
+  splits a keys-only `.env` into `config/project.json` + `environments/<env>.json`
+  (values carried into their new homes — never reset; secrets and unrecognized keys
+  stay in `.env` untouched), carries catalog `connection` blocks into the environment
+  `db` block (catalogs themselves only flagged), ensures the `.gitignore` entry and
+  `CLAUDE.md` bullet, fills missing scaffold pieces, and flags spec-convention drift
+  without ever rewriting user specs or old `executions/` runs. Apply-then-report;
+  clean git tree required (git is the rollback; the gitignored `.env` is rewritten
+  loss-proof by writing JSON homes first); idempotent (second run: zero writes,
+  "already up to date") and resumable after interruption.
+- **Version stamp** `.agentex/version.json` — written by `/init-test` at scaffold
+  time and refreshed by every migration; stamp-less legacy projects are inferred
+  from their files on first run.
+- Eval case `discipline-update-agentex-relay` — the agent must run the engine, relay
+  its report, hand-edit nothing, and print no secret values.
+- Contributing rule: any PR changing scaffold conventions must ship a
+  `scripts/migrations/` module (see `docs/contributing/conventions.md`).
+
+### Changed
+- `scripts/init.js` now delegates to the shared scaffold library
+  (`scripts/lib/scaffold.js`) and stamps `.agentex/version.json` on first scaffold;
+  the wizard's legacy `.env` key mapping moved to `scripts/lib/env_key_map.js`,
+  shared with the migrator. No behavior change to scaffolding itself.
+
 ## [0.13.0] — 2026-08-12
 ### Added
 - **Behavioral eval suite** — new `evals/` folder with 9 cases in three families
