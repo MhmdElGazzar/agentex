@@ -17,6 +17,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -96,45 +97,82 @@ function buildCmd(argv) {
   return [AZ_BIN, ...argv].map(shQuote).join(' ');
 }
 
+// ---- @file argument passing --------------------------------------------------
+// cmd.exe re-parses a command string before az ever sees it, and it expands
+// %VAR% even inside double quotes — so any untrusted text (bug titles, area
+// paths, assignees, …) placed literally on the command line risks both
+// metacharacter breakage and secret-env-var leakage. The `az` CLI itself
+// supports loading any argument's value from a file via `@<path>`, so untrusted
+// text is written to a temp file instead and only an inert file path reaches
+// the shell.
+const FILE_ARG = Symbol('fileArg');
+let fileArgSeq = 0;
+
+function fileArg(value) {
+  return { [FILE_ARG]: String(value) };
+}
+
+// Replace every fileArg() marker in argv with `@<tmpfile>`, writing the temp
+// files as it goes. Returns the resolved argv plus a cleanup() to delete them.
+function materializeFileArgs(argv) {
+  const tmpFiles = [];
+  const resolved = argv.map((a) => {
+    if (a && typeof a === 'object' && FILE_ARG in a) {
+      const tmp = path.join(os.tmpdir(), `agentex-arg-${process.pid}-${fileArgSeq++}.txt`);
+      fs.writeFileSync(tmp, a[FILE_ARG], 'utf8');
+      tmpFiles.push(tmp);
+      return '@' + tmp;
+    }
+    return a;
+  });
+  return { argv: resolved, cleanup: () => { for (const t of tmpFiles) fs.rmSync(t, { force: true }); } };
+}
+
 // Run an `az ...` command.
 //   opts.write   – true if this mutates the board (create/update/link/attach/outcome)
 //   opts.execute – global execute flag; a write with execute=false is NOT run, only printed
 //   opts.input   – string piped to stdin
 // Reads (write=false) always run. Returns { ran, ok, json, stdout, stderr, status, cmd }.
 function az(argv, { write = false, execute = false, input } = {}) {
-  const cmd = buildCmd(argv);
+  const { argv: resolvedArgv, cleanup } = materializeFileArgs(argv);
+  const cmd = buildCmd(resolvedArgv);
 
   if (write && !execute) {
     // Requirement: log every write command BEFORE it would run; do not run it in dry mode.
     console.log('  [would run] ' + cmd);
+    cleanup();
     return { ran: false, ok: true, json: null, stdout: '', stderr: '', status: 0, cmd };
   }
   if (write) console.log('  [run] ' + cmd);
 
-  // A single command string + shell:true: args are pre-quoted by shQuote, so the
-  // shell re-splits them exactly as intended (and this is the only reliable way to
-  // launch az.cmd on Windows). No unquoted user input ever reaches the shell.
-  const res = spawnSync(cmd, {
-    input,
-    encoding: 'utf8',
-    shell: true,
-    env: { ...process.env, PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8' },
-    maxBuffer: 32 * 1024 * 1024,
-  });
+  try {
+    // A single command string + shell:true: args are pre-quoted by shQuote, so the
+    // shell re-splits them exactly as intended (and this is the only reliable way to
+    // launch az.cmd on Windows). No unquoted user input ever reaches the shell.
+    const res = spawnSync(cmd, {
+      input,
+      encoding: 'utf8',
+      shell: true,
+      env: { ...process.env, PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8' },
+      maxBuffer: 32 * 1024 * 1024,
+    });
 
-  if (res.error) {
-    // e.g. az not found — surface the EXACT error, never swallow it.
-    throw new Error(`Failed to launch az: ${res.error.message}\n  cmd: ${cmd}`);
+    if (res.error) {
+      // e.g. az not found — surface the EXACT error, never swallow it.
+      throw new Error(`Failed to launch az: ${res.error.message}\n  cmd: ${cmd}`);
+    }
+    const stdout = res.stdout || '';
+    const stderr = res.stderr || '';
+    if (res.status !== 0) {
+      // Requirement: surface the exact az error to the user; never auto-retry a write.
+      throw new Error(`az exited ${res.status}\n  cmd: ${cmd}\n  stderr:\n${stderr.trim()}`);
+    }
+    let json = null;
+    if (stdout.trim()) { try { json = JSON.parse(stdout); } catch { /* not json */ } }
+    return { ran: true, ok: true, json, stdout, stderr, status: res.status, cmd };
+  } finally {
+    cleanup();
   }
-  const stdout = res.stdout || '';
-  const stderr = res.stderr || '';
-  if (res.status !== 0) {
-    // Requirement: surface the exact az error to the user; never auto-retry a write.
-    throw new Error(`az exited ${res.status}\n  cmd: ${cmd}\n  stderr:\n${stderr.trim()}`);
-  }
-  let json = null;
-  if (stdout.trim()) { try { json = JSON.parse(stdout); } catch { /* not json */ } }
-  return { ran: true, ok: true, json, stdout, stderr, status: res.status, cmd };
 }
 
 // ---- reusable az operations (reads + write builders) ------------------------
@@ -153,7 +191,7 @@ function findByTitle(cfg, type, title) {
   const wiql =
     `SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='${type}'` +
     projClause + ` AND [System.Title]='${safeTitle}'`;
-  const argv = ['boards', 'query', '--wiql', wiql, ...orgArgs(cfg), '-o', 'json'];
+  const argv = ['boards', 'query', '--wiql', fileArg(wiql), ...orgArgs(cfg), '-o', 'json'];
   const r = az(argv);
   const rows = Array.isArray(r.json) ? r.json : (r.json?.workItems || r.json?.value || []);
   return rows.map((w) => w.id || w.fields?.['System.Id']).filter(Boolean);
@@ -194,6 +232,6 @@ const IMPACT_RECOMMENDATION = {
 };
 
 module.exports = {
-  loadConfig, orgArgs, az, buildCmd, shQuote, showWorkItem, findByTitle,
+  loadConfig, orgArgs, az, buildCmd, shQuote, fileArg, showWorkItem, findByTitle,
   parseArgs, VALID_SEVERITY, VALID_PRIORITY, IMPACT_RECOMMENDATION,
 };

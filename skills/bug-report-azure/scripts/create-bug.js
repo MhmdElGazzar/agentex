@@ -37,7 +37,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const {
-  loadConfig, orgArgs, az, parseArgs, showWorkItem, findByTitle,
+  loadConfig, orgArgs, az, fileArg, parseArgs, showWorkItem, findByTitle,
   VALID_SEVERITY, VALID_PRIORITY,
 } = require('./_lib.js');
 
@@ -191,11 +191,16 @@ function uploadAttachment(cfg, filePath, execute) {
     console.log(`  attachment: ${a} -> ${c.ok ? 'OK ' + dim : 'INVALID (' + c.reason + ')'}`);
     if (!c.ok) badAtts.push(a);
   }
-  if (badAtts.length && !args.force) {
-    console.error(`\nERROR: ${badAtts.length} attachment(s) failed the structural check. `
-      + `Fix or drop them (run check-image.js + the vision pass), or pass --force to override.`);
-    process.exit(2);
-  }
+  // Requirement (SKILL.md): the dry run always shows the full plan + az commands,
+  // even when an attachment is invalid — so the refusal below only fires AFTER
+  // that transparency output, not before it.
+  const refuseIfBadAttachments = () => {
+    if (badAtts.length && !args.force) {
+      console.error(`\nERROR: ${badAtts.length} attachment(s) failed the structural check. `
+        + `Fix or drop them (run check-image.js + the vision pass), or pass --force to override.`);
+      process.exit(2);
+    }
+  };
   if (atts.length === 0) {
     console.log('\n⚠ No screenshots attached. Bugs should include evidence — validate & attach some.');
     if (args.execute && !args['no-screenshots']) {
@@ -210,8 +215,8 @@ function uploadAttachment(cfg, filePath, execute) {
   if (!args.execute) {
     // Print representative commands without running them.
     uploadAttachment(cfg, '<each attachment>', false);
-    az(['boards', 'work-item', 'create', '--type', 'Bug', '--title', spec.title, ...orgArgs(cfg),
-      '--fields', 'System.AreaPath=' + areaPath, '…(+ iteration/assignedTo/priority/severity/valueArea)'],
+    az(['boards', 'work-item', 'create', '--type', 'Bug', '--title', fileArg(spec.title), ...orgArgs(cfg),
+      '--fields', fileArg('System.AreaPath=' + areaPath), '…(+ iteration/assignedTo/priority/severity/valueArea)'],
     { write: true, execute: false });
     az(['boards', 'work-item', 'relation', 'add', '--id', '<newBugId>',
       '--relation-type', 'parent', '--target-id', String(spec.parentStoryId), ...orgArgs(cfg)],
@@ -224,8 +229,11 @@ function uploadAttachment(cfg, filePath, execute) {
       '--in-file', '<repro+attachments>.json', ...(cfg.org ? ['--org', cfg.org] : [])],
     { write: true, execute: false });
     console.log('\nDRY RUN — nothing written. Re-run with --execute after the user confirms the summary.');
+    refuseIfBadAttachments();
     return;
   }
+
+  refuseIfBadAttachments();
 
   // ---- WRITE PATH (only past explicit --execute) ----
   const uploaded = [];
@@ -234,22 +242,27 @@ function uploadAttachment(cfg, filePath, execute) {
   // Only SHORT, bounded fields go on the create command line. The large, variable-length
   // ReproSteps HTML is deliberately NOT here — it is set via the --in-file PATCH below so
   // it can never blow past the Windows cmd.exe ~8191-char command-line limit.
+  // untrusted: free text from the spec/.env, routed through fileArg (@file) so it never
+  // touches the cmd.exe-parsed command line — see _lib.js's fileArg doc comment.
   const fields = [
-    `System.AreaPath=${areaPath}`,
-    `System.IterationPath=${iterationPath}`,
-    `System.AssignedTo=${spec.assignedTo}`,
-    `Microsoft.VSTS.Common.Priority=${Number(spec.priority)}`,
-    `Microsoft.VSTS.Common.Severity=${spec.severity}`,
-    `Microsoft.VSTS.Common.ValueArea=${spec.valueArea || cfg.valueArea}`,
+    { key: 'System.AreaPath', value: areaPath, untrusted: true },
+    { key: 'System.IterationPath', value: iterationPath, untrusted: true },
+    { key: 'System.AssignedTo', value: spec.assignedTo, untrusted: true },
+    { key: 'Microsoft.VSTS.Common.Priority', value: Number(spec.priority) },
+    { key: 'Microsoft.VSTS.Common.Severity', value: spec.severity },
+    { key: 'Microsoft.VSTS.Common.ValueArea', value: spec.valueArea || cfg.valueArea, untrusted: true },
   ];
   const envVal = spec.environment || cfg.environment;
   const catVal = spec.bugCategory || cfg.bugCategory;
-  if (envVal) fields.push(`Custom.Environment=${envVal}`);
-  if (catVal) fields.push(`Custom.BugCategory=${catVal}`);
+  if (envVal) fields.push({ key: 'Custom.Environment', value: envVal, untrusted: true });
+  if (catVal) fields.push({ key: 'Custom.BugCategory', value: catVal, untrusted: true });
 
-  const createArgv = ['boards', 'work-item', 'create', '--type', 'Bug', '--title', spec.title,
+  const createArgv = ['boards', 'work-item', 'create', '--type', 'Bug', '--title', fileArg(spec.title),
     ...orgArgs(cfg)];
-  for (const f of fields) createArgv.push('--fields', f);
+  for (const f of fields) {
+    const raw = `${f.key}=${f.value}`;
+    createArgv.push('--fields', f.untrusted ? fileArg(raw) : raw);
+  }
   createArgv.push('-o', 'json');
 
   const created = az(createArgv, { write: true, execute: true });

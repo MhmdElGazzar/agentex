@@ -27,7 +27,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { loadConfig, orgArgs, az, parseArgs, showWorkItem, findByTitle } = require('./_lib.js');
+const { loadConfig, orgArgs, az, fileArg, parseArgs, showWorkItem, findByTitle } = require('./_lib.js');
 
 const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0];
@@ -54,12 +54,12 @@ function casesInSuite(plan, suite) {
 
 function pointForCase(plan, suite, testcase) {
   // Per-suite TestPoint lookup; the global ?testCaseId shortcut 404s on many orgs.
-  try {
-    const r = az(['devops', 'invoke', '--area', 'testplan', '--resource', 'test point',
-      '--route-parameters', `project=${cfg.project || ''}`, `planId=${plan}`, `suiteId=${suite}`,
-      '--query-parameters', `testCaseId=${testcase}`, '--api-version', API, ...orgFlag, '-o', 'json']);
-    return (r.json?.value || [])[0] || null;
-  } catch { return null; }
+  // No suites matching testCaseId returns 200 with value:[] (no exception), so a
+  // real az failure here is a genuine error — let it propagate, don't mask it as "not found".
+  const r = az(['devops', 'invoke', '--area', 'testplan', '--resource', 'test point',
+    '--route-parameters', `project=${cfg.project || ''}`, `planId=${plan}`, `suiteId=${suite}`,
+    '--query-parameters', `testCaseId=${testcase}`, '--api-version', API, ...orgFlag, '-o', 'json']);
+  return (r.json?.value || [])[0] || null;
 }
 
 function findPoint(plan, testcase) {
@@ -84,7 +84,10 @@ function findPoint(plan, testcase) {
     const suites = args.suite ? [{ id: args.suite, name: '(given)' }] : listSuites(plan);
     for (const s of suites) {
       let cases = [];
-      try { cases = casesInSuite(plan, s.id); } catch { continue; }
+      try { cases = casesInSuite(plan, s.id); } catch (e) {
+        console.log(`  (suite ${s.id} "${s.name}": query failed — ${e.message.split('\n')[0]})`);
+        continue;
+      }
       if (!cases.length) continue;
       console.log(`\nSuite ${s.id}  ${s.name}:`);
       for (const c of cases) {
@@ -135,8 +138,8 @@ function findPoint(plan, testcase) {
       }
     }
 
-    const createArgv = ['boards', 'work-item', 'create', '--type', 'Test Case', '--title', title, ...orgArgs(cfg)];
-    if (area) { createArgv.push('--fields', `System.AreaPath=${area}`); }
+    const createArgv = ['boards', 'work-item', 'create', '--type', 'Test Case', '--title', fileArg(title), ...orgArgs(cfg)];
+    if (area) { createArgv.push('--fields', fileArg(`System.AreaPath=${area}`)); }
     createArgv.push('-o', 'json');
 
     if (!args.execute) {

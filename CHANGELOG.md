@@ -2,6 +2,15 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Fixed
+- **bug-report-azure: untrusted text no longer touches the shell command line.** On
+  Windows `cmd.exe` re-parses the command string and expands `%VAR%` even inside
+  double quotes, so bug titles, area paths, assignees, etc. could break the `az` call
+  or leak secret environment variables. All untrusted values now reach `az` through
+  its native `@<tempfile>` argument mechanism — only an inert file path hits the
+  shell. Covered by new unit tests for `_lib.js`, `create-bug.js`, and `testplan.js`.
+
 ## [0.14.0] — 2026-08-13
 ### Added
 - **`/update-agentex` — project migration command.** Updating the plugin never
