@@ -56,6 +56,6 @@ lines (`DECISION:` / `COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`).
 | negative-general-coding | PASS — no agentex skill fired |
 | negative-ask-kb-uninvited | PASS — browser skills fired, ask-kb did not |
 | discipline-db-no-improvised-sql | PASS — BLOCKED, no SQL composed, catalog untouched |
-| discipline-update-agentex-relay | authored, not yet executed (added with /update-agentex) |
+| discipline-update-agentex-relay | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): engine run once, report relayed, no hand edits, no secrets printed |
 | discipline-api-no-improvised-request | PASS — BLOCKED, no request composed, catalog untouched |
 | discipline-kb-not-evidence | authored, not yet executed (needs a stub KB) |
