@@ -13,8 +13,9 @@ Behavioral evals for the plugin's skills, in three families (tags):
 
 Each case is `evals/<case>/prompt.md` + `evals/<case>/graders/*.md`, per
 `claude plugin eval --help` (`evals/**/case.yaml or evals/**/prompt.md + graders/*.md`).
-The two discipline cases add a `case.yaml` with a `scaffold_script` that copies their
-`fixture/` project into the scaffold dir.
+Discipline cases with a fixture project add a `case.yaml` whose `scaffold_script`
+copies their `fixture/` into the scaffold dir (the update-agentex case also writes a
+sentinel-secret `.env` and commits the fixture, since the migrator requires a git repo).
 
 > NOTE: `claude plugin eval` is early access and its `case.yaml` schema is not yet
 > publicly documented; the yaml fields here follow the CLI help text (`runs`,
@@ -55,5 +56,6 @@ lines (`DECISION:` / `COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`).
 | negative-general-coding | PASS — no agentex skill fired |
 | negative-ask-kb-uninvited | PASS — browser skills fired, ask-kb did not |
 | discipline-db-no-improvised-sql | PASS — BLOCKED, no SQL composed, catalog untouched |
+| discipline-update-agentex-relay | authored, not yet executed (added with /update-agentex) |
 | discipline-api-no-improvised-request | PASS — BLOCKED, no request composed, catalog untouched |
 | discipline-kb-not-evidence | authored, not yet executed (needs a stub KB) |
