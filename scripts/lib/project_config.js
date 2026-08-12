@@ -1,7 +1,7 @@
 'use strict';
 // AgenTeX project-config resolver — the ONE place that knows where project data lives.
 //
-// Three kinds of data, three homes (see docs/superpowers/specs/2026-08-06-project-config-files-design.md):
+// Three kinds of data, three homes:
 //   secrets            → .env                        (only secrets)
 //   project settings   → config/project.json         (azure, kb, login, defaultEnvironment)
 //   environment data   → environments/<env>.json     (portalUrl, defaults, users, db, api)
