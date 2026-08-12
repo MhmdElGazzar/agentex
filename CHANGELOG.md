@@ -2,6 +2,31 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.13.0] — 2026-08-12
+### Added
+- **Behavioral eval suite** — new `evals/` folder with 9 cases in three families
+  (trigger / negative / discipline), each as `prompt.md` + `graders/*.md`, with
+  self-contained fixture projects for the db/api catalog-discipline cases. Layout follows
+  `claude plugin eval` (early access); until it unlocks, cases run manually via fresh
+  subagents — the 2026-08-12 baseline results are recorded in `evals/README.md`.
+
+### Changed
+- **Setup wizard rework** — 7-step flow: file import (BRD/PDF/Word) moved off the numbered
+  steps to a dedicated screen; imported test users merge by handle instead of clobbering
+  the list; environments can be added in isolation without changing the project default;
+  per-step localized validation (environment/env-var names, at least one test user);
+  secrets are written under the env var name the user chose; review & save reflects the
+  screen exactly; the UI locks into a terminal done state after save; binary uploads are
+  refused honestly with no temp-file litter.
+
+### Fixed
+- **`bug-report-azure` skill was undiscoverable at runtime** — its frontmatter description
+  contained an unquoted `: `, so YAML parsing failed and the skill loaded with empty
+  metadata (silently invisible in v0.12.0). Description is now quoted;
+  `claude plugin validate` passes.
+- **`/ask-kb` command loaded with empty metadata** — same unquoted-`: ` frontmatter issue
+  in its description; now quoted.
+
 ## [0.12.0] — 2026-08-06
 ### Added
 - **Interactive Setup Wizard** — `/init-test` now launches a local web-based setup wizard

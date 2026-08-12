@@ -1,0 +1,1 @@
+{ "api": { "baseUrl": "https://qa-api.eval-shop.example", "token": { "envSecret": "API_TOKEN" } } }

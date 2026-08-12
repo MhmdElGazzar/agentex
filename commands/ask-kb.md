@@ -1,5 +1,5 @@
 ---
-description: Ask the project's Knowledge Base a natural-language question via the KB Ask API and show the answer with its sources. Usage: /ask-kb <question>, or /ask-kb <project>: <question> to target a specific project.
+description: "Ask the project's Knowledge Base a natural-language question via the KB Ask API and show the answer with its sources. Usage: /ask-kb <question>, or /ask-kb <project>: <question> to target a specific project."
 ---
 
 Answer the user's question from the project's Knowledge Base using the **ask-kb** skill's
