@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.14.0] — 2026-08-13
 ### Added
 - **`/update-agentex` — project migration command.** Updating the plugin never
   updated the consumer project; now one command migrates a project scaffolded by ANY
@@ -33,6 +33,12 @@ All notable changes to AgenTeX are documented here.
   (`scripts/lib/scaffold.js`) and stamps `.agentex/version.json` on first scaffold;
   the wizard's legacy `.env` key mapping moved to `scripts/lib/env_key_map.js`,
   shared with the migrator. No behavior change to scaffolding itself.
+
+### Fixed
+- Wizard test suite no longer launches a real browser on every run: `server.js`
+  gained a `--no-open` flag and `server.test.js` always passes it. The `/init-test`
+  user flow is unchanged (browser still opens for the human).
+- README version badge tracks releases again (was stuck at 0.8.1).
 
 ## [0.13.0] — 2026-08-12
 ### Added
