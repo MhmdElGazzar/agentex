@@ -2,6 +2,16 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Changed
+- Hardened `bug-report-azure` with server-side field validation, fail-closed duplicate and
+  evidence handling, safe file-based payloads, and documented REST fallbacks for attachment
+  uploads and work-item patches.
+
+### Added
+- Offline tests for Bug creation, test-plan operations, and picklist discovery, plus a
+  read-only `list-picklist.js` helper for discovering allowed and required Azure DevOps fields.
+
 ## [0.12.0] — 2026-08-06
 ### Added
 - **Interactive Setup Wizard** — `/init-test` now launches a local web-based setup wizard
