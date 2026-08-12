@@ -56,8 +56,9 @@ body { min-height: 100vh; }
   width: 34px; height: 34px; border-radius: 9px;
   background: linear-gradient(135deg, var(--accent), #7c3aed);
   display: flex; align-items: center; justify-content: center;
-  font-size: 17px; box-shadow: 0 2px 8px rgba(91,80,240,.3);
+  color: #fff; box-shadow: 0 2px 8px rgba(91,80,240,.3);
 }
+.logo-mark svg { width: 18px; height: 18px; }
 .logo-name { font-size: 17px; font-weight: 800; color: var(--text-1); }
 .logo-sub  { font-size: 11px; color: var(--text-3); }
 .spacer    { flex: 1; }
@@ -92,14 +93,6 @@ body { min-height: 100vh; }
 .snode {
   display: flex; flex-direction: column; align-items: center;
   gap: 6px; cursor: pointer; position: relative; min-width: 72px;
-}
-.snode + .snode::before {
-  content: '';
-  position: absolute; right: 100%; top: 17px;
-  width: calc(100% - 0px); height: 2px;
-  background: var(--border); transition: background .3s;
-  left: auto; right: auto;
-  width: 28px; right: 100%; margin-right: -14px;
 }
 .snode-connector {
   width: 28px; height: 2px; background: var(--border);
@@ -137,8 +130,9 @@ body { min-height: 100vh; }
   padding: 40px 36px;
   display: flex; flex-direction: column; gap: 28px;
 }
+.intro-head { display: flex; flex-direction: column; gap: 8px; }
 .intro-title { font-size: 24px; font-weight: 800; color: var(--text-1); }
-.intro-sub { font-size: 14px; color: var(--text-2); line-height: 1.7; margin-top: -18px; }
+.intro-sub { font-size: 14px; color: var(--text-2); line-height: 1.7; }
 
 .mode-grid { display: flex; flex-direction: column; gap: 12px; }
 .mode-card {
@@ -148,7 +142,8 @@ body { min-height: 100vh; }
   transition: all .2s var(--ease); background: var(--bg-card);
   position: relative; overflow: hidden;
 }
-.mode-card:hover { border-color: var(--accent); background: var(--accent-lt); }
+.mode-card:hover { border-color: var(--border-hi); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.mode-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mode-card.selected { border-color: var(--accent); background: var(--accent-lt); }
 .mode-card.selected::after {
   content: '✓'; position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
@@ -157,23 +152,35 @@ body { min-height: 100vh; }
   display: flex; align-items: center; justify-content: center;
   line-height: 22px; text-align: center;
 }
-.mode-icon { font-size: 32px; flex-shrink: 0; }
+.mode-icon {
+  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  background: var(--accent-lt); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s var(--ease);
+}
+.mode-icon svg { width: 22px; height: 22px; }
+.mode-card.selected .mode-icon { background: var(--accent); color: #fff; }
 .mode-title { font-size: 15px; font-weight: 700; color: var(--text-1); margin-bottom: 3px; }
 .mode-desc { font-size: 13px; color: var(--text-2); line-height: 1.5; }
 
 .btn-start {
-  padding: 14px; border-radius: var(--radius-lg);
+  align-self: center; min-width: 220px;
+  padding: 14px 44px; border-radius: var(--radius-lg);
   background: var(--accent); border: none; color: white;
   font-family: var(--font); font-size: 15px; font-weight: 700;
   cursor: pointer; transition: all .2s var(--ease);
   box-shadow: 0 4px 12px rgba(91,80,240,.3);
 }
-.btn-start:hover { background: var(--accent-hi); box-shadow: 0 6px 20px rgba(91,80,240,.4); }
+.btn-start:not(:disabled):hover { background: var(--accent-hi); box-shadow: 0 6px 20px rgba(91,80,240,.4); }
+.btn-start:disabled {
+  background: var(--bg-muted); color: var(--text-3);
+  box-shadow: none; cursor: not-allowed;
+}
 
 /* ── Paste mode ─────────────────────────────────────────────────────────── */
 .paste-mode { padding: 32px 36px; display: flex; flex-direction: column; gap: 20px; }
 .paste-mode h2 { font-size: 20px; font-weight: 800; }
-.paste-mode p { font-size: 14px; color: var(--text-2); line-height: 1.7; margin-top: -12px; }
+.paste-mode p { font-size: 14px; color: var(--text-2); line-height: 1.7; }
 .paste-area {
   width: 100%; min-height: 220px; padding: 16px;
   background: var(--bg-input); border: 1.5px solid var(--border);
@@ -282,7 +289,9 @@ body { min-height: 100vh; }
   border-radius: var(--radius-lg); padding: 44px 24px; text-align: center;
   transition: all .2s; cursor: pointer; background: var(--bg-input);
 }
-.dropzone:hover, .dropzone.over { border-color: var(--accent); background: var(--accent-lt); }
+.dropzone:hover { border-color: var(--border-hi); background: var(--bg-hover); }
+.dropzone.over { border-color: var(--accent); background: var(--accent-lt); border-style: solid; }
+.dropzone > * { pointer-events: none; }
 .dz-icon { font-size: 44px; margin-bottom: 14px; }
 .dz-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
 .dz-sub { font-size: 13px; color: var(--text-2); margin-bottom: 16px; }
@@ -305,7 +314,7 @@ body { min-height: 100vh; }
 }
 .extract-preview.show { display: flex; }
 .ep-title { font-size: 13px; font-weight: 700; color: var(--success); }
-.ep-code { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); line-height: 1.7; max-height: 180px; overflow-y: auto; }
+.ep-code { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); line-height: 1.7; max-height: 180px; overflow-y: auto; white-space: pre; direction: ltr; text-align: left; }
 
 /* ── Review Step ────────────────────────────────────────────────────────── */
 .rtabs { display: flex; gap: 6px; margin-bottom: 14px; }
@@ -320,6 +329,7 @@ body { min-height: 100vh; }
   background: #1e2030; border-radius: var(--radius); padding: 18px;
   font-family: var(--mono); font-size: 12px; color: #a9dc76;
   line-height: 1.7; overflow: auto; max-height: 300px; white-space: pre;
+  direction: ltr; text-align: left;
 }
 .btn-copy {
   padding: 8px 16px; border-radius: var(--radius);
@@ -343,6 +353,8 @@ body { min-height: 100vh; }
   cursor: pointer; transition: all .2s;
   display: inline-flex; align-items: center; gap: 7px; border: none;
 }
+.btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+.btn:focus-visible, .btn-start:focus-visible, .rtab:focus-visible, .btn-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn-outline { background: var(--bg-card); border: 1.5px solid var(--border); color: var(--text-2); }
 .btn-outline:hover { border-color: var(--border-hi); color: var(--text-1); }
 .btn-primary { background: var(--accent); color: white; box-shadow: 0 3px 10px rgba(91,80,240,.25); }
@@ -373,7 +385,9 @@ body { min-height: 100vh; }
   display: flex; align-items: center; gap: 8px;
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
-.toast.error { background: #C0392B; color: #FFFFFF; }
+.toast.error { background: var(--danger); color: #FFFFFF; }
+.toast.warn { background: var(--warning); color: #FFFFFF; }
+.toast.success { background: var(--success); color: #FFFFFF; }
 
 /* ── Animations ─────────────────────────────────────────────────────────── */
 @keyframes fadeUp {
@@ -387,7 +401,7 @@ body { min-height: 100vh; }
 
 <header class="header">
   <div class="logo">
-    <div class="logo-mark">⚡</div>
+    <div class="logo-mark"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
     <div>
       <div class="logo-name">AgenTeX</div>
       <div class="logo-sub">إعداد المشروع</div>
@@ -601,31 +615,34 @@ function renderIntro() {
 
   document.getElementById('card').innerHTML = `
     <div class="intro">
-      <div>
+      <div class="intro-head">
         <div class="intro-title">مرحباً بك في AgenTeX 👋</div>
         <div class="intro-sub">اختر الطريقة التي تريد إعداد مشروعك بها:</div>
       </div>
 
-      <div class="mode-grid">
-        <div class="mode-card" id="mc-file" onclick="selectMode('file')">
-          <div class="mode-icon">📄</div>
+      <div class="mode-grid" role="radiogroup" aria-label="طريقة الإعداد">
+        <div class="mode-card" id="mc-file" role="radio" aria-checked="false" tabindex="0"
+             onclick="selectMode('file')" onkeydown="modeKey(event,'file')">
+          <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg></div>
           <div>
             <div class="mode-title">رفع ملف</div>
-            <div class="mode-desc">ارفع BRD أو Word أو PDF وسيستخلص Claude البيانات تلقائياً</div>
+            <div class="mode-desc">ارفع ملفاً نصياً (md، txt، json…) وسيستخلص Claude البيانات تلقائياً</div>
           </div>
         </div>
-        <div class="mode-card" id="mc-paste" onclick="selectMode('paste')">
-          <div class="mode-icon">📋</div>
+        <div class="mode-card" id="mc-paste" role="radio" aria-checked="false" tabindex="0"
+             onclick="selectMode('paste')" onkeydown="modeKey(event,'paste')">
+          <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/></svg></div>
           <div>
             <div class="mode-title">لصق تفاصيل</div>
-            <div class="mode-desc">الصق وصف المشروع أو أي نص وسيحلله Claude ويستخلص البيانات</div>
+            <div class="mode-desc">الصق وصف المشروع ليقوم Claude بتحليله واستخراج البيانات</div>
           </div>
         </div>
-        <div class="mode-card" id="mc-steps" onclick="selectMode('steps')">
-          <div class="mode-icon">📝</div>
+        <div class="mode-card" id="mc-steps" role="radio" aria-checked="false" tabindex="0"
+             onclick="selectMode('steps')" onkeydown="modeKey(event,'steps')">
+          <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h12"/><path d="M2 12h12"/><path d="M2 18h12"/><circle cx="19.5" cy="6" r="1.5"/><circle cx="19.5" cy="12" r="1.5"/><circle cx="19.5" cy="18" r="1.5"/></svg></div>
           <div>
             <div class="mode-title">خطوة بخطوة</div>
-            <div class="mode-desc">أملأ بيانات مشروعك خطوة بخطوة بشكل يدوي</div>
+            <div class="mode-desc">املأ بيانات المشروع بنفسك في 7 خطوات قصيرة</div>
           </div>
         </div>
       </div>
@@ -634,13 +651,23 @@ function renderIntro() {
         ابدأ الإعداد ←
       </button>
     </div>`;
+  if (importMode) selectMode(importMode);
 }
 
 function selectMode(m) {
   importMode = m;
-  document.querySelectorAll('.mode-card').forEach(el => el.classList.remove('selected'));
-  document.getElementById(`mc-${m}`).classList.add('selected');
+  document.querySelectorAll('.mode-card').forEach(el => {
+    el.classList.remove('selected');
+    el.setAttribute('aria-checked', 'false');
+  });
+  const card = document.getElementById(`mc-${m}`);
+  card.classList.add('selected');
+  card.setAttribute('aria-checked', 'true');
   document.getElementById('btn-start').disabled = false;
+}
+
+function modeKey(e, m) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectMode(m); }
 }
 
 function startWizard() {
@@ -656,7 +683,7 @@ function renderPasteMode() {
   document.getElementById('steps-scroll').classList.remove('show');
   document.getElementById('card').innerHTML = `
     <div class="paste-mode">
-      <div>
+      <div class="intro-head">
         <h2>📋 لصق تفاصيل المشروع</h2>
         <p>الصق أي وصف أو مستند أو تفاصيل عن مشروعك في الحقل أدناه وسيستخلص Claude البيانات تلقائياً.</p>
       </div>
@@ -666,14 +693,14 @@ function renderPasteMode() {
         <button class="btn btn-primary" id="btn-extract-paste" onclick="extractFromPaste()">
           🤖 استخلاص البيانات
         </button>
-        <button class="btn btn-outline" onclick="renderIntro()">← رجوع</button>
+        <button class="btn btn-outline" onclick="renderIntro()">→ رجوع</button>
       </div>
       <div class="extract-preview" id="paste-preview">
         <div class="ep-title">✅ تم الاستخلاص — راجع البيانات:</div>
         <div class="ep-code" id="paste-preview-code"></div>
         <div style="display:flex;gap:8px;margin-top:4px">
           <button class="btn btn-primary" onclick="applyAndStart()">تطبيق والمتابعة ←</button>
-          <button class="btn btn-outline" onclick="document.getElementById('paste-preview').classList.remove('show')">إعادة المحاولة</button>
+          <button class="btn btn-outline" onclick="document.getElementById('paste-preview').classList.remove('show')">تعديل النص</button>
         </div>
       </div>
     </div>`;
@@ -695,6 +722,11 @@ async function extractFromPaste() {
         body: JSON.stringify({ text }),
       });
       extractedData = await r.json();
+      if (!r.ok || extractedData.error) {
+        showToast('فشل الاستخلاص: ' + (extractedData.message || extractedData.error || ('HTTP ' + r.status)), 'error');
+        extractedData = null;
+        return;
+      }
     } else {
       extractedData = { _raw: text.substring(0, 300) };
     }
@@ -711,7 +743,8 @@ async function extractFromPaste() {
 
 function applyAndStart() {
   if (extractedData) applyExtracted(extractedData);
-  showToast('✅ تم تعبئة الحقول — راجعها خطوة بخطوة');
+  const n = Object.keys(extractedData || {}).filter(k => !k.startsWith('_')).length;
+  showToast(n ? 'تم تعبئة الحقول — راجعها خطوة بخطوة' : 'لم نتعرف على أي بيانات — املأ الحقول يدوياً', n ? 'success' : 'warn');
   goTo(0);
 }
 
@@ -721,7 +754,7 @@ function renderFileMode() {
   document.getElementById('steps-scroll').classList.remove('show');
   document.getElementById('card').innerHTML = `
     <div class="paste-mode">
-      <div>
+      <div class="intro-head">
         <h2>📄 استيراد من ملف</h2>
         <p>ارفع ملفاً نصياً (BRD بصيغة .md أو .txt، أو ملف .env قديم) وسيستخلص Claude البيانات تلقائياً.</p>
       </div>
@@ -730,7 +763,7 @@ function renderFileMode() {
         <div class="dz-icon">📄</div>
         <div class="dz-title">اسحب الملف هنا أو انقر للاختيار</div>
         <div class="dz-sub">ملفات نصية فقط — ملفات PDF/Word غير مدعومة حالياً</div>
-        <div class="dz-types">.env · .md · .txt · .json · .yml</div>
+        <div class="dz-types">.env · .md · .txt · .json · .yml · .yaml</div>
       </div>
       <div class="file-ready" id="file-ready">
         <div style="font-size:28px">📋</div>
@@ -750,7 +783,7 @@ function renderFileMode() {
           <button class="btn btn-outline" onclick="resetFile()">اختيار ملف آخر</button>
         </div>
       </div>
-      <div><button class="btn btn-outline" onclick="renderIntro()">← رجوع</button></div>
+      <div><button class="btn btn-outline" onclick="renderIntro()">→ رجوع</button></div>
     </div>`;
   // Bind synchronously: this markup is already in the document, so there is no
   // render race (the old step-based version bound via setTimeout(…, 50) and
@@ -850,7 +883,6 @@ function renderFields(step, container) {
   regular.forEach(f => wrap.appendChild(buildField(f)));
 
   if (secretFs.length > 0) {
-    if (needsGrid) container.appendChild(wrap);
     const div = document.createElement('div');
     div.className = 'section-divider';
     div.textContent = 'بيانات الاتصال';
@@ -1024,6 +1056,7 @@ async function runExtract() {
 
 function resetFile() {
   window._file = null;
+  document.getElementById('fi').value = '';
   document.getElementById('file-ready').classList.remove('show');
   document.getElementById('ep').classList.remove('show');
   document.getElementById('dz').style.display = '';
@@ -1065,8 +1098,6 @@ function renderReviewStep() {
     { label: 'config/project.json',            data: projectConfig },
     { label: `environments/${envName}.json`,   data: envConfig },
   ];
-  let activeTab = 0;
-
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
 
@@ -1077,7 +1108,6 @@ function renderReviewStep() {
     btn.className = `rtab${i===0?' active':''}`;
     btn.textContent = t.label;
     btn.onclick = () => {
-      activeTab = i;
       tabBar.querySelectorAll('.rtab').forEach((el,j) => el.classList.toggle('active',j===i));
       code.textContent = JSON.stringify(tabs[i].data, null, 2);
     };
@@ -1091,7 +1121,9 @@ function renderReviewStep() {
   const copyBtn = document.createElement('button');
   copyBtn.className = 'btn-copy';
   copyBtn.textContent = '📋 نسخ';
-  copyBtn.onclick = () => { navigator.clipboard.writeText(code.textContent); showToast('✅ تم النسخ'); };
+  copyBtn.style.alignSelf = 'flex-start';
+  copyBtn.onclick = () => navigator.clipboard.writeText(code.textContent)
+    .then(() => showToast('تم النسخ', 'success'), () => showToast('تعذر النسخ', 'error'));
 
   wrap.appendChild(tabBar);
   wrap.appendChild(code);
@@ -1120,7 +1152,7 @@ function renderFooter(step) {
   } else {
     const home = document.createElement('button');
     home.className = 'btn-ghost';
-    home.innerHTML = '← الرئيسية';
+    home.innerHTML = '→ الرئيسية';
     home.onclick = renderIntro;
     left.appendChild(home);
   }
@@ -1138,7 +1170,7 @@ function renderFooter(step) {
   // Next / Save
   const nextBtn = document.createElement('button');
   nextBtn.className = isLast ? 'btn btn-success' : 'btn btn-primary';
-  nextBtn.innerHTML = isLast ? '💾 حفظ' : '← التالي';
+  nextBtn.innerHTML = isLast ? '💾 حفظ' : 'التالي ←';
   nextBtn.onclick = isLast ? saveAndClose : next;
   foot.appendChild(nextBtn);
 
@@ -1341,7 +1373,7 @@ function finishWizard() {
     '<p>تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — أغلق هذا التبويب وارجع إلى التيرمنال.</p>' +
     '<p style="font-size:13px;color:var(--text-3)">لأي تعديل لاحق (إضافة مستخدمين مثلاً) شغّل المعالج من جديد — سيحمّل الإعدادات المحفوظة ويكمل من حيث وقفت.</p>' +
     '</div>';
-  showToast('✅ تم الحفظ بنجاح!');
+  showToast('تم الحفظ بنجاح!', 'success');
   window.scrollTo({ top: 0 });
 }
 

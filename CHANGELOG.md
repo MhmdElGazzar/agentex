@@ -3,6 +3,10 @@
 All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
+### Changed
+- Wizard UI polish: SVG logo mark (replaces the emoji glyph), real stepper
+  connector elements instead of the `::before` hack, intro layout/spacing cleanup.
+
 ### Fixed
 - **bug-report-azure: untrusted text no longer touches the shell command line.** On
   Windows `cmd.exe` re-parses the command string and expands `%VAR%` even inside
