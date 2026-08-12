@@ -29,7 +29,7 @@ const post = (route, body, headers = {}) =>
 
 (async () => {
   const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv-'));
-  const child = spawn(process.execPath, [SERVER, projectDir, `--port=${PORT}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [SERVER, projectDir, `--port=${PORT}`, '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   child.stdout.on('data', d => { stdout += d; });
   await new Promise(r => {
@@ -38,6 +38,11 @@ const post = (route, body, headers = {}) =>
 
   // The page carries the token; a browser on another site cannot read it.
   TOKEN = (await (await fetch(`${BASE}/setup`)).text()).match(/const TOKEN = '([a-f0-9]+)'/)[1];
+
+  await test('--no-open: server prints the skip notice instead of launching a browser', async () => {
+    assert.ok(stdout.includes('--no-open: skipping browser launch'),
+      'expected the --no-open notice in server stdout (headless test run must not open a browser)');
+  });
 
   await test('an API call without the page token is refused', async () => {
     const read = await fetch(`${BASE}/api/config`);

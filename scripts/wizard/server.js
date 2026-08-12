@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // AgenTeX Setup Wizard — Local HTTP Server (Phase 1: Plugin delivery)
-// Usage: node scripts/wizard/server.js [projectRoot] [--port=7373]
+// Usage: node scripts/wizard/server.js [projectRoot] [--port=7373] [--no-open]
 // Serves the wizard UI on http://127.0.0.1:<port>/setup
 // Writes config/project.json + environments/<env>.json on save.
 // Zero external dependencies — Node.js built-ins only.
@@ -21,6 +21,7 @@ const projectRoot = path.resolve(args.find(a => !a.startsWith('--')) || process.
 const portArg     = args.find(a => a.startsWith('--port='));
 const PORT        = portArg ? parseInt(portArg.split('=')[1]) : 7373;
 const FORCE       = args.includes('--force');
+const NO_OPEN     = args.includes('--no-open');   // tests/agents: never launch a real browser
 const HOST        = '127.0.0.1';
 const BASE_URL    = `http://${HOST}:${PORT}`;
 const WIZARD_URL  = `${BASE_URL}/setup`;
@@ -228,7 +229,8 @@ server = http.createServer((req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────
 server.listen(PORT, HOST, () => {
   console.log(`\n[setup-wizard] 🚀 Wizard running at: ${WIZARD_URL}\n`);
-  openBrowser(WIZARD_URL);
+  if (NO_OPEN) console.log('[setup-wizard] --no-open: skipping browser launch.');
+  else openBrowser(WIZARD_URL);
   console.log('[setup-wizard] Waiting for user to complete setup...');
   console.log('[setup-wizard] Press Ctrl+C to cancel.\n');
 });
