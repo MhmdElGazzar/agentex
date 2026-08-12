@@ -1,5 +1,5 @@
 {
-  "//": "RECOMMENDED PERMISSIONS for AgenTeX (Browser Testing + Azure DevOps task estimation). Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the safe commands, gate destructive ones behind a prompt, and deny secret reads / destructive actions.",
+  "//": "RECOMMENDED PERMISSIONS for AgenTeX (Browser Testing + Mobile Testing + Azure DevOps task estimation). Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the safe commands, gate destructive ones behind a prompt, and deny secret reads / destructive actions.",
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
@@ -22,14 +22,30 @@
       "Bash(az keyvault secret list:*)",
       "Bash(az aks list:*)",
       "Bash(curl:*)",
-      "Bash(sqlcmd:*)"
+      "Bash(sqlcmd:*)",
+      "Bash(npx appium:*)",
+      "Bash(adb devices:*)",
+      "Bash(adb version:*)",
+      "Bash(adb logcat:*)",
+      "Bash(adb shell dumpsys:*)",
+      "Bash(xcrun simctl list:*)",
+      "Bash(xcrun simctl boot:*)",
+      "Bash(xcrun simctl spawn:*)"
     ],
     "ask": [
       "Bash(az boards work-item delete:*)",
       "Bash(az webapp deploy:*)",
       "Bash(az storage blob upload:*)",
       "Bash(az aks get-credentials:*)",
-      "Bash(az group create:*)"
+      "Bash(az group create:*)",
+      "Bash(adb uninstall:*)",
+      "Bash(adb shell pm uninstall:*)",
+      "Bash(adb shell pm clear:*)",
+      "Bash(adb reboot:*)",
+      "Bash(adb root:*)",
+      "Bash(adb emu kill:*)",
+      "Bash(xcrun simctl erase:*)",
+      "Bash(xcrun simctl uninstall:*)"
     ],
     "deny": [
       "Read(./secrets/**)",

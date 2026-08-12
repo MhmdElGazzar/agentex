@@ -2,6 +2,38 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **Mobile testing** — a new `mobile-testing` skill automates native Android/iOS apps through
+  a real [Appium](https://appium.io/docs/en/latest/) session, mirroring the existing
+  browser-testing flow: sequential (human-in-the-loop) or parallel (autonomous, one
+  `mobile-qa-executor` subagent per spec file, per device/emulator).
+- `/execute-mobile-test` command, `agents/mobile-qa-executor.md` subagent, and bundled starter
+  specs in `test/mobile-suite1/`.
+- Two ways to drive an Appium session, documented in
+  `skills/mobile-testing/references/`: raw W3C WebDriver REST via `curl`
+  (`appium-server-cli.md`, no extra dependency) or the bundled `webdriverio`-based
+  `scripts/appium_client.js` wrapper (`appium-client-wrapper.md`, requires the project's own
+  `webdriverio` devDependency).
+- `skills/mobile-testing/scripts/preflight.js` / `init_run.js` / `merge_run.js` — the same
+  deterministic orchestration pattern as `browser-testing`'s scripts, adapted for
+  `mobile-sessions/`.
+- Optional `mobile` block in `environments/<env>.json` (`platformName`, `automationName`,
+  `app`/`appPackage`+`appActivity`/`bundleId`, `deviceName`, `platformVersion`, `udid`) —
+  additive, browser-only projects are unaffected. Documented in `docs/configuration.md`.
+- `docs/mobile-testing.md` and `docs/contributing/adding-a-capability.md` — the latter is a new
+  contributing guide for additions bigger than one skill (its own subagent/command/docs page),
+  using this mobile-testing addition as the worked example.
+- `settings.example.json` — `appium` and read-only `adb`/`xcrun simctl` commands pre-approved;
+  destructive device actions (`adb uninstall`, `adb reboot`, `xcrun simctl erase`, …) prompt
+  instead, matching the existing `az` destructive-action pattern. The same boundary is stated
+  explicitly in `skills/mobile-testing/SKILL.md` and `agents/mobile-qa-executor.md` — a run's
+  device footprint never goes beyond installing/launching/exercising/closing the app under test.
+
+### Changed
+- `docs/getting-started.md` and `docs/contributing/architecture.md` updated to reflect the new
+  mobile-testing capability (no longer describe `qa-executor` as the only subagent).
+
 ## [0.12.0] — 2026-08-06
 ### Added
 - **Interactive Setup Wizard** — `/init-test` now launches a local web-based setup wizard

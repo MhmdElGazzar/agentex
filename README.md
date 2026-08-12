@@ -6,11 +6,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-8A2BE2.svg)](https://docs.anthropic.com/en/docs/claude-code)
 [![Playwright](https://img.shields.io/badge/Playwright-CLI-2EAD33.svg?logo=playwright&logoColor=white)](https://www.npmjs.com/package/@playwright/cli)
+[![Appium](https://img.shields.io/badge/Appium-Mobile-660198.svg?logo=appium&logoColor=white)](https://appium.io/docs/en/latest/)
 [![Azure DevOps](https://img.shields.io/badge/Azure%20DevOps-integration-0078D7.svg?logo=azuredevops&logoColor=white)](https://azure.microsoft.com/en-us/products/devops)
 
 AgenTeX (Agentic Test eXecution) takes manual test execution off your plate. Instead of clicking the
 same scenarios by hand, an agent plans them, drives a **real browser** via
-[`@playwright/cli`](https://www.npmjs.com/package/@playwright/cli), captures screenshot/log evidence,
+[`@playwright/cli`](https://www.npmjs.com/package/@playwright/cli) or a **real native mobile
+app** via [Appium](https://appium.io/docs/en/latest/), captures screenshot/log evidence,
 and produces a consolidated defect report — either **sequentially** (human-in-the-loop) or in
 **parallel** (autonomous, one session per spec file). It **never modifies your application code**.
 
@@ -31,6 +33,7 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 | Feature | How it works | Docs |
 |---------|--------------|------|
 | **Browser testing** | An agent plans scenarios, drives a real `playwright-cli` browser, screenshots each one, and reports defects — sequential (approve each step) or parallel (one `qa-executor` subagent per spec file). | [browser-testing](./docs/browser-testing.md) |
+| **Mobile testing** | Same flow for native Android/iOS apps, driven through a real [Appium](https://appium.io/docs/en/latest/) session (raw WebDriver REST or a bundled `webdriverio` wrapper) — sequential or parallel (one `mobile-qa-executor` subagent per spec file, per device/emulator). | [mobile-testing](./docs/mobile-testing.md) |
 | **API & DB steps** | `api:` / `db:` scenario steps run **only** the named, parameterized requests/queries in your `integration/` catalog — the agent never composes its own SQL or HTTP; DDL is refused. | [api-db-steps](./docs/api-db-steps.md) |
 | **Ask the KB** | `kb:` steps (or `/ask-kb`) query your project's KB Ask API for advisory context — informs testing, **never** used as PASS/FAIL evidence. | [ask-kb](./docs/ask-kb.md) |
 | **Optimize login** | Pay a web app's login once per session: drive it live, verify by landmark (never by URL), save the browser session, and reload it into a fresh browser to continue. | [optimize-login](./docs/optimize-login.md) |
@@ -52,6 +55,7 @@ Run a parallel regression against https://example.com from the specs in test/sui
 
 # Slash commands:
 /execute-test https://example.com
+/execute-mobile-test suite1
 /estimate-story 12345 12346
 /design-test 12345
 /ask-kb acme-store: how does the checkout flow work?

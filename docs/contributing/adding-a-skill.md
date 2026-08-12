@@ -236,3 +236,5 @@ be:
 
 Next: [Conventions](./conventions.md) for the naming/security rules this example already
 followed, or [Testing](./testing.md) for how to run and write script tests like the one above.
+For something bigger than one skill — its own subagent, command, and docs page — see
+[Adding a Capability](./adding-a-capability.md).

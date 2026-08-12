@@ -49,6 +49,7 @@ Fill them in:
 | `users` | Test accounts keyed by a descriptive handle (`valid_user`, `expired_user`, …) that specs refer to ("login as expired_user"). Fields free-form: `phone`, `role`, `idNumber`, `password`, `notes`, … A user without `password` uses `defaults.password`. |
 | `db` | `server`, `port`, `name`, `user`, `password` — for cataloged `db:` steps. |
 | `api` | `baseUrl`, `token` — for cataloged `api:` steps. |
+| `mobile` | `platformName`, `automationName`, `app` (or `appPackage`+`appActivity` / `bundleId`), `deviceName`, `platformVersion`, optional `udid` — the Appium target for [mobile testing](./mobile-testing.md). Optional; browser-only projects can omit it entirely. |
 
 Selecting the environment at run time: "run on uat" / `env: uat` in a spec →
 `environments/uat.json`; otherwise `defaultEnvironment`. Naming an environment
@@ -70,8 +71,9 @@ fallback.
 Plugin manifests can't ship permission rules. Copy the `permissions` block from
 [`settings.example.json`](../settings.example.json) into your project's
 `.claude/settings.json` (merge with anything already there). This pre-approves the
-safe `playwright-cli` (and `az` / `curl` / `sqlcmd`) commands and denies secret
-reads / destructive actions.
+safe `playwright-cli` (and `az` / `curl` / `sqlcmd` / `appium`) commands outright, gates the
+read-only `adb`/`xcrun simctl` commands the same way, prompts before destructive `adb`/`xcrun`
+actions (uninstall, reboot, erase), and denies secret reads / destructive actions.
 
 ## Secret-handling rules
 

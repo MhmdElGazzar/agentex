@@ -78,9 +78,16 @@ executions/execu_<timestamp>/
   into `.claude/settings.json`
 - Run: `/execute-test <url>`
 
+## Optional: testing a native mobile app instead
+
+Everything above scaffolds the **browser** flow. If your target is a native Android/iOS app
+instead (or as well), see [Mobile Testing](./mobile-testing.md) for the equivalent setup
+(`appium` + a platform driver instead of `playwright-cli`) and `/execute-mobile-test`.
+
 ## Next steps
 
 - [Browser Testing](./browser-testing.md) — sequential vs. parallel modes, writing your own specs.
+- [Mobile Testing](./mobile-testing.md) — the same flow for native Android/iOS apps, via Appium.
 - [Configuration](./configuration.md) — the three config files (`config/project.json`,
   `environments/<env>.json`, `.env`) and secret handling.
 - [docs/](./README.md) — the full feature reference.
