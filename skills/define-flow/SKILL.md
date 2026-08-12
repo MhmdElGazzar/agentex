@@ -4,8 +4,9 @@ description: >
   Define a test flow by doing it: an agent-led session that builds a spec step by step in a
   live browser — the agent proposes each step, executes it immediately, and the user asserts
   the real outcome before the next step is defined. Use when a user wants to create a spec
-  for a long or complex flow without writing it blind. Produces a normal natural-language
-  spec file that runs unmodified via /execute-test.
+  for a long or complex flow without writing it blind, or wants to walk through an existing
+  spec live to clarify ambiguous steps. Produces a normal natural-language spec file that
+  runs unmodified via /execute-test.
 ---
 
 # Define Flow — the flow is defined by doing it, not by writing it
@@ -120,3 +121,22 @@ every step already passed once during definition; a fresh run proves the spec re
 captured values live and passes unmodified. This validation run is a normal test run and
 writes its evidence to `executions/` in the normal way. If the user declines, the session
 ends with the saved spec.
+
+## Walkthrough mode (existing specs)
+
+When the input is an **existing spec file path**, run the same session over the file's steps
+instead of eliciting new ones:
+
+1. SETUP as above (the spec's Target feeds resolution).
+2. STEP LOOP over the spec's steps, in order: execute each step live and present the actual
+   outcome. Steps you find **unclear** — ambiguous target, unstated expected result,
+   unresolvable value — become questions to the user (answer/confirm/select shaped, as
+   always); the confirmed clarification **replaces the unclear text** in the recorded step.
+   Clear steps still get executed and asserted before moving on. Forward-only and one-sitting
+   apply unchanged.
+3. ASSEMBLE the result as a **new spec file** (same conventions and naming proposal as
+   above). **Do not rewrite the original spec.** Add exactly one note at the top of the
+   original file — "Defined flow available at `<path to the new file>`" — so the team sees
+   at a glance that this spec has a proven, defined counterpart. The original's body is
+   otherwise untouched.
+4. VALIDATE (offered) runs the new file.
