@@ -16,6 +16,11 @@ AgenTeX installs through the **`elgazzar-plugins`** marketplace. From Claude Cod
 > `elgazzar-plugins` repo (the one containing `.claude-plugin/marketplace.json`) instead of GitHub:
 > `/plugin marketplace add /path/to/elgazzar-plugins`, then install the same way.
 
+> **Updating later?** A plugin update changes the plugin, not your project. After
+> updating, run `/update-agentex` in each project to migrate its scaffolded files to
+> the new version's conventions — your own values are carried over, never reset (see
+> [Configuration](./configuration.md#keeping-a-project-current--update-agentex)).
+
 ## 2. Install the browser driver
 
 In the project you want to test (Claude will offer to do this for you):
@@ -77,6 +82,7 @@ executions/execu_<timestamp>/
 - Permissions: copy the `permissions` block from [`settings.example.json`](../settings.example.json)
   into `.claude/settings.json`
 - Run: `/execute-test <url>`
+- After a plugin update: `/update-agentex` (migrates the project to the new conventions)
 
 ## Next steps
 

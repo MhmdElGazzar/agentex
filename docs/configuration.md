@@ -65,6 +65,32 @@ fallback.
 | `KB_ASK_API_KEY` | KB Ask shared secret (`x-api-key`). |
 | *(your own)* | Any variable referenced by an `{ "envSecret": "…" }` field — e.g. `SQLCMDPASSWORD_UAT`, `QA_TESTER_PASSWORD`. |
 
+## Keeping a project current — `/update-agentex`
+
+Updating the plugin never touches your project: everything `/init-test` scaffolded
+stays at the conventions of the plugin version that created it. After a plugin
+update, run **`/update-agentex`** in each project — it detects the setup state from
+your files and migrates folder structure, config schemas, the secrets-only `.env`
+split, the `integration/` catalog folder name, `.gitignore` and `CLAUDE.md` entries
+to the installed version's conventions. Refactor/merge, not re-scaffold: your values
+(URLs, users, secrets, specs, run history) are carried, never reset.
+
+- **Clean git tree required** — the command aborts on uncommitted changes; git is
+  the rollback (no self-made backups). `.env` is gitignored, so it is rewritten
+  loss-proof instead: every value is written to its committed JSON home *before*
+  its legacy key is removed.
+- **Version stamp** — `.agentex/version.json` records the plugin version the
+  project matches. `/init-test` writes it at scaffold time; every migration
+  refreshes it. A project without a stamp (created before stamping existed) is
+  inferred from its files on the first run.
+- **Yours stays yours** — spec files under `test/`, old `executions/` run folders,
+  and user-filled catalog files are never rewritten; convention drift in them is
+  flagged in the report instead.
+- Safe to re-run: an up-to-date project reports `already up to date` with zero file
+  writes. If a run is interrupted, commit the partial state (or roll it back with
+  `git restore`), then re-run — the next run completes the remaining migrations
+  from detected state.
+
 ## Permissions
 
 Plugin manifests can't ship permission rules. Copy the `permissions` block from

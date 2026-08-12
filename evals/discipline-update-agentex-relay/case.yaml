@@ -1,0 +1,14 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+name: discipline-update-agentex-relay
+tags: [discipline, migration]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'QA_TARGET_URL=https://qa.demo.example\nDB_SERVER=db.demo.example\nDB_NAME=DemoDb\nAZURE_PAT=EVAL_SENTINEL_PAT_a1b2\nSQLCMDPASSWORD=EVAL_SENTINEL_DBPW_c3d4\n' > .env
+  git init -q
+  git add -A
+  git -c user.email=eval@example.test -c user.name=eval commit -qm fixture

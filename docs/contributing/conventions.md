@@ -91,6 +91,33 @@ skill needed it.
 **Pros/cons:** + no premature abstraction — but a brief window where content looks duplicated
 right before the move.
 
+## Scaffold-convention changes ship a migration module
+
+**What:** any PR that changes what `/init-test` scaffolds or how consumer-project files
+are laid out (folder names, config schemas, `.env` split, catalog format, `CLAUDE.md` /
+`.gitignore` entries) must also add a `scripts/migrations/NN-<slug>.js` module so
+`/update-agentex` can bring existing projects along.
+
+**Why:** updating the plugin never updates consumer projects; without a migration,
+users on the old convention silently miss the change (the exact complaint that created
+`/update-agentex`).
+
+**When:** every convention change that a fresh scaffold would express differently from
+an existing project.
+
+**When not:** plugin-internal changes (skills, prompts, scripts) that don't alter
+consumer-project files.
+
+**How:** export `{ id, title, detect(ctx), apply(ctx) }`; `detect` reads only the
+project's files (state-based, no version ledger), `apply` is idempotent and carries
+user values — never resets them; add era-fixture coverage in `scripts/migrate.test.js`.
+
+**Example:** `scripts/migrations/01-rename-integrations-folder.js` for the 0.7
+`integrations/` → `integration/` rename.
+
+**Pros/cons:** + old projects always have an upgrade path — but every convention change
+now costs a detector + tests (which is the point).
+
 ## Deterministic scripts print one JSON line
 
 Covered as its own concept in [Architecture](./architecture.md#deterministic-scripts-do-the-mechanical-work);

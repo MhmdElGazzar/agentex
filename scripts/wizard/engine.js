@@ -145,19 +145,9 @@ function validate(answers, steps) {
  * the user into the wizard's own secret fields.
  */
 
-// Canonical .env variable names → wizard answer keys.
-const ENV_KEY_MAP = {
-  QA_TARGET_URL: 'portalUrl', QA_URL: 'portalUrl', PORTAL_URL: 'portalUrl',
-  APP_URL: 'portalUrl', TARGET_URL: 'portalUrl', UAT_URL: 'portalUrl',
-  PROJECT_NAME: 'name',
-  AZURE_URL: 'azure.org', AZURE_ORG: 'azure.org', AZURE_DEVOPS_ORG: 'azure.org',
-  AZURE_PROJECT: 'azure.project', AZURE_TEAM: 'azure.team', AZURE_ASSIGNEE: 'azure.assignee',
-  DB_SERVER: 'db.server', DB_HOST: 'db.server', DB_PORT: 'db.port',
-  DB_NAME: 'db.name', DB_DATABASE: 'db.name', DB_USER: 'db.user', DB_USERNAME: 'db.user',
-  API_BASE_URL: 'api.baseUrl', API_URL: 'api.baseUrl',
-  KB_ASK_BASE_URL: 'kb.baseUrl', KB_PROJECT: 'kb.project',
-  OTP: 'defaults.otp', DEFAULT_OTP: 'defaults.otp', CAPTCHA: 'defaults.captcha',
-};
+// Canonical .env variable names → wizard answer keys — shared with the migration
+// engine (scripts/migrations/03-env-split.js): one mapping, no drift.
+const { ENV_KEY_MAP } = require('../lib/env_key_map.js');
 
 // Grouped lines: "DB: server=x, name=y" / "Azure Org: o, Project: p".
 const GROUPS = [
