@@ -8,6 +8,7 @@ quick tour.
 | [Using Claude Code](./using-claude-code.md) | New to Claude Code itself? Start here — typing requests, slash commands, approving actions. |
 | [Getting Started](./getting-started.md) | Install → browser driver → `/init-test` → permissions → first run. |
 | [Browser Testing](./browser-testing.md) | The core flow — sequential vs. parallel modes, writing specs, output layout. |
+| [Mobile Testing](./mobile-testing.md) | Native Android/iOS app testing via Appium — sequential vs. parallel modes, capabilities, writing specs. |
 | [API & DB Steps](./api-db-steps.md) | Catalog-only `api:` / `db:` steps inside test scenarios. |
 | [Ask the Knowledge Base](./ask-kb.md) | `kb:` steps and the `/ask-kb` command (advisory only). |
 | [Optimize Login](./optimize-login.md) | Pay a web app's login cost once per session instead of once per test. |

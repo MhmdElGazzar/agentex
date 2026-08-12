@@ -54,6 +54,13 @@ db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
 - Parallel (autonomous, one session per file): ask for a "parallel regression from the
   specs in `test/suite1/`".
 
+## Mobile app specs
+
+Native Android/iOS specs work the same way, one folder over: `test/mobile-suite1/` (seeded by
+`/execute-mobile-test` on first run — same lazy-scaffold behavior as `suite1/` above). See
+[Mobile Testing](../docs/mobile-testing.md) for how a mobile spec differs (app under test and
+element selectors instead of a URL and CSS selectors).
+
 ## Azure DevOps (optional)
 
 AgenTeX can also work your ADO backlog — fill the `azure` block in `config/project.json` first

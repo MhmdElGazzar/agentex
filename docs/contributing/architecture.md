@@ -9,7 +9,8 @@ predictable.
 ```text
 skills/       one folder per capability (SKILL.md + references/ + scripts/ + templates/)
 commands/     thin slash-command entrypoints ($ARGUMENTS -> skill)
-agents/       subagent definitions (currently: qa-executor.md)
+agents/       subagent definitions (one per isolated-session executor, e.g. qa-executor.md,
+              mobile-qa-executor.md)
 docs/         user-facing feature docs (this contributing/ subfolder is the exception)
 test/         sample specs scaffolded by /init-test
 executions/   NOT shipped in the plugin — output folder created in the consumer's project
@@ -82,6 +83,8 @@ of `mkdir`s — see [testing.md](./testing.md) for how scripts like this get tes
 
 **Example:** `browser-testing/SKILL.md`'s parallel mode — ~6–8 sessions run concurrently, the
 rest queue automatically; the main agent then merges every report into one `report.md`/`bugs/`.
+`mobile-testing/SKILL.md` follows the identical dispatch/merge shape with `mobile-qa-executor`,
+just bounded by available devices/emulators instead of CPU/RAM.
 
 **Pros/cons:** + real concurrency, isolated evidence per session — but needs a merge step to
 combine results.
@@ -91,3 +94,5 @@ combine results.
 - [Conventions](./conventions.md) — naming, the no-employer-data rule, secrets, the
   catalog-only principle.
 - [Adding a Skill](./adding-a-skill.md) — build a toy skill end to end using everything above.
+- [Adding a Capability](./adding-a-capability.md) — for something bigger than one skill: its
+  own subagent, command, and docs page.
