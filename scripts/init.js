@@ -9,7 +9,7 @@
 // /update-agentex migration engine — one definition of "current conventions".
 const path = require('path');
 const {
-  scaffoldProject, readVersionStamp, writeVersionStamp, readPluginVersion, STAMP_REL,
+  scaffoldProject, hasLegacySignals, readVersionStamp, writeVersionStamp, readPluginVersion, STAMP_REL,
 } = require('./lib/scaffold.js');
 
 const pluginRoot = path.resolve(__dirname, '..');
@@ -29,11 +29,17 @@ const print = a => {
 for (const action of scaffoldProject(projectRoot, pluginRoot)) print(action);
 
 // Version stamp — written at scaffold time so /update-agentex can compare exact
-// versions later. Never overwritten here: an existing (older) stamp means the project
-// predates this plugin version, and re-stamping it would hide that from the migrator —
-// /update-agentex is the only thing that moves an existing stamp forward.
+// versions later. Two cases where init must NOT write it:
+//   - an existing stamp is never overwritten (re-stamping would hide the project's
+//     real age from the migrator — only /update-agentex moves a stamp forward);
+//   - a project with legacy signals (pre-rename integrations/, agentex.config.json,
+//     legacy keys in .env) stays stamp-less, or the migrator would fast-path it as
+//     up to date while legacy conventions remain; /update-agentex stamps it after
+//     migrating.
 if (readVersionStamp(projectRoot)) {
   print({ kind: 'skipped', path: STAMP_REL, note: 'already stamped — run /update-agentex after plugin updates' });
+} else if (hasLegacySignals(projectRoot)) {
+  print({ kind: 'skipped', path: STAMP_REL, note: 'legacy conventions detected — run /update-agentex to migrate this project and stamp it' });
 } else {
   print(writeVersionStamp(projectRoot, readPluginVersion(pluginRoot)));
 }

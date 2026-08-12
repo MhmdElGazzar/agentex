@@ -483,6 +483,41 @@ test('init.js writes the stamp at scaffold time and never moves an existing one'
   assert.strictEqual(readJson(dir, '.agentex/version.json').version, '0.2.0', 'init must not stamp over an older version');
 });
 
+test('init.js withholds the stamp on a legacy project; /update-agentex then migrates and stamps', () => {
+  // Legacy signals present (agentex.config.json + legacy .env keys): stamping at
+  // scaffold time would make the migrator fast-path the project as up to date.
+  const dir = proj({
+    'test/suite1/smoke.md': SPEC_02,
+    'agentex.config.json': { kb: { baseUrl: 'https://kb.legacy.test', project: 'legacy-kb' } },
+    '.gitignore': '.env\n',
+    '.env': `QA_TARGET_URL=https://legacy.example.test\nAZURE_PAT=${SENTINELS.pat}\n`,
+  });
+  runInit(dir);
+  assert.ok(!exists(dir, '.agentex/version.json'), 'init must NOT stamp a project with legacy signals');
+  gitInit(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] absorb-agentex-config/);
+  assert.match(r.out, /\[migrated\] env-split/);
+  assert.strictEqual(readJson(dir, 'config/project.json').kb.baseUrl, 'https://kb.legacy.test');
+  assert.strictEqual(readJson(dir, 'environments/qa.json').portalUrl, 'https://legacy.example.test');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'migration stamps at the end');
+});
+
+test('init.js stamp gate: each legacy signal alone withholds the stamp', () => {
+  const signalFixtures = [
+    { '.env': 'DB_SERVER=legacy-db.test\n' },              // legacy ENV_KEY_MAP key in .env
+    { 'integrations/a_db.json': { name: 'a', queries: [] } }, // pre-rename catalog folder
+    { 'agentex.config.json': { kb: { baseUrl: 'https://kb.x.test' } } }, // KB-era config
+  ];
+  for (const files of signalFixtures) {
+    const dir = proj(files);
+    runInit(dir);
+    assert.ok(!exists(dir, '.agentex/version.json'),
+      `stamp must be withheld for legacy signal: ${Object.keys(files)[0]}`);
+  }
+});
+
 // ── secrecy ───────────────────────────────────────────────────────────────────
 test('no secret value ever appears in any migration output', () => {
   assert.ok(ALL_OUTPUT.length > 0, 'outputs were collected');

@@ -11,6 +11,7 @@
 // printing — callers own the report format.
 const fs = require('fs');
 const path = require('path');
+const { ENV_KEY_MAP } = require('./env_key_map.js');
 
 // The executions/ guidance appended to the consumer's CLAUDE.md.
 const CLAUDE_MD_BULLET = [
@@ -159,6 +160,24 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
   return actions;
 }
 
+// ── Legacy signals — does this project predate current conventions? ──────────
+// The same signals the migration engine's detectors key on. /init-test must NOT
+// stamp a project that shows any of them: a fresh stamp would make /update-agentex
+// fast-path it as up to date while legacy conventions remain. Such a project stays
+// stamp-less until a migration run finishes and stamps it.
+function hasLegacySignals(projectRoot) {
+  if (fs.existsSync(path.join(projectRoot, 'integrations'))) return true;        // pre-0.7 catalog folder
+  if (fs.existsSync(path.join(projectRoot, 'agentex.config.json'))) return true; // KB-era root config
+  try {
+    const env = fs.readFileSync(path.join(projectRoot, '.env'), 'utf8');
+    for (const line of env.split(/\r?\n/)) {
+      const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
+      if (m && ENV_KEY_MAP[m[1]]) return true;                                    // keys-only .env era
+    }
+  } catch { /* no .env — no signal */ }
+  return false;
+}
+
 // ── Version stamp — .agentex/version.json ────────────────────────────────────
 // Written at scaffold time (/init-test) and after every migration (/update-agentex)
 // so upgrades can compare exact versions. Lives in .agentex/ because that folder is
@@ -192,7 +211,7 @@ function readPluginVersion(pluginRoot) {
 
 module.exports = {
   CLAUDE_MD_BULLET, STAMP_REL,
-  hasSpecFiles, scaffoldProject,
+  hasSpecFiles, scaffoldProject, hasLegacySignals,
   gitignoreHasEnvEntry, ensureGitignoreEnv,
   claudeMdHasBullet, ensureClaudeMdBullet,
   stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,
