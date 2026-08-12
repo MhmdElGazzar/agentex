@@ -87,7 +87,9 @@ to the installed version's conventions. Refactor/merge, not re-scaffold: your va
   and user-filled catalog files are never rewritten; convention drift in them is
   flagged in the report instead.
 - Safe to re-run: an up-to-date project reports `already up to date` with zero file
-  writes, and an interrupted migration completes on the next run.
+  writes. If a run is interrupted, commit the partial state (or roll it back with
+  `git restore`), then re-run — the next run completes the remaining migrations
+  from detected state.
 
 ## Permissions
 

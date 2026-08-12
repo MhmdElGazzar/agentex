@@ -92,14 +92,14 @@ const OWNED_FILES = ['agentex.config.json', 'CLAUDE.md', '.gitignore'];
 const statusLines = git(['status', '--porcelain']).split(/\r?\n/).filter(Boolean);
 const trackedChanges = statusLines.filter(l => !l.startsWith('?? '));
 if (trackedChanges.length) {
-  abort(`working tree has uncommitted changes to ${trackedChanges.length} tracked file(s) — commit first; git is the rollback for a migration`);
+  abort(`working tree has uncommitted changes to ${trackedChanges.length} tracked file(s) — commit first; git is the rollback for a migration (this includes changes left by an interrupted migration: commit or git-restore them, then re-run to finish)`);
 }
 const untrackedOwned = statusLines
   .filter(l => l.startsWith('?? '))
   .map(l => l.slice(3).replace(/^"|"$/g, ''))
   .filter(p => OWNED_FILES.includes(p) || OWNED_DIRS.some(d => p === d || p.startsWith(d)));
 if (untrackedOwned.length) {
-  abort(`untracked file(s) in migration-owned paths (${untrackedOwned.join(', ')}) — commit or remove them first; git could not roll them back`);
+  abort(`untracked file(s) in migration-owned paths (${untrackedOwned.join(', ')}) — commit or remove them first; git could not roll them back (files created by an interrupted migration count too: commit them, then re-run to finish)`);
 }
 
 // ── Report collector — house style, streamed as it happens ───────────────────
@@ -140,9 +140,11 @@ try {
     if (m.detect(ctx)) m.apply(ctx);
   }
 } catch (e) {
-  // Stop without stamping: state-based detectors make a plain re-run resume from here.
+  // Stop without stamping: state-based detectors let the next run resume from here —
+  // but the clean-tree guard is absolute, so this run's partial changes must be
+  // committed (or git-restored) before that re-run.
   console.error(`[error] migration failed: ${e.message}`);
-  console.error('fix the cause (or roll back with git), then re-run — migrations resume from detected state.');
+  console.error('fix the cause, commit the partial state (or roll it back with git), then re-run — migrations resume from detected state.');
   process.exit(1);
 }
 

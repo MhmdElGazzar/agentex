@@ -13,9 +13,10 @@ file change; you run it, relay its report, and explain what it flagged.
    ```
 
    It detects the project's setup state from its files (legacy projects carry no
-   version stamp), applies every needed migration, writes the version stamp
-   (`.agentex/version.json`), and prints one `[migrated]`/`[ok]`/`[flag]`/`[manual]`
-   line per action plus a summary. Relay that report to the user faithfully —
+   version stamp), applies every needed migration, and prints one
+   `[migrated]`/`[ok]`/`[flag]`/`[manual]` line per action plus a summary. The
+   version stamp (`.agentex/version.json`) is written only when no `[manual]` items
+   remain — otherwise it is withheld so a later run re-enters the pipeline. Relay that report to the user faithfully —
    **never print secret values** (the script only ever prints key names; the same
    rule binds your relay).
 
@@ -45,5 +46,8 @@ file change; you run it, relay its report, and explain what it flagged.
    is gitignored but was rewritten loss-proof — every removed key's value now lives
    in a committed JSON file).
 
-5. If a run was interrupted, re-running this command completes the remaining
-   migrations — the engine detects state from files, not from a journal.
+5. If a run was interrupted, recovery is: **commit the partial state** (or roll it
+   back with `git restore`), then re-run this command — the engine detects state
+   from files, not from a journal, so the re-run completes the remaining
+   migrations. The clean-tree guard stays absolute: it rejects the interrupted
+   run's own uncommitted changes too, by design.

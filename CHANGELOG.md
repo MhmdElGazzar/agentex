@@ -18,7 +18,8 @@ All notable changes to AgenTeX are documented here.
   without ever rewriting user specs or old `executions/` runs. Apply-then-report;
   clean git tree required (git is the rollback; the gitignored `.env` is rewritten
   loss-proof by writing JSON homes first); idempotent (second run: zero writes,
-  "already up to date") and resumable after interruption.
+  "already up to date"); an interrupted run is completed by committing (or
+  git-restoring) the partial state and re-running.
 - **Version stamp** `.agentex/version.json` — written by `/init-test` at scaffold
   time and refreshed by every migration; stamp-less legacy projects are inferred
   from their files on first run.

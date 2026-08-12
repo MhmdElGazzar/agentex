@@ -9,8 +9,9 @@
 //     ([ok] kept existing) and the .env key is still considered carried (its value
 //     lives on in JSON by precedence);
 //   - loss-proofing: both JSON files are written BEFORE .env is rewritten, so an
-//     interruption between the two steps converges on re-run (detect still sees the
-//     legacy keys, the JSON fields are now set, the rewrite completes);
+//     interruption between the two steps converges on the next run (after the user
+//     commits the partial state — the clean-tree guard is absolute): detect still
+//     sees the legacy keys, the JSON fields are now set, the rewrite completes;
 //   - the .env rewrite drops ONLY known, successfully-carried non-secret keys —
 //     secret keys and every unrecognized key survive byte-identical.
 const fs = require('fs');
