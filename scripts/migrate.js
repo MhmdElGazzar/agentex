@@ -147,10 +147,20 @@ try {
 }
 
 // ── Stamp + summary ───────────────────────────────────────────────────────────
-scaffold.writeVersionStamp(projectRoot, installed);
-console.log(`[stamp] ${scaffold.STAMP_REL} → ${installed}`);
+// The stamp means "this project matches the installed version's conventions". While
+// [manual] items remain it does not — and stamping anyway would dead-end the
+// advertised re-run on the version-gate fast path — so the stamp is withheld until
+// a run finishes with zero manual items.
+if (report.manuals > 0) {
+  console.log(`[stamp] withheld — ${report.manuals} manual item(s) above must be resolved first; re-run /update-agentex afterwards`);
+} else {
+  scaffold.writeVersionStamp(projectRoot, installed);
+  console.log(`[stamp] ${scaffold.STAMP_REL} → ${installed}`);
+}
 if (report.applied === 0) {
-  console.log(`\nno migrations needed — project already follows current conventions (stamp refreshed to ${installed}).`);
+  console.log(report.manuals > 0
+    ? `\nno migrations applied — resolve the ${report.manuals} manual item(s) above, then re-run /update-agentex.`
+    : `\nno migrations needed — project already follows current conventions (stamp refreshed to ${installed}).`);
 } else {
   console.log(`\nAgenTeX migration done: ${report.applied} migration(s) applied, ${report.flags} flag(s), ${report.manuals} manual item(s).`);
   console.log('verify with a normal test run, then commit the migration as one commit — git is the rollback.');

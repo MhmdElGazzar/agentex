@@ -330,6 +330,31 @@ test('0.8 era: agentex.config.json kb.* absorbed into config/project.json, file 
   assert.strictEqual(project.kb.project, 'kb8');
 });
 
+test('m02: unparseable agentex.config.json → [manual], stamp WITHHELD, re-run absorbs after fix', () => {
+  const dir = repo({
+    'agentex.config.json': '{ broken',   // invalid JSON — m02 must not delete it
+    'test/suite1/a.md': SPEC_02,
+  });
+  const r1 = run(dir);
+  assert.strictEqual(r1.code, 0, r1.out);
+  assert.match(r1.out, /\[manual\].*agentex\.config\.json/);
+  assert.ok(exists(dir, 'agentex.config.json'), 'unreadable legacy file left in place');
+  // The honest stamp: stamp == "project matches installed conventions". With an
+  // unabsorbed legacy config it does not — stamping here would dead-end the
+  // advertised re-run on the version-gate fast path.
+  assert.ok(!exists(dir, '.agentex/version.json'), 'stamp must be withheld while [manual] items remain');
+  // user fixes the file and commits (run-1 outputs included), then simply re-runs
+  addFiles(dir, { 'agentex.config.json': { kb: { baseUrl: 'https://kb.fix.test', project: 'fixed' } } });
+  commitAll(dir);
+  const r2 = run(dir);
+  assert.strictEqual(r2.code, 0, r2.out);
+  assert.match(r2.out, /\[migrated\] absorb-agentex-config/, 're-run must re-enter the pipeline, not fast-path');
+  assert.ok(!exists(dir, 'agentex.config.json'), 'fixed legacy file absorbed and removed');
+  assert.strictEqual(readJson(dir, 'config/project.json').kb.baseUrl, 'https://kb.fix.test');
+  assert.strictEqual(readJson(dir, 'config/project.json').kb.project, 'fixed');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'stamp written once manual items are gone');
+});
+
 // ── m04: catalog connection block → environment db block ─────────────────────
 test('m04: catalog connection resolved into env db block; catalog only flagged', () => {
   const dir = repo({
