@@ -123,12 +123,17 @@ test('mergeExtracted takes extracted users when there are none yet, and fills em
 });
 
 // ── schema shape ──────────────────────────────────────────────────────────
-test('schema has 7 numbered steps and no ai-import step', () => {
+test('schema has 8 numbered steps and no ai-import step', () => {
   const schema = require('./schema.json');
-  assert.strictEqual(schema.steps.length, 7);
+  assert.strictEqual(schema.steps.length, 8);
   assert.ok(!schema.steps.some(s => s.id === 'ai-import'), 'ai-import must not be a numbered step');
   assert.ok(!schema.steps.some(s => s.type === 'ai-extract'), 'no ai-extract step type in the flow');
   assert.strictEqual(schema.steps[schema.steps.length - 1].type, 'review', 'review stays last');
+  const figma = schema.steps.find(s => s.id === 'figma');
+  assert.ok(figma && figma.optional, 'figma step exists and is optional');
+  const tokenField = figma.fields.find(f => f.key === 'figma.token');
+  assert.ok(tokenField.secret && tokenField.envKey === 'FIGMA_TOKEN' && tokenField.envKeyFrom === 'figma.tokenEnvVar',
+    'figma token is a secret field wired to FIGMA_TOKEN');
 });
 
 // ── validateConfigs ───────────────────────────────────────────────────────
@@ -170,6 +175,15 @@ test('buildConfigs maps answers to the file contract', () => {
   assert.deepStrictEqual(envConfig.db.password, { envSecret: 'SQLCMDPASSWORD' });
   assert.deepStrictEqual(envConfig.api.token, { envSecret: 'API_TOKEN' });
   assert.ok(!('azure' in projectConfig), 'empty azure block is stripped');
+});
+
+test('buildConfigs: figma block only when a file key is provided', () => {
+  const withKey = buildConfigs({ name: 'd', 'figma.fileKey': 'KEY1' }, []);
+  assert.deepStrictEqual(withKey.projectConfig.figma, { fileKey: 'KEY1', token: { envSecret: 'FIGMA_TOKEN' } });
+  const custom = buildConfigs({ name: 'd', 'figma.fileKey': 'K2', 'figma.tokenEnvVar': 'MY_FIGMA_TOKEN' }, []);
+  assert.deepStrictEqual(custom.projectConfig.figma.token, { envSecret: 'MY_FIGMA_TOKEN' });
+  const none = buildConfigs({ name: 'd' }, []);
+  assert.ok(!('figma' in none.projectConfig), 'no figma block without a file key');
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

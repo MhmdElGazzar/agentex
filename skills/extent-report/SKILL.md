@@ -14,18 +14,22 @@ tally the results the run already produced.
 | Status | Meaning | Color |
 |---|---|---|
 | Passed | Scenario ran and met acceptance criteria | `#2E9E4F` (green) |
+| Warning | Scenario passed with a caveat — a `ui-check:` reference-mode layout drift or an unconfident design-variant pick | `#EAC54F` (yellow) |
 | Failed | Scenario ran and did NOT meet acceptance criteria | `#D6293E` (red) |
 | Blocked | Scenario could not be completed (missing prerequisite, environment issue) | `#F2A93B` (orange) |
+| View Mismatch | A `ui-check:` step whose baseline form factor differs from the run's target — no PASS/FAIL was issued | `#4D9DE0` (blue) |
 | N/A - De-scoped | Scenario intentionally excluded from this run's scope | `#8B5CF6` (purple) |
 | Not Run | Planned but never attempted this run | `#B0B0B0` (gray) |
 
-Test Coverage = (Passed + Failed + Blocked) ÷ Total # of TC — scenarios actually exercised over
-the total planned. Total # of TC is the count of individual test scenarios/steps executed across
-all specs in the run, not the count of spec files.
+Test Coverage = (Passed + Warning + Failed + Blocked + View Mismatch) ÷ Total # of TC —
+scenarios actually exercised over the total planned. Total # of TC is the count of individual
+test scenarios/steps executed across all specs in the run, not the count of spec files.
 
 Note: executor reports only emit PASS/FAIL per scenario. Blocked, N/A-De-scoped, and Not Run
 come from the orchestrator's own plan — scenarios that couldn't be attempted (environment/
 prerequisite), were intentionally excluded from scope, or were planned but never reached.
+Warning and View Mismatch come from `ui-check:` step verdicts (see the ui-check skill) —
+they are first-class statuses, never disguised as `passed`/`blocked`.
 
 ## Tool
 The generator script lives in this skill's `scripts/` folder:
@@ -50,14 +54,16 @@ The generator script lives in this skill's `scripts/` folder:
 
 ### Input JSON shape
 One object per test case, one object per step. Status vocabulary: `passed`/`failed`/`blocked`/
-`na`/`notrun` for steps; `passed`/`failed`/`blocked`/`naDescoped`/`notRun` keys for the top-level
-summary.
+`na`/`notrun` plus the ui-check statuses `warning`/`viewMismatch` for steps and test cases;
+`passed`/`failed`/`blocked`/`naDescoped`/`notRun` plus `warnings`/`viewMismatch` counts for the
+top-level summary (the two ui-check keys are optional — omit them for runs without `ui-check:`
+steps and the report renders exactly as before).
 
 ```json
 {
   "title": "<descriptive run name>",
   "date": "<date>",
-  "summary": {"total":14,"passed":10,"failed":2,"blocked":2,"naDescoped":0,"notRun":0},
+  "summary": {"total":14,"passed":9,"failed":2,"blocked":2,"warnings":1,"viewMismatch":0,"naDescoped":0,"notRun":0},
   "testCases": [
     {
       "name": "suite1-product-search",
@@ -65,7 +71,8 @@ summary.
       "status": "failed",
       "steps": [
         {"desc":"Search common term 'shirt'","status":"passed","note":"13 product cards returned"},
-        {"desc":"Search nonsense term 'zzzxqq'","status":"failed","note":"0 cards, no 'no results' text. See Defect #1."}
+        {"desc":"Search nonsense term 'zzzxqq'","status":"failed","note":"0 cards, no 'no results' text. See Defect #1."},
+        {"desc":"ui-check: figma 12:34 — mode: reference","status":"warning","note":"enumerated details OK; sidebar drifted below the fold"}
       ]
     }
   ]
@@ -73,7 +80,7 @@ summary.
 ```
 
 A test case's top-level `status` is the rollup (worst status among its steps: failed > blocked >
-na > notrun > passed).
+viewMismatch > warning > na > notrun > passed).
 
 ## Output placement
 `extent-report.html` lives at the run folder root next to `report.md` (see the browser-testing

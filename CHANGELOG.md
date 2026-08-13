@@ -2,7 +2,36 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.15.0] — 2026-08-13
+### Added
+- **`ui-check:` spec steps — design conformance inside test runs.** A scenario can now
+  assert "this screen matches the approved design" as an executed, evidenced step:
+  `ui-check: figma <node-id|frame URL>` or `ui-check: image <path>`, each with
+  `mode: exact` (every visible detail; no silent tolerance — suspected rendering noise
+  is confirmed with the user before any verdict) or `mode: reference` (only the
+  enumerated details can fail; layout drift is a warning). A new `ui-check` skill owns
+  the semantics; the bundled `fetch_baseline.js` resolves baselines deterministically
+  (Figma REST render downloaded before the short-lived URL expires, node-id
+  normalization, variant enumeration, structural image validation) and exits
+  OK/BLOCKED only — an unresolvable baseline is BLOCKED with a named reason, never
+  improvised. Same form factor is mandatory (mismatch = a named **view mismatch
+  error**, never PASS/FAIL); named viewports ship with defaults (desktop 1440×900,
+  tablet 768×1024, mobile 390×844), overridable via a `viewports` block. Both images
+  land in the run's evidence tree; a failed check files through the existing Azure bug
+  flow with baseline + actual attached. Docs: `docs/ui-check.md`.
+- **extent-report: first-class `warning` and `viewMismatch` statuses.** The
+  run-summary JSON contract widens from 5 to 7 statuses — own colors, pills, stat
+  cards, legend rows, and donut segments; coverage counts both as exercised. Backward
+  compatible: run-summary JSONs without the new keys render exactly as before.
+- **Figma config plumbing.** `config/project.json` template gains the `figma` block
+  (`{ "fileKey": "", "token": { "envSecret": "FIGMA_TOKEN" } }`), `.env.example` the
+  `FIGMA_TOKEN=` key, the setup wizard an optional Figma step, and
+  `scripts/migrations/09-figma-config.js` adds both to existing projects
+  additively/idempotently (house rule: scaffold-convention change ⇒ migration).
+- Eval cases: `trigger-ui-check` plus four discipline cases
+  (`blocked-baseline`, `view-mismatch`, `reference-mode`, `exact-noise`) with
+  schematic screenshot fixtures — no network needed.
+
 ### Changed
 - Wizard UI polish: SVG logo mark (replaces the emoji glyph), real stepper
   connector elements instead of the `::before` hack, intro layout/spacing cleanup.

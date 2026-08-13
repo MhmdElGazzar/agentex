@@ -11,5 +11,9 @@
     "baseUrl": "",
     "project": ""
   },
+  "figma": {
+    "fileKey": "",
+    "token": { "envSecret": "FIGMA_TOKEN" }
+  },
   "login": { "mode": "session" }
 }

@@ -518,6 +518,54 @@ test('init.js stamp gate: each legacy signal alone withholds the stamp', () => {
   }
 });
 
+// ── m09 figma-config — additive scaffold-convention carry ─────────────────────
+test('m09: pre-figma project gains the empty figma block and the FIGMA_TOKEN key', () => {
+  // A project scaffolded by a pre-0.15 plugin: full current layout, minus figma.
+  const dir = repo({
+    'test/suite1/a.md': SPEC_02,
+    'config/project.json': { name: 'pre-figma', defaultEnvironment: 'qa', login: { mode: 'session' } },
+    'environments/qa.json': { portalUrl: 'https://x.test', defaults: {}, users: { u: {} } },
+    '.gitignore': '.env\n',
+    '.env': `AZURE_PAT=${SENTINELS.pat}\nSQLCMDPASSWORD=${SENTINELS.dbpw}\n`,
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] figma-config/);
+  assert.deepStrictEqual(readJson(dir, 'config/project.json').figma,
+    { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } });
+  const env = readText(dir, '.env');
+  assert.match(env, /^FIGMA_TOKEN=$/m, 'FIGMA_TOKEN key appended to .env');
+  assert.match(env, new RegExp(`^AZURE_PAT=${SENTINELS.pat}$`, 'm'), 'existing secrets untouched');
+});
+
+test('m09: existing figma config and FIGMA_TOKEN value are never rewritten', () => {
+  const dir = repo({
+    'test/suite1/a.md': SPEC_02,
+    'config/project.json': {
+      name: 'has-figma', defaultEnvironment: 'qa', login: { mode: 'session' },
+      figma: { fileKey: 'MYKEY', token: { envSecret: 'MY_FIGMA_VAR' } },
+    },
+    'environments/qa.json': { portalUrl: 'https://x.test', defaults: {}, users: { u: {} } },
+    '.gitignore': '.env\n',
+    '.env': 'FIGMA_TOKEN=keep-this-value\n',
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.deepStrictEqual(readJson(dir, 'config/project.json').figma,
+    { fileKey: 'MYKEY', token: { envSecret: 'MY_FIGMA_VAR' } }, 'user figma block untouched');
+  const env = readText(dir, '.env');
+  assert.strictEqual(env.match(/^FIGMA_TOKEN=/gm).length, 1, 'no duplicate FIGMA_TOKEN key');
+  assert.match(env, /^FIGMA_TOKEN=keep-this-value$/m, 'existing value untouched');
+});
+
+test('m09 + init: fresh scaffold carries the figma block and the FIGMA_TOKEN key', () => {
+  const dir = proj();
+  runInit(dir);
+  assert.deepStrictEqual(readJson(dir, 'config/project.json').figma,
+    { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } });
+  assert.match(readText(dir, '.env'), /^FIGMA_TOKEN=$/m, '.env scaffold keeps the key, blanks the value');
+});
+
 // ── secrecy ───────────────────────────────────────────────────────────────────
 test('no secret value ever appears in any migration output', () => {
   assert.ok(ALL_OUTPUT.length > 0, 'outputs were collected');

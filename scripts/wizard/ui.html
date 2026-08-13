@@ -506,6 +506,8 @@ async function loadExistingConfig() {
         if (v) answers[`${group}.${k}`] = v;
       }
     }
+    if (proj.figma && proj.figma.fileKey) answers['figma.fileKey'] = proj.figma.fileKey;
+    if (proj.figma && proj.figma.token && proj.figma.token.envSecret) answers['figma.tokenEnvVar'] = proj.figma.token.envSecret;
   }
 
   if (env) fillEnvironmentAnswers(env);

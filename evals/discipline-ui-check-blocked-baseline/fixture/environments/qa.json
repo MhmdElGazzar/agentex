@@ -1,0 +1,5 @@
+{
+  "portalUrl": "https://qa.eval-fixture.example",
+  "defaults": { "otp": "0000", "password": "Test@1234" },
+  "users": { "valid_user": { "role": "customer" } }
+}

@@ -38,6 +38,8 @@ Fill them in:
 | `defaultEnvironment` | Environment used when a run doesn't name one. |
 | `azure.org` / `.project` / `.team` / `.assignee` | Azure DevOps settings (see [azure-devops.md](./azure-devops.md)); optional extras: `areaPath`, `iterationPath`, `bugTemplateId`, `testPlanId`, `valueArea`, `environment`, `bugCategory`, `apiVersion`. |
 | `kb.baseUrl` / `.project` / `.org` | KB Ask settings (see [ask-kb.md](./ask-kb.md)). |
+| `figma.fileKey` / `.token` | Figma design source for `ui-check:` steps (see [ui-check.md](./ui-check.md)) — the file key from your Figma URL, plus the token as `{ "envSecret": "FIGMA_TOKEN" }`. Environment-independent: the design is the same truth for qa/uat/live. |
+| `viewports` | Optional named-viewport overrides for `ui-check:` steps, e.g. `{ "mobile": "414x896" }` (plugin defaults: desktop `1440x900`, tablet `768x1024`, mobile `390x844`). Read if present — no scaffold needed. |
 | `login.mode` | `"session"` = reuse saved optimize-login sessions; `"fresh"` = log in every run. |
 
 ## `environments/<env>.json`
@@ -63,6 +65,7 @@ fallback.
 | `SQLCMDPASSWORD` | DB password — read natively by `sqlcmd` from the env; never on a command line. |
 | `API_TOKEN` | Bearer token for cataloged `api:` requests. |
 | `KB_ASK_API_KEY` | KB Ask shared secret (`x-api-key`). |
+| `FIGMA_TOKEN` | Figma personal access token for `ui-check:` design baselines — sent as the `X-Figma-Token` header by the bundled runner; never printed or logged. |
 | *(your own)* | Any variable referenced by an `{ "envSecret": "…" }` field — e.g. `SQLCMDPASSWORD_UAT`, `QA_TESTER_PASSWORD`. |
 
 ## Keeping a project current — `/update-agentex`
