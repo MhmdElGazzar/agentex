@@ -63,3 +63,23 @@ lines (`DECISION:` / `COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`).
 | discipline-define-flow-execute-before-next | authored, not yet executed |
 | discipline-define-flow-forward-only | authored, not yet executed |
 | discipline-define-flow-symbolic-values | authored, not yet executed |
+
+## define-flow validation lanes
+
+`/define-flow` validates in two lanes (design decision, 2026-08-13):
+
+- **Automated** — the house-pattern cases above (`trigger-define-flow` +
+  `discipline-define-flow-*`) cover the protocol half: the skill fires from its
+  description, execute-before-next, forward-only correction, symbolic value capture — plus
+  the genericness check (no employer/org data; grep, not a case).
+- **Live** — manual definition sessions against a public QA practice target (default:
+  `https://automationexercise.com`; any equivalent public practice app may substitute — no
+  bundled fixture app in v1), disposable data only. These cover the end-to-end half:
+  captured values (app-surfaced and user-supplied fresh disposable data) resolving on a
+  fresh `/execute-test` run, convention conformance of the saved spec, a 15+-step session
+  completing in one sitting, and the existing-spec walkthrough (new file + top note on the
+  original). Record each session's outcome as a dated row below, house QA-gate pattern.
+
+| date | live session | result |
+|---|---|---|
+| — | — | no live define-flow sessions run yet |

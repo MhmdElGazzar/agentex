@@ -28,15 +28,22 @@ Here's what happens:
    browser and Claude shows you the actual outcome (screenshot + what it observed).
 3. **You assert** — confirm the result, or correct the step and Claude re-runs it. Correction
    is **forward-only**: you can fix the step that just ran, but earlier confirmed steps are
-   locked (you can always edit the saved spec file afterwards). After each confirmed step
+   locked (you can always edit the saved spec file afterwards). Every confirmed step is also
+   appended immediately to a running draft, so a crash or disconnect at step 14 loses
+   nothing already confirmed. After each confirmed step
    Claude shows the numbered list so far, so an 18-step flow never loses the thread.
 4. **Values flow forward** — when a step surfaces something (an order number the app
    generated, an option on the page), Claude offers it: "use this later?" Selected values are
    written into the spec **symbolically** ("the order number produced in step 3"), so a fresh
-   run resolves them live instead of replaying a stale literal.
-5. **Save** — when you say the flow is complete, Claude assembles a normal spec file
-   (Target, acceptance criteria, numbered scenarios marked as a stateful chain, notes) and
-   proposes a name under your suite folder (default `test/suite1/<slug>.md`).
+   run resolves them live instead of replaying a stale literal. Inputs you supply that must
+   be unique per run get the same treatment — a registration email or a new record's name is
+   recorded as fresh disposable data ("register with a fresh disposable email"), with your
+   session's value kept only as an inline example, so the saved spec still passes on re-runs
+   of a create/register flow.
+5. **Save** — when you say the flow is complete, Claude promotes the running draft to a
+   normal spec file (Target, acceptance criteria, numbered scenarios marked as a stateful
+   chain, notes) and proposes a name under your suite folder (default
+   `test/suite1/<slug>.md`).
 6. **Prove it twice (optional)** — Claude offers to immediately re-run the fresh spec via
    `/execute-test`. Every step already passed during definition; the fresh run proves the
    spec stands on its own.
@@ -44,7 +51,9 @@ Here's what happens:
 Steps that reach beyond the browser (`api:` / `db:` / `kb:`) work here too — but only
 entries already defined in your `integration/` catalog, exactly as in test runs.
 
-A definition session is **one sitting** (no pause/resume), and because you direct every
+A definition session is **one sitting** (no pause/resume) — though if you must stop early,
+the steps you already confirmed can be saved as a partial spec, clearly marked incomplete.
+And because you direct every
 step, Claude executes what you approve without second-guessing — including add/edit/delete
 steps. Run definition sessions against a test environment you're responsible for.
 
