@@ -176,7 +176,9 @@ function normalizeNodeId(s) {
 }
 
 const cwd = process.cwd();
-const figma = pc.loadProjectConfig(cwd).figma;
+let figma;
+try { figma = pc.loadProjectConfig(cwd).figma; }
+catch (e) { blocked(e.message); } // e.g. "invalid JSON in <cwd>/config/project.json: …" (run_api.js precedent)
 if (!figma || typeof figma !== 'object') {
   blocked('config/project.json has no "figma" block — add { "fileKey": "...", "token": { "envSecret": "FIGMA_TOKEN" } } (or run /update-agentex to scaffold it)');
 }

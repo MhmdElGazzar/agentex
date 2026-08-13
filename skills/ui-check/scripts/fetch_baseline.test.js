@@ -307,6 +307,16 @@ const FRAME_NODE = (id, name, w, h, type = 'FRAME', children) => ({
     assert.ok(calls.some(c => c.url.startsWith('/v1/images/') && c.url.includes('scale=2')), 'scale param sent');
   });
 
+  await test('figma: invalid JSON in config/project.json -> BLOCKED naming the file, exit 2', async () => {
+    const dir = proj({ 'config/project.json': '{ "name": "broken", ' }); // corrupt JSON
+    const { code, out } = await run(dir, ['--source', 'figma', '--id', '1:2',
+      '--out', path.join(dir, 'b.png'), '--log', path.join(dir, 'c.log')]);
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.result, 'BLOCKED');
+    assert.match(out.reason, /invalid JSON/i);
+    assert.match(out.reason, /project\.json/);
+  });
+
   await test('usage: missing required args -> BLOCKED, exit 2', async () => {
     const dir = proj({});
     const { code, out } = await run(dir, ['--source', 'figma']);
