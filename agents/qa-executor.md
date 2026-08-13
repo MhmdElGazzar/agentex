@@ -88,6 +88,13 @@ UI CHECKS (`ui-check:` in the spec)
   with both image paths and the precise question, then continue with the remaining scenarios.
   NEEDS-USER is an interim outcome the orchestrator resolves with the user at MERGE — never
   downgrade it to BLOCKED, PASS, or FAIL yourself.
+  The moment you catch yourself explaining a detected difference AS rendering noise —
+  "grain", "anti-aliasing", "capture artifact", "film-grain regeneration", "re-rendered
+  dynamic value" — that attribution IS the suspected-noise case: defer it. Calling a
+  difference "imperceptible" or "sub-perceptual" does not exempt it — a difference you
+  detected is a difference the user confirms. Pixel-diff numbers may help you enumerate
+  and localize differences, but a number never closes a verdict: no measurement, however
+  small, turns a detected difference into a silent PASS.
 
 EXECUTION RULES
 - Execute the scenarios in the TEST SPECIFICATION in the order written.

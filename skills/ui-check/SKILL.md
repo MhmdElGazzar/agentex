@@ -110,7 +110,10 @@ gestalt glancing.
     dynamic data like dates/IDs/order numbers) → **confirm with the user BEFORE issuing
     any verdict** (sequential: ask now; parallel: report NEEDS-USER for MERGE-time
     resolution). **No numeric tolerance threshold, ever** — noise is confirmed, not
-    assumed.
+    assumed. Attributing a detected difference to noise IS this case — the attribution
+    itself triggers the confirmation; "imperceptible" or "sub-perceptual" does not
+    exempt a difference you detected. Pixel-diff numbers may inform what you enumerate,
+    but a number never closes a verdict.
 - **`reference` mode:** PASS/FAIL is decided **only** by the enumerated details.
   - A violated enumerated detail → **FAIL naming it**.
   - All details correct but the overall layout/structure visibly drifts from the
