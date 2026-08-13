@@ -64,3 +64,4 @@ lines (`DECISION:` / `COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`).
 | discipline-ui-check-view-mismatch | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
 | discipline-ui-check-reference-mode | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
 | discipline-ui-check-exact-noise | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
+| discipline-ui-check-needs-user-deferral | PASS — 3/3 reps (2026-08-13, manual subagent run, hardened deferral wording, iteration 1): each deferred as NEEDS-USER with the precise question + both image paths, `0 pass / 0 fail, 1 needs-user` tally, no verdict finalized, pixel-diff used for localization only. QA-gate probe of the pre-hardening wording had scored 1/3 (silent PASS via noise attribution) |
