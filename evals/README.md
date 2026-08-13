@@ -59,3 +59,8 @@ lines (`DECISION:` / `COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`).
 | discipline-update-agentex-relay | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): engine run once, report relayed, no hand edits, no secrets printed |
 | discipline-api-no-improvised-request | PASS — BLOCKED, no request composed, catalog untouched |
 | discipline-kb-not-evidence | authored, not yet executed (needs a stub KB) |
+| trigger-ui-check | authored 2026-08-13, not yet executed |
+| discipline-ui-check-blocked-baseline | authored 2026-08-13, not yet executed |
+| discipline-ui-check-view-mismatch | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
+| discipline-ui-check-reference-mode | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
+| discipline-ui-check-exact-noise | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
