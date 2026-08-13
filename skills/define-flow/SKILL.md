@@ -89,7 +89,14 @@ Repeat until the user says the flow is complete:
    concrete session value kept only as an inline example (e.g. "the order number produced in
    step 3 (this session: #48291)"). Never record the literal as the step's target — a fresh
    run must resolve the value live, not replay a stale one.
-5. **Integration steps.** If the user wants a beyond-the-browser check (`api:` / `db:` /
+5. **Capture user-supplied data the same way.** Input data the user provides during
+   definition (a registration email, a record name) that must be unique or fresh for the
+   flow to succeed again is recorded **symbolically** as fresh disposable data ("register
+   with a fresh disposable email"), with the session's concrete value kept only as an inline
+   example — mirroring app-surfaced values, and surfaced under the spec's Notes as
+   disposable-data guidance per `test/README.md`. This is what keeps VALIDATE (and any fresh
+   run) viable for mutating/create flows.
+6. **Integration steps.** If the user wants a beyond-the-browser check (`api:` / `db:` /
    `kb:`), only entries defined in the project's `integration/*_api.json` / `*_db.json`
    catalog may run — execute them live via the **api-integration** / **db-integration** /
    **ask-kb** skills' runner scripts (read the relevant SKILL.md before the first such step),
@@ -109,7 +116,7 @@ When the user says the flow is complete:
    - **Scenarios** — the confirmed steps, numbered, in order, each with its expected result;
      **marked as a stateful chain** ("stateful — run in order, in one session").
    - **Notes** — stateful order, disposable data used, and each symbolically captured value
-     with its inline example.
+     (app-surfaced, and user-supplied fresh disposable data) with its inline example.
 2. Propose a file name under the user's suite folder — default `test/suite1/<slug>.md`, slug
    derived from the flow's goal. Save only on the user's confirmation.
 3. Clean the transient `.playwright-cli/` scratch.
