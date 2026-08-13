@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.16.0] — 2026-08-13
 ### Added
 - **`/define-flow` — guided flow definition.** The flow is defined by doing it, not by
   writing it: an agent-led session proposes each step, executes it in a live browser the
