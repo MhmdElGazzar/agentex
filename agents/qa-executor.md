@@ -22,8 +22,10 @@ TEST SPECIFICATION:
 BROWSER TOOL
 - Use `npx playwright-cli` for all browser actions, run from WORKING_DIR. Run HEADLESS
   (do NOT pass --headed) unless told otherwise.
-- CRITICAL ISOLATION: prefix EVERY command with `-s={{SESSION}}`. Never touch the `default`
-  session or any other agent's session. Example:
+- CRITICAL ISOLATION: prefix EVERY command with `-s={{SESSION}}` — a command with no `-s=`
+  lands in the prohibited shared `default` session. Never touch the `default` session or any
+  other agent's session, and NEVER run `close-all` / `kill-all` — they kill every agent's
+  browser, other executions' included. Example:
     npx playwright-cli -s={{SESSION}} open {{TARGET_URL}}
     npx playwright-cli -s={{SESSION}} snapshot
 - Run `snapshot` to get element refs BEFORE interacting; refs change after navigation, so
@@ -105,7 +107,8 @@ EXECUTION RULES
 - Never read or print secrets.
 - For any "success" UI, verify the element's computed display/visibility via `eval` — do not
   trust that the text merely exists in the DOM (it may be static markup).
-- Teardown: run `npx playwright-cli -s={{SESSION}} close` when finished (even on failure).
+- Teardown: run `npx playwright-cli -s={{SESSION}} close` when finished (even on failure) —
+  close ONLY {{SESSION}}, never `close-all` / `kill-all`.
 
 OUTPUT (your final message only — it is consumed by the orchestrator, not a human):
 - A heading naming the test you ran.

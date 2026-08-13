@@ -25,6 +25,8 @@
       "Bash(sqlcmd:*)"
     ],
     "ask": [
+      "Bash(npx playwright-cli close-all:*)",
+      "Bash(npx playwright-cli kill-all:*)",
       "Bash(az boards work-item delete:*)",
       "Bash(az webapp deploy:*)",
       "Bash(az storage blob upload:*)",

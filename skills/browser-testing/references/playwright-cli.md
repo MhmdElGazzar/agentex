@@ -32,10 +32,19 @@ when a `playwright-cli` command behaves unexpectedly.
   `npx playwright-cli -s=<s> run-code "async (page) => { const r=[]; page.on('request',q=>r.push(q.method()+' '+q.url())); await page.click('#x'); await page.waitForTimeout(1500); return JSON.stringify(r); }"`
 
 ## Sessions
-- `-s=<session>` selects a named browser session. **Parallel runs MUST each use their own
-  `-s=<session>`** so browsers don't collide; sequential runs may use the default session.
-- `list` — list sessions · `close` — close one (`-s=<session> close`) · `close-all` /
-  `kill-all` — close/kill all (kill for stale/zombie processes).
+- `-s=<session>` selects a named browser session. **EVERY command in EVERY run — sequential
+  and parallel — MUST carry its own `-s=<session>`.** A command with no `-s=` lands in the
+  shared `default` session, where concurrent executions (e.g. another Claude Code window on
+  the same machine) collide — the **`default` session is prohibited**.
+- Session names are per-execution and unique: the browser-testing `init_run.js` generates
+  them (label + time + random tag, collision-checked against existing executions; the label
+  `default` is rejected). Never invent a bare name like `test` and never reuse another
+  execution's name.
+- `list` — list sessions · `close` — close one (`-s=<session> close`).
+- **Teardown discipline: close ONLY the sessions this execution created.** `close-all` /
+  `kill-all` are forbidden during any run — they kill every session on the machine, other
+  executions' browsers included. Run them only when the user explicitly asks for a global
+  cleanup AND confirms no other execution is running.
 - `show` — open the playwright dashboard to watch sessions (works for headless too).
 
 ## Concurrency

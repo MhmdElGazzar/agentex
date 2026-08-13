@@ -87,6 +87,9 @@ executions/execu_<YYYY-MM-DD_HH-MM-SS>/
 ├── browser-sessions/<session>/{logs,screenshots}/
 └── bugs/{bug-list.md,screenshots/}
 ```
+`<session>` names are generated unique per run (never playwright-cli's shared `default`
+session), so two runs — even two Claude Code windows on the same machine — never share a
+browser, and each run closes only the browsers it opened.
 
 **Setup:**
 ```bash

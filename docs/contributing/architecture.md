@@ -75,7 +75,9 @@ of `mkdir`s — see [testing.md](./testing.md) for how scripts like this get tes
 
 **When:** parallel/autonomous mode — one spec file, one subagent, one session.
 
-**When not:** sequential mode — a single `default` session, no dispatch needed.
+**When not:** sequential mode — a single uniquely-named session driven by the main agent, no
+dispatch needed (in every mode, session names come from `init_run.js`; the shared
+playwright-cli `default` session is prohibited).
 
 **How:** the main agent batches dispatch (one call, many subagents), injecting each one's
 `SESSION`/`SESSION_DIR`/`TARGET_URL`/`TEST_SPEC`.

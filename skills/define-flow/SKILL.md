@@ -58,8 +58,10 @@ mid-run interaction.
    BLOCKED). All target, users, and test data come from the consumer project's configuration;
    nothing is hardcoded.
 2. **Read `${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/references/playwright-cli.md`**
-   before the first browser action. A definition session is single-session: use the default
-   playwright-cli session (no `-s=` fan-out).
+   before the first browser action. A definition session is single-session (no `-s=`
+   fan-out) but NEVER the default playwright-cli session: generate one unique name —
+   `define-<HHMMSS>-<4 random hex chars>` — and prefix every command with `-s=<that name>`.
+   Only that session may be closed at the end; `close-all` / `kill-all` are forbidden.
 3. **If the flow needs authentication**, apply the **optimize-login** skill (read its
    SKILL.md): pay the login once, verify by landmark, and continue the session logged in.
 4. **Ask the user for the flow's goal in one sentence.** It becomes the spec's title and
@@ -124,8 +126,9 @@ When the user says the flow is complete:
      (app-surfaced, and user-supplied fresh disposable data) with its inline example.
 2. Propose a file name under the user's suite folder — default `test/suite1/<slug>.md`, slug
    derived from the flow's goal. Save only on the user's confirmation.
-3. Clean the transient `.playwright-cli/` scratch — draft included — once the final spec is
-   saved.
+3. Close the session's browser (`-s=<session> close` — only your own session, never
+   `close-all`/`kill-all`), then clean the transient `.playwright-cli/` scratch — draft
+   included — once the final spec is saved.
 
 ## 4. VALIDATE (offered, not forced)
 
