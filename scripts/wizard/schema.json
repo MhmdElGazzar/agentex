@@ -341,6 +341,51 @@
       ]
     },
     {
+      "id": "figma",
+      "title": "Figma",
+      "titleEn": "Figma",
+      "description": "إعدادات Figma لخطوات ui-check (مقارنة الصفحة بالتصميم) — اختياري",
+      "descriptionEn": "Figma settings for ui-check: design-conformance steps (optional)",
+      "icon": "🎨",
+      "target": "config/project.json",
+      "optional": true,
+      "fields": [
+        {
+          "key": "figma.fileKey",
+          "label": "File Key",
+          "labelEn": "File Key",
+          "type": "text",
+          "placeholder": "AbCdEf123456",
+          "required": false,
+          "hint": "مفتاح ملف Figma من الرابط: figma.com/design/<FILE KEY>/...",
+          "aiHint": "Figma file key (the path segment after /design/ or /file/ in a Figma URL)"
+        },
+        {
+          "key": "figma.tokenEnvVar",
+          "label": "متغير الـ Token",
+          "labelEn": "Token Env Var",
+          "type": "text",
+          "placeholder": "FIGMA_TOKEN",
+          "default": "FIGMA_TOKEN",
+          "required": false,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
+          "aiHint": "environment variable name for the Figma personal access token"
+        },
+        {
+          "key": "figma.token",
+          "label": "Figma Personal Access Token",
+          "type": "password",
+          "placeholder": "figd_xxxxxxxxxxxx",
+          "required": false,
+          "secret": true,
+          "envKey": "FIGMA_TOKEN",
+          "envKeyFrom": "figma.tokenEnvVar",
+          "aiHint": "Figma personal access token"
+        }
+      ]
+    },
+    {
       "id": "review",
       "title": "مراجعة وحفظ",
       "titleEn": "Review & Save",

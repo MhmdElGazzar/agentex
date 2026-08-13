@@ -59,6 +59,14 @@ function buildConfigs(answers, steps) {
     };
   }
 
+  // Figma block (only if a file key is provided) — ui-check: design baselines
+  if (answers['figma.fileKey']) {
+    projectConfig.figma = {
+      fileKey: answers['figma.fileKey'],
+      token: { envSecret: answers['figma.tokenEnvVar'] || 'FIGMA_TOKEN' },
+    };
+  }
+
   // Strip empty azure block
   if (!projectConfig.azure.org && !projectConfig.azure.project &&
       !projectConfig.azure.team && !projectConfig.azure.assignee) {
