@@ -129,16 +129,25 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
    as `{ envSecret }` refs — the executor resolves them only at use time and never prints
    them). Each uses its own `-s=<session>`. Launch them in a single batch so they run
    concurrently. Expect ~6–8 browser sessions to run at once; the rest queue automatically.
-4. **MERGE** — Collect each subagent's report; write the final `report.md` and build `bugs/`
-   (`bug-list.md` + copy the bug-evidence screenshots each subagent flagged) inside the execution
-   folder. Use the defect format below. Optionally generate an interactive `extent-report.html`
-   next to `report.md` via the **extent-report** skill.
+4. **MERGE** — Collect each subagent's report. **Resolve deferred ui-check questions first:**
+   executors cannot ask the user mid-run, so a `ui-check:` step needing a confirmation
+   (exact-mode suspected rendering noise) or a stop-and-ask (an unintelligible variant set)
+   comes back as a **NEEDS-USER** item. Surface every NEEDS-USER item to the user now — the
+   precise question plus both image paths (baseline + actual) — collect the answers, and
+   finalize those verdicts per the ui-check skill's rules. NEEDS-USER is never degraded to
+   BLOCKED and never appears in a final report. Only then write the final `report.md` and
+   build `bugs/` (`bug-list.md` + copy the bug-evidence screenshots each subagent flagged,
+   including any ui-check FAILs finalized here) inside the execution folder. Use the defect
+   format below. Optionally generate an interactive `extent-report.html` next to `report.md`
+   via the **extent-report** skill.
 5. **PRESENT** — Show the merged summary.
 
 Autonomy boundary (applies in parallel mode): still never modify app source, never create real
 accounts or complete checkout, never print secrets, never use real personal data (use disposable
 values like `qa.tester@example.com`). If the overall scope is ambiguous, ask once before
-dispatching; otherwise proceed without pausing.
+dispatching; otherwise proceed without pausing. MERGE-time resolution of deferred ui-check
+NEEDS-USER questions is the one sanctioned mid-flow user interaction — it happens after all
+executors finish and before the final report is written.
 
 ## Defect reporting format
 - **Title** — concise, action-oriented

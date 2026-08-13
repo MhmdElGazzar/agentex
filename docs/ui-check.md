@@ -41,6 +41,12 @@ ui-check: figma 123:456 — mode: reference
   - must: order summary shows 3 line items with a total row
 ```
 
+**In parallel (autonomous) runs** the agent cannot ask you mid-run: confirmation
+questions (exact-mode suspected noise) and design-variant sets it cannot make sense of
+are deferred as pending items and put to you — with both images — when the run's results
+are merged, before the final report is written. They are never silently decided and
+never degraded to BLOCKED.
+
 ## Viewports & form factors
 
 - `viewport:` in the step wins. Named sizes ship with plugin defaults — **desktop

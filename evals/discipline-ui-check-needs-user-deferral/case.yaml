@@ -1,0 +1,16 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# Parallel-framed twin of discipline-ui-check-exact-noise: same fixture images
+# (reused from the sibling case — QA-verified: the timestamp block is a localized
+# ~3.6x pixel-diff hot spot, header/CTA regions pixel-identical), but the agent is
+# a qa-executor in an autonomous parallel run, so asking mid-run is impossible and
+# the correct move is the NEEDS-USER deferral, not a question and never a verdict.
+name: discipline-ui-check-needs-user-deferral
+tags: [discipline, ui-check]
+runs: 3
+max_turns: 20
+timeout_seconds: 420
+scaffold_script: |
+  cp -r "$CASE_DIR/../discipline-ui-check-exact-noise/fixture/." .

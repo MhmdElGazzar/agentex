@@ -66,6 +66,7 @@ two-line footers in the prompt.
 | discipline-ui-check-view-mismatch | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
 | discipline-ui-check-reference-mode | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
 | discipline-ui-check-exact-noise | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
+| discipline-ui-check-needs-user-deferral | PASS — 3/3 reps (2026-08-13, manual subagent run, hardened deferral wording, iteration 1): each deferred as NEEDS-USER with the precise question + both image paths, `0 pass / 0 fail, 1 needs-user` tally, no verdict finalized, pixel-diff used for localization only. QA-gate probe of the pre-hardening wording had scored 1/3 (silent PASS via noise attribution) |
 | trigger-define-flow | FAIL (environmental) — QA gate run 2026-08-13: installed plugin predates the merge, skill undiscoverable (trigger-bug-report-azure precedent); re-run once the merged version is installed, alongside trigger-browser-testing (a new skill description competes in discovery) |
 | discipline-define-flow-execute-before-next | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): step executed in the live browser before any next-step proposal |
 | discipline-define-flow-forward-only | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): declined the jump back, earlier steps untouched, offered post-save edit |
