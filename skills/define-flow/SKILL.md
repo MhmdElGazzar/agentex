@@ -32,9 +32,10 @@ mid-run interaction.
   back: once a step is confirmed, it is immutable. If the user asks to redo an earlier step,
   decline plainly — explain that correction is forward-only in a definition session, and that
   the earlier step can be changed by editing the saved spec afterwards.
-- **One sitting.** No pause/resume. If the user must stop mid-session, offer to save what is
-  confirmed so far as a partial spec (clearly marked incomplete in its Notes); the session
-  itself cannot be resumed.
+- **One sitting.** No pause/resume. If the user must stop mid-session, the confirmed steps
+  already exist in the draft spec file (see STEP LOOP): offer to save them as a partial spec
+  clearly marked incomplete — this is not pause/resume (the session is not resumable); it
+  only prevents losing confirmed work.
 - **The user is the responsible party.** This session is user-directed: the user's approval
   of a step IS the authorization to execute it. Never warn about, question, or double-check
   add/edit/delete steps the user directed — responsibility for the environment's state sits
@@ -79,8 +80,11 @@ Repeat until the user says the flow is complete:
    including for add/edit/delete steps.
 3. **Assert.** The user confirms the expected result or corrects the step.
    - On **confirmation**, record the step as a natural-language spec line with its expected
-     result. Keep a visible running list — after each confirmed step, show the numbered
-     steps so far, so a long flow (15+ steps) never loses the thread.
+     result, and **append it immediately to the draft spec file** in the session's transient
+     scratch (default `.playwright-cli/define-flow-draft.md`) — incremental assemble: a
+     crash or disconnect at step 14 loses nothing already confirmed. Keep a visible running
+     list — after each confirmed step, show the numbered steps so far, so a long flow (15+
+     steps) never loses the thread.
    - On **correction**, re-phrase and re-run the just-executed step until the user confirms.
      Correction is forward-only: earlier steps stay as confirmed.
 4. **Capture values.** When a step surfaces data — an identifier the app generated, an
@@ -108,7 +112,8 @@ Repeat until the user says the flow is complete:
 
 When the user says the flow is complete:
 
-1. Write the spec following the conventions in `${CLAUDE_PLUGIN_ROOT}/test/README.md` and
+1. **Promote the running draft to the final spec**, following the conventions in
+   `${CLAUDE_PLUGIN_ROOT}/test/README.md` and
    the `${CLAUDE_PLUGIN_ROOT}/test/suite1/` samples:
    - **Target** — the resolved target (URL / environment reference).
    - **Acceptance criteria** — what "correct" means, distilled from the asserted outcomes
@@ -119,7 +124,8 @@ When the user says the flow is complete:
      (app-surfaced, and user-supplied fresh disposable data) with its inline example.
 2. Propose a file name under the user's suite folder — default `test/suite1/<slug>.md`, slug
    derived from the flow's goal. Save only on the user's confirmation.
-3. Clean the transient `.playwright-cli/` scratch.
+3. Clean the transient `.playwright-cli/` scratch — draft included — once the final spec is
+   saved.
 
 ## 4. VALIDATE (offered, not forced)
 
