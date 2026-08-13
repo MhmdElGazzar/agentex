@@ -7,16 +7,20 @@
 // {
 //   "title": "Suite1+Suite2 Parallel Run",
 //   "date": "2026-07-08",
-//   "summary": {"total":14,"passed":10,"failed":2,"blocked":2,"naDescoped":0,"notRun":0},
+//   "summary": {"total":14,"passed":10,"failed":2,"blocked":2,"naDescoped":0,"notRun":0,
+//               "warnings":0,"viewMismatch":0},
 //   "testCases": [
 //     {
 //       "name": "suite1-product-search",
 //       "spec": "test/suite1/product-search.md",
 //       "status": "failed",
-//       "steps": [ {"desc":"...", "status":"passed|failed|blocked|na|notrun", "note":"..."} ]
+//       "steps": [ {"desc":"...", "status":"passed|failed|blocked|na|notrun|warning|viewMismatch", "note":"..."} ]
 //     }
 //   ]
 // }
+// `warnings` / `viewMismatch` counts and the `warning` / `viewMismatch` statuses are
+// first-class ui-check outcomes (own colors, pills, stat cards, donut segments).
+// Both are optional — a run-summary JSON without them renders exactly as before.
 const fs = require('fs');
 
 const inPath = process.argv[2];
@@ -31,18 +35,27 @@ const { title, date, summary, testCases } = data;
 
 const COLORS = {
   passed: '#2E9E4F',
+  warning: '#EAC54F',
   failed: '#D6293E',
   blocked: '#F2A93B',
+  viewMismatch: '#4D9DE0',
   naDescoped: '#8B5CF6',
   notRun: '#B0B0B0',
 };
 const LABELS = {
   passed: 'Passed',
+  warning: 'Warning',
   failed: 'Failed',
   blocked: 'Blocked',
+  viewMismatch: 'View Mismatch',
   naDescoped: 'N/A - De-scoped',
   notRun: 'Not Run',
 };
+// Summary counts: the color/label key `warning` is carried as `warnings` in the
+// run-summary JSON (owner-approved vocabulary).
+function summaryCount(key) {
+  return (key === 'warning' ? summary.warnings : summary[key]) || 0;
+}
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -59,9 +72,9 @@ function polar(angleDeg, radius) {
 
 let cum = 0;
 let donutPaths = '';
-const order = ['passed', 'failed', 'blocked', 'naDescoped', 'notRun'];
+const order = ['passed', 'warning', 'failed', 'blocked', 'viewMismatch', 'naDescoped', 'notRun'];
 for (const key of order) {
-  const count = summary[key] || 0;
+  const count = summaryCount(key);
   if (count <= 0) continue;
   const pct = (count / total) * 100;
   const startAngle = cum * 3.6;
@@ -78,7 +91,10 @@ for (const key of order) {
   donutPaths += `<path d="M${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${largeArc} 1 ${x2.toFixed(2)},${y2.toFixed(2)} L${x2i.toFixed(2)},${y2i.toFixed(2)} A${rInner},${rInner} 0 ${largeArc} 0 ${x1i.toFixed(2)},${y1i.toFixed(2)} Z" fill="${COLORS[key]}" stroke="#1a2327" stroke-width="1.5"/>\n`;
 }
 
-const coveragePct = Math.round(((summary.passed || 0) + (summary.failed || 0) + (summary.blocked || 0)) / total * 100);
+// Exercised = every scenario that actually ran to an outcome (warning and
+// viewMismatch checks were executed — they count toward coverage).
+const coveragePct = Math.round(((summary.passed || 0) + (summary.failed || 0) + (summary.blocked || 0)
+  + (summary.warnings || 0) + (summary.viewMismatch || 0)) / total * 100);
 
 const donutSvg = `<svg width="220" height="220" viewBox="0 0 220 220">
   ${donutPaths}
@@ -89,14 +105,17 @@ const donutSvg = `<svg width="220" height="220" viewBox="0 0 220 220">
 // ---- status pills ----
 function statusPill(status) {
   const key = status || 'notrun';
-  const map = { passed: 'passed', failed: 'failed', blocked: 'blocked', na: 'naDescoped', notrun: 'notRun' };
+  const map = { passed: 'passed', warning: 'warning', failed: 'failed', blocked: 'blocked', viewMismatch: 'viewMismatch', na: 'naDescoped', notrun: 'notRun' };
   const colorKey = map[key] || 'notRun';
-  const label = key === 'na' ? 'N/A' : key === 'notrun' ? 'Not Run' : key.charAt(0).toUpperCase() + key.slice(1);
+  const label = key === 'na' ? 'N/A'
+    : key === 'notrun' ? 'Not Run'
+    : key === 'viewMismatch' ? 'View Mismatch'
+    : key.charAt(0).toUpperCase() + key.slice(1);
   return `<span class="pill" style="background:${COLORS[colorKey]}22;color:${COLORS[colorKey]};border:1px solid ${COLORS[colorKey]}55;">${esc(label)}</span>`;
 }
 
 function rollupColor(status) {
-  const map = { passed: COLORS.passed, failed: COLORS.failed, blocked: COLORS.blocked, na: COLORS.naDescoped, notrun: COLORS.notRun };
+  const map = { passed: COLORS.passed, warning: COLORS.warning, failed: COLORS.failed, blocked: COLORS.blocked, viewMismatch: COLORS.viewMismatch, na: COLORS.naDescoped, notrun: COLORS.notRun };
   return map[status] || COLORS.notRun;
 }
 
@@ -128,11 +147,13 @@ testCases.forEach((tc, i) => {
   </div>`;
 });
 
-const legendHtml = order.map((key) => `
+// Legend: the two ui-check statuses appear only when present, so run-summary
+// JSONs without them keep the classic 5-row legend.
+const legendHtml = order.filter((key) => !['warning', 'viewMismatch'].includes(key) || summaryCount(key) > 0).map((key) => `
   <div class="legend-item">
     <span class="dot" style="background:${COLORS[key]}"></span>
     <span class="legend-label">${LABELS[key]}</span>
-    <span class="legend-count">${summary[key] || 0}</span>
+    <span class="legend-count">${summaryCount(key)}</span>
   </div>`).join('');
 
 const html = `<div class="ext-report">
@@ -209,6 +230,8 @@ const html = `<div class="ext-report">
       <div class="stat-card" style="border-color:${COLORS.passed}66"><div class="n" style="color:${COLORS.passed}">${summary.passed || 0}</div><div class="l">PASSED</div></div>
       <div class="stat-card" style="border-color:${COLORS.failed}66"><div class="n" style="color:${COLORS.failed}">${summary.failed || 0}</div><div class="l">FAILED</div></div>
       <div class="stat-card" style="border-color:${COLORS.blocked}66"><div class="n" style="color:${COLORS.blocked}">${summary.blocked || 0}</div><div class="l">BLOCKED</div></div>
+      ${summary.warnings ? `<div class="stat-card" style="border-color:${COLORS.warning}66"><div class="n" style="color:${COLORS.warning}">${summary.warnings}</div><div class="l">WARNING</div></div>` : ''}
+      ${summary.viewMismatch ? `<div class="stat-card" style="border-color:${COLORS.viewMismatch}66"><div class="n" style="color:${COLORS.viewMismatch}">${summary.viewMismatch}</div><div class="l">VIEW MISMATCH</div></div>` : ''}
     </div>
   </div>
   ${rowsHtml}
