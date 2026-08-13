@@ -54,6 +54,9 @@ Always-on rules (full details in the files above):
   runner scripts via `--env <name>` — sequential mode included, not just parallel. Specs may
   also include **`kb:` steps** (ask the project's knowledge base a question; advisory only,
   never a PASS/FAIL) — execute via the **ask-kb** skill's runner script.
+- Specs may include **`ui-check:` steps** (compare the live page against a design baseline —
+  a Figma frame or a screenshot image) — execute via the **ui-check** skill; read it before
+  the first such step. Unresolvable baselines are BLOCKED, never improvised.
 - Helper scripts (all in `${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/scripts/`, each prints
   one JSON line): `preflight.js` — check all tools in one call at session start;
   `init_run.js --sessions a,b` — create the whole execution tree (use instead of mkdir chains);
