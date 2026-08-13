@@ -42,8 +42,10 @@ fresh session (subagent) and score the final lines against the case's grader rub
 Trigger/negative prompts end with a CHECKPOINT RULE that stops the agent before any
 external action (browser, az, network, file writes) and forces a two-line parseable
 answer (`SKILLS_INVOKED:` / `PLANNED_NEXT:`). This keeps trigger evals cheap — they
-measure discovery, not full execution. Discipline prompts instead demand four final
-lines (`DECISION:` / `COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`).
+measure discovery, not full execution. Discipline prompts instead end with a short
+case-specific parseable footer — the original cases demand four lines (`DECISION:` /
+`COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`); newer cases define their own
+two-line footers in the prompt.
 
 ## Baseline (2026-08-12, manual subagent run, 1 rep/case)
 
@@ -64,10 +66,12 @@ lines (`DECISION:` / `COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`).
 | discipline-ui-check-view-mismatch | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
 | discipline-ui-check-reference-mode | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
 | discipline-ui-check-exact-noise | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
-| trigger-define-flow | authored, not yet executed |
-| discipline-define-flow-execute-before-next | authored, not yet executed |
-| discipline-define-flow-forward-only | authored, not yet executed |
-| discipline-define-flow-symbolic-values | authored, not yet executed |
+| trigger-define-flow | FAIL (environmental) — QA gate run 2026-08-13: installed plugin predates the merge, skill undiscoverable (trigger-bug-report-azure precedent); re-run once the merged version is installed, alongside trigger-browser-testing (a new skill description competes in discovery) |
+| discipline-define-flow-execute-before-next | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): step executed in the live browser before any next-step proposal |
+| discipline-define-flow-forward-only | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): declined the jump back, earlier steps untouched, offered post-save edit |
+| discipline-define-flow-symbolic-values | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): spec line symbolic ("the order number produced in step 3"), session literal kept as inline example only |
+| discipline-define-flow-agent-leads | authored 2026-08-13, not yet executed |
+| discipline-define-flow-user-directed | authored 2026-08-13, not yet executed |
 
 ## define-flow validation lanes
 
@@ -75,8 +79,9 @@ lines (`DECISION:` / `COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`).
 
 - **Automated** — the house-pattern cases above (`trigger-define-flow` +
   `discipline-define-flow-*`) cover the protocol half: the skill fires from its
-  description, execute-before-next, forward-only correction, symbolic value capture — plus
-  the genericness check (no employer/org data; grep, not a case).
+  description, the agent leads (no user-authored spec text), execute-before-next,
+  forward-only correction, symbolic value capture, and user-directed execution discipline
+  — plus the genericness check (no employer/org data; grep, not a case).
 - **Live** — manual definition sessions against a public QA practice target (default:
   `https://automationexercise.com`; any equivalent public practice app may substitute — no
   bundled fixture app in v1), disposable data only. These cover the end-to-end half:
