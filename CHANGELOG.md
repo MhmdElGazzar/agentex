@@ -2,6 +2,20 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.16.1] — 2026-08-14
+### Fixed
+- **Browser-session isolation across concurrent executions.** The shared playwright-cli
+  `default` session is now prohibited in every mode. Sequential runs and define-flow
+  sessions previously used it, so two executions on one machine — e.g. two Claude Code
+  windows — landed on the same browser and could kill each other's session. `init_run.js`
+  now generates each run's unique session names (label + time + random tag,
+  collision-checked against every existing execution; the label `default` is rejected),
+  sequential mode scaffolds its run folder before the first browser action, define-flow
+  generates its own unique session name, and teardown discipline is explicit everywhere:
+  an execution closes ONLY the sessions it created — `close-all` / `kill-all` never run
+  as part of an execution (a user-requested global cleanup is the only exception).
+  `settings.example.json` now gates `close-all` / `kill-all` behind an `ask` prompt.
+
 ## [0.16.0] — 2026-08-13
 ### Added
 - **`/define-flow` — guided flow definition.** The flow is defined by doing it, not by
