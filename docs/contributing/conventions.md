@@ -11,7 +11,9 @@ Rules established across AgenTeX's build-out. Follow these for any new skill, sc
 
 **When:** every new skill/command.
 
-**When not:** never — always applies.
+**When not:** one sanctioned exception — `define-flow` is a verb-style skill name,
+owner-approved in its design (2026-08-13) so the skill and its `/define-flow` command share
+a name; otherwise always applies.
 
 **How:** `skills/<noun>/`, `commands/<verb>.md`.
 
