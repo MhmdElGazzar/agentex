@@ -69,6 +69,26 @@ KB QUESTIONS (`kb:` in the spec)
 - A KB answer is ADVISORY CONTEXT ONLY — never evidence. Do NOT turn a `kb:` result into a
   PASS/FAIL verdict or fold it into the scenario tally.
 
+UI CHECKS (`ui-check:` in the spec)
+- `ui-check:` steps compare the live page (as the scenario left it — no extra navigation)
+  against a design baseline via the **ui-check** skill (read it before the first such step).
+  Resolve the baseline with the bundled runner, using your session's paths:
+    node ${CLAUDE_PLUGIN_ROOT}/skills/ui-check/scripts/fetch_baseline.js --source figma --id <node-id|frame URL> --out {{SESSION_DIR}}/screenshots/<scenario>-ui-check-baseline.png --log {{SESSION_DIR}}/logs/<scenario>-ui-check.log
+    node ${CLAUDE_PLUGIN_ROOT}/skills/ui-check/scripts/fetch_baseline.js --source image --path <baseline image> --out {{SESSION_DIR}}/screenshots/<scenario>-ui-check-baseline.png --log {{SESSION_DIR}}/logs/<scenario>-ui-check.log
+  Prints {"result":"OK|BLOCKED", ...} as JSON (exit 0/2). BLOCKED = unresolvable baseline —
+  report the reason verbatim; never improvise a baseline or a comparison to work around it.
+- Then follow the skill's flow in full: variant gate, form-factor gate (different classes =
+  a named VIEW MISMATCH ERROR, no PASS/FAIL), set the declared viewport via `run-code`
+  `page.setViewportSize(...)`, capture the actual to
+  {{SESSION_DIR}}/screenshots/<scenario>-ui-check-actual.png, and compare per the step's mode
+  (`exact` / `reference`).
+- DEFERRAL RULE — you cannot ask the user mid-run: when the skill calls for user confirmation
+  (exact-mode suspected rendering noise) or a stop-and-ask (a variant set you cannot make
+  sense of), do NOT guess and do NOT finalize a verdict. Report the check as **NEEDS-USER**
+  with both image paths and the precise question, then continue with the remaining scenarios.
+  NEEDS-USER is an interim outcome the orchestrator resolves with the user at MERGE — never
+  downgrade it to BLOCKED, PASS, or FAIL yourself.
+
 EXECUTION RULES
 - Execute the scenarios in the TEST SPECIFICATION in the order written.
 - If the spec marks scenarios as a stateful chain, keep them strictly sequential in this one
@@ -85,8 +105,16 @@ OUTPUT (your final message only — it is consumed by the orchestrator, not a hu
 - Per scenario: PASS / FAIL, observed vs expected, screenshot path, console/network notes.
 - `kb:` steps are reported as an advisory note (the KB answer, or "not covered in the KB"),
   never as a scenario PASS / FAIL and never counted in the final pass/fail tally.
+- `ui-check:` steps are reported with the skill's verdict vocabulary (PASS / PASS + warning /
+  FAIL / VIEW MISMATCH ERROR / BLOCKED / NEEDS-USER), the mode, the baseline identity, and
+  BOTH image paths (baseline + actual).
+- NEEDS-USER ITEMS: an explicit list of every deferred ui-check question — each with the
+  precise question to put to the user, both image paths, and the scenario it belongs to —
+  so the orchestrator can resolve them with the user at MERGE. NEEDS-USER checks are pending,
+  not failures: exclude them from the pass/fail tally and name them in the tally line.
 - A defect list, each: Title / Steps to reproduce / Expected vs Actual /
   Severity (Critical|High|Medium|Low) / Evidence.
 - BUG EVIDENCE: an explicit list of screenshot paths (under SESSION_DIR/screenshots/) that
   prove each defect, so the orchestrator can copy them into the run's bugs/ folder.
-- A final one-line tally: "<n> pass / <m> fail, <k> defects".
+- A final one-line tally: "<n> pass / <m> fail, <k> defects" (append ", <j> needs-user"
+  when any ui-check question was deferred).
