@@ -2,6 +2,42 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Fixed
+- **Environment name integrity — no phantom sample environment.** The scaffold used to
+  copy the sample environment unconditionally, so a wizard save under any other name left
+  it behind as a never-configured environment that runs could silently resolve against.
+  The sample is now copied only when `environments/` has no environment files at all (one
+  rule shared by `/init-test`, its re-runs, and m07 fill-gaps); the wizard's save
+  reconciles away a differently-named sample that is *structurally pristine* — identical
+  to a sample shape the plugin ever shipped, i.e. zero user values — listing the removal
+  on the review step first and echoing it in the save response (`reconciled: [...]`);
+  `/api/config` reports pristine scaffolding (`samplePristine`/`projectPristine`) instead
+  of prefilling it as "your existing configuration". First-configured-claims-default: a
+  `defaultEnvironment` pointing at a pristine sample (or at no file) is scaffolding, so
+  the first environment the user actually configures claims it — and `/api/save` rejects
+  any save whose final `defaultEnvironment` would name no post-save file. A file that
+  differs from the sample in any value is user-touched: prefilled, protected, and never
+  reconciled.
+
+### Changed
+- **Default environment name is `qc` (was `qa`)** — still a prefilled, freely editable
+  default, not a presumption, and now one shared constant (`DEFAULT_ENV_NAME` in
+  `scripts/wizard/engine.js`, required by `server.js` and `migrate.js`, mirrored by the
+  schema default/placeholder and the `ui.html` fallbacks). The sample template is
+  `templates/environments/qc.json`; legacy migrations on projects without a
+  `config/project.json` now create `environments/qc.json`.
+
+### Added
+- **Migration m10 `phantom-sample-env`** — detects a pristine leftover sample sitting
+  under a non-default name beside a real environment (all three conditions must hold; a
+  lone pristine sample on an unconfigured project is legitimate scaffolding) and emits a
+  `[manual]` offer that withholds the version stamp. Removal happens only through the
+  consented re-run `node scripts/migrate.js --remove-phantom-sample` — the engine's first
+  consent-flag (`ctx.flags`) — never silently; renaming the file or changing any value in
+  it (claiming it) also clears detection. `/update-agentex` relays the offer and re-runs
+  the engine with the flag only after explicit user confirmation.
+
 ## [0.16.1] — 2026-08-14
 ### Fixed
 - **Browser-session isolation across concurrent executions.** The shared playwright-cli
