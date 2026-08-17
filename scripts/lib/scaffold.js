@@ -151,8 +151,8 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
   // 4b. Project config + environments (new layout; .env keeps only secrets)
   copyFileIfAbsent(path.join(pluginRoot, 'templates', 'config', 'project.json'),
                    path.join(projectRoot, 'config', 'project.json'));
-  copyFileIfAbsent(path.join(pluginRoot, 'templates', 'environments', 'qa.json'),
-                   path.join(projectRoot, 'environments', 'qa.json'));
+  copyFileIfAbsent(path.join(pluginRoot, 'templates', 'environments', 'qc.json'),
+                   path.join(projectRoot, 'environments', 'qc.json'));
 
   // 5. CLAUDE.md guidance (append-only)
   actions.push(ensureClaudeMdBullet(projectRoot, { dryRun }));

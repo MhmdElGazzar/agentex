@@ -191,7 +191,7 @@ test('0.10 era: values land in their JSON homes, secrets stay in .env', () => {
   assert.strictEqual(project.kb.baseUrl, 'https://kb.example.test');
   assert.strictEqual(project.kb.project, 'demo-kb');
 
-  const env = readJson(dir, 'environments/qa.json');
+  const env = readJson(dir, 'environments/qc.json');
   assert.strictEqual(env.portalUrl, 'https://qa.example.test/ar');
   assert.strictEqual(env.db.server, 'db01.internal.test');
   assert.strictEqual(env.db.port, 1434);
@@ -231,7 +231,7 @@ test('0.10 era: structure and schemas match a fresh init.js scaffold', () => {
   assert.strictEqual(run(dir).code, 0);
   const fresh = proj();
   runInit(fresh);
-  for (const p of ['config/project.json', 'environments/qa.json', '.agentex/version.json', '.gitignore', 'CLAUDE.md']) {
+  for (const p of ['config/project.json', 'environments/qc.json', '.agentex/version.json', '.gitignore', 'CLAUDE.md']) {
     assert.ok(exists(dir, p), `migrated project should have ${p}`);
     assert.ok(exists(fresh, p), `fresh scaffold should have ${p}`);
   }
@@ -241,8 +241,8 @@ test('0.10 era: structure and schemas match a fresh init.js scaffold', () => {
     Object.keys(readJson(dir, 'config/project.json')).sort(),
     Object.keys(readJson(fresh, 'config/project.json')).sort(), 'project.json schema');
   assert.deepStrictEqual(
-    Object.keys(readJson(dir, 'environments/qa.json')).sort(),
-    Object.keys(readJson(fresh, 'environments/qa.json')).sort(), 'environment schema');
+    Object.keys(readJson(dir, 'environments/qc.json')).sort(),
+    Object.keys(readJson(fresh, 'environments/qc.json')).sort(), 'environment schema');
 });
 
 // ── 0.2-style era fixture ─────────────────────────────────────────────────────
@@ -255,7 +255,7 @@ test('0.2 era: gaps filled, user specs kept, sample specs NOT copied in', () => 
   const before = snapshot(dir);
   const r = run(dir);
   assert.strictEqual(r.code, 0, r.out);
-  assert.strictEqual(readJson(dir, 'environments/qa.json').portalUrl, 'https://old.example.test');
+  assert.strictEqual(readJson(dir, 'environments/qc.json').portalUrl, 'https://old.example.test');
   assert.ok(exists(dir, 'config/project.json'));
   assert.ok(exists(dir, 'integration/sample_api.json'));
   assert.ok(exists(dir, '.gitignore'));
@@ -292,7 +292,7 @@ test('0.6 era: integrations/ renamed, contents intact, spec drift flagged', () =
   assert.strictEqual(readText(dir, 'integration/shop_db.json'), catalogBytes, 'catalog byte-identical after rename');
   assert.ok(exists(dir, 'integration/shop_api.json'));
   assert.ok(!exists(dir, 'integration/sample_db.json'), 'rename must run before gap-fill (no samples beside user catalog)');
-  const env = readJson(dir, 'environments/qa.json');
+  const env = readJson(dir, 'environments/qc.json');
   assert.strictEqual(env.db.server, 'db6.test');
   assert.strictEqual(env.db.name, 'Shop6');
   // spec drift flagged, spec untouched
@@ -500,7 +500,7 @@ test('init.js withholds the stamp on a legacy project; /update-agentex then migr
   assert.match(r.out, /\[migrated\] absorb-agentex-config/);
   assert.match(r.out, /\[migrated\] env-split/);
   assert.strictEqual(readJson(dir, 'config/project.json').kb.baseUrl, 'https://kb.legacy.test');
-  assert.strictEqual(readJson(dir, 'environments/qa.json').portalUrl, 'https://legacy.example.test');
+  assert.strictEqual(readJson(dir, 'environments/qc.json').portalUrl, 'https://legacy.example.test');
   assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'migration stamps at the end');
 });
 

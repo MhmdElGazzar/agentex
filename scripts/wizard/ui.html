@@ -498,7 +498,7 @@ async function loadExistingConfig() {
 
   if (proj) {
     if (proj.name) answers['name'] = proj.name;
-    answers['defaultEnvironment'] = cfg.envName || proj.defaultEnvironment || 'qa';
+    answers['defaultEnvironment'] = cfg.envName || proj.defaultEnvironment || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
     if (proj.login && proj.login.mode) answers['login.mode'] = proj.login.mode;
     for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']]]) {
       for (const k of keys) {
@@ -1256,7 +1256,7 @@ function buildSecretsPayload() {
 
 /* ── Build Configs ───────────────────────────────────────────────────────── */
 function buildConfigs() {
-  const envName = answers['defaultEnvironment'] || 'qa';
+  const envName = answers['defaultEnvironment'] || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
   // Start from what's on disk so keys the wizard has no input for (azure.areaPath,
   // kb.org, custom fields) survive a re-run instead of being silently dropped.
   const proj = Object.assign({}, existingProject, {

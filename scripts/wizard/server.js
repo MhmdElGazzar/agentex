@@ -13,7 +13,7 @@ const fs     = require('fs');
 const path   = require('path');
 const { execSync } = require('child_process');
 
-const { buildConfigs, validate, validateConfigs, extractFromText } = require('./engine.js');
+const { buildConfigs, validate, validateConfigs, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
 
 // ── CLI args ──────────────────────────────────────────────────────────────
 const args        = process.argv.slice(2);
@@ -92,7 +92,7 @@ server = http.createServer((req, res) => {
   if (method === 'GET' && url.pathname === '/api/config') {
     const projCfgPath = path.join(projectRoot, 'config', 'project.json');
     const existingProj = safeReadJSON(projCfgPath);
-    const envName = existingProj?.defaultEnvironment || 'qa';
+    const envName = existingProj?.defaultEnvironment || DEFAULT_ENV_NAME;
     const envCfgPath = path.join(projectRoot, 'environments', `${envName}.json`);
     const existingEnv = safeReadJSON(envCfgPath);
     // A file that exists but won't parse is NOT the same as no file: saying

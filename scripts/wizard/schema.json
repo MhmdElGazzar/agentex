@@ -24,13 +24,13 @@
           "label": "البيئة (اسم الملف)",
           "labelEn": "Environment",
           "type": "text",
-          "placeholder": "qa",
-          "default": "qa",
+          "placeholder": "qc",
+          "default": "qc",
           "required": true,
           "pattern": "^[a-z0-9][a-z0-9_-]{0,30}$",
           "patternMsg": "حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف",
-          "aiHint": "environment name being configured (e.g. qa, staging, uat)",
-          "hint": "اسم البيئة اللي هتتكتب: qa أو uat أو live. البيئة الافتراضية للمشروع بتفضل زي ما هي."
+          "aiHint": "environment name being configured (e.g. qc, staging, uat)",
+          "hint": "اسم البيئة اللي هتتكتب: qc أو uat أو staging. البيئة الافتراضية للمشروع بتفضل زي ما هي."
         },
         {
           "key": "login.mode",

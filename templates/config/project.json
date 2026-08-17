@@ -1,6 +1,6 @@
 {
   "name": "my-project",
-  "defaultEnvironment": "qa",
+  "defaultEnvironment": "qc",
   "azure": {
     "org": "",
     "project": "",
