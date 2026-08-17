@@ -115,6 +115,13 @@ body { min-height: 100vh; }
 .slabel { font-size: 11px; color: var(--text-3); text-align: center; max-width: 72px; line-height: 1.3; }
 .snode.active .slabel { color: var(--accent); font-weight: 700; }
 .snode.done .slabel { color: var(--text-2); }
+/* Group label in the track — the wizard teaches the file model: المشروع ثم البيئات */
+.sgroup-label {
+  align-self: flex-start; margin: 8px 6px 0;
+  font-size: 10px; font-weight: 800; color: var(--accent);
+  background: var(--accent-lt); border: 1px solid rgba(91,80,240,.2);
+  border-radius: 20px; padding: 3px 10px; white-space: nowrap;
+}
 
 /* ── Main ───────────────────────────────────────────────────────────────── */
 .main { display: flex; justify-content: center; padding: 32px 16px 48px; }
@@ -200,6 +207,15 @@ body { min-height: 100vh; }
 .head-icon { font-size: 32px; flex-shrink: 0; margin-top: 2px; }
 .head-title { font-size: 20px; font-weight: 800; color: var(--text-1); margin-bottom: 4px; }
 .head-desc { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+/* The ONE config file this page writes — monospaced, live-updating with the env name */
+.target-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding: 3px 10px;
+  font-family: var(--mono); font-size: 11px; color: var(--text-2);
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: 6px; direction: ltr;
+}
+.target-chip::before { content: '📄'; font-size: 10px; }
 .optional-pill {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 10px; border-radius: 20px;
@@ -338,6 +354,18 @@ body { min-height: 100vh; }
   cursor: pointer; transition: all .2s;
 }
 .btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+/* .env keys summary on the review step — names only, never values */
+.env-summary {
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 8px; font-size: 13px;
+}
+.env-summary-title { font-weight: 700; color: var(--text-2); }
+.env-keys { display: flex; flex-wrap: wrap; gap: 6px; direction: ltr; }
+.env-key {
+  font-family: var(--mono); font-size: 11px; padding: 2px 8px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+}
 
 /* ── Card Footer ────────────────────────────────────────────────────────── */
 .card-foot {
@@ -408,7 +436,7 @@ body { min-height: 100vh; }
     </div>
   </div>
   <div class="spacer"></div>
-  <div class="step-pill" id="hdr-pill">الخطوة 1 من 7</div>
+  <div class="step-pill" id="hdr-pill"></div>
 </header>
 
 <div class="progress-bar-wrap">
@@ -470,6 +498,9 @@ let currentEnvSelection = null;
 // another name reconciles it away (listed on the review step first).
 let samplePristine    = false;
 let sampleName        = null;
+// EVERY pristine sample on disk, whatever its name — the review step lists
+// each one a save under a different name will reconcile away.
+let pristineSamples   = [];
 // The existing default names an environment file that is not on disk at all.
 let defaultEnvMissing = false;
 
@@ -496,10 +527,11 @@ async function loadExistingConfig() {
   const unreadable = (cfg && cfg.unreadable) || [];
   samplePristine = !!(cfg && cfg.samplePristine);
   sampleName     = (cfg && cfg.sampleName) || null;
+  pristineSamples = (cfg && cfg.pristineSamples) || [];
   const projPristine = !!(cfg && cfg.projectPristine);
   if (unreadable.length) {
     // Say it out loud: saving would replace a file we could not read.
-    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقري:\n\n${unreadable.join('\n')}\n\n` +
+    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقرا:\n\n${unreadable.join('\n')}\n\n` +
           `لو كملت وحفظت هتتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.`);
   }
   defaultEnvMissing = !!(proj && proj.defaultEnvironment && !env && !samplePristine &&
@@ -516,7 +548,7 @@ async function loadExistingConfig() {
 
   if (projLoaded) {
     if (proj.name) answers['name'] = proj.name;
-    answers['defaultEnvironment'] = cfg.envName || proj.defaultEnvironment || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
+    answers['envName'] = cfg.envName || proj.defaultEnvironment || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
     if (proj.login && proj.login.mode) answers['login.mode'] = proj.login.mode;
     for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']]]) {
       for (const k of keys) {
@@ -529,7 +561,7 @@ async function loadExistingConfig() {
   }
 
   if (env) fillEnvironmentAnswers(env);
-  loadedEnvName = env ? (cfg.envName || answers['defaultEnvironment'] || null) : null;
+  loadedEnvName = env ? (cfg.envName || answers['envName'] || null) : null;
   // The toast announces USER data that was loaded — an untouched scaffold is not that.
   if (projLoaded || env) showToast('📂 تم تحميل إعدادات المشروع الحالية');
 }
@@ -577,6 +609,9 @@ function fillEnvironmentAnswers(env) {
  * the new environment at the old one's database. Switching back restores what
  * you had IN THIS SESSION (including users added minutes ago), falling back to
  * the on-disk snapshot only if the name was never visited.
+ * Returns true when env-scoped answers changed — the name field now lives on
+ * the SAME page as portalUrl/defaults, so the caller must re-render or the
+ * inputs on screen would show values the answers no longer hold.
  */
 const envSession = {};   // per-environment in-session edits, keyed by env name
 
@@ -597,7 +632,7 @@ function restoreEnvSession(snap) {
 }
 
 function onEnvironmentNameChanged(newName) {
-  if (!existingEnv || !loadedEnvName || newName === currentEnvSelection) return;
+  if (!existingEnv || !loadedEnvName || newName === currentEnvSelection) return false;
   snapshotEnvSession(currentEnvSelection || loadedEnvName);
   currentEnvSelection = newName;
 
@@ -605,18 +640,19 @@ function onEnvironmentNameChanged(newName) {
   if (snap) {
     restoreEnvSession(snap);
     showToast(`↩️ رجعنا لبيئة «${newName}» بتعديلات هذه الجلسة`);
-    return;
+    return true;
   }
   if (newName === loadedEnvName) {
     fillEnvironmentAnswers(existingEnv);
     showToast(`↩️ رجعنا لبيئة «${loadedEnvName}» بإعداداتها المحفوظة`);
-    return;
+    return true;
   }
   for (const key of ENV_SCOPED_KEYS) delete answers[key];
   users = starterUsers();
   usersPristine = true;
   answers['users'] = users;
-  showToast(`🆕 بيئة جديدة «${newName}» — الحقول فاضية عشان متورثش إعدادات «${loadedEnvName}»`);
+  showToast(`🆕 بيئة جديدة «${newName}» — الحقول فاضية عشان ماتورثش إعدادات «${loadedEnvName}»`);
+  return true;
 }
 
 async function loadSchema() {
@@ -663,7 +699,7 @@ function renderIntro() {
           <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h12"/><path d="M2 12h12"/><path d="M2 18h12"/><circle cx="19.5" cy="6" r="1.5"/><circle cx="19.5" cy="12" r="1.5"/><circle cx="19.5" cy="18" r="1.5"/></svg></div>
           <div>
             <div class="mode-title">خطوة بخطوة</div>
-            <div class="mode-desc">املأ بيانات المشروع بنفسك في 7 خطوات قصيرة</div>
+            <div class="mode-desc">املأ بيانات المشروع بنفسك في ${schema.steps.length} خطوات قصيرة</div>
           </div>
         </div>
       </div>
@@ -822,8 +858,17 @@ function renderFileMode() {
 function buildTrack() {
   const track = document.getElementById('steps-track');
   track.innerHTML = '';
+  let prevGroup = null;
   schema.steps.forEach((step, i) => {
-    if (i > 0) {
+    const group = step.group || null;
+    if (group !== prevGroup && group && schema.groups && schema.groups[group]) {
+      // Group boundary: a label instead of a connector — the track reads
+      // "المشروع: … | البيئات: …", mirroring the two config homes.
+      const label = document.createElement('div');
+      label.className = 'sgroup-label';
+      label.textContent = schema.groups[group].label;
+      track.appendChild(label);
+    } else if (i > 0) {
       const conn = document.createElement('div');
       conn.className = `snode-connector${i <= current ? ' done' : ''}`;
       track.appendChild(conn);
@@ -835,6 +880,7 @@ function buildTrack() {
       <div class="slabel">${step.title}</div>`;
     node.onclick = () => { if (i <= current) goTo(i); };
     track.appendChild(node);
+    prevGroup = group;
   });
 }
 
@@ -872,6 +918,7 @@ function renderStep() {
         ${step.optional ? '<span class="optional-pill">⚡ اختياري</span>' : ''}
       </div>
       <div class="head-desc">${step.description}</div>
+      ${step.target ? `<div class="target-chip" id="target-chip">${esc(resolveTarget(step.target))}</div>` : ''}
     </div>`;
   card.appendChild(head);
 
@@ -888,6 +935,17 @@ function renderStep() {
 }
 
 /* ── Fields ─────────────────────────────────────────────────────────────── */
+/** The one config file this page writes — {envName} resolves live as the user types. */
+function resolveTarget(target) {
+  return target.replace('{envName}', String(answers['envName'] || '').trim() || 'qc');   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
+}
+
+function updateTargetChip() {
+  const chip = document.getElementById('target-chip');
+  const step = schema.steps[current];
+  if (chip && step && step.target) chip.textContent = resolveTarget(step.target);
+}
+
 function renderFields(step, container) {
   if (!step.fields) return;
 
@@ -906,7 +964,7 @@ function renderFields(step, container) {
   if (secretFs.length > 0) {
     const div = document.createElement('div');
     div.className = 'section-divider';
-    div.textContent = 'بيانات الاتصال';
+    div.textContent = 'بيانات سرية';
     container.appendChild(div);
     secretFs.forEach(f => container.appendChild(buildField(f)));
   }
@@ -941,9 +999,15 @@ function buildField(field) {
       if (answers[field.key] === undefined && inp.value !== '') answers[field.key] = inp.value;
       inp.addEventListener('change', () => {
         answers[field.key] = inp.value;
-        if (field.key === 'defaultEnvironment') onEnvironmentNameChanged(inp.value.trim());
+        // Committing a different environment name may clear/restore the
+        // env-scoped answers that live on THIS page — re-render so the
+        // inputs on screen match what will be saved.
+        if (field.key === 'envName' && onEnvironmentNameChanged(inp.value.trim())) renderStep();
       });
-      inp.addEventListener('input',  () => { answers[field.key] = inp.value; });
+      inp.addEventListener('input',  () => {
+        answers[field.key] = inp.value;
+        if (field.key === 'envName') updateTargetChip();
+      });
     }
   }
   return div;
@@ -1114,11 +1178,16 @@ function applyExtracted(data) {
 
 /* ── Review Step ─────────────────────────────────────────────────────────── */
 function renderReviewStep() {
+  const step = schema.steps[current];
   const { projectConfig, envConfig, envName } = buildConfigs();
-  const tabs = [
-    { label: 'config/project.json',            data: projectConfig },
-    { label: `environments/${envName}.json`,   data: envConfig },
-  ];
+  const built = { projectConfig, envConfig };
+  // One tab per output file, straight from the schema's file-keyed outputs —
+  // the page order groups by file, the review groups by file, the save writes
+  // by file: one story, told three times the same way.
+  const tabs = (step.outputs || []).map(o => ({
+    label: String(o.file || '').replace('{envName}', envName),
+    data: built[o.key],
+  }));
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
 
@@ -1150,13 +1219,28 @@ function renderReviewStep() {
   wrap.appendChild(code);
   wrap.appendChild(copyBtn);
 
-  // Reconciliation transparency: the save will remove the pristine leftover
-  // sample — it is listed here BEFORE anything happens, never silently.
-  if (samplePristine && sampleName && sampleName !== envName) {
+  // .env keys summary — names only, never values (invariant #5). The secret
+  // fields' "محفوظ بشكل آمن" note promised safe keeping; this says where.
+  const secretKeys = Object.keys(buildSecretsPayload());
+  const envSum = document.createElement('div');
+  envSum.className = 'env-summary';
+  envSum.innerHTML = secretKeys.length
+    ? `<div class="env-summary-title">🔐 ‎.env — المفاتيح اللي هتتكتب (الأسماء فقط، القيم عمرها ما بتتعرض):</div>
+       <div class="env-keys">${secretKeys.map(k => `<span class="env-key">${esc(k)}</span>`).join('')}</div>`
+    : `<div class="env-summary-title">🔐 ‎.env — مافيش أسرار جديدة في الجلسة دي، الملف مش هيتغير.</div>`;
+  wrap.appendChild(envSum);
+
+  // Reconciliation transparency: the save removes EVERY structurally-pristine
+  // leftover sample under another name — all listed here BEFORE anything
+  // happens, never silently.
+  const toReconcile = pristineSamples.filter(n => n !== envName);
+  if (toReconcile.length) {
+    const files = toReconcile.map(n => `environments/${n}.json`).join('، ');
     const note = document.createElement('div');
     note.style.cssText = 'border:1px solid var(--warning);background:var(--warning-lt);color:var(--text-1);border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.7';
-    note.textContent = `⚠️ عند الحفظ هيتشال ملف البيئة النموذجي environments/${sampleName}.json` +
-      ` (نسخة السكافولد من غير أي تعديل) — بيحل محله environments/${envName}.json.`;
+    note.textContent = toReconcile.length === 1
+      ? `⚠️ عند الحفظ هيتشال ملف البيئة النموذجي ${files} (نسخة السكافولد من غير أي تعديل) — بيحل محله environments/${envName}.json.`
+      : `⚠️ عند الحفظ هتتشال ملفات البيئة النموذجية دي (نسخ السكافولد من غير أي تعديل): ${files} — بيحل محلها environments/${envName}.json.`;
     wrap.appendChild(note);
   }
   return wrap;
@@ -1285,7 +1369,7 @@ function buildSecretsPayload() {
 
 /* ── Build Configs ───────────────────────────────────────────────────────── */
 function buildConfigs() {
-  const envName = answers['defaultEnvironment'] || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
+  const envName = answers['envName'] || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
   // Start from what's on disk so keys the wizard has no input for (azure.areaPath,
   // kb.org, custom fields) survive a re-run instead of being silently dropped.
   const proj = Object.assign({}, existingProject, {

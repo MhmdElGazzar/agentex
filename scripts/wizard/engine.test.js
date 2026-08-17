@@ -19,7 +19,7 @@ test('DEFAULT_ENV_NAME is "qc" and every declared default agrees with it', () =>
   assert.strictEqual(buildConfigs({ name: 'd' }, []).envName, DEFAULT_ENV_NAME);
   // wizard schema default + placeholder
   const schema = require('./schema.json');
-  const field = schema.steps.flatMap(s => s.fields || []).find(f => f.key === 'defaultEnvironment');
+  const field = schema.steps.flatMap(s => s.fields || []).find(f => f.key === 'envName');
   assert.strictEqual(field.default, DEFAULT_ENV_NAME, 'schema default');
   assert.strictEqual(field.placeholder, DEFAULT_ENV_NAME, 'schema placeholder');
   // shipped templates: project default + the sample file's own name
@@ -102,14 +102,14 @@ test('empty or unrecognised text yields no invented values', () => {
 
 test('validate enforces field patterns, and the schema declares them where it matters', () => {
   const steps = [{ id: 's', fields: [
-    { key: 'defaultEnvironment', label: 'env', pattern: '^[a-z0-9][a-z0-9_-]{0,30}$' },
+    { key: 'envName', label: 'env', pattern: '^[a-z0-9][a-z0-9_-]{0,30}$' },
   ]}];
-  assert.deepStrictEqual(validate({ defaultEnvironment: 'qa' }, steps), []);
-  assert.match(validate({ defaultEnvironment: 'QA App!!' }, steps).join(), /env/);
+  assert.deepStrictEqual(validate({ envName: 'qa' }, steps), []);
+  assert.match(validate({ envName: 'QA App!!' }, steps).join(), /env/);
 
   const schema = require('./schema.json');
   const fields = schema.steps.flatMap(s => s.fields || []);
-  for (const key of ['defaultEnvironment', 'db.passwordEnvVar', 'api.tokenEnvVar']) {
+  for (const key of ['envName', 'db.passwordEnvVar', 'api.tokenEnvVar']) {
     const f = fields.find(x => x.key === key);
     assert.ok(f && f.pattern, `${key} must declare a pattern (garbage was only rejected at save, in English)`);
     assert.ok(f.patternMsg, `${key} must carry a localized pattern message`);
@@ -143,10 +143,10 @@ test('mergeExtracted takes extracted users when there are none yet, and fills em
   assert.deepStrictEqual(merged.users, [{ handle: 'import_user', phone: '0559990001' }]);
 });
 
-// ── schema shape ──────────────────────────────────────────────────────────
-test('schema has 8 numbered steps and no ai-import step', () => {
+// ── schema shape: pages map one-to-one to config files, grouped by file ───
+test('schema has 9 numbered steps and no ai-import step', () => {
   const schema = require('./schema.json');
-  assert.strictEqual(schema.steps.length, 8);
+  assert.strictEqual(schema.steps.length, 9);
   assert.ok(!schema.steps.some(s => s.id === 'ai-import'), 'ai-import must not be a numbered step');
   assert.ok(!schema.steps.some(s => s.type === 'ai-extract'), 'no ai-extract step type in the flow');
   assert.strictEqual(schema.steps[schema.steps.length - 1].type, 'review', 'review stays last');
@@ -155,6 +155,69 @@ test('schema has 8 numbered steps and no ai-import step', () => {
   const tokenField = figma.fields.find(f => f.key === 'figma.token');
   assert.ok(tokenField.secret && tokenField.envKey === 'FIGMA_TOKEN' && tokenField.envKeyFrom === 'figma.tokenEnvVar',
     'figma token is a secret field wired to FIGMA_TOKEN');
+});
+
+test('every content page declares exactly one target file, and same-file pages are consecutive', () => {
+  const schema = require('./schema.json');
+  const content = schema.steps.filter(s => s.type !== 'review');
+  for (const s of content) {
+    assert.ok(typeof s.target === 'string' && s.target, `step ${s.id} must declare its one target file`);
+    assert.ok(s.group === 'project' || s.group === 'environment', `step ${s.id} must belong to a group`);
+    const expected = s.group === 'project' ? 'config/project.json' : 'environments/{envName}.json';
+    assert.strictEqual(s.target, expected, `step ${s.id}: group and target must agree`);
+  }
+  // Contiguity: once the environment group starts, no project page follows.
+  const groups = content.map(s => s.group);
+  const firstEnv = groups.indexOf('environment');
+  assert.ok(firstEnv > 0, 'project pages come first');
+  assert.ok(!groups.slice(firstEnv).includes('project'),
+    `project and environment pages must not interleave (got: ${groups.join(' → ')})`);
+  // The steps-track group labels are schema-driven.
+  assert.ok(schema.groups && schema.groups.project && schema.groups.project.label, 'project group label');
+  assert.ok(schema.groups.environment && schema.groups.environment.label, 'environment group label');
+});
+
+test('the first page is pure project settings — the environment name lives on the environment page', () => {
+  const schema = require('./schema.json');
+  const first = schema.steps[0];
+  assert.strictEqual(first.target, 'config/project.json', 'first page writes project.json only');
+  assert.ok(!(first.fields || []).some(f => f.key === 'envName' || f.key === 'defaultEnvironment'),
+    'no environment-name field among project settings');
+  assert.ok(!schema.steps.flatMap(s => s.fields || []).some(f => f.key === 'defaultEnvironment'),
+    'defaultEnvironment is derived output only — never a page input');
+  const envStep = schema.steps.find(s => s.id === 'environment');
+  assert.strictEqual(envStep.group, 'environment');
+  assert.strictEqual((envStep.fields || [])[0].key, 'envName',
+    'naming the file is the first act of environment configuration');
+});
+
+test('the KB page exists in the project group with the fixed KB_ASK_API_KEY secret', () => {
+  const schema = require('./schema.json');
+  const kb = schema.steps.find(s => s.id === 'knowledge-base');
+  assert.ok(kb && kb.optional, 'knowledge-base step exists and is optional');
+  assert.strictEqual(kb.group, 'project');
+  assert.strictEqual(kb.target, 'config/project.json');
+  const keys = kb.fields.map(f => f.key);
+  assert.ok(keys.includes('kb.baseUrl') && keys.includes('kb.project'), 'kb.baseUrl + kb.project inputs');
+  const keyField = kb.fields.find(f => f.key === 'kb.key');
+  assert.ok(keyField && keyField.secret && keyField.envKey === 'KB_ASK_API_KEY',
+    'KB key is a secret bound to the fixed KB_ASK_API_KEY env var (ask_kb.js reads that name)');
+  assert.ok(!keyField.envKeyFrom, 'KB env var name is fixed — no envKeyFrom (matches azure.pat, not figma)');
+});
+
+test('review outputs are file-keyed and template on {envName}', () => {
+  const schema = require('./schema.json');
+  const review = schema.steps[schema.steps.length - 1];
+  assert.deepStrictEqual(review.outputs, [
+    { file: 'config/project.json', key: 'projectConfig' },
+    { file: 'environments/{envName}.json', key: 'envConfig' },
+  ]);
+});
+
+test('ui.html speaks envName — no stale defaultEnvironment answer key', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'ui.html'), 'utf8');
+  assert.ok(!ui.includes("answers['defaultEnvironment']"),
+    'the answer-key rename must be total: one mapping, no drift');
 });
 
 // ── validateConfigs ───────────────────────────────────────────────────────
@@ -186,16 +249,33 @@ test('validateConfigs rejects bad url, bad env name, missing name', () => {
 // ── buildConfigs ──────────────────────────────────────────────────────────
 test('buildConfigs maps answers to the file contract', () => {
   const { projectConfig, envConfig, envName } = buildConfigs({
-    name: 'demo', defaultEnvironment: 'uat', portalUrl: 'https://uat.example',
+    name: 'demo', envName: 'uat', portalUrl: 'https://uat.example',
     'db.server': 'db.local', 'api.baseUrl': 'https://api.example',
     users: [{ handle: 'valid_user', phone: '0550000001' }],
   }, []);
   assert.strictEqual(envName, 'uat');
+  assert.strictEqual(projectConfig.defaultEnvironment, 'uat',
+    'first-configured claims the default — derived, not an input');
   assert.strictEqual(projectConfig.name, 'demo');
   assert.deepStrictEqual(Object.keys(envConfig.users), ['valid_user']);
   assert.deepStrictEqual(envConfig.db.password, { envSecret: 'SQLCMDPASSWORD' });
   assert.deepStrictEqual(envConfig.api.token, { envSecret: 'API_TOKEN' });
   assert.ok(!('azure' in projectConfig), 'empty azure block is stripped');
+});
+
+test('extractFromText maps environment-name labels to envName', () => {
+  assert.strictEqual(extractFromText('البيئة: uat').envName, 'uat');
+  assert.strictEqual(extractFromText('environment: staging').envName, 'staging');
+  const r = extractFromText('default environment: qc2');
+  assert.strictEqual(r.envName, 'qc2');
+  assert.ok(!('defaultEnvironment' in r), 'the old answer key is never emitted');
+});
+
+test('buildConfigs: kb block from kb answers, key material never in JSON', () => {
+  const r = buildConfigs({ name: 'd', 'kb.baseUrl': 'http://localhost:3000', 'kb.project': 'travel-kb' }, []);
+  assert.deepStrictEqual(r.projectConfig.kb, { baseUrl: 'http://localhost:3000', project: 'travel-kb' });
+  const none = buildConfigs({ name: 'd' }, []);
+  assert.ok(!('kb' in none.projectConfig), 'empty kb block is stripped');
 });
 
 test('buildConfigs: figma block only when a file key is provided', () => {

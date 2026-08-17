@@ -258,6 +258,8 @@ const post = (route, body, headers = {}) =>
     assert.strictEqual(data.sampleName, 'qc');
     assert.strictEqual(data.envName, 'qc');
     assert.strictEqual(data.projectPristine, true, 'template project.json is scaffolding, not config');
+    assert.deepStrictEqual(data.pristineSamples, ['qc'],
+      'every pristine sample is enumerated — the review step must list ALL files a save would reconcile');
   });
 
   await test('a user-touched environment under the default name is prefilled and protected', async () => {
@@ -301,6 +303,11 @@ const post = (route, body, headers = {}) =>
   await test('a pristine sample under the historical qa name is reconciled too', async () => {
     fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'),
                     path.join(projectDir2, 'environments', 'qa.json'));
+    // /api/config enumerates it up front — the review step can announce the
+    // removal BEFORE the save, by name, even under a non-default name.
+    const cfg = await (await get2('/api/config')).json();
+    assert.deepStrictEqual(cfg.pristineSamples, ['qa'],
+      'a pristine sample under any name is listed (uat is user data, not listed)');
     const r = await post2('/api/save', {
       projectConfig: { name: 'demo2', defaultEnvironment: 'uat', login: { mode: 'session' } },
       envConfig: { portalUrl: 'https://uat.example', users: { u1: { phone: '1' } } },

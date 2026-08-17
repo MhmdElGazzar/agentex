@@ -1,5 +1,15 @@
 {
   "version": "1.0",
+  "groups": {
+    "project": {
+      "label": "المشروع",
+      "labelEn": "Project"
+    },
+    "environment": {
+      "label": "البيئات",
+      "labelEn": "Environments"
+    }
+  },
   "steps": [
     {
       "id": "project-basics",
@@ -8,6 +18,7 @@
       "description": "المعلومات الأساسية عن مشروعك",
       "descriptionEn": "Core information about your project",
       "icon": "🏗️",
+      "group": "project",
       "target": "config/project.json",
       "fields": [
         {
@@ -18,19 +29,6 @@
           "placeholder": "my-app",
           "required": true,
           "aiHint": "project name or system name"
-        },
-        {
-          "key": "defaultEnvironment",
-          "label": "البيئة (اسم الملف)",
-          "labelEn": "Environment",
-          "type": "text",
-          "placeholder": "qc",
-          "default": "qc",
-          "required": true,
-          "pattern": "^[a-z0-9][a-z0-9_-]{0,30}$",
-          "patternMsg": "حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف",
-          "aiHint": "environment name being configured (e.g. qc, staging, uat)",
-          "hint": "اسم البيئة اللي هتتكتب: qc أو uat أو staging. البيئة الافتراضية للمشروع بتفضل زي ما هي."
         },
         {
           "key": "login.mode",
@@ -54,14 +52,175 @@
       ]
     },
     {
+      "id": "azure-devops",
+      "title": "Azure DevOps",
+      "titleEn": "Azure DevOps",
+      "description": "إعدادات ربط Azure DevOps لإنشاء الـ bugs والـ test plans",
+      "descriptionEn": "Azure DevOps settings for bug filing and test plans",
+      "icon": "☁️",
+      "group": "project",
+      "target": "config/project.json",
+      "optional": true,
+      "fields": [
+        {
+          "key": "azure.org",
+          "label": "Organization",
+          "labelEn": "Organization",
+          "type": "text",
+          "placeholder": "my-org",
+          "required": false,
+          "aiHint": "Azure DevOps organization name"
+        },
+        {
+          "key": "azure.project",
+          "label": "Project",
+          "labelEn": "Project",
+          "type": "text",
+          "placeholder": "My Project",
+          "required": false,
+          "aiHint": "Azure DevOps project name"
+        },
+        {
+          "key": "azure.team",
+          "label": "Team",
+          "labelEn": "Team",
+          "type": "text",
+          "placeholder": "My Team",
+          "required": false,
+          "aiHint": "Azure DevOps team name"
+        },
+        {
+          "key": "azure.assignee",
+          "label": "المسؤول الافتراضي",
+          "labelEn": "Default Assignee",
+          "type": "email",
+          "placeholder": "qa@example.com",
+          "required": false,
+          "aiHint": "default assignee email for bugs"
+        },
+        {
+          "key": "azure.pat",
+          "label": "Azure DevOps PAT Token",
+          "type": "password",
+          "placeholder": "Personal Access Token من dev.azure.com",
+          "required": false,
+          "secret": true,
+          "envKey": "AZURE_PAT",
+          "aiHint": "Azure DevOps personal access token"
+        }
+      ]
+    },
+    {
+      "id": "figma",
+      "title": "Figma",
+      "titleEn": "Figma",
+      "description": "إعدادات Figma لخطوات ui-check (مقارنة الصفحة بالتصميم)",
+      "descriptionEn": "Figma settings for ui-check: design-conformance steps",
+      "icon": "🎨",
+      "group": "project",
+      "target": "config/project.json",
+      "optional": true,
+      "fields": [
+        {
+          "key": "figma.fileKey",
+          "label": "File Key",
+          "labelEn": "File Key",
+          "type": "text",
+          "placeholder": "AbCdEf123456",
+          "required": false,
+          "hint": "مفتاح ملف Figma من الرابط: figma.com/design/<FILE KEY>/...",
+          "aiHint": "Figma file key (the path segment after /design/ or /file/ in a Figma URL)"
+        },
+        {
+          "key": "figma.tokenEnvVar",
+          "label": "متغير الـ Token",
+          "labelEn": "Token Env Var",
+          "type": "text",
+          "placeholder": "FIGMA_TOKEN",
+          "default": "FIGMA_TOKEN",
+          "required": false,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
+          "aiHint": "environment variable name for the Figma personal access token"
+        },
+        {
+          "key": "figma.token",
+          "label": "Figma Personal Access Token",
+          "type": "password",
+          "placeholder": "figd_xxxxxxxxxxxx",
+          "required": false,
+          "secret": true,
+          "envKey": "FIGMA_TOKEN",
+          "envKeyFrom": "figma.tokenEnvVar",
+          "aiHint": "Figma personal access token"
+        }
+      ]
+    },
+    {
+      "id": "knowledge-base",
+      "title": "قاعدة المعرفة",
+      "titleEn": "Knowledge Base",
+      "description": "إعدادات الـ Knowledge Base لخطوات kb: وأمر /ask-kb",
+      "descriptionEn": "Knowledge Base (KB Ask) settings for kb: steps and /ask-kb",
+      "icon": "📚",
+      "group": "project",
+      "target": "config/project.json",
+      "optional": true,
+      "fields": [
+        {
+          "key": "kb.baseUrl",
+          "label": "Base URL",
+          "labelEn": "Base URL",
+          "type": "url",
+          "placeholder": "http://localhost:3000",
+          "required": false,
+          "hint": "عنوان سيرفر الـ KB Ask API (الهوست فقط، من غير مسار)",
+          "aiHint": "knowledge base (KB Ask) API base URL"
+        },
+        {
+          "key": "kb.project",
+          "label": "اسم مشروع الـ KB",
+          "labelEn": "KB Project",
+          "type": "text",
+          "placeholder": "my-kb-project",
+          "required": false,
+          "aiHint": "knowledge base project name"
+        },
+        {
+          "key": "kb.key",
+          "label": "KB Ask API Key",
+          "type": "password",
+          "placeholder": "المفتاح السري المرسل في x-api-key",
+          "required": false,
+          "secret": true,
+          "envKey": "KB_ASK_API_KEY",
+          "aiHint": "KB Ask API shared secret key"
+        }
+      ]
+    },
+    {
       "id": "environment",
       "title": "بيئة الاختبار",
       "titleEn": "Test Environment",
-      "description": "رابط التطبيق وإعدادات الجلسة",
-      "descriptionEn": "App URL and session defaults",
+      "description": "اسم البيئة ورابط التطبيق وإعدادات الجلسة",
+      "descriptionEn": "Environment name, app URL, and session defaults",
       "icon": "🌐",
-      "target": "environments/{defaultEnvironment}.json",
+      "group": "environment",
+      "target": "environments/{envName}.json",
       "fields": [
+        {
+          "key": "envName",
+          "label": "اسم البيئة (اسم الملف)",
+          "labelEn": "Environment Name",
+          "type": "text",
+          "placeholder": "qc",
+          "default": "qc",
+          "required": true,
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,30}$",
+          "patternMsg": "حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف",
+          "aiHint": "environment name being configured (e.g. qc, staging, uat)",
+          "hint": "اسم البيئة اللي هتتكتب: qc أو uat أو staging. البيئة الافتراضية للمشروع بتفضل زي ما هي."
+        },
         {
           "key": "portalUrl",
           "label": "رابط التطبيق (Portal URL)",
@@ -101,7 +260,8 @@
       "description": "بيانات الحسابات المستخدمة في الاختبارات",
       "descriptionEn": "Test account credentials and roles",
       "icon": "👥",
-      "target": "environments/{defaultEnvironment}.json",
+      "group": "environment",
+      "target": "environments/{envName}.json",
       "type": "dynamic-list",
       "listKey": "users",
       "minItems": 1,
@@ -170,71 +330,14 @@
       ]
     },
     {
-      "id": "azure-devops",
-      "title": "Azure DevOps",
-      "titleEn": "Azure DevOps",
-      "description": "إعدادات ربط Azure DevOps لإنشاء الـ bugs والـ test plans",
-      "descriptionEn": "Azure DevOps settings for bug filing and test plans",
-      "icon": "☁️",
-      "target": "config/project.json",
-      "optional": true,
-      "fields": [
-        {
-          "key": "azure.org",
-          "label": "Organization",
-          "labelEn": "Organization",
-          "type": "text",
-          "placeholder": "my-org",
-          "required": false,
-          "aiHint": "Azure DevOps organization name"
-        },
-        {
-          "key": "azure.project",
-          "label": "Project",
-          "labelEn": "Project",
-          "type": "text",
-          "placeholder": "My Project",
-          "required": false,
-          "aiHint": "Azure DevOps project name"
-        },
-        {
-          "key": "azure.team",
-          "label": "Team",
-          "labelEn": "Team",
-          "type": "text",
-          "placeholder": "My Team",
-          "required": false,
-          "aiHint": "Azure DevOps team name"
-        },
-        {
-          "key": "azure.assignee",
-          "label": "المسؤول الافتراضي",
-          "labelEn": "Default Assignee",
-          "type": "email",
-          "placeholder": "qa@example.com",
-          "required": false,
-          "aiHint": "default assignee email for bugs"
-        },
-        {
-          "key": "azure.pat",
-          "label": "Azure DevOps PAT Token",
-          "type": "password",
-          "placeholder": "Personal Access Token من dev.azure.com",
-          "required": false,
-          "secret": true,
-          "envKey": "AZURE_PAT",
-          "aiHint": "Azure DevOps personal access token"
-        }
-      ]
-    },
-    {
       "id": "db-connection",
       "title": "قاعدة البيانات",
       "titleEn": "Database Connection",
-      "description": "إعدادات الاتصال بقاعدة البيانات (اختياري)",
-      "descriptionEn": "Database connection settings (optional)",
+      "description": "إعدادات الاتصال بقاعدة البيانات لخطوات db:",
+      "descriptionEn": "Database connection settings for db: steps",
       "icon": "🗄️",
-      "target": "environments/{defaultEnvironment}.json",
+      "group": "environment",
+      "target": "environments/{envName}.json",
       "optional": true,
       "fields": [
         {
@@ -301,10 +404,11 @@
       "id": "api-integration",
       "title": "API Integration",
       "titleEn": "API Integration",
-      "description": "إعدادات الـ REST API (اختياري)",
-      "descriptionEn": "REST API settings (optional)",
+      "description": "إعدادات الـ REST API لخطوات api:",
+      "descriptionEn": "REST API settings for api: steps",
       "icon": "🔌",
-      "target": "environments/{defaultEnvironment}.json",
+      "group": "environment",
+      "target": "environments/{envName}.json",
       "optional": true,
       "fields": [
         {
@@ -341,65 +445,20 @@
       ]
     },
     {
-      "id": "figma",
-      "title": "Figma",
-      "titleEn": "Figma",
-      "description": "إعدادات Figma لخطوات ui-check (مقارنة الصفحة بالتصميم) — اختياري",
-      "descriptionEn": "Figma settings for ui-check: design-conformance steps (optional)",
-      "icon": "🎨",
-      "target": "config/project.json",
-      "optional": true,
-      "fields": [
-        {
-          "key": "figma.fileKey",
-          "label": "File Key",
-          "labelEn": "File Key",
-          "type": "text",
-          "placeholder": "AbCdEf123456",
-          "required": false,
-          "hint": "مفتاح ملف Figma من الرابط: figma.com/design/<FILE KEY>/...",
-          "aiHint": "Figma file key (the path segment after /design/ or /file/ in a Figma URL)"
-        },
-        {
-          "key": "figma.tokenEnvVar",
-          "label": "متغير الـ Token",
-          "labelEn": "Token Env Var",
-          "type": "text",
-          "placeholder": "FIGMA_TOKEN",
-          "default": "FIGMA_TOKEN",
-          "required": false,
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-          "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
-          "aiHint": "environment variable name for the Figma personal access token"
-        },
-        {
-          "key": "figma.token",
-          "label": "Figma Personal Access Token",
-          "type": "password",
-          "placeholder": "figd_xxxxxxxxxxxx",
-          "required": false,
-          "secret": true,
-          "envKey": "FIGMA_TOKEN",
-          "envKeyFrom": "figma.tokenEnvVar",
-          "aiHint": "Figma personal access token"
-        }
-      ]
-    },
-    {
       "id": "review",
       "title": "مراجعة وحفظ",
       "titleEn": "Review & Save",
-      "description": "راجع الإعدادات قبل الحفظ",
-      "descriptionEn": "Review your configuration before saving",
+      "description": "راجع الملفات اللي هتتكتب قبل الحفظ",
+      "descriptionEn": "Review the files to be written before saving",
       "icon": "✅",
       "type": "review",
       "outputs": [
         {
-          "label": "config/project.json",
+          "file": "config/project.json",
           "key": "projectConfig"
         },
         {
-          "label": "environments/{defaultEnvironment}.json",
+          "file": "environments/{envName}.json",
           "key": "envConfig"
         }
       ]

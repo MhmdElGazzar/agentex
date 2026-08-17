@@ -113,12 +113,21 @@ server = http.createServer((req, res) => {
     const samplePristine = isPristineSampleEnv(existingEnv, pluginRoot);
     const projectPristine = existingProj !== null && projectTemplate !== null &&
       isDeepStrictEqual(existingProj, projectTemplate);
+    // EVERY pristine sample, whatever its name — the same scan /api/save
+    // reconciles by, run up front so the review step can list, by name, each
+    // file a save under a different name would remove. One rule, two moments.
+    const envDir = path.join(projectRoot, 'environments');
+    const pristineSamples = !fs.existsSync(envDir) ? [] :
+      fs.readdirSync(envDir).filter(f => f.endsWith('.json'))
+        .filter(f => isPristineSampleEnv(safeReadJSON(path.join(envDir, f)), pluginRoot))
+        .map(f => f.replace(/\.json$/, ''));
     respondJSON(res, 200, {
       projectConfig: existingProj,
       envConfig: samplePristine ? null : existingEnv,
       envName,
       samplePristine,
       sampleName: samplePristine ? envName : null,
+      pristineSamples,
       projectPristine,
       unreadable,
     });
