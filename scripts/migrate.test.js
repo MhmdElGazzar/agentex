@@ -269,6 +269,23 @@ test('0.2 era: gaps filled, user specs kept, sample specs NOT copied in', () => 
   assert.match(readText(dir, '.env'), new RegExp(`^AZURE_PAT=${SENTINELS.pat}$`, 'm'));
 });
 
+// m07 fill-gaps must not inject a sample environment into a project that already
+// has environments — the sample would survive as a phantom under a name the user
+// never chose (the same bug the scaffold had; both share scaffoldProject).
+test('m07: legacy project with its own environment gets NO sample env injected', () => {
+  const dir = repo({
+    'test/suite1/smoke.md': SPEC_02,
+    'config/project.json': { name: 'p', defaultEnvironment: 'uat', login: { mode: 'session' } },
+    'environments/uat.json': { portalUrl: 'https://uat.example.test', defaults: {}, users: { u1: { phone: '1' } } },
+    '.gitignore': '.env\n',
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!exists(dir, 'environments/qc.json'), 'no sample beside the user environment');
+  assert.ok(!exists(dir, 'environments/qa.json'), 'no legacy-named sample either');
+  assert.strictEqual(readJson(dir, 'environments/uat.json').portalUrl, 'https://uat.example.test');
+});
+
 // ── 0.6-style era fixture ─────────────────────────────────────────────────────
 test('0.6 era: integrations/ renamed, contents intact, spec drift flagged', () => {
   const catalog = {

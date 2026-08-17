@@ -36,6 +36,16 @@ function hasSpecFiles(dir) {
   return false;
 }
 
+// Any environment file at all? The sample environment is scaffolded only into a
+// project with none — a project that already has environments (wizard-saved,
+// hand-written, or legacy) must never get a sample injected beside them, or it
+// survives as a phantom environment the user never configured.
+function hasEnvFiles(projectRoot) {
+  const dir = path.join(projectRoot, 'environments');
+  if (!fs.existsSync(dir)) return false;
+  return fs.readdirSync(dir).some(f => f.endsWith('.json'));
+}
+
 // ── .gitignore: the .env entry ───────────────────────────────────────────────
 function gitignoreHasEnvEntry(projectRoot) {
   const gitignore = path.join(projectRoot, '.gitignore');
@@ -148,11 +158,19 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
                      path.join(integrationDir, 'sample_db.json'));
   }
 
-  // 4b. Project config + environments (new layout; .env keeps only secrets)
+  // 4b. Project config + environments (new layout; .env keeps only secrets).
+  // The sample environment lands ONLY in a project with no environment files at
+  // all: fresh scaffolds get the editable starting point, while /init-test
+  // re-runs and m07 fill-gaps on projects that already have environments never
+  // inject a phantom sample beside them.
   copyFileIfAbsent(path.join(pluginRoot, 'templates', 'config', 'project.json'),
                    path.join(projectRoot, 'config', 'project.json'));
-  copyFileIfAbsent(path.join(pluginRoot, 'templates', 'environments', 'qc.json'),
-                   path.join(projectRoot, 'environments', 'qc.json'));
+  if (hasEnvFiles(projectRoot)) {
+    push('skipped', path.join(projectRoot, 'environments'), 'environment file(s) present — sample environment not copied');
+  } else {
+    copyFileIfAbsent(path.join(pluginRoot, 'templates', 'environments', 'qc.json'),
+                     path.join(projectRoot, 'environments', 'qc.json'));
+  }
 
   // 5. CLAUDE.md guidance (append-only)
   actions.push(ensureClaudeMdBullet(projectRoot, { dryRun }));
@@ -211,7 +229,7 @@ function readPluginVersion(pluginRoot) {
 
 module.exports = {
   CLAUDE_MD_BULLET, STAMP_REL,
-  hasSpecFiles, scaffoldProject, hasLegacySignals,
+  hasSpecFiles, hasEnvFiles, scaffoldProject, hasLegacySignals,
   gitignoreHasEnvEntry, ensureGitignoreEnv,
   claudeMdHasBullet, ensureClaudeMdBullet,
   stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,
