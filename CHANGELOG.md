@@ -3,6 +3,46 @@
 All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
+### Changed
+- **Wizard pages map one-to-one to config files.** The setup wizard's steps are reordered
+  into two labeled, contiguous groups that mirror the config model instead of interleaving
+  it: first the project group (Project Basics → Azure DevOps → Figma → Knowledge Base, all
+  writing `config/project.json`), then the environment group (Environment → Test Users →
+  Database → API, all writing `environments/<name>.json`), then review. Every card head
+  carries a monospaced target-file chip naming the ONE file that page writes (live-updating
+  with the environment name); the steps track shows the group labels. The environment-name
+  field moved off the first page to the top of the environment group — naming the file is
+  the first act of environment configuration, not a project setting — and its answer key is
+  renamed `defaultEnvironment` → `envName` everywhere (schema, engine, text-extraction
+  labels, UI). `project.json.defaultEnvironment` remains derived output only
+  (first-configured-claims-default, unchanged). The review step is schema-driven — one tab
+  per file-keyed output, a names-only `.env` keys summary (values never shown) — and its
+  reconciliation notice now enumerates **every** pristine sample the save will remove
+  (`/api/config` reports the full `pristineSamples` list, the same scan the save uses),
+  not just the one under the default name. Prefill/preserve semantics (invariant #11) are
+  untouched: only where fields appear changed, never what saving preserves.
+- **Default environment name is `qc` (was `qa`)** — still a prefilled, freely editable
+  default, not a presumption, and now one shared constant (`DEFAULT_ENV_NAME` in
+  `scripts/wizard/engine.js`, required by `server.js` and `migrate.js`, mirrored by the
+  schema default/placeholder and the `ui.html` fallbacks). The sample template is
+  `templates/environments/qc.json`; legacy migrations on projects without a
+  `config/project.json` now create `environments/qc.json`.
+
+### Added
+- **Knowledge Base wizard page** — the `kb` block of `config/project.json` was buildable
+  by the engine and fillable by text import, but had no page. A new optional project-group
+  page collects `kb.baseUrl` + `kb.project`, and the KB Ask API key goes to `.env` under
+  the fixed `KB_ASK_API_KEY` name that `ask_kb.js` reads (secret field, never written to
+  JSON, never shown).
+- **Migration m10 `phantom-sample-env`** — detects a pristine leftover sample sitting
+  under a non-default name beside a real environment (all three conditions must hold; a
+  lone pristine sample on an unconfigured project is legitimate scaffolding) and emits a
+  `[manual]` offer that withholds the version stamp. Removal happens only through the
+  consented re-run `node scripts/migrate.js --remove-phantom-sample` — the engine's first
+  consent-flag (`ctx.flags`) — never silently; renaming the file or changing any value in
+  it (claiming it) also clears detection. `/update-agentex` relays the offer and re-runs
+  the engine with the flag only after explicit user confirmation.
+
 ### Fixed
 - **Environment name integrity — no phantom sample environment.** The scaffold used to
   copy the sample environment unconditionally, so a wizard save under any other name left
@@ -19,24 +59,6 @@ All notable changes to AgenTeX are documented here.
   any save whose final `defaultEnvironment` would name no post-save file. A file that
   differs from the sample in any value is user-touched: prefilled, protected, and never
   reconciled.
-
-### Changed
-- **Default environment name is `qc` (was `qa`)** — still a prefilled, freely editable
-  default, not a presumption, and now one shared constant (`DEFAULT_ENV_NAME` in
-  `scripts/wizard/engine.js`, required by `server.js` and `migrate.js`, mirrored by the
-  schema default/placeholder and the `ui.html` fallbacks). The sample template is
-  `templates/environments/qc.json`; legacy migrations on projects without a
-  `config/project.json` now create `environments/qc.json`.
-
-### Added
-- **Migration m10 `phantom-sample-env`** — detects a pristine leftover sample sitting
-  under a non-default name beside a real environment (all three conditions must hold; a
-  lone pristine sample on an unconfigured project is legitimate scaffolding) and emits a
-  `[manual]` offer that withholds the version stamp. Removal happens only through the
-  consented re-run `node scripts/migrate.js --remove-phantom-sample` — the engine's first
-  consent-flag (`ctx.flags`) — never silently; renaming the file or changing any value in
-  it (claiming it) also clears detection. `/update-agentex` relays the offer and re-runs
-  the engine with the flag only after explicit user confirmation.
 
 ## [0.16.1] — 2026-08-14
 ### Fixed
