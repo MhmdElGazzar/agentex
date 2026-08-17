@@ -16,7 +16,10 @@ const DEFAULT_ENV_NAME = 'qc';
  * @returns {{ projectConfig: object, envConfig: object, envName: string }}
  */
 function buildConfigs(answers, steps) {
-  const envName = answers['defaultEnvironment'] || DEFAULT_ENV_NAME;
+  // envName names the environment FILE being configured. defaultEnvironment in
+  // project.json is derived output only (first-configured-claims-default) —
+  // never a page input.
+  const envName = answers['envName'] || DEFAULT_ENV_NAME;
 
   // ── project config skeleton ──────────────────────────────────────────────
   const projectConfig = {
@@ -180,7 +183,7 @@ const GROUPS = [
 const LABELS = [
   [/^(?:اسم\s*المشروع|المشروع|project\s*name)$/i, 'name'],
   [/^(?:رابط\s*التطبيق|الرابط|portal\s*url|app\s*url|target\s*url|website|site)$/i, 'portalUrl'],
-  [/^(?:البيئة(?:\s*الافتراضية)?|environment|default\s*environment|env)$/i, 'defaultEnvironment'],
+  [/^(?:البيئة(?:\s*الافتراضية)?|environment|default\s*environment|env)$/i, 'envName'],
   [/^(?:otp|رمز\s*التحقق|كلمة\s*المرور\s*المؤقتة)$/i, 'defaults.otp'],
 ];
 
