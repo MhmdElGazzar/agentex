@@ -50,9 +50,9 @@ function gitInit(dir) { git(dir, 'init', '-q'); commitAll(dir); }
 function commitAll(dir) { git(dir, 'add', '-A'); git(dir, 'commit', '-qm', 'fixture', '--allow-empty'); }
 function repo(files = {}) { const dir = proj(files); gitInit(dir); return dir; }
 
-function run(dir) {
+function run(dir, ...extraArgs) {
   try {
-    const out = execFileSync(process.execPath, [MIGRATE, dir], { encoding: 'utf8' });
+    const out = execFileSync(process.execPath, [MIGRATE, dir, ...extraArgs], { encoding: 'utf8' });
     ALL_OUTPUT.push(out);
     return { code: 0, out };
   } catch (e) {
@@ -581,6 +581,76 @@ test('m09 + init: fresh scaffold carries the figma block and the FIGMA_TOKEN key
   assert.deepStrictEqual(readJson(dir, 'config/project.json').figma,
     { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } });
   assert.match(readText(dir, '.env'), /^FIGMA_TOKEN=$/m, '.env scaffold keeps the key, blanks the value');
+});
+
+// ── m10 phantom-sample-env — consent-gated removal of pristine leftovers ─────
+const SAMPLE_ENV = JSON.parse(fs.readFileSync(
+  path.join(PLUGIN_ROOT, 'templates', 'environments', 'qc.json'), 'utf8'));
+
+function phantomFixture() {
+  return repo({
+    'test/suite1/a.md': SPEC_02,
+    'config/project.json': {
+      name: 'p', defaultEnvironment: 'uat', login: { mode: 'session' },
+      figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } },
+    },
+    'environments/uat.json': { portalUrl: 'https://uat.example.test', defaults: {}, users: { u: { phone: '1' } } },
+    'environments/qa.json': SAMPLE_ENV,   // the old scaffold's leftover, historical name
+    '.gitignore': '.env\n',
+    '.env': 'FIGMA_TOKEN=\n',
+  });
+}
+
+test('m10: pristine phantom sample → [manual] offer, file kept, stamp withheld', () => {
+  const dir = phantomFixture();
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[manual\].*environments\/qa\.json/);
+  assert.match(r.out, /--remove-phantom-sample/, 'the consent instruction is in the message');
+  assert.ok(exists(dir, 'environments/qa.json'), 'never deleted without explicit consent');
+  assert.ok(!exists(dir, '.agentex/version.json'), 'stamp withheld while the phantom remains');
+});
+
+test('m10: consented re-run with --remove-phantom-sample deletes the phantom and stamps', () => {
+  const dir = phantomFixture();
+  run(dir);                    // [manual] offer
+  commitAll(dir);              // clean-tree guard: commit run-1 output first
+  const r = run(dir, '--remove-phantom-sample');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] phantom-sample-env/);
+  assert.ok(!exists(dir, 'environments/qa.json'), 'phantom removed on consent');
+  assert.strictEqual(readJson(dir, 'environments/uat.json').portalUrl, 'https://uat.example.test',
+    'the user environment is untouched');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'stamped once resolved');
+});
+
+test('m10: a lone pristine sample on an unconfigured project is legitimate scaffolding', () => {
+  const dir = repo({
+    'test/suite1/a.md': SPEC_02,
+    'config/project.json': {
+      name: 'my-project', defaultEnvironment: 'qc', login: { mode: 'session' },
+      figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } },
+    },
+    'environments/qc.json': SAMPLE_ENV,
+    '.gitignore': '.env\n',
+    '.env': 'FIGMA_TOKEN=\n',
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!r.out.includes('phantom-sample-env'), 'not flagged');
+  assert.ok(exists(dir, 'environments/qc.json'), 'sample kept');
+});
+
+test('m10: a claimed file (any value changed) is the user\'s — never flagged', () => {
+  const dir = phantomFixture();
+  const claimed = JSON.parse(JSON.stringify(SAMPLE_ENV));
+  claimed.portalUrl = 'https://claimed.example.test';
+  addFiles(dir, { 'environments/qa.json': claimed });
+  commitAll(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!r.out.includes('phantom-sample-env'), 'user-touched file is not a phantom');
+  assert.ok(exists(dir, 'environments/qa.json'));
 });
 
 // ── secrecy ───────────────────────────────────────────────────────────────────
