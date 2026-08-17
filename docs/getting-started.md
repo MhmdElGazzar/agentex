@@ -38,7 +38,7 @@ npx playwright-cli install-browser chromium
 
 This creates a starting point in your project: sample test files in `test/suite1/` (editable
 examples — adapt them to your app), an empty `executions/` folder where run results will land,
-plus `config/project.json`, a sample `environments/qa.json`, and a secrets-only `.env` ready for
+plus `config/project.json`, a sample `environments/qc.json`, and a secrets-only `.env` ready for
 you to fill in.
 
 ## 4. Set permissions

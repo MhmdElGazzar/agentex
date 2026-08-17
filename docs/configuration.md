@@ -20,12 +20,14 @@ when the files or blocks are missing.
 ## Walkthrough: setting up your first project
 
 `/init-test` scaffolds all three: `config/project.json`, a sample
-`environments/qa.json`, and a secrets-only `.env` (gitignored automatically).
+`environments/qc.json` (created only when you have no environment files yet; the
+name is an editable default — the wizard reconciles it to whatever you choose),
+and a secrets-only `.env` (gitignored automatically).
 Fill them in:
 
 1. `config/project.json` — your Azure org/project/team (if you use ADO), the KB
    block (if you use `kb:` steps), and `defaultEnvironment`.
-2. `environments/qa.json` — your portal URL, test users, defaults, and the `db` /
+2. `environments/qc.json` — your portal URL, test users, defaults, and the `db` /
    `api` blocks if specs use `db:` / `api:` steps. Copy it to `uat.json` / `live.json`
    for more environments.
 3. `.env` — the actual secret values.
