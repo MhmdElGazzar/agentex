@@ -45,10 +45,15 @@ const ui = new Function(script + `
 ;return {
   get envs(){return envs}, get envOrder(){return envOrder}, get activeEnv(){return activeEnv},
   get answers(){return answers}, get users(){return users}, get pendingDeletes(){return pendingDeletes},
+  get userFieldsV(){return userFieldsSession}, get defaultsFieldsV(){return defaultsFieldsSession},
+  get removedUserFieldsV(){return removedUserFields}, get removedDefaultsFieldsV(){return removedDefaultsFields},
   set existingProjectV(v){existingProject=v},
   createEnv, switchEnv, renameSessionEnv, currentDefaultName, deriveRenames,
   buildEnvConfig, buildUsersObj, buildSecretsPayload, snapshotActiveEnv, envNameProblem,
   markActiveEnvDirty, dirtyEnvNames, envVarSuffix, buildProjectConfig,
+  addField, renameField, removeField, toggleFieldSecret, fieldKeyProblem,
+  deriveUserFieldRenames, deriveDefaultsFieldRenames, userFieldDropKeys, defaultsFieldDropKeys,
+  userFieldBlastRadius, defaultsFieldBlastRadius, envScopedKeys,
   setEnvDisk: (name, diskName) => { envs[name].existsOnDisk = true; envs[name].diskName = diskName; envs[name].dirty = false; },
   setLoadedFrom: (name, v) => { envs[name].loadedFrom = v; },
 };`)();
@@ -163,11 +168,112 @@ setTimeout(() => {
     assert.deepStrictEqual([...ui.dirtyEnvNames()].sort(), ['prod', 'uat']);
   });
 
+  // ── Consumer-owned field schema (wizard design #4) ────────────────────────
+  test('the field schema boots from the built-ins when the project carries none', () => {
+    assert.deepStrictEqual(ui.userFieldsV.map(f => f.key), ['phone', 'email', 'role', 'notes']);
+    assert.deepStrictEqual(ui.defaultsFieldsV.map(f => f.key), ['password', 'otp']);
+    assert.ok(ui.userFieldsV.every(f => f._orig === f.key), 'built-ins count as on-disk keys for rename bookkeeping');
+  });
+
+  test('fieldKeyProblem mirrors the engine rules, in Arabic', () => {
+    assert.ok(ui.fieldKeyProblem('user', '1bad'), 'bad pattern rejected');
+    assert.ok(ui.fieldKeyProblem('user', 'handle').includes('محجوز'), 'handle is reserved');
+    assert.ok(ui.fieldKeyProblem('user', 'role'), 'duplicate key rejected');
+    assert.strictEqual(ui.fieldKeyProblem('user', 'national_id'), null, 'a free valid key is allowed');
+    assert.strictEqual(ui.fieldKeyProblem('user', 'role', 'role'), null, 'a rename onto its own key is a no-op, not a duplicate');
+  });
+
+  test('secret user field: JSON carries { envSecret }, the value goes only to the secrets payload', () => {
+    ui.addField('user', { key: 'apiKey', label: 'API Key', secret: true });
+    ui.users[0].apiKey = 'USER_VALID_USER_APIKEY_P';           // env-var NAME slot
+    ui.users[0]._secrets = { apiKey: 'tok-user-secret-9' };    // typed VALUE (session only)
+    ui.markActiveEnvDirty();
+    ui.snapshotActiveEnv();
+    const built = ui.buildEnvConfig('prod');
+    assert.deepStrictEqual(built.users.valid_user.apiKey, { envSecret: 'USER_VALID_USER_APIKEY_P' });
+    assert.ok(!JSON.stringify(built).includes('tok-user-secret-9'), 'the value never lands in the JSON');
+    const payload = ui.buildSecretsPayload();
+    assert.strictEqual(payload['USER_VALID_USER_APIKEY_P'], 'tok-user-secret-9');
+  });
+
+  test('secret user field without a typed name falls back to the USER_<HANDLE>_<KEY> prefill', () => {
+    ui.envs['uat'].users[0]._secrets = { apiKey: 'tok-uat-7' };   // name slot left empty
+    const payload = ui.buildSecretsPayload();
+    assert.strictEqual(payload['USER_VALID_USER_APIKEY'], 'tok-uat-7',
+      'the owner-confirmed prefill convention names the .env key');
+    delete ui.envs['uat'].users[0]._secrets;
+  });
+
+  test('renaming a field migrates the key in EVERY session environment and dirties them all', () => {
+    assert.strictEqual(ui.envs['uat'].users[0].phone, '0551112223', 'value sits under the old key before');
+    ui.renameField('user', 'phone', 'userId', 'User ID');
+    assert.deepStrictEqual(ui.deriveUserFieldRenames(), [{ from: 'phone', to: 'userId' }]);
+    assert.ok(ui.userFieldDropKeys().includes('phone'), 'the old key is dropped from every on-disk base');
+    for (const n of ['prod', 'uat']) {
+      assert.strictEqual(ui.envs[n].users[0].userId, '0551112223', `${n}: value migrated to the new key`);
+      assert.ok(!('phone' in ui.envs[n].users[0]), `${n}: old key gone from the session`);
+    }
+    assert.deepStrictEqual([...ui.dirtyEnvNames()].sort(), ['prod', 'uat'],
+      'a rename rides the save-all path — every environment file is rewritten');
+    const built = ui.buildEnvConfig('prod');
+    assert.strictEqual(built.users.valid_user.userId, '0551112223');
+    assert.ok(!('phone' in built.users.valid_user),
+      'the renamed-away key leaves the file — the ONE exception to unknown-prop preservation');
+    assert.strictEqual(built.users.valid_user.apiKeyRef, 'hand-added', 'other unknown props still survive (invariant #11)');
+  });
+
+  test('removing a field records its blast radius and clears its values (consented op)', () => {
+    ui.users[0].email = 'x@y.example';
+    ui.markActiveEnvDirty();
+    assert.deepStrictEqual(ui.userFieldBlastRadius('email'), ['prod'], 'blast radius names the affected environments');
+    ui.removeField('user', 'email');
+    assert.ok(!ui.userFieldsV.some(f => f.key === 'email'));
+    assert.deepStrictEqual(ui.removedUserFieldsV.map(x => ({ key: x.key, envs: x.envs })),
+      [{ key: 'email', envs: ['prod'] }]);
+    assert.ok(ui.userFieldDropKeys().includes('email'));
+    assert.ok(!('email' in ui.users[0]), 'session values under the removed field are gone');
+  });
+
+  test('defaults field rename migrates the per-environment answer keys and the base key', () => {
+    ui.setLoadedFrom('prod', {
+      portalUrl: 'https://old.example', customTop: 'kept',
+      defaults: { locale: 'ar', otp: '0000' },
+      users: { valid_user: { userId: '0', apiKeyRef: 'hand-added' } },
+    });
+    ui.renameField('defaults', 'otp', 'pin', 'PIN');
+    assert.deepStrictEqual(ui.deriveDefaultsFieldRenames(), [{ from: 'otp', to: 'pin' }]);
+    assert.strictEqual(ui.answers['defaults.pin'], '9999', 'active environment answer key migrated');
+    assert.strictEqual(ui.envs['uat'].answers['defaults.pin'], '9999', 'every environment migrated');
+    ui.snapshotActiveEnv();
+    const built = ui.buildEnvConfig('prod');
+    assert.strictEqual(built.defaults.pin, '9999');
+    assert.ok(!('otp' in built.defaults), 'the renamed-away defaults key leaves the file');
+    assert.strictEqual(built.defaults.locale, 'ar', 'unknown defaults keys still survive');
+  });
+
+  test('buildProjectConfig always writes the effective arrays, stripped of session bookkeeping', () => {
+    const proj = ui.buildProjectConfig();
+    assert.deepStrictEqual(proj.userFields.map(f => f.key), ['userId', 'role', 'notes', 'apiKey']);
+    assert.deepStrictEqual(proj.defaultsFields.map(f => f.key), ['password', 'pin']);
+    assert.ok(proj.userFields.every(f => !('_orig' in f)), 'session bookkeeping never reaches the file');
+  });
+
+  test('envScopedKeys follows the defaults schema (a custom key is snapshot/restore-scoped)', () => {
+    assert.ok(ui.envScopedKeys().includes('defaults.pin'));
+    assert.ok(!ui.envScopedKeys().includes('defaults.otp'), 'the renamed-away key is no longer scoped');
+  });
+
   // ── Static copy checks ────────────────────────────────────────────────────
   test('review ops list spells مؤكّدة/مؤكّد correctly (الهمزة على واو بعد ضمة)', () => {
     assert.ok(html.includes('مؤكّدة'), 'إعادة تسمية مؤكّدة');
     assert.ok(html.includes('مؤكّد'), 'حذف مؤكّد');
     assert.ok(!html.includes('مأكّد'), 'the misspelled form must not appear anywhere');
+  });
+
+  test('field editor copy: the affordance exists and teaches the shared-schema model', () => {
+    assert.ok(html.includes('تعديل الحقول'), 'the field-set editor affordance is present');
+    assert.ok(html.includes('مشتركة بين كل البيئات'), 'the copy says the schema is shared across environments');
+    assert.ok(!html.includes('هتتقري') && !html.includes('بتتقري'), 'المبني للمجهول من "قرا" آخره ألف');
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

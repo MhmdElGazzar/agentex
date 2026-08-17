@@ -589,16 +589,60 @@ let newDefaultName = null; // session name the user designated when deleting the
 
 function makeEnvEntry() {
   return {
-    answers: {},            // ENV_SCOPED_KEYS only
+    answers: {},            // env-scoped keys only (see envScopedKeys)
     users: starterUsers(),
     usersPristine: true,
-    secrets: {},            // env-scoped secret values (db.password, api.token)
+    secrets: {},            // env-scoped secret values (db.password, api.token, defaults.<key>)
     existsOnDisk: false,
     diskName: null,         // the on-disk file name (rename ops derive from diskName ≠ current name)
     loadedFrom: null,       // parsed disk JSON — the invariant-#11 merge base (incl. per-user props)
     dirty: false,           // true → this save writes the file
   };
 }
+
+/* ── Consumer-owned field schema (wizard design #4) ───────────────────────
+ * `userFieldsSession` / `defaultsFieldsSession` are the effective descriptor
+ * arrays — loaded from config/project.json when present, else the built-ins.
+ * ONE schema, defined once, shared across ALL environments: a rename migrates
+ * the key in every session environment (and, at save, in every file — all
+ * environments ride the batch save); a removal is consented with its blast
+ * radius. `_orig` tracks each field's on-disk key (null = added this session);
+ * removed*Fields collect the consented removals for the review ops list and
+ * the base-key drops. Values NEVER live here — they stay per-environment.
+ */
+// Browser copy of engine.js BUILTIN_USER_FIELDS / BUILTIN_DEFAULTS_FIELDS — keep in sync.
+const BUILTIN_USER_FIELDS = [
+  { key: 'phone', label: 'رقم الهاتف', labelEn: 'Phone', type: 'text', placeholder: '0550000001' },
+  { key: 'email', label: 'البريد الإلكتروني', labelEn: 'Email', type: 'email', placeholder: 'test@example.com' },
+  { key: 'role', label: 'الدور', labelEn: 'Role', type: 'text', placeholder: 'customer' },
+  { key: 'notes', label: 'ملاحظات', labelEn: 'Notes', type: 'text', placeholder: 'for negative login scenarios' },
+];
+const BUILTIN_DEFAULTS_FIELDS = [
+  { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سراً حقيقياً)' },
+  { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+];
+const FIELD_KEY_RE_UI = /^[a-zA-Z][a-zA-Z0-9_]*$/;
+const ENV_VAR_RE_UI = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+let userFieldsSession = null;
+let defaultsFieldsSession = null;
+let removedUserFields = [];      // { key: ORIGINAL key, label, envs: [names with values] }
+let removedDefaultsFields = [];
+
+/** Seed the effective field schema from config/project.json (or built-ins). */
+function seedFieldSchema(proj) {
+  const mk = (arr, builtins) => (Array.isArray(arr) ? arr : builtins)
+    .filter(f => f && typeof f === 'object' && FIELD_KEY_RE_UI.test(String(f.key || '')) && f.key !== 'handle')
+    .map(f => ({ ...f, _orig: f.key }));
+  userFieldsSession = mk(proj && proj.userFields, BUILTIN_USER_FIELDS);
+  defaultsFieldsSession = mk(proj && proj.defaultsFields, BUILTIN_DEFAULTS_FIELDS);
+  removedUserFields = [];
+  removedDefaultsFields = [];
+}
+
+/** Strip session bookkeeping — what buildProjectConfig writes to the file. */
+function cleanDescriptor(f) { const c = { ...f }; delete c._orig; return c; }
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 // Env-scoped secret field keys (db.password, api.token) — schema-derived; their
@@ -609,6 +653,7 @@ async function init() {
   schema = await loadSchema();
   ENV_SECRET_KEYS = new Set(schema.steps.filter(s => s.group === 'environment')
     .flatMap(s => s.fields || []).filter(f => f.secret).map(f => f.key));
+  seedFieldSchema(null);   // built-ins until a loaded config says otherwise
   await loadExistingConfig();
   renderIntro();
 }
@@ -654,6 +699,10 @@ async function loadExistingConfig() {
   // scaffolding presented as "your existing configuration" is exactly the
   // phantom-environment bug. The wizard starts from schema defaults instead.
   existingProject = proj || null;
+  // The field schema is config, not data: seed it from project.json whenever
+  // one is readable (a pristine template's arrays ARE the built-ins), BEFORE
+  // any environment is flattened — prefill and rendering both iterate it.
+  seedFieldSchema(proj);
   const projLoaded = !!(proj && !projPristine);
 
   if (projLoaded) {
@@ -698,25 +747,41 @@ async function loadExistingConfig() {
   if (projLoaded || names.length) showToast('📂 تم تحميل إعدادات المشروع الحالية');
 }
 
-/** Environment-scoped answer keys — everything that belongs to ONE environment file. */
-const ENV_SCOPED_KEYS = [
-  'portalUrl', 'defaults.otp', 'defaults.password',
-  'db.server', 'db.port', 'db.name', 'db.user', 'db.passwordEnvVar',
-  'api.baseUrl', 'api.tokenEnvVar',
-];
+/** Environment-scoped answer keys — everything that belongs to ONE environment
+ *  file. Connection keys are fixed; the defaults keys follow the consumer's
+ *  defaultsFields schema (a secret defaults field scopes its env-var-NAME slot). */
+function envScopedKeys() {
+  const keys = [
+    'portalUrl',
+    'db.server', 'db.port', 'db.name', 'db.user', 'db.passwordEnvVar',
+    'api.baseUrl', 'api.tokenEnvVar',
+  ];
+  for (const f of (defaultsFieldsSession || [])) {
+    keys.push(f.secret ? `defaults.${f.key}EnvVar` : `defaults.${f.key}`);
+  }
+  return keys;
+}
 
 const starterUsers = () => ([
   { handle: 'valid_user',   phone: '', role: 'customer' },
   { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
 ]);
 
-/** Flatten one environment file's JSON into env-scoped answer keys. */
+/** Flatten one environment file's JSON into env-scoped answer keys —
+ *  schema-driven: the defaults keys come from the effective defaultsFields. */
 function envAnswersFrom(env) {
   const a = {};
   if (env.portalUrl) a['portalUrl'] = env.portalUrl;
   if (env.defaults) {
-    if (env.defaults.otp)      a['defaults.otp']      = env.defaults.otp;
-    if (env.defaults.password) a['defaults.password'] = env.defaults.password;
+    for (const f of defaultsFieldsSession) {
+      const v = env.defaults[f.key];
+      if (v === undefined || v === null || v === '') continue;
+      if (f.secret) {
+        if (typeof v === 'object' && v.envSecret) a[`defaults.${f.key}EnvVar`] = v.envSecret;
+      } else if (typeof v !== 'object') {
+        a[`defaults.${f.key}`] = String(v);
+      }
+    }
   }
   if (env.db) {
     if (env.db.server) a['db.server'] = env.db.server;
@@ -732,11 +797,20 @@ function envAnswersFrom(env) {
   return a;
 }
 
+/** Flatten a file's users into session list entries — one slot per effective
+ *  field; a secret field's slot carries the env-var NAME from { envSecret }. */
 function usersFromEnv(env) {
   const entries = Object.entries(env.users || {});
   if (!entries.length) return starterUsers();
-  return entries.map(([handle, u]) =>
-    ({ handle, phone: u.phone || '', role: u.role || '', email: u.email || '', notes: u.notes || '' }));
+  return entries.map(([handle, u]) => {
+    const o = { handle };
+    for (const f of userFieldsSession) {
+      const v = u[f.key];
+      if (f.secret) o[f.key] = (v && typeof v === 'object' && v.envSecret) ? v.envSecret : '';
+      else o[f.key] = (v === undefined || v === null || typeof v === 'object') ? '' : String(v);
+    }
+    return o;
+  });
 }
 
 /* ── Session store mechanics ──────────────────────────────────────────────
@@ -746,12 +820,20 @@ function usersFromEnv(env) {
  * flattens another entry out. Switching never touches connection targets of
  * other environments — each entry is isolated by construction.
  */
+/** Session copy of one user entry — `_secrets` (typed secret VALUES, never
+ *  persisted to JSON) is deep-copied so entries never share a store. */
+function cloneUser(u) {
+  const c = { ...u };
+  if (u._secrets) c._secrets = { ...u._secrets };
+  return c;
+}
+
 function snapshotActiveEnv() {
   if (!activeEnv || !envs[activeEnv]) return;
   const e = envs[activeEnv];
   e.answers = {};
-  for (const k of ENV_SCOPED_KEYS) if (answers[k] !== undefined) e.answers[k] = answers[k];
-  e.users = users.map(u => ({ ...u }));
+  for (const k of envScopedKeys()) if (answers[k] !== undefined) e.answers[k] = answers[k];
+  e.users = users.map(cloneUser);
   e.usersPristine = usersPristine;
 }
 
@@ -759,10 +841,10 @@ function restoreEnv(name) {
   const e = envs[name];
   if (!e) return;
   activeEnv = name;
-  for (const k of ENV_SCOPED_KEYS) {
+  for (const k of envScopedKeys()) {
     if (e.answers[k] !== undefined) answers[k] = e.answers[k]; else delete answers[k];
   }
-  users = e.users.map(u => ({ ...u }));
+  users = e.users.map(cloneUser);
   usersPristine = e.usersPristine;
   answers['users'] = users;
   answers['envName'] = name;
@@ -797,11 +879,15 @@ function createEnv(name, opts = {}) {
   const src = opts.copyFrom ? envs[opts.copyFrom] : null;
   if (src) {
     if (opts.copyUsers) {
-      e.users = src.users.map(u => ({ ...u }));
+      e.users = src.users.map(cloneUser);
       e.usersPristine = false;
     }
     if (opts.copyDefaults) {
-      for (const k of ['defaults.otp', 'defaults.password']) {
+      // VALUES only (owner decision) — non-secret defaults; a secret defaults
+      // value and its env-var slot are per-environment and never inherited.
+      for (const f of defaultsFieldsSession) {
+        if (f.secret) continue;
+        const k = `defaults.${f.key}`;
         if (src.answers[k] !== undefined) e.answers[k] = src.answers[k];
       }
     }
@@ -828,6 +914,149 @@ function deriveRenames() {
     .filter(n => envs[n].existsOnDisk && envs[n].diskName !== n)
     .map(n => ({ from: envs[n].diskName, to: n, confirmed: true }));
 }
+
+/* ── Field-set operations (design #4) ─────────────────────────────────────
+ * add / rename / remove / mark-secret / reorder — ONE schema, session-global.
+ * A rename migrates the value key in EVERY session environment and marks them
+ * all dirty, so the save-all rewrites every file with the migrated key; the
+ * original key joins the drop list (the consented exception to invariant
+ * #11's unknown-prop preservation). A removal records its blast radius for
+ * the review ops list. No file changes happen here — only the batch save.
+ */
+function fieldList(kind) { return kind === 'user' ? userFieldsSession : defaultsFieldsSession; }
+
+function markAllEnvsDirty() { for (const n of envOrder) envs[n].dirty = true; }
+
+/** Why this key cannot be used for an add/rename right now — or null. */
+function fieldKeyProblem(kind, key, selfKey) {
+  if (!FIELD_KEY_RE_UI.test(String(key || ''))) {
+    return 'اسم الحقل لازم يبدأ بحرف إنجليزي ويحتوي حروفًا إنجليزية وأرقامًا و _ بس — هو المفتاح اللي بيتكتب في ملف الـ JSON';
+  }
+  if (kind === 'user' && key === 'handle') return '«handle» محجوز — هو مفتاح المستخدم نفسه، موجود دايمًا ومش بيتغير';
+  if (fieldList(kind).some(f => f.key === key && f.key !== selfKey)) return `«${key}» موجود بالفعل في مجموعة الحقول`;
+  return null;
+}
+
+function addField(kind, desc) {
+  fieldList(kind).push({ ...desc, _orig: null });
+}
+
+/** Reorder a field one step up (-1) or down (+1). */
+function moveField(kind, key, delta) {
+  const list = fieldList(kind);
+  const i = list.findIndex(f => f.key === key);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+}
+
+/** Rename (and/or relabel) a field; a key change migrates every environment. */
+function renameField(kind, oldKey, newKey, newLabel) {
+  const f = fieldList(kind).find(x => x.key === oldKey);
+  if (!f) return;
+  if (newLabel) f.label = newLabel;
+  if (!newKey || newKey === oldKey) return;
+  snapshotActiveEnv();
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (kind === 'user') {
+      for (const u of e.users) {
+        if (Object.prototype.hasOwnProperty.call(u, oldKey)) { u[newKey] = u[oldKey]; delete u[oldKey]; }
+        if (u._secrets && Object.prototype.hasOwnProperty.call(u._secrets, oldKey)) {
+          u._secrets[newKey] = u._secrets[oldKey]; delete u._secrets[oldKey];
+        }
+      }
+    } else {
+      for (const suf of ['', 'EnvVar']) {
+        const from = `defaults.${oldKey}${suf}`, to = `defaults.${newKey}${suf}`;
+        if (e.answers[from] !== undefined) { e.answers[to] = e.answers[from]; delete e.answers[from]; }
+      }
+      if (e.secrets[`defaults.${oldKey}`] !== undefined) {
+        e.secrets[`defaults.${newKey}`] = e.secrets[`defaults.${oldKey}`];
+        delete e.secrets[`defaults.${oldKey}`];
+      }
+    }
+  }
+  f.key = newKey;
+  markAllEnvsDirty();
+  restoreEnv(activeEnv);
+}
+
+/** Environments holding a value under this field — the removal blast radius. */
+function userFieldBlastRadius(key) {
+  snapshotActiveEnv();
+  return envOrder.filter(n => envs[n].users.some(u => u[key] || (u._secrets && u._secrets[key])));
+}
+function defaultsFieldBlastRadius(key) {
+  snapshotActiveEnv();
+  return envOrder.filter(n => envs[n].answers[`defaults.${key}`] ||
+    envs[n].answers[`defaults.${key}EnvVar`] || envs[n].secrets[`defaults.${key}`]);
+}
+
+/** Clear every session value under a field, in every environment. */
+function clearFieldValues(kind, key) {
+  snapshotActiveEnv();
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (kind === 'user') {
+      for (const u of e.users) { delete u[key]; if (u._secrets) delete u._secrets[key]; }
+    } else {
+      delete e.answers[`defaults.${key}`];
+      delete e.answers[`defaults.${key}EnvVar`];
+      delete e.secrets[`defaults.${key}`];
+    }
+  }
+  restoreEnv(activeEnv);
+}
+
+/** Consented removal: record the ORIGINAL key + blast radius, drop the values. */
+function removeField(kind, key) {
+  const list = fieldList(kind);
+  const i = list.findIndex(x => x.key === key);
+  if (i < 0) return;
+  const f = list[i];
+  const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
+  list.splice(i, 1);
+  if (f._orig) {
+    (kind === 'user' ? removedUserFields : removedDefaultsFields)
+      .push({ key: f._orig, label: f.label || f.key, envs: blast });
+  }
+  clearFieldValues(kind, key);
+  markAllEnvsDirty();
+}
+
+/** Flip secret ↔ plaintext. Values do not survive the flip: a plaintext value
+ *  must never silently become an env-var name (or the reverse) — cleared, and
+ *  every file rewrites without the key until re-entered. */
+function toggleFieldSecret(kind, key) {
+  const f = fieldList(kind).find(x => x.key === key);
+  if (!f) return;
+  f.secret = !f.secret;
+  if (!f.secret) delete f.secret;
+  clearFieldValues(kind, key);
+  markAllEnvsDirty();
+}
+
+/** Field renames this save performs (original on-disk key → current key). */
+function deriveUserFieldRenames() {
+  return userFieldsSession.filter(f => f._orig && f._orig !== f.key).map(f => ({ from: f._orig, to: f.key }));
+}
+function deriveDefaultsFieldRenames() {
+  return defaultsFieldsSession.filter(f => f._orig && f._orig !== f.key).map(f => ({ from: f._orig, to: f.key }));
+}
+
+/** Base keys the build DROPS from on-disk entries — the consented exception
+ *  to unknown-prop preservation: removed keys + rename originals. */
+function userFieldDropKeys() {
+  return removedUserFields.map(x => x.key).concat(deriveUserFieldRenames().map(r => r.from));
+}
+function defaultsFieldDropKeys() {
+  return removedDefaultsFields.map(x => x.key).concat(deriveDefaultsFieldRenames().map(r => r.from));
+}
+
+/** Owner-confirmed prefill conventions for secret-field env-var names. */
+const suggestUserSecretName = (handle, key) => `USER_${envVarSuffix(handle || 'user')}_${envVarSuffix(key)}`;
+const suggestDefaultsSecretName = (key) => `DEFAULT_${envVarSuffix(key)}`;
 
 /**
  * The defaultEnvironment this save writes. Never silently re-pointed:
@@ -1145,7 +1374,10 @@ function renderStep() {
   if (step.type === 'review') body.appendChild(renderReviewStep());
   else if (step.type === 'dynamic-list') body.appendChild(renderUsersStep(step));
   else if (step.type === 'env-manager') body.appendChild(renderEnvManagerStep());
-  else renderFields(step, body);
+  else {
+    renderFields(step, body);
+    if (step.defaultsSection) body.appendChild(renderDefaultsSection());
+  }
   card.appendChild(body);
 
   // Footer
@@ -1244,7 +1476,7 @@ function buildField(field) {
       inp.addEventListener('change', () => { answers[field.key] = inp.value; });
       inp.addEventListener('input',  () => {
         answers[field.key] = inp.value;
-        if (ENV_SCOPED_KEYS.includes(field.key)) markActiveEnvDirty();
+        if (envScopedKeys().includes(field.key)) markActiveEnvDirty();
       });
     }
   }
@@ -1263,6 +1495,71 @@ function buildInput(field, val) {
 
 function esc(s) { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 
+/* ── Defaults section (E1) — schema-driven from defaultsFields ────────────── */
+/** The environment page's defaults block: one input per descriptor (VALUES are
+ *  per-environment; the field set is shared), plus the field-set editor. */
+function renderDefaultsSection() {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:18px';
+  const div = document.createElement('div');
+  div.className = 'section-divider';
+  div.textContent = 'القيم الافتراضية';
+  wrap.appendChild(div);
+  for (const f of defaultsFieldsSession) {
+    if (f.secret) { wrap.appendChild(buildDefaultsSecretField(f)); continue; }
+    wrap.appendChild(buildField({
+      key: `defaults.${f.key}`, label: f.label || f.key, type: f.type || 'text',
+      placeholder: f.placeholder !== undefined ? f.placeholder : (f.default || ''),
+      default: f.default, hint: f.hint, required: !!f.required,
+    }));
+  }
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn-add';
+  editBtn.innerHTML = '⚙️ تعديل الحقول';
+  editBtn.onclick = () => openFieldEditor('defaults');
+  wrap.appendChild(editBtn);
+  const hint = document.createElement('div');
+  hint.className = 'field-hint';
+  hint.textContent = 'الحقول دي معرّفة مرة واحدة ومشتركة بين كل البيئات — القيم بس هي اللي بتختلف من بيئة لبيئة.';
+  wrap.appendChild(hint);
+  return wrap;
+}
+
+/** A secret defaults field: env-var NAME input + value input. The name lands
+ *  in the file as { envSecret }; the value goes to .env only (invariant #5). */
+function buildDefaultsSecretField(f) {
+  const div = document.createElement('div');
+  div.className = 'field';
+  const nameKey = `defaults.${f.key}EnvVar`;
+  const suggestion = suggestDefaultsSecretName(f.key);
+  const nameVal = answers[nameKey] !== undefined ? answers[nameKey] : '';
+  const secVal = (envs[activeEnv] && envs[activeEnv].secrets[`defaults.${f.key}`]) || '';
+  div.innerHTML = `
+    <label class="field-label">${esc(f.label || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
+    ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input type="text" class="df-name" value="${esc(nameVal)}" placeholder="${esc(suggestion)}"
+        style="direction:ltr;font-family:var(--mono);flex:1;min-width:150px" />
+      <input type="password" class="df-val secret-input" value="${esc(secVal)}" placeholder="••••••••"
+        style="flex:1;min-width:150px" />
+    </div>
+    <div class="field-secret-note">القيمة بتتكتب في ‎.env تحت الاسم ده — عمرها ما بتتكتب في ملف البيئة</div>`;
+  const nameInp = div.querySelector('.df-name');
+  const valInp = div.querySelector('.df-val');
+  nameInp.addEventListener('input', () => { answers[nameKey] = nameInp.value; markActiveEnvDirty(); });
+  valInp.addEventListener('input', () => {
+    envs[activeEnv].secrets[`defaults.${f.key}`] = valInp.value;
+    markActiveEnvDirty();
+    // Visible, editable prefill: typing a value fills an empty name with the
+    // convention suggestion — never silent behavior.
+    if (valInp.value && !String(nameInp.value || '').trim()) {
+      nameInp.value = suggestion;
+      answers[nameKey] = suggestion;
+    }
+  });
+  return div;
+}
+
 /* ── Users Step ─────────────────────────────────────────────────────────── */
 function renderUsersStep(_step) {
   answers['users'] = users;
@@ -1273,60 +1570,96 @@ function renderUsersStep(_step) {
   list.className = 'user-list'; list.id = 'user-list';
   refreshUserCards(list);
 
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap';
   const addBtn = document.createElement('button');
   addBtn.className = 'btn-add';
   addBtn.innerHTML = '+ إضافة مستخدم';
   addBtn.onclick = () => {
-    users.push({ handle:'', phone:'', role:'' });
+    users.push({ handle: '' });
     usersDirty();
     refreshUserCards(document.getElementById('user-list'));
   };
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn-add';
+  editBtn.innerHTML = '⚙️ تعديل الحقول';
+  editBtn.onclick = () => openFieldEditor('user');
+  row.appendChild(addBtn);
+  row.appendChild(editBtn);
+
+  const hint = document.createElement('div');
+  hint.className = 'field-hint';
+  hint.textContent = 'مجموعة الحقول معرّفة مرة واحدة ومشتركة بين كل البيئات — أي تعديل فيها بيظهر لكل مستخدم في كل بيئة؛ القيم نفسها لكل بيئة على حدة.';
 
   outer.appendChild(list);
-  outer.appendChild(addBtn);
+  outer.appendChild(row);
+  outer.appendChild(hint);
   return outer;
 }
 
+/** One card per user — the handle is fixed (it keys the users object); every
+ *  other input comes from the shared userFields schema. */
 function refreshUserCards(list) {
   list.innerHTML = '';
   users.forEach((u, i) => {
     const card = document.createElement('div');
     card.className = 'user-card';
+    const cells = [`
+        <div class="field">
+          <label class="field-label">المعرّف <span class="req">*</span></label>
+          <input type="text" placeholder="valid_user" value="${esc(u.handle)}"
+            oninput="users[${i}].handle=this.value;usersDirty()" />
+        </div>`];
+    for (const f of userFieldsSession) {
+      if (f.secret) {
+        cells.push(`
+        <div class="field" style="grid-column:1/-1">
+          <label class="field-label">${esc(f.label || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input type="text" id="usf-${i}-${f.key}" value="${esc(u[f.key] || '')}"
+              placeholder="${esc(suggestUserSecretName(u.handle, f.key))}"
+              style="direction:ltr;font-family:var(--mono);flex:1;min-width:140px"
+              oninput="users[${i}]['${f.key}']=this.value;usersDirty()" />
+            <input type="password" class="secret-input" value="${esc((u._secrets && u._secrets[f.key]) || '')}"
+              placeholder="••••••••" style="flex:1;min-width:140px"
+              oninput="userSecretInput(${i},'${f.key}',this)" />
+          </div>
+          <div class="field-secret-note">القيمة بتتكتب في ‎.env تحت الاسم ده — ملف البيئة بيشاور عليها بـ envSecret بس</div>
+        </div>`);
+      } else {
+        const t = { email: 'email', number: 'number', url: 'url' }[f.type] || 'text';
+        cells.push(`
+        <div class="field">
+          <label class="field-label">${esc(f.label || f.key)}${f.required ? ' <span class="req">*</span>' : ''}</label>
+          <input type="${t}" placeholder="${esc(f.placeholder || '')}" value="${esc(u[f.key] || '')}"
+            oninput="users[${i}]['${f.key}']=this.value;usersDirty()" />
+        </div>`);
+      }
+    }
     card.innerHTML = `
       <div class="user-card-head">
         <div class="user-card-label">👤 مستخدم ${i+1}</div>
         ${users.length > 1
           ? `<button class="btn-rm" onclick="removeUser(${i})">✕</button>` : ''}
       </div>
-      <div class="field-grid-2">
-        <div class="field">
-          <label class="field-label">المعرّف <span class="req">*</span></label>
-          <input type="text" placeholder="valid_user" value="${esc(u.handle)}"
-            oninput="users[${i}].handle=this.value;usersDirty()" />
-        </div>
-        <div class="field">
-          <label class="field-label">الدور</label>
-          <input type="text" placeholder="customer" value="${esc(u.role||'')}"
-            oninput="users[${i}].role=this.value;usersDirty()" />
-        </div>
-        <div class="field">
-          <label class="field-label">الهاتف</label>
-          <input type="text" placeholder="0550000001" value="${esc(u.phone||'')}"
-            oninput="users[${i}].phone=this.value;usersDirty()" />
-        </div>
-        <div class="field">
-          <label class="field-label">البريد الإلكتروني</label>
-          <input type="email" placeholder="test@example.com" value="${esc(u.email||'')}"
-            oninput="users[${i}].email=this.value;usersDirty()" />
-        </div>
-        <div class="field" style="grid-column:1/-1">
-          <label class="field-label">ملاحظات</label>
-          <input type="text" placeholder="مثال: حساب منتهي الصلاحية" value="${esc(u.notes||'')}"
-            oninput="users[${i}].notes=this.value;usersDirty()" />
-        </div>
-      </div>`;
+      <div class="field-grid-2">${cells.join('')}</div>`;
     list.appendChild(card);
   });
+}
+
+/** A typed secret VALUE lives in the session only (never in JSON); typing it
+ *  fills an empty name slot with the USER_<HANDLE>_<KEY> prefill — visible
+ *  and editable, never silent. */
+function userSecretInput(i, key, inp) {
+  const u = users[i];
+  u._secrets = u._secrets || {};
+  u._secrets[key] = inp.value;
+  usersDirty();
+  if (inp.value && !String(u[key] || '').trim()) {
+    u[key] = suggestUserSecretName(u.handle, key);
+    const nameInp = document.getElementById(`usf-${i}-${key}`);
+    if (nameInp) nameInp.value = u[key];
+  }
 }
 
 function removeUser(i) {
@@ -1439,7 +1772,7 @@ function openAddEnvDialog() {
       <div id="copy-section" style="display:none;flex-direction:column;gap:8px;padding-right:24px">
         <select id="copy-src">${sources.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
         <label><input type="checkbox" id="copy-users" checked /> مستخدمو الاختبار (القيم)</label>
-        <label><input type="checkbox" id="copy-defaults" checked /> القيم الافتراضية (OTP وكلمة المرور)</label>
+        <label><input type="checkbox" id="copy-defaults" checked /> القيم الافتراضية (القيم بس — من غير الأسرار)</label>
         <div class="field-hint">روابط الاتصال (Portal URL وقاعدة البيانات والـ API) عمرها ما بتتنسخ — البيئة الجديدة بتبدأ من غيرها عشان ماتشاورش على أنظمة بيئة تانية.</div>
       </div>
     </div>
@@ -1582,6 +1915,151 @@ function openDeleteDialog(name) {
   };
 }
 
+/* ── Field-set editor (design #4) — add / rename / remove / secret / reorder ─
+ * An affordance on the users page (userFields) and the defaults section
+ * (defaultsFields), never a step. Rename records the migration; remove asks
+ * inline with its blast radius; everything is listed again on the review. */
+function openFieldEditor(kind) {
+  snapshotActiveEnv();
+  renderFieldEditor(kind, {});
+}
+
+function fieldEditorRowHTML(kind, f, i, n, state) {
+  const key = f.key;
+  if (state.editing === key) {
+    return `<div class="env-row" data-key="${esc(key)}">
+      <input type="text" class="fe-edit-key" value="${esc(key)}" style="direction:ltr;font-family:var(--mono);flex:1;min-width:100px" />
+      <input type="text" class="fe-edit-label" value="${esc(f.label || '')}" placeholder="الاسم المعروض" style="flex:1;min-width:100px" />
+      <div class="env-row-actions">
+        <button class="btn-sm" data-act="edit-ok">حفظ</button>
+        <button class="btn-sm" data-act="edit-cancel">إلغاء</button>
+      </div>
+      <div class="field-hint fe-edit-err" style="width:100%"></div>
+    </div>`;
+  }
+  if (state.removing === key) {
+    const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
+    const msg = blast.length
+      ? `في قيم محفوظة تحت «${esc(key)}» في ${blast.length === 1 ? 'بيئة واحدة' : blast.length + ' بيئات'} (${blast.map(esc).join('، ')}) — هتتشال من الملفات عند الحفظ.`
+      : `مافيش قيم محفوظة تحت «${esc(key)}» في أي بيئة.`;
+    return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(220,38,38,.35)">
+      <div class="modal-body" style="width:100%">🗑️ حذف حقل «${esc(f.label || key)}»؟ ${msg}</div>
+      <div class="env-row-actions">
+        <button class="btn-sm danger" data-act="remove-ok">تأكيد الحذف</button>
+        <button class="btn-sm" data-act="remove-cancel">إلغاء</button>
+      </div>
+    </div>`;
+  }
+  if (state.toggling === key) {
+    const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
+    return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(217,119,6,.35)">
+      <div class="modal-body" style="width:100%">🔒 التبديل بين نصي وسرّي بيمسح القيم المحفوظة تحت «${esc(key)}» في ${blast.length === 1 ? 'بيئة واحدة' : blast.length + ' بيئات'} — القيمة النصية عمرها ما بتتحول لاسم متغير بصمت. تأكيد؟</div>
+      <div class="env-row-actions">
+        <button class="btn-sm" data-act="toggle-ok">تأكيد</button>
+        <button class="btn-sm" data-act="toggle-cancel">إلغاء</button>
+      </div>
+    </div>`;
+  }
+  const badges = [];
+  if (f.secret) badges.push('<span class="env-badge">🔒 سرّي</span>');
+  if (f.type && f.type !== 'text') badges.push(`<span class="env-badge">${esc(f.type)}</span>`);
+  if (f._orig && f._orig !== f.key) badges.push(`<span class="env-badge edited">${esc(f._orig)} ← ${esc(f.key)}</span>`);
+  if (!f._orig) badges.push('<span class="env-badge new">جديد</span>');
+  return `<div class="env-row" data-key="${esc(key)}">
+    <span class="env-row-name">${esc(key)}</span>
+    <span style="font-size:12px;color:var(--text-2)">${esc(f.label || '')}</span>
+    ${badges.join('')}
+    <div class="env-row-actions">
+      <button class="btn-sm" data-act="up"${i === 0 ? ' disabled' : ''}>⬆</button>
+      <button class="btn-sm" data-act="down"${i === n - 1 ? ' disabled' : ''}>⬇</button>
+      <button class="btn-sm" data-act="edit">✏️ إعادة تسمية</button>
+      <button class="btn-sm" data-act="secret">${f.secret ? '🔓 إلغاء السرية' : '🔒 اجعله سرّياً'}</button>
+      <button class="btn-sm danger" data-act="remove">🗑️</button>
+    </div>
+  </div>`;
+}
+
+function renderFieldEditor(kind, state) {
+  const list = fieldList(kind);
+  const title = kind === 'user' ? '⚙️ حقول مستخدمي الاختبار' : '⚙️ حقول القيم الافتراضية';
+  const rows = list.map((f, i) => fieldEditorRowHTML(kind, f, i, list.length, state)).join('') ||
+    '<div class="field-hint">مافيش حقول معرّفة — أضف أول حقل من الفورم اللي تحت.</div>';
+  const ov = openModal(`
+    <div class="modal-title">${title}</div>
+    <div class="modal-body">الحقول دي معرّفة مرة واحدة في config/project.json ومشتركة بين كل البيئات — أي تعديل هنا بيتطبق على ${kind === 'user' ? 'كل مستخدم في كل بيئة' : 'كل البيئات'} عند الحفظ، وهيظهر في قائمة العمليات في خطوة المراجعة.${kind === 'user' ? ' حقل «المعرّف» (handle) ثابت — هو مفتاح المستخدم ومش بيتغير من هنا.' : ''}</div>
+    <div class="env-list" id="fe-rows">${rows}</div>
+    <div class="field" style="border-top:1px solid var(--border);padding-top:12px">
+      <label class="field-label">➕ إضافة حقل جديد</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input type="text" id="fe-add-key" placeholder="national_id" style="direction:ltr;font-family:var(--mono);flex:1;min-width:120px" />
+        <input type="text" id="fe-add-label" placeholder="الاسم المعروض" style="flex:1;min-width:120px" />
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <select id="fe-add-type" style="width:auto">
+          <option value="text">text</option><option value="email">email</option>
+          <option value="number">number</option><option value="url">url</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="fe-add-secret" style="width:auto;accent-color:var(--accent)" /> 🔒 سرّي (القيمة في ‎.env باسم متغير)
+        </label>
+        <button class="btn-sm" id="fe-add-ok">إضافة</button>
+      </div>
+      <div class="field-hint" id="fe-add-err"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="fe-done">تم</button>
+    </div>`);
+  // Closing by clicking the overlay must still refresh the step behind it.
+  ov.addEventListener('click', e => { if (e.target === ov) renderStep(); });
+
+  ov.querySelectorAll('#fe-rows .env-row').forEach(row => {
+    const key = row.getAttribute('data-key');
+    if (!key) return;
+    const on = (a, fn) => { const b = row.querySelector(`[data-act="${a}"]`); if (b) b.onclick = fn; };
+    on('up',   () => { moveField(kind, key, -1); renderFieldEditor(kind, {}); });
+    on('down', () => { moveField(kind, key, +1); renderFieldEditor(kind, {}); });
+    on('edit', () => renderFieldEditor(kind, { editing: key }));
+    on('edit-cancel', () => renderFieldEditor(kind, {}));
+    on('edit-ok', () => {
+      const newKey = row.querySelector('.fe-edit-key').value.trim();
+      const newLabel = row.querySelector('.fe-edit-label').value.trim();
+      const problem = fieldKeyProblem(kind, newKey, key);
+      if (problem) { row.querySelector('.fe-edit-err').textContent = '❌ ' + problem; return; }
+      renameField(kind, key, newKey, newLabel);
+      if (newKey !== key) showToast(`🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات عند الحفظ`, 'success');
+      renderFieldEditor(kind, {});
+    });
+    on('secret', () => {
+      const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
+      if (blast.length) { renderFieldEditor(kind, { toggling: key }); return; }
+      toggleFieldSecret(kind, key);
+      renderFieldEditor(kind, {});
+    });
+    on('toggle-cancel', () => renderFieldEditor(kind, {}));
+    on('toggle-ok', () => { toggleFieldSecret(kind, key); renderFieldEditor(kind, {}); });
+    on('remove', () => renderFieldEditor(kind, { removing: key }));
+    on('remove-cancel', () => renderFieldEditor(kind, {}));
+    on('remove-ok', () => {
+      removeField(kind, key);
+      showToast(`🗑️ اتشال حقل «${key}» — هيختفي من كل البيئات عند الحفظ`, 'warn');
+      renderFieldEditor(kind, {});
+    });
+  });
+  ov.querySelector('#fe-add-ok').onclick = () => {
+    const key = ov.querySelector('#fe-add-key').value.trim();
+    const problem = fieldKeyProblem(kind, key);
+    if (problem) { ov.querySelector('#fe-add-err').textContent = '❌ ' + problem; return; }
+    const desc = { key, label: ov.querySelector('#fe-add-label').value.trim() || key };
+    const type = ov.querySelector('#fe-add-type').value;
+    if (type && type !== 'text') desc.type = type;
+    if (ov.querySelector('#fe-add-secret').checked) desc.secret = true;
+    addField(kind, desc);
+    showToast(`➕ اتضاف حقل «${key}» لكل ${kind === 'user' ? 'المستخدمين في كل البيئات' : 'البيئات'}`, 'success');
+    renderFieldEditor(kind, {});
+  };
+  ov.querySelector('#fe-done').onclick = () => { closeModal(); renderStep(); };
+}
+
 /* ── File pick / extract (used by the file-import screen) ─────────────────── */
 function pickFile(file) {
   if (!file) return;
@@ -1634,7 +2112,7 @@ function applyExtracted(data) {
       if (v && typeof v==='object' && !Array.isArray(v)) flat(v, key);
       else if (key !== 'users' && key !== 'envName' && !key.startsWith('_') && !answers[key]) {
         answers[key] = v;
-        if (ENV_SCOPED_KEYS.includes(key)) touchedEnvScoped = true;
+        if (envScopedKeys().includes(key)) touchedEnvScoped = true;
       }
     }
   }
@@ -1735,6 +2213,21 @@ function renderReviewStep() {
   for (const t of tabs) lines.push(`<div class="op-line">✍️ هيتكتب <code>${esc(t.label)}</code></div>`);
   for (const r of renames) lines.push(`<div class="op-line">🏷️ إعادة تسمية مؤكّدة: <code>environments/${esc(r.from)}.json → environments/${esc(r.to)}.json</code></div>`);
   for (const d of pendingDeletes) lines.push(`<div class="op-line">🗑️ حذف مؤكّد: <code>environments/${esc(d)}.json</code></div>`);
+  // Field-schema ops (design #4): renames migrate the key in EVERY environment
+  // file this save writes; removals drop the consented values — both listed
+  // here before anything happens, like every other file operation.
+  for (const r of deriveUserFieldRenames()) {
+    lines.push(`<div class="op-line">🔧 إعادة تسمية حقل مستخدم: <code>${esc(r.from)} → ${esc(r.to)}</code> — المفتاح بيتنقل في كل ملفات البيئات</div>`);
+  }
+  for (const r of deriveDefaultsFieldRenames()) {
+    lines.push(`<div class="op-line">🔧 إعادة تسمية حقل افتراضي: <code>defaults.${esc(r.from)} → defaults.${esc(r.to)}</code> — المفتاح بيتنقل في كل ملفات البيئات</div>`);
+  }
+  for (const x of removedUserFields) {
+    lines.push(`<div class="op-line">🗑️ حذف حقل مستخدم مؤكّد: <code>${esc(x.key)}</code>${x.envs.length ? ` — القيم اللي تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتشال من الملفات` : ' — مافيش قيم محفوظة تحته'}</div>`);
+  }
+  for (const x of removedDefaultsFields) {
+    lines.push(`<div class="op-line">🗑️ حذف حقل افتراضي مؤكّد: <code>defaults.${esc(x.key)}</code>${x.envs.length ? ` — القيم اللي تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتشال من الملفات` : ' — مافيش قيم محفوظة تحته'}</div>`);
+  }
   const untouched = envOrder.filter(n => envs[n].existsOnDisk && !envs[n].dirty && envs[n].diskName === n);
   if (untouched.length) {
     lines.push(`<div class="op-line">🔒 من غير أي تغيير: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join('، ')}</div>`);
@@ -1841,12 +2334,41 @@ function validateStep() {
   }
   if (step.type === 'dynamic-list') {
     for (const u of users) {
-      const hasData = u.phone || u.email || u.role || u.notes;
+      const hasData = userFieldsSession.some(f => u[f.key] || (u._secrets && u._secrets[f.key]));
       if (hasData && !String(u.handle || '').trim()) { errs.push('كل مستخدم يحتاج «معرّف» قبل المتابعة'); break; }
     }
     const withHandle = users.filter(u => String(u.handle || '').trim()).length;
     if (withHandle < (step.minItems || 1)) {
       errs.push('أضف مستخدم اختبار واحداً على الأقل (بمعرّف)');
+    }
+    // Schema-driven per-user checks: required fields, secret env-var names.
+    for (const f of userFieldsSession) {
+      if (f.required && users.some(u => String(u.handle || '').trim() &&
+          !(f.secret ? ((u._secrets && u._secrets[f.key]) || u[f.key]) : u[f.key]))) {
+        errs.push(`«${f.label || f.key}» مطلوب لكل مستخدم`);
+      }
+      if (f.secret && users.some(u => u[f.key] && !ENV_VAR_RE_UI.test(String(u[f.key]).trim()))) {
+        errs.push(`«${f.label || f.key}»: اسم متغير بيئة صالح فقط — حروف إنجليزية وأرقام و _ بدون مسافات`);
+      }
+    }
+  }
+  if (step.defaultsSection) {
+    for (const f of defaultsFieldsSession) {
+      const label = f.label || f.key;
+      if (f.secret) {
+        const n = String(answers[`defaults.${f.key}EnvVar`] || '').trim();
+        if (n && !ENV_VAR_RE_UI.test(n)) errs.push(`«${label}»: اسم متغير بيئة صالح فقط — حروف إنجليزية وأرقام و _ بدون مسافات`);
+        if (f.required && !n) errs.push(`«${label}» مطلوب`);
+        continue;
+      }
+      const v = String(answers[`defaults.${f.key}`] || '').trim();
+      if (f.required && !v && !f.default) errs.push(`«${label}» مطلوب`);
+      if (v && f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) errs.push(`«${label}» بريد إلكتروني غير صحيح`);
+      if (v && f.type === 'url') {
+        let ok = false;
+        try { const u = new URL(v); ok = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
+        if (!ok) errs.push(`«${label}» يجب أن يكون رابط http(s) صحيحاً`);
+      }
     }
   }
   if (errs.length) showToast('❌ ' + errs[0], 'error');
@@ -1907,6 +2429,28 @@ function buildSecretsPayload() {
       }
     }
   }
+  // Custom secret fields (design #4): per-user and per-defaults typed values,
+  // each under the env-var NAME its JSON { envSecret } references — the
+  // typed name wins, the owner-confirmed prefill fills an empty one.
+  for (const n of envOrder) {
+    const e = envs[n];
+    for (const f of userFieldsSession) {
+      if (!f.secret) continue;
+      for (const u of e.users) {
+        const v = u._secrets && u._secrets[f.key];
+        if (!v || !String(u.handle || '').trim()) continue;
+        const name = String(u[f.key] || '').trim() || suggestUserSecretName(u.handle, f.key);
+        out[name] = v;
+      }
+    }
+    for (const f of defaultsFieldsSession) {
+      if (!f.secret) continue;
+      const v = e.secrets[`defaults.${f.key}`];
+      if (!v) continue;
+      const name = String(e.answers[`defaults.${f.key}EnvVar`] || '').trim() || suggestDefaultsSecretName(f.key);
+      out[name] = v;
+    }
+  }
   return out;
 }
 
@@ -1922,6 +2466,10 @@ function buildProjectConfig() {
     // claim a default that was scaffolding or missing.
     defaultEnvironment: currentDefaultName() || 'qc',   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
     login: Object.assign({}, existingProject && existingProject.login, { mode: answers['login.mode'] || 'session' }),
+    // The EFFECTIVE field schema is always written (design #4) — explicit
+    // round-trip, no hidden divergence between "absent" and "default".
+    userFields: userFieldsSession.map(cleanDescriptor),
+    defaultsFields: defaultsFieldsSession.map(cleanDescriptor),
   });
   // Managed keys mirror the screen EXACTLY: a value sets the key, an empty
   // field unsets it — clearing Org must not resurrect the saved value, and
@@ -1935,17 +2483,28 @@ function buildProjectConfig() {
 
 /** Build one environment's file content from its session entry, merging onto
  *  its own on-disk JSON so values the wizard does not manage survive
- *  (invariant #11). Call after snapshotActiveEnv(). */
+ *  (invariant #11) — except keys the user removed/renamed this session
+ *  (consented drops). The defaults block iterates the shared defaultsFields.
+ *  Call after snapshotActiveEnv(). */
 function buildEnvConfig(name) {
   const e = envs[name];
   const a = e.answers;
   const base = e.loadedFrom || null;
+  const defaults = Object.assign({}, base && base.defaults);
+  for (const k of defaultsFieldDropKeys()) delete defaults[k];
+  for (const f of defaultsFieldsSession) {
+    if (f.secret) {
+      const n = String(a[`defaults.${f.key}EnvVar`] || '').trim();
+      if (n) defaults[f.key] = { envSecret: n }; else delete defaults[f.key];
+      continue;
+    }
+    const raw = a[`defaults.${f.key}`];
+    const v = (raw !== undefined && raw !== '') ? raw : (f.default !== undefined ? f.default : '');
+    if (v) defaults[f.key] = v; else delete defaults[f.key];
+  }
   const env = Object.assign({}, base, {
     portalUrl: a['portalUrl'] || '',
-    defaults: Object.assign({}, base && base.defaults, {
-      otp:      a['defaults.otp']      || '0000',
-      password: a['defaults.password'] || 'Test@1234',
-    }),
+    defaults,
     users: buildUsersObj(e),
   });
   if (a['db.server']) {
@@ -1983,15 +2542,28 @@ function setManagedBlock(target, group, keys) {
 
 /** Mirror of engine.js buildEnvUsers(): each entry merges onto its on-disk
  *  base entry, so hand-added per-user props the wizard has no input for
- *  survive; the managed fields mirror the screen — set or unset. */
+ *  survive — except this session's consented drops (removed/renamed keys).
+ *  Managed keys come from the shared userFields schema: a secret field's
+ *  screen value is an env-var NAME stored as { envSecret }; set or unset,
+ *  screen wins. `_`-prefixed session props (typed secret values) never land
+ *  in the JSON. */
 function buildUsersObj(e) {
   const base = (e.loadedFrom && e.loadedFrom.users) || {};
+  const drops = userFieldDropKeys();
   const obj = {};
   for (const u of e.users) {
     if (!u.handle) continue;
     const entry = Object.assign({}, base[u.handle]);
-    for (const k of ['phone', 'email', 'role', 'notes']) {
-      if (u[k]) entry[k] = u[k]; else delete entry[k];
+    for (const k of drops) delete entry[k];
+    for (const f of userFieldsSession) {
+      if (f.secret) {
+        const n = String(u[f.key] || '').trim();
+        if (n) entry[f.key] = { envSecret: n }; else delete entry[f.key];
+      } else if (u[f.key]) {
+        entry[f.key] = u[f.key];
+      } else {
+        delete entry[f.key];
+      }
     }
     obj[u.handle] = entry;
   }
