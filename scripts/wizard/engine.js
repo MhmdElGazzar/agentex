@@ -9,17 +9,92 @@
 // ui.html's fallbacks all mirror this value; migrate.js requires it too.
 const DEFAULT_ENV_NAME = 'qc';
 
+/* ── Consumer-owned field schema (wizard design #4) ─────────────────────────
+ * The test-user and defaults field sets are DESCRIPTOR ARRAYS in the
+ * consumer's config/project.json (`userFields`, `defaultsFields`): defined
+ * once, shared across ALL environments — only VALUES are per-environment.
+ * `handle` is reserved: it keys the `users` object and is never in the array.
+ * The built-ins below describe exactly the fields the wizard has always
+ * written; templates/config/project.json ships the same arrays (m11 backfills
+ * existing projects) and ui.html mirrors them (browser copy — keep in sync).
+ * Descriptor: { key, label, labelEn?, type?: text|email|number|url,
+ * secret?: bool, required?: bool, default?, hint?, placeholder? }.
+ */
+const BUILTIN_USER_FIELDS = [
+  { key: 'phone', label: 'رقم الهاتف', labelEn: 'Phone', type: 'text', placeholder: '0550000001' },
+  { key: 'email', label: 'البريد الإلكتروني', labelEn: 'Email', type: 'email', placeholder: 'test@example.com' },
+  { key: 'role', label: 'الدور', labelEn: 'Role', type: 'text', placeholder: 'customer' },
+  { key: 'notes', label: 'ملاحظات', labelEn: 'Notes', type: 'text', placeholder: 'for negative login scenarios' },
+];
+const BUILTIN_DEFAULTS_FIELDS = [
+  { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)' },
+  { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+];
+
+const FIELD_KEY_RE = /^[a-zA-Z][a-zA-Z0-9_]*$/;
+const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const FIELD_TYPES = ['text', 'email', 'number', 'url'];
+
+/**
+ * Validate one field-descriptor array (`userFields` / `defaultsFields`).
+ * `opts.reserved` names keys that may never appear (e.g. `handle`).
+ * Returns array of error strings (empty = valid).
+ */
+function validateFieldDescriptors(arr, which, opts = {}) {
+  if (!Array.isArray(arr)) return [`${which} must be an array of field descriptors`];
+  const errors = [];
+  const reserved = opts.reserved || [];
+  const seen = new Set();
+  arr.forEach((f, i) => {
+    const at = `${which}[${i}]`;
+    if (!f || typeof f !== 'object' || Array.isArray(f)) { errors.push(`${at}: descriptor must be an object`); return; }
+    const key = String(f.key || '');
+    if (!FIELD_KEY_RE.test(key)) {
+      errors.push(`${at}: key "${key}" must start with a letter and use only letters/digits/_ (it becomes a JSON key)`);
+      return;
+    }
+    if (reserved.includes(key)) {
+      errors.push(`${at}: key "${key}" is reserved — it keys the users object, always present, never renamed or removed`);
+    }
+    if (seen.has(key)) errors.push(`${at}: duplicate key "${key}"`);
+    seen.add(key);
+    if (f.type !== undefined && !FIELD_TYPES.includes(f.type)) {
+      errors.push(`${at}: type "${f.type}" is not one of ${FIELD_TYPES.join('|')} (secret is a flag, not a type)`);
+    }
+    if (f.secret !== undefined && typeof f.secret !== 'boolean') errors.push(`${at}: secret must be a boolean`);
+  });
+  return errors;
+}
+
+/** Descriptor-array validation for a projectConfig payload — both arrays, when present. */
+function validateProjectFieldSchema(projectConfig) {
+  if (!projectConfig || typeof projectConfig !== 'object') return [];
+  const errors = [];
+  if (projectConfig.userFields !== undefined) {
+    errors.push(...validateFieldDescriptors(projectConfig.userFields, 'userFields', { reserved: ['handle'] }));
+  }
+  if (projectConfig.defaultsFields !== undefined) {
+    errors.push(...validateFieldDescriptors(projectConfig.defaultsFields, 'defaultsFields'));
+  }
+  return errors;
+}
+
 /**
  * Given a flat answers object (keyed by field.key), build the two output config objects.
  * @param {object} answers  - e.g. { "name": "my-app", "azure.org": "myorg", "db.server": "..." }
  * @param {object[]} steps  - from schema.json
+ * @param {{userFields?: object[], defaultsFields?: object[]}} fields - the effective
+ *   consumer field schema (design #4); built-ins when absent.
  * @returns {{ projectConfig: object, envConfig: object, envName: string }}
  */
-function buildConfigs(answers, steps) {
+function buildConfigs(answers, steps, fields = {}) {
   // envName names the environment FILE being configured. defaultEnvironment in
   // project.json is derived output only (first-configured-claims-default) —
   // never a page input.
   const envName = answers['envName'] || DEFAULT_ENV_NAME;
+  const userFields = Array.isArray(fields.userFields) ? fields.userFields : BUILTIN_USER_FIELDS;
+  const defaultsFields = Array.isArray(fields.defaultsFields) ? fields.defaultsFields : BUILTIN_DEFAULTS_FIELDS;
 
   // ── project config skeleton ──────────────────────────────────────────────
   const projectConfig = {
@@ -36,16 +111,31 @@ function buildConfigs(answers, steps) {
       project: answers['kb.project'] || '',
     },
     login: { mode: answers['login.mode'] || 'session' },
+    // The EFFECTIVE field schema is always written — explicit round-trip, no
+    // hidden divergence between "absent" and "default" (design #4).
+    userFields: userFields.map(f => ({ ...f })),
+    defaultsFields: defaultsFields.map(f => ({ ...f })),
   };
 
   // ── environment config skeleton ──────────────────────────────────────────
+  // defaults iterates the descriptors (no hardcoded otp/password): a value
+  // sets the key, the descriptor's default fills an empty one, a secret
+  // descriptor stores the env-var NAME as { envSecret } (invariant #5).
+  const defaults = {};
+  for (const f of defaultsFields) {
+    if (f.secret) {
+      const n = answers[`defaults.${f.key}EnvVar`];
+      if (n) defaults[f.key] = { envSecret: String(n) };
+      continue;
+    }
+    const raw = answers[`defaults.${f.key}`];
+    const v = (raw !== undefined && raw !== null && raw !== '') ? raw : f.default;
+    if (v !== undefined && v !== null && v !== '') defaults[f.key] = v;
+  }
   const envConfig = {
     portalUrl: answers['portalUrl'] || 'https://example.com',
-    defaults: {
-      otp: answers['defaults.otp'] || '0000',
-      password: answers['defaults.password'] || 'Test@1234',
-    },
-    users: buildUsers(answers),
+    defaults,
+    users: buildUsers(answers, userFields),
   };
 
   // DB block (only if server is provided)
@@ -92,10 +182,13 @@ function buildConfigs(answers, steps) {
 /**
  * Build the users object from answers.
  * Answers carry users as:
- *   users[0].handle, users[0].phone, users[0].role, users[0].email, users[0].notes
+ *   users[0].handle, users[0].<fieldKey>, ...
  *   users[1].handle, ...
+ * Schema-driven (design #4): the entry carries exactly the effective field
+ * set's keys — a secret field's value is an env-var NAME, stored as
+ * { envSecret } (the actual value goes to .env, never here).
  */
-function buildUsers(answers) {
+function buildUsers(answers, userFields = BUILTIN_USER_FIELDS) {
   const users = {};
   const rawUsers = answers['users'];
 
@@ -103,10 +196,11 @@ function buildUsers(answers) {
     for (const u of rawUsers) {
       if (!u.handle) continue;
       const entry = {};
-      if (u.phone)  entry.phone  = u.phone;
-      if (u.email)  entry.email  = u.email;
-      if (u.role)   entry.role   = u.role;
-      if (u.notes)  entry.notes  = u.notes;
+      for (const f of userFields) {
+        const v = u[f.key];
+        if (!v) continue;
+        entry[f.key] = f.secret ? { envSecret: String(v) } : v;
+      }
       users[u.handle] = entry;
     }
   }
@@ -287,6 +381,7 @@ function validateConfigs(projectConfig, envConfig, envName) {
   const errors = [];
   if (!projectConfig || typeof projectConfig !== 'object') errors.push('projectConfig is required');
   else if (!String(projectConfig.name || '').trim()) errors.push('project name is required');
+  errors.push(...validateProjectFieldSchema(projectConfig));
   return errors.concat(validateEnvConfig(envConfig, envName));
 }
 
@@ -309,6 +404,21 @@ function validateEnvConfig(envConfig, envName) {
     if (!envConfig.users || typeof envConfig.users !== 'object' ||
         Object.keys(envConfig.users).length === 0) {
       errors.push('at least one test user is required');
+    }
+    // Secret fields (invariant #5): a stored { envSecret } must name a valid
+    // env var — garbage here becomes a broken .env lookup at run time.
+    for (const [handle, entry] of Object.entries(envConfig.users || {})) {
+      if (!entry || typeof entry !== 'object') continue;
+      for (const [k, v] of Object.entries(entry)) {
+        if (v && typeof v === 'object' && 'envSecret' in v && !ENV_VAR_NAME_RE.test(String(v.envSecret || ''))) {
+          errors.push(`users.${handle}.${k}: envSecret must be a valid env var name (letters/digits/_ only)`);
+        }
+      }
+    }
+    for (const [k, v] of Object.entries(envConfig.defaults || {})) {
+      if (v && typeof v === 'object' && 'envSecret' in v && !ENV_VAR_NAME_RE.test(String(v.envSecret || ''))) {
+        errors.push(`defaults.${k}: envSecret must be a valid env var name (letters/digits/_ only)`);
+      }
     }
   }
   return errors;
@@ -344,6 +454,9 @@ function planSave(payload, diskState) {
 
   if (!projectConfig || typeof projectConfig !== 'object') errors.push('projectConfig is required');
   else if (!String(projectConfig.name || '').trim()) errors.push('project name is required');
+  // Field-descriptor arrays (design #4), when the payload carries them —
+  // defense-in-depth: the UI validates in its editor, the save re-checks.
+  errors.push(...validateProjectFieldSchema(projectConfig));
 
   if (!environments || typeof environments !== 'object' || Array.isArray(environments)) {
     return { errors: errors.concat('environments must be an object keyed by environment name'), reconcile: [], finalEnvNames: [] };
@@ -466,18 +579,32 @@ function planSave(payload, diskState) {
 /**
  * Build an environment file's users object from the wizard's user list,
  * merging each entry onto its on-disk base entry so hand-added properties the
- * wizard has no input for survive a save (invariant #11). The managed fields
- * mirror the screen exactly: a value sets the key, an empty field unsets it.
+ * wizard has no input for survive a save (invariant #11). Schema-driven
+ * (design #4): the managed keys are the effective `userFields`; a secret
+ * field's screen value is an env-var NAME stored as { envSecret }. `dropKeys`
+ * are the ONE exception to unknown-prop preservation: keys the user
+ * explicitly removed or renamed away this session (consented ops) are deleted
+ * from the base before the merge. The managed fields mirror the screen
+ * exactly: a value sets the key, an empty field unsets it.
  * ui.html's buildUsersObj mirrors this logic (browser copy — keep in sync).
  */
-function buildEnvUsers(list, baseUsers) {
+function buildEnvUsers(list, baseUsers, userFields = BUILTIN_USER_FIELDS, dropKeys = []) {
   const base = baseUsers || {};
   const users = {};
   for (const u of (list || [])) {
     if (!u || !u.handle) continue;
     const entry = Object.assign({}, base[u.handle]);
-    for (const k of ['phone', 'email', 'role', 'notes']) {
-      if (u[k]) entry[k] = u[k]; else delete entry[k];
+    for (const k of dropKeys) delete entry[k];
+    for (const f of userFields) {
+      const v = u[f.key];
+      if (f.secret) {
+        const n = String(v || '').trim();
+        if (n) entry[f.key] = { envSecret: n }; else delete entry[f.key];
+      } else if (v) {
+        entry[f.key] = v;
+      } else {
+        delete entry[f.key];
+      }
     }
     users[u.handle] = entry;
   }
@@ -549,6 +676,8 @@ function flattenObject(obj, prefix = '') {
 
 module.exports = {
   DEFAULT_ENV_NAME,
+  BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS,
+  validateFieldDescriptors, validateProjectFieldSchema,
   buildConfigs, validate, validateConfigs, validateEnvConfig, planSave, buildEnvUsers, isHttpUrl,
   extractFromText, extractUsers, mergeExtracted, mergeUsers, flattenObject,
 };

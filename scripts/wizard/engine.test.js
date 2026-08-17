@@ -5,7 +5,8 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate, DEFAULT_ENV_NAME,
-        planSave, buildEnvUsers } = require('./engine.js');
+        planSave, buildEnvUsers, BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS,
+        validateFieldDescriptors } = require('./engine.js');
 
 let passed = 0; const failures = [];
 function test(name, fn) {
@@ -533,6 +534,134 @@ test('buildEnvUsers: an emptied managed field clears the saved value (screen win
     [{ handle: 'u', phone: '', role: 'admin' }],
     { u: { phone: '0550000001', notes: 'kept? no — cleared is cleared', custom: 'kept' } });
   assert.deepStrictEqual(out.u, { role: 'admin', custom: 'kept' });
+});
+
+// ── Consumer-owned field schema (wizard design #4) ─────────────────────────
+// The user/defaults field sets are descriptor arrays in config/project.json —
+// defined once, shared across ALL environments; only VALUES are per-env.
+test('built-in field arrays: engine and template project.json agree exactly', () => {
+  const tpl = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8'));
+  assert.deepStrictEqual(tpl.userFields, BUILTIN_USER_FIELDS,
+    'template userFields mirror the engine built-ins — one definition, no drift');
+  assert.deepStrictEqual(tpl.defaultsFields, BUILTIN_DEFAULTS_FIELDS);
+  assert.deepStrictEqual(BUILTIN_USER_FIELDS.map(f => f.key), ['phone', 'email', 'role', 'notes'],
+    'built-ins are exactly the historical fixed set (semantics-preserving)');
+  assert.deepStrictEqual(BUILTIN_DEFAULTS_FIELDS.map(f => f.key), ['password', 'otp']);
+});
+
+test('built-ins and template carry the corrected tanween (سرًّا حقيقيًا)', () => {
+  // m11 bakes these strings into every consumer project — the wrong form
+  // (tanween on the alif) must never ship in a synced home.
+  const all = JSON.stringify(BUILTIN_DEFAULTS_FIELDS) + fs.readFileSync(
+    path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8');
+  assert.ok(!all.includes('سراً') && !all.includes('حقيقياً'),
+    'التنوين على الحرف قبل الألف، مش على الألف');
+  assert.ok(JSON.stringify(BUILTIN_DEFAULTS_FIELDS).includes('سرًّا'), 'the corrected form is present');
+});
+
+test('schema.json no longer hardcodes the field sets — rendering is schema-driven', () => {
+  const schema = require('./schema.json');
+  const usersStep = schema.steps.find(s => s.id === 'test-users');
+  assert.ok(!usersStep.itemTemplate,
+    'itemTemplate replaced by rendering from project.json userFields (invariant #7: consumer-owned schema)');
+  const envStep = schema.steps.find(s => s.id === 'environment');
+  assert.ok(!(envStep.fields || []).some(f => f.key.startsWith('defaults.')),
+    'password/OTP are no longer a fixed pair in the wizard schema');
+  assert.strictEqual(envStep.defaultsSection, true,
+    'the environment page renders the defaultsFields section instead');
+});
+
+test('validateFieldDescriptors: accepts the built-ins, refuses duplicates/reserved/bad keys/bad types', () => {
+  assert.deepStrictEqual(validateFieldDescriptors(BUILTIN_USER_FIELDS, 'userFields', { reserved: ['handle'] }), []);
+  assert.deepStrictEqual(validateFieldDescriptors(BUILTIN_DEFAULTS_FIELDS, 'defaultsFields'), []);
+  assert.match(validateFieldDescriptors([{ key: 'x' }, { key: 'x' }], 'userFields').join(), /duplicate/i);
+  assert.match(validateFieldDescriptors([{ key: 'handle' }], 'userFields', { reserved: ['handle'] }).join(), /reserved/i);
+  assert.match(validateFieldDescriptors([{ key: '1bad' }], 'userFields').join(), /key/i);
+  assert.match(validateFieldDescriptors([{ key: 'weird key' }], 'userFields').join(), /key/i);
+  assert.match(validateFieldDescriptors([{ key: 'ok', type: 'select' }], 'userFields').join(), /type/i);
+  assert.match(validateFieldDescriptors('nope', 'userFields').join(), /array/i);
+  assert.match(validateFieldDescriptors([null], 'userFields').join(), /object/i);
+});
+
+test('buildConfigs is schema-driven: custom fields written, secrets as envSecret, arrays always written', () => {
+  const userFields = [
+    { key: 'userId', label: 'User ID', type: 'text' },
+    { key: 'nationalId', label: 'National ID', type: 'text' },
+    { key: 'apiKey', label: 'API Key', secret: true },
+  ];
+  const defaultsFields = [
+    { key: 'password', label: 'pw', default: 'Test@1234' },
+    { key: 'captcha', label: 'captcha', default: 'off' },
+  ];
+  const { projectConfig, envConfig } = buildConfigs({
+    name: 'd', portalUrl: 'https://x.example',
+    'defaults.captcha': 'on',
+    users: [{ handle: 'u1', userId: 'U-1', nationalId: '123', apiKey: 'USER_U1_APIKEY', phone: 'dropped' }],
+  }, [], { userFields, defaultsFields });
+  assert.deepStrictEqual(envConfig.users.u1,
+    { userId: 'U-1', nationalId: '123', apiKey: { envSecret: 'USER_U1_APIKEY' } },
+    'custom fields written; keys outside the set dropped; secret stored as an env-var NAME (invariant #5)');
+  assert.deepStrictEqual(envConfig.defaults, { password: 'Test@1234', captcha: 'on' },
+    'defaults iterate the descriptors — no hardcoded otp/password fallback');
+  assert.deepStrictEqual(projectConfig.userFields, userFields,
+    'the effective arrays are always written — explicit round-trip, no hidden divergence');
+  assert.deepStrictEqual(projectConfig.defaultsFields, defaultsFields);
+});
+
+test('buildConfigs without arrays falls back to the built-ins — historical behavior unchanged', () => {
+  const { projectConfig, envConfig } = buildConfigs(
+    { name: 'd', users: [{ handle: 'u', phone: '1', custom: 'x' }] }, []);
+  assert.deepStrictEqual(envConfig.users.u, { phone: '1' }, 'non-schema key still dropped');
+  assert.deepStrictEqual(envConfig.defaults, { otp: '0000', password: 'Test@1234' });
+  assert.deepStrictEqual(projectConfig.userFields, BUILTIN_USER_FIELDS);
+  assert.deepStrictEqual(projectConfig.defaultsFields, BUILTIN_DEFAULTS_FIELDS);
+});
+
+test('buildEnvUsers: schema-driven + dropKeys — renamed/removed keys leave the file, unknown props survive', () => {
+  const userFields = [{ key: 'userId', label: 'User ID' }, { key: 'notes', label: 'Notes' }];
+  const base = { u: { phone: '0550001', notes: 'old', apiKeyRef: 'hand-added' } };
+  const out = buildEnvUsers([{ handle: 'u', userId: '0550001', notes: 'old' }], base, userFields, ['phone']);
+  assert.deepStrictEqual(out.u, { userId: '0550001', notes: 'old', apiKeyRef: 'hand-added' },
+    'phone (renamed away this session) is dropped from the base; hand-added props still survive (invariant #11)');
+});
+
+test('buildEnvUsers: secret field — a name writes { envSecret }, an emptied name unsets it', () => {
+  const userFields = [{ key: 'apiKey', label: 'k', secret: true }];
+  const out = buildEnvUsers(
+    [{ handle: 'u', apiKey: 'USER_U_APIKEY' }, { handle: 'v', apiKey: '' }],
+    { v: { apiKey: { envSecret: 'OLD_REF' } } }, userFields, []);
+  assert.deepStrictEqual(out.u, { apiKey: { envSecret: 'USER_U_APIKEY' } });
+  assert.deepStrictEqual(out.v, {}, 'cleared name unsets the stored ref (screen wins)');
+});
+
+test('planSave validates the field descriptor arrays in projectConfig (defense-in-depth)', () => {
+  const mk = (uf, df) => planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa', userFields: uf, defaultsFields: df },
+    environments: { qa: cfgOk() }, ops: {},
+  }, disk(['qa']));
+  assert.match(mk([{ key: 'x' }, { key: 'x' }]).errors.join(), /duplicate/i);
+  assert.match(mk([{ key: 'handle' }]).errors.join(), /reserved/i);
+  assert.match(mk([{ key: 'ok' }], [{ key: 'otp' }, { key: 'otp' }]).errors.join(), /duplicate/i);
+  assert.match(mk('nope').errors.join(), /array/i);
+  const good = mk([{ key: 'userId', label: 'User ID' }], [{ key: 'password', default: 'x' }]);
+  assert.deepStrictEqual(good.errors, []);
+  const absent = planSave({ projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: { qa: cfgOk() }, ops: {} }, disk(['qa']));
+  assert.deepStrictEqual(absent.errors, [], 'a legacy payload without the arrays stays valid');
+});
+
+test('validateConfigs/validateEnvConfig refuse an envSecret that is not a valid env var name', () => {
+  const bad1 = validateConfigs({ name: 'd' },
+    { portalUrl: 'https://ok.example', users: { u: { apiKey: { envSecret: 'BAD NAME!' } } } }, 'qa');
+  assert.match(bad1.join(), /envSecret/);
+  const bad2 = validateConfigs({ name: 'd' },
+    { portalUrl: 'https://ok.example', users: { u: { phone: '1' } }, defaults: { pin: { envSecret: '1BAD' } } }, 'qa');
+  assert.match(bad2.join(), /envSecret/);
+  const ok = validateConfigs({ name: 'd' },
+    { portalUrl: 'https://ok.example', users: { u: { apiKey: { envSecret: 'USER_U_APIKEY' } } },
+      defaults: { pin: { envSecret: 'DEFAULT_PIN' } } }, 'qa');
+  assert.deepStrictEqual(ok, []);
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

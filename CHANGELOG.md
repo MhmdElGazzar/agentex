@@ -4,6 +4,33 @@ All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
 ### Added
+- **Customizable test-user fields — one shared, consumer-owned field schema.** The wizard's
+  fixed user field set (phone/email/role/notes) and fixed defaults pair (password/OTP) are
+  now descriptor arrays in the consumer's `config/project.json` (`userFields` +
+  `defaultsFields`): defined once, shared across ALL environments — every user's form in
+  every environment shows the same fields; only *values* are per-environment. A field-set
+  editor affordance (users page + defaults section, never a step) adds, renames, removes,
+  marks secret, and reorders fields: a **rename** migrates the key in every environment
+  file in one batch save (riding the multi-environment save-all); a **removal** is
+  consented with its blast radius (the environments holding values under the key) and both
+  appear in the review's operations list. Removed/renamed-away keys are the one exception
+  to the unknown-prop preservation rule — every other hand-added property still survives
+  (invariant #11). A custom field can be **marked secret**: the wizard renders the
+  established env-var-NAME + value pair (prefill `USER_<HANDLE>_<KEY>` per user,
+  `DEFAULT_<KEY>` per defaults entry), the file stores `{ "envSecret": "NAME" }` and the
+  typed value goes only to `.env` (invariant #5) — never to JSON, logs, or the review
+  (names-only summary). The account **handle stays required and fixed** — it keys the
+  `users` object and specs reference it. Engine/UI/server are schema-driven end to end
+  (`buildUsers` whitelist removed); the save validates descriptor arrays (key pattern,
+  uniqueness, reserved `handle`, `text|email|number|url` type vocabulary) and refuses
+  invalid `envSecret` names in user/defaults entries. First-time users who customize
+  nothing get exactly the historical built-in set; the effective arrays are always written
+  back to `config/project.json` (explicit round-trip, no hidden divergence).
+- **Migration m11 `user-field-schema`** — backfills the built-in `userFields`/
+  `defaultsFields` arrays into an existing `config/project.json` that carries none
+  (m09-style: additive, idempotent, only the missing array is added, a customized schema
+  is never rewritten, environment files and user values are never touched). The
+  `config/project.json` template ships the same arrays for fresh scaffolds.
 - **Multi-environment wizard — one session manages every environment.** The setup wizard
   now shows all environments (on disk or added this session) on a new environments-manager
   page that opens the environment group, with state badges (on disk / new / edited /

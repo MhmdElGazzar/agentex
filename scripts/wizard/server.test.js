@@ -590,6 +590,80 @@ const post = (route, body, headers = {}) =>
     assert.ok(fs.existsSync(path.join(projectDir, 'environments', 'qa.json')), 'the last environment file is untouched');
   });
 
+  // ── Consumer-owned field schema over the wire (wizard design #4) ───────────
+  await test('custom field schema round-trips: arrays in project.json, secret values only in .env', async () => {
+    const SECRET = 'FakeUserSecret_x91';
+    const r = await post('/api/save', {
+      projectConfig: {
+        name: 'demo', defaultEnvironment: 'qa',
+        userFields: [
+          { key: 'userId', label: 'User ID', type: 'text' },
+          { key: 'nationalId', label: 'National ID', type: 'text' },
+          { key: 'apiKey', label: 'API Key', secret: true },
+        ],
+        defaultsFields: [
+          { key: 'password', label: 'pw', default: 'Test@1234' },
+          { key: 'captcha', label: 'captcha', default: 'off' },
+        ],
+      },
+      environments: {
+        qa: {
+          portalUrl: 'https://ok.example',
+          defaults: { password: 'Test@1234', captcha: 'on' },
+          users: { u1: { userId: 'U-1', nationalId: '123', apiKey: { envSecret: 'USER_U1_APIKEY' } } },
+        },
+      },
+      ops: { renames: [], deletes: [] },
+      secrets: { USER_U1_APIKEY: SECRET },
+    });
+    assert.strictEqual(r.status, 200);
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'));
+    assert.deepStrictEqual(proj.userFields.map(f => f.key), ['userId', 'nationalId', 'apiKey'],
+      'the effective field schema round-trips through project.json');
+    assert.deepStrictEqual(proj.defaultsFields.map(f => f.key), ['password', 'captcha']);
+    const env = JSON.parse(fs.readFileSync(path.join(projectDir, 'environments', 'qa.json'), 'utf8'));
+    assert.deepStrictEqual(env.users.u1,
+      { userId: 'U-1', nationalId: '123', apiKey: { envSecret: 'USER_U1_APIKEY' } });
+    assert.strictEqual(env.defaults.captcha, 'on', 'custom defaults field written');
+    const dotenv = fs.readFileSync(path.join(projectDir, '.env'), 'utf8');
+    assert.match(dotenv, new RegExp(`^USER_U1_APIKEY=${SECRET}$`, 'm'), 'value lives in .env only');
+    assert.ok(!JSON.stringify(proj).includes(SECRET) && !JSON.stringify(env).includes(SECRET),
+      'secret value never lands in a JSON config');
+    await new Promise(res => setTimeout(res, 150));
+    assert.ok(!stdout.includes(SECRET), 'secret value never appears in server stdout');
+  });
+
+  await test('REJECTED: invalid field descriptors — nothing written', async () => {
+    const before = fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8');
+    for (const [userFields, why] of [
+      [[{ key: 'x' }, { key: 'x' }], 'duplicate key'],
+      [[{ key: 'handle' }], 'reserved handle'],
+      [[{ key: '1bad' }], 'bad key pattern'],
+      [[{ key: 'ok', type: 'select' }], 'unknown type'],
+    ]) {
+      const r = await post('/api/save', {
+        projectConfig: { name: 'demo', defaultEnvironment: 'qa', userFields },
+        environments: { qa: { portalUrl: 'https://ok.example', users: { u: { phone: '1' } } } },
+        ops: {}, secrets: {},
+      });
+      assert.strictEqual(r.status, 400, `${why} must be refused`);
+    }
+    assert.strictEqual(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'), before,
+      'project.json byte-identical after every refusal');
+  });
+
+  await test('REJECTED: a user-entry envSecret that is not a valid env var name', async () => {
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      environments: {
+        qa: { portalUrl: 'https://ok.example', users: { u: { apiKey: { envSecret: 'BAD NAME!' } } } },
+      },
+      ops: {}, secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /envSecret/);
+  });
+
   child.kill();
   child2.kill();
   child3.kill();

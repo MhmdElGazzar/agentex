@@ -653,6 +653,89 @@ test('m10: a claimed file (any value changed) is the user\'s — never flagged',
   assert.ok(exists(dir, 'environments/qa.json'));
 });
 
+// ── m11 user-field-schema — additive built-ins backfill (design #4) ──────────
+const TPL_PROJECT = JSON.parse(fs.readFileSync(
+  path.join(PLUGIN_ROOT, 'templates', 'config', 'project.json'), 'utf8'));
+
+test('m11: pre-field-schema project gains the built-in arrays; environment files byte-identical', () => {
+  const dir = repo({
+    'test/suite1/a.md': SPEC_02,
+    'config/project.json': {
+      name: 'pre-fields', defaultEnvironment: 'qa', login: { mode: 'session' },
+      figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } },
+    },
+    'environments/qa.json': {
+      portalUrl: 'https://x.test', defaults: { otp: '1111', password: 'Pw' },
+      users: { u: { phone: '1', custom: 'hand-added' } },
+    },
+    '.gitignore': '.env\n',
+    '.env': 'FIGMA_TOKEN=\n',
+  });
+  const before = snapshot(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] user-field-schema/);
+  const proj = readJson(dir, 'config/project.json');
+  assert.deepStrictEqual(proj.userFields, TPL_PROJECT.userFields,
+    'built-in userFields backfilled from the template — semantics-preserving');
+  assert.deepStrictEqual(proj.defaultsFields, TPL_PROJECT.defaultsFields);
+  assert.strictEqual(proj.name, 'pre-fields', 'existing config values untouched');
+  const after = snapshot(dir);
+  assert.deepStrictEqual(subset(after, 'environments/'), subset(before, 'environments/'),
+    'm11 never touches environment files or values');
+});
+
+test('m11: existing field arrays are never rewritten (customized schema wins)', () => {
+  const customUsers = [{ key: 'userId', label: 'User ID', type: 'text' }];
+  const customDefaults = [{ key: 'password', label: 'pw', default: 'X' }];
+  const dir = repo({
+    'test/suite1/a.md': SPEC_02,
+    'config/project.json': {
+      name: 'customized', defaultEnvironment: 'qa', login: { mode: 'session' },
+      figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } },
+      userFields: customUsers, defaultsFields: customDefaults,
+    },
+    'environments/qa.json': { portalUrl: 'https://x.test', defaults: {}, users: { u: { userId: 'U-1' } } },
+    '.gitignore': '.env\n',
+    '.env': 'FIGMA_TOKEN=\n',
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!r.out.includes('[migrated] user-field-schema'), 'nothing to backfill — not detected');
+  const proj = readJson(dir, 'config/project.json');
+  assert.deepStrictEqual(proj.userFields, customUsers, 'user-customized schema untouched');
+  assert.deepStrictEqual(proj.defaultsFields, customDefaults);
+});
+
+test('m11: only the missing array is added when one is already present', () => {
+  const customUsers = [{ key: 'userId', label: 'User ID' }];
+  const dir = repo({
+    'test/suite1/a.md': SPEC_02,
+    'config/project.json': {
+      name: 'half', defaultEnvironment: 'qa', login: { mode: 'session' },
+      figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } },
+      userFields: customUsers,
+    },
+    'environments/qa.json': { portalUrl: 'https://x.test', defaults: {}, users: { u: { userId: '1' } } },
+    '.gitignore': '.env\n',
+    '.env': 'FIGMA_TOKEN=\n',
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] user-field-schema/);
+  const proj = readJson(dir, 'config/project.json');
+  assert.deepStrictEqual(proj.userFields, customUsers, 'the present array is never rewritten');
+  assert.deepStrictEqual(proj.defaultsFields, TPL_PROJECT.defaultsFields, 'the missing one is backfilled');
+});
+
+test('m11 + init: fresh scaffold carries the field arrays from the template', () => {
+  const dir = proj();
+  runInit(dir);
+  const projCfg = readJson(dir, 'config/project.json');
+  assert.deepStrictEqual(projCfg.userFields, TPL_PROJECT.userFields);
+  assert.deepStrictEqual(projCfg.defaultsFields, TPL_PROJECT.defaultsFields);
+});
+
 // ── secrecy ───────────────────────────────────────────────────────────────────
 test('no secret value ever appears in any migration output', () => {
   assert.ok(ALL_OUTPUT.length > 0, 'outputs were collected');

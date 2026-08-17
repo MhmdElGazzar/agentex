@@ -217,6 +217,7 @@
       "icon": "🌐",
       "group": "environment",
       "target": "environments/{envName}.json",
+      "defaultsSection": true,
       "fields": [
         {
           "key": "envName",
@@ -240,27 +241,6 @@
           "placeholder": "https://app.example.com",
           "required": true,
           "aiHint": "application URL, portal URL, base URL for testing"
-        },
-        {
-          "key": "defaults.password",
-          "label": "كلمة المرور الافتراضية",
-          "labelEn": "Default Password",
-          "type": "text",
-          "placeholder": "Test@1234",
-          "default": "Test@1234",
-          "required": false,
-          "hint": "كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سراً حقيقياً)",
-          "aiHint": "default test account password"
-        },
-        {
-          "key": "defaults.otp",
-          "label": "OTP الافتراضي",
-          "labelEn": "Default OTP",
-          "type": "text",
-          "placeholder": "0000",
-          "default": "0000",
-          "required": false,
-          "aiHint": "default OTP or verification code for test accounts"
         }
       ]
     },
@@ -268,65 +248,14 @@
       "id": "test-users",
       "title": "مستخدمو الاختبار",
       "titleEn": "Test Users",
-      "description": "بيانات الحسابات المستخدمة في الاختبارات",
-      "descriptionEn": "Test account credentials and roles",
+      "description": "بيانات الحسابات المستخدمة في الاختبارات — حقول المستخدم قابلة للتخصيص ومشتركة بين كل البيئات",
+      "descriptionEn": "Test account data — the field set is customizable and shared across all environments",
       "icon": "👥",
       "group": "environment",
       "target": "environments/{envName}.json",
       "type": "dynamic-list",
       "listKey": "users",
       "minItems": 1,
-      "itemTemplate": {
-        "key": "{handle}",
-        "fields": [
-          {
-            "key": "handle",
-            "label": "معرّف الحساب",
-            "labelEn": "Account Handle",
-            "type": "text",
-            "placeholder": "valid_user",
-            "required": true,
-            "hint": "مثال: valid_user, admin_user, expired_user",
-            "aiHint": "user handle or identifier"
-          },
-          {
-            "key": "phone",
-            "label": "رقم الهاتف",
-            "labelEn": "Phone",
-            "type": "text",
-            "placeholder": "0550000001",
-            "required": false,
-            "aiHint": "test account phone number"
-          },
-          {
-            "key": "email",
-            "label": "البريد الإلكتروني",
-            "labelEn": "Email",
-            "type": "email",
-            "placeholder": "test@example.com",
-            "required": false,
-            "aiHint": "test account email"
-          },
-          {
-            "key": "role",
-            "label": "الدور",
-            "labelEn": "Role",
-            "type": "text",
-            "placeholder": "customer",
-            "required": false,
-            "aiHint": "user role (e.g. customer, admin, manager)"
-          },
-          {
-            "key": "notes",
-            "label": "ملاحظات",
-            "labelEn": "Notes",
-            "type": "text",
-            "placeholder": "for negative login scenarios",
-            "required": false,
-            "aiHint": "notes about this test account"
-          }
-        ]
-      },
       "defaults": [
         {
           "handle": "valid_user",
