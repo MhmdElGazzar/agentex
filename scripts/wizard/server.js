@@ -14,6 +14,8 @@ const path   = require('path');
 const { execSync } = require('child_process');
 
 const { buildConfigs, validate, validateConfigs, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
+const { isPristineSampleEnv } = require('../lib/scaffold.js');
+const { isDeepStrictEqual } = require('util');
 
 // ── CLI args ──────────────────────────────────────────────────────────────
 const args        = process.argv.slice(2);
@@ -41,6 +43,10 @@ if (!FORCE && projectRoot === pluginRoot) {
 
 // ── Schema ────────────────────────────────────────────────────────────────
 const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+
+// Shipped project template — a config/project.json still structurally equal to
+// it is scaffolding, not the user's configuration.
+const projectTemplate = safeReadJSON(path.join(pluginRoot, 'templates', 'config', 'project.json'));
 
 // ── Server ────────────────────────────────────────────────────────────────
 let server;
@@ -101,7 +107,21 @@ server = http.createServer((req, res) => {
       [projCfgPath, existingProj, 'config/project.json'],
       [envCfgPath, existingEnv, `environments/${envName}.json`],
     ].filter(([p, parsed]) => parsed === null && fs.existsSync(p)).map(([, , label]) => label);
-    respondJSON(res, 200, { projectConfig: existingProj, envConfig: existingEnv, envName, unreadable });
+    // A structurally-pristine sample is scaffolding, not the user's data.
+    // Prefilling it would present example.com and sample users as "your existing
+    // configuration" — report it instead, and the wizard starts genuinely fresh.
+    const samplePristine = isPristineSampleEnv(existingEnv, pluginRoot);
+    const projectPristine = existingProj !== null && projectTemplate !== null &&
+      isDeepStrictEqual(existingProj, projectTemplate);
+    respondJSON(res, 200, {
+      projectConfig: existingProj,
+      envConfig: samplePristine ? null : existingEnv,
+      envName,
+      samplePristine,
+      sampleName: samplePristine ? envName : null,
+      projectPristine,
+      unreadable,
+    });
     return;
   }
 

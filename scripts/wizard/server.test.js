@@ -222,7 +222,58 @@ const post = (route, body, headers = {}) =>
     assert.ok(!stdout.includes('tok-test') && !stdout.includes('tok-updated'), 'stdout leaked a secret');
   });
 
+  // ── Pristine-aware prefill + save-time reconciliation ─────────────────────
+  // A second server over a freshly-scaffolded project (template config + sample
+  // environment straight from templates/) — the state the wizard meets right
+  // after /init-test.
+  const PLUGIN = path.join(__dirname, '..', '..');
+  const projectDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv2-'));
+  fs.mkdirSync(path.join(projectDir2, 'config'), { recursive: true });
+  fs.mkdirSync(path.join(projectDir2, 'environments'), { recursive: true });
+  fs.copyFileSync(path.join(PLUGIN, 'templates', 'config', 'project.json'),
+                  path.join(projectDir2, 'config', 'project.json'));
+  fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'),
+                  path.join(projectDir2, 'environments', 'qc.json'));
+  const PORT2 = 7392;
+  const BASE2 = `http://127.0.0.1:${PORT2}`;
+  const child2 = spawn(process.execPath, [SERVER, projectDir2, `--port=${PORT2}`, '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout2 = '';
+  child2.stdout.on('data', d => { stdout2 += d; });
+  await new Promise(r => {
+    const t = setInterval(() => { if (stdout2.includes('Wizard running')) { clearInterval(t); r(); } }, 100);
+  });
+  const TOKEN2 = (await (await fetch(`${BASE2}/setup`)).text()).match(/const TOKEN = '([a-f0-9]+)'/)[1];
+  const get2 = route => fetch(`${BASE2}${route}`, { headers: { 'X-Wizard-Token': TOKEN2 } });
+  const post2 = (route, body) =>
+    fetch(`${BASE2}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Wizard-Token': TOKEN2 },
+      body: JSON.stringify(body),
+    });
+
+  await test('a fresh scaffold is reported pristine, never prefilled as user data', async () => {
+    const data = await (await get2('/api/config')).json();
+    assert.strictEqual(data.samplePristine, true, 'sample must be recognized as pristine');
+    assert.strictEqual(data.envConfig, null, 'pristine sample must not be prefilled');
+    assert.strictEqual(data.sampleName, 'qc');
+    assert.strictEqual(data.envName, 'qc');
+    assert.strictEqual(data.projectPristine, true, 'template project.json is scaffolding, not config');
+  });
+
+  await test('a user-touched environment under the default name is prefilled and protected', async () => {
+    const envPath = path.join(projectDir2, 'environments', 'qc.json');
+    const touched = JSON.parse(fs.readFileSync(envPath, 'utf8'));
+    touched.portalUrl = 'https://my-real-app.example';
+    fs.writeFileSync(envPath, JSON.stringify(touched, null, 2) + '\n');
+    const data = await (await get2('/api/config')).json();
+    assert.strictEqual(data.samplePristine, false);
+    assert.strictEqual(data.envConfig.portalUrl, 'https://my-real-app.example', 'user data prefilled exactly as before');
+    // restore the pristine sample for the reconciliation tests below
+    fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'), envPath);
+  });
+
   child.kill();
+  child2.kill();
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

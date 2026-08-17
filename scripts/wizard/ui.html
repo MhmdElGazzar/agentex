@@ -465,6 +465,13 @@ let existingProject = null;
 let existingEnv     = null;
 let loadedEnvName   = null;   // environment the prefill came from
 let currentEnvSelection = null;
+// /api/config pristine report: the default's on-disk file is an untouched
+// scaffold sample (zero user values). It is never prefilled, and saving under
+// another name reconciles it away (listed on the review step first).
+let samplePristine    = false;
+let sampleName        = null;
+// The existing default names an environment file that is not on disk at all.
+let defaultEnvMissing = false;
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 async function init() {
@@ -486,17 +493,28 @@ async function loadExistingConfig() {
   catch { return; }
   const proj = cfg && cfg.projectConfig;
   const env  = cfg && cfg.envConfig;
-  if (cfg && cfg.unreadable && cfg.unreadable.length) {
+  const unreadable = (cfg && cfg.unreadable) || [];
+  samplePristine = !!(cfg && cfg.samplePristine);
+  sampleName     = (cfg && cfg.sampleName) || null;
+  const projPristine = !!(cfg && cfg.projectPristine);
+  if (unreadable.length) {
     // Say it out loud: saving would replace a file we could not read.
-    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقري:\n\n${cfg.unreadable.join('\n')}\n\n` +
+    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقري:\n\n${unreadable.join('\n')}\n\n` +
           `لو كملت وحفظت هتتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.`);
   }
+  defaultEnvMissing = !!(proj && proj.defaultEnvironment && !env && !samplePristine &&
+                         !unreadable.some(u => u.startsWith('environments/')));
   if (!proj && !env) return;
 
+  // On-disk files stay the merge base, so keys the wizard has no input for
+  // survive saving — but a still-pristine template never PREFILLS the form:
+  // scaffolding presented as "your existing configuration" is exactly the
+  // phantom-environment bug. The wizard starts from schema defaults instead.
   existingProject = proj || null;
   existingEnv     = env  || null;
+  const projLoaded = !!(proj && !projPristine);
 
-  if (proj) {
+  if (projLoaded) {
     if (proj.name) answers['name'] = proj.name;
     answers['defaultEnvironment'] = cfg.envName || proj.defaultEnvironment || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
     if (proj.login && proj.login.mode) answers['login.mode'] = proj.login.mode;
@@ -511,8 +529,9 @@ async function loadExistingConfig() {
   }
 
   if (env) fillEnvironmentAnswers(env);
-  loadedEnvName = answers['defaultEnvironment'];
-  showToast('📂 تم تحميل إعدادات المشروع الحالية');
+  loadedEnvName = env ? (cfg.envName || answers['defaultEnvironment'] || null) : null;
+  // The toast announces USER data that was loaded — an untouched scaffold is not that.
+  if (projLoaded || env) showToast('📂 تم تحميل إعدادات المشروع الحالية');
 }
 
 /** Environment-scoped answer keys — everything that belongs to ONE environment file. */
