@@ -15,5 +15,16 @@
     "fileKey": "",
     "token": { "envSecret": "FIGMA_TOKEN" }
   },
-  "login": { "mode": "session" }
+  "login": { "mode": "session" },
+  "userFields": [
+    { "key": "phone", "label": "رقم الهاتف", "labelEn": "Phone", "type": "text", "placeholder": "0550000001" },
+    { "key": "email", "label": "البريد الإلكتروني", "labelEn": "Email", "type": "email", "placeholder": "test@example.com" },
+    { "key": "role", "label": "الدور", "labelEn": "Role", "type": "text", "placeholder": "customer" },
+    { "key": "notes", "label": "ملاحظات", "labelEn": "Notes", "type": "text", "placeholder": "for negative login scenarios" }
+  ],
+  "defaultsFields": [
+    { "key": "password", "label": "كلمة المرور الافتراضية", "labelEn": "Default Password", "default": "Test@1234",
+      "hint": "كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سراً حقيقياً)" },
+    { "key": "otp", "label": "OTP الافتراضي", "labelEn": "Default OTP", "default": "0000" }
+  ]
 }
