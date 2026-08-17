@@ -28,7 +28,7 @@ const BUILTIN_USER_FIELDS = [
 ];
 const BUILTIN_DEFAULTS_FIELDS = [
   { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
-    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سراً حقيقياً)' },
+    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)' },
   { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
 ];
 

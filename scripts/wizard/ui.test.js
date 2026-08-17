@@ -376,6 +376,11 @@ setTimeout(() => {
     assert.ok(!html.includes('هتتقري') && !html.includes('بتتقري'), 'المبني للمجهول من "قرا" آخره ألف');
   });
 
+  test('tanween sits on the pre-alif letter — the flagged wrong forms are gone', () => {
+    assert.ok(!html.includes('سراً') && !html.includes('حقيقياً'),
+      'ليست سرًّا حقيقيًا — التنوين على الحرف قبل الألف، مش على الألف');
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 }, 50);

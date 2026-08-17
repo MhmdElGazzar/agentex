@@ -550,6 +550,16 @@ test('built-in field arrays: engine and template project.json agree exactly', ()
   assert.deepStrictEqual(BUILTIN_DEFAULTS_FIELDS.map(f => f.key), ['password', 'otp']);
 });
 
+test('built-ins and template carry the corrected tanween (سرًّا حقيقيًا)', () => {
+  // m11 bakes these strings into every consumer project — the wrong form
+  // (tanween on the alif) must never ship in a synced home.
+  const all = JSON.stringify(BUILTIN_DEFAULTS_FIELDS) + fs.readFileSync(
+    path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8');
+  assert.ok(!all.includes('سراً') && !all.includes('حقيقياً'),
+    'التنوين على الحرف قبل الألف، مش على الألف');
+  assert.ok(JSON.stringify(BUILTIN_DEFAULTS_FIELDS).includes('سرًّا'), 'the corrected form is present');
+});
+
 test('schema.json no longer hardcodes the field sets — rendering is schema-driven', () => {
   const schema = require('./schema.json');
   const usersStep = schema.steps.find(s => s.id === 'test-users');
