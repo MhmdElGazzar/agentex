@@ -3,6 +3,48 @@
 All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
+### Added
+- **Multi-environment wizard — one session manages every environment.** The setup wizard
+  now shows all environments (on disk or added this session) on a new environments-manager
+  page that opens the environment group, with state badges (on disk / new / edited /
+  default) and explicit controls. Add asks interactively whether to start blank or copy
+  **safe sections** from an existing environment — test-user values and defaults values
+  only; connection targets (portalUrl, db, api) are never offered and never inherited.
+  Rename and delete — the wizard's first destructive capability — sit behind double
+  consent (a confirm dialog naming the exact file operation, then the review step's
+  operations list) and execute only through the one batch save: `/api/save` takes every
+  dirty/new environment plus explicit `ops` (each carrying `confirmed: true`), validated
+  whole by the engine's `planSave` — un-consented ops are refused, rename sources and
+  deletes must name files the project actually has, collisions and path escapes are
+  refused, at least one environment must remain after all ops, and the final
+  `defaultEnvironment` must name a post-save file (invariant #10 extended over the
+  rename/delete arithmetic); the response echoes every file op performed. Renaming the
+  default updates `defaultEnvironment` inside the same confirmed save; deleting the
+  default requires designating a new one in the same dialog; adding never re-points it
+  (first-configured-claims-default unchanged). The environment-name field is now a
+  read-only label whose one rename affordance routes through the confirm dialog — the
+  accidental type-a-new-name fork is gone. Editing prefills from each environment's own
+  file and merges back onto it, now including per-user entries (hand-added user
+  properties survive a save — invariant #11). On a 2nd+ environment the db/api
+  env-var-name fields prefill a suffixed suggestion (`API_TOKEN_UAT`) so two environments
+  don't silently share one `.env` secret slot. `/api/config` enumerates every
+  environment (unreadable files are flagged and excluded from editing; pristine samples
+  are reported by name only, never as editable data); the legacy single-environment save
+  payload is still accepted.
+- **Knowledge Base wizard page** — the `kb` block of `config/project.json` was buildable
+  by the engine and fillable by text import, but had no page. A new optional project-group
+  page collects `kb.baseUrl` + `kb.project`, and the KB Ask API key goes to `.env` under
+  the fixed `KB_ASK_API_KEY` name that `ask_kb.js` reads (secret field, never written to
+  JSON, never shown).
+- **Migration m10 `phantom-sample-env`** — detects a pristine leftover sample sitting
+  under a non-default name beside a real environment (all three conditions must hold; a
+  lone pristine sample on an unconfigured project is legitimate scaffolding) and emits a
+  `[manual]` offer that withholds the version stamp. Removal happens only through the
+  consented re-run `node scripts/migrate.js --remove-phantom-sample` — the engine's first
+  consent-flag (`ctx.flags`) — never silently; renaming the file or changing any value in
+  it (claiming it) also clears detection. `/update-agentex` relays the offer and re-runs
+  the engine with the flag only after explicit user confirmation.
+
 ### Changed
 - **Wizard pages map one-to-one to config files.** The setup wizard's steps are reordered
   into two labeled, contiguous groups that mirror the config model instead of interleaving
@@ -27,21 +69,6 @@ All notable changes to AgenTeX are documented here.
   schema default/placeholder and the `ui.html` fallbacks). The sample template is
   `templates/environments/qc.json`; legacy migrations on projects without a
   `config/project.json` now create `environments/qc.json`.
-
-### Added
-- **Knowledge Base wizard page** — the `kb` block of `config/project.json` was buildable
-  by the engine and fillable by text import, but had no page. A new optional project-group
-  page collects `kb.baseUrl` + `kb.project`, and the KB Ask API key goes to `.env` under
-  the fixed `KB_ASK_API_KEY` name that `ask_kb.js` reads (secret field, never written to
-  JSON, never shown).
-- **Migration m10 `phantom-sample-env`** — detects a pristine leftover sample sitting
-  under a non-default name beside a real environment (all three conditions must hold; a
-  lone pristine sample on an unconfigured project is legitimate scaffolding) and emits a
-  `[manual]` offer that withholds the version stamp. Removal happens only through the
-  consented re-run `node scripts/migrate.js --remove-phantom-sample` — the engine's first
-  consent-flag (`ctx.flags`) — never silently; renaming the file or changing any value in
-  it (claiming it) also clears detection. `/update-agentex` relays the offer and re-runs
-  the engine with the flag only after explicit user confirmation.
 
 ### Fixed
 - **Environment name integrity — no phantom sample environment.** The scaffold used to
