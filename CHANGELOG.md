@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.17.0] — 2026-08-17
 ### Added
 - **Customizable test-user fields — one shared, consumer-owned field schema.** The wizard's
   fixed user field set (phone/email/role/notes) and fixed defaults pair (password/OTP) are

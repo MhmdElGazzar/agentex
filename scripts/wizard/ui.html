@@ -2090,7 +2090,7 @@ function fieldEditorRowHTML(kind, f, i, n, state) {
   if (state.renonto && state.renonto.from === key) {
     const r = state.renonto;
     return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(217,119,6,.35)">
-      <div class="modal-body" style="width:100%">⚠️ في قيم يدوية محفوظة على القرص تحت «${esc(r.to)}» في ${r.envs.length === 1 ? 'بيئة واحدة' : r.envs.length + ' بيئات'} (${r.envs.map(esc).join('، ')}) مختلفة عن قيم الحقل — لو أكّدت، قيم الجلسة هتتكتب فوقها عند الحفظ، والخانة الفاضية هتشيل قيمة القرص. العملية هتظهر في قائمة عمليات المراجعة.</div>
+      <div class="modal-body" style="width:100%">⚠️ في قيم يدوية محفوظة على القرص تحت «${esc(r.to)}» في ${r.envs.length === 1 ? 'بيئة واحدة' : r.envs.length + ' بيئات'} (${r.envs.map(esc).join('، ')}) مختلفة عن قيم الحقل — لو أكّدت، قيم الجلسة هتتكتب فوقها عند الحفظ، والخانة الفاضية هتتبنّى قيمة القرص زي ما هي. العملية هتظهر في قائمة عمليات المراجعة.</div>
       <div class="env-row-actions">
         <button class="btn-sm danger" data-act="renonto-ok">تأكيد الكتابة فوقها</button>
         <button class="btn-sm" data-act="renonto-cancel">إلغاء</button>
