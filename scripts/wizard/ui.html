@@ -1973,7 +1973,7 @@ function fieldEditorRowHTML(kind, f, i, n, state) {
       <button class="btn-sm" data-act="up"${i === 0 ? ' disabled' : ''}>⬆</button>
       <button class="btn-sm" data-act="down"${i === n - 1 ? ' disabled' : ''}>⬇</button>
       <button class="btn-sm" data-act="edit">✏️ إعادة تسمية</button>
-      <button class="btn-sm" data-act="secret">${f.secret ? '🔓 إلغاء السرية' : '🔒 اجعله سرّياً'}</button>
+      <button class="btn-sm" data-act="secret">${f.secret ? '🔓 إلغاء السرية' : '🔒 اجعله سرّيًا'}</button>
       <button class="btn-sm danger" data-act="remove">🗑️</button>
     </div>
   </div>`;
@@ -2367,7 +2367,7 @@ function validateStep() {
       if (v && f.type === 'url') {
         let ok = false;
         try { const u = new URL(v); ok = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
-        if (!ok) errs.push(`«${label}» يجب أن يكون رابط http(s) صحيحاً`);
+        if (!ok) errs.push(`«${label}» يجب أن يكون رابط http(s) صحيحًا`);
       }
     }
   }
