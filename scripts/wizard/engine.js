@@ -328,7 +328,7 @@ function validateEnvConfig(envConfig, envName) {
  * and it too is computed in this plan, never improvised at write time.
  *
  * @param {{projectConfig: object, environments: object, ops: {renames?: {from,to,confirmed}[], deletes?: {name,confirmed}[]}}} payload
- * @param {{envNames: string[], pristineNames: string[]}} diskState  environments/*.json base names on disk; which of them are pristine samples
+ * @param {{envNames: string[], pristineNames: string[], unreadableNames?: string[]}} diskState  environments/*.json base names on disk; which are pristine samples; which would not parse
  * @returns {{errors: string[], reconcile: string[], finalEnvNames: string[]}}
  */
 function planSave(payload, diskState) {
@@ -340,6 +340,7 @@ function planSave(payload, diskState) {
   const deletes = Array.isArray(ops.deletes) ? ops.deletes : [];
   const diskEnvs = ((diskState && diskState.envNames) || []).map(String);
   const pristine = ((diskState && diskState.pristineNames) || []).map(String);
+  const unreadable = ((diskState && diskState.unreadableNames) || []).map(String);
 
   if (!projectConfig || typeof projectConfig !== 'object') errors.push('projectConfig is required');
   else if (!String(projectConfig.name || '').trim()) errors.push('project name is required');
@@ -352,6 +353,26 @@ function planSave(payload, diskState) {
   const written = Object.keys(environments);
   for (const [name, cfg] of Object.entries(environments)) {
     for (const e of validateEnvConfig(cfg, name)) errors.push(`environments/${name}.json: ${e}`);
+  }
+
+  // ── An unreadable on-disk file is untouchable (design #3): the wizard
+  // could not read it, so it must not write over it, rename it, rename onto
+  // it, or delete it — the user fixes or removes it by hand.
+  const touchesUnreadable = (n) => unreadable.includes(n);
+  for (const n of written) {
+    if (touchesUnreadable(n)) {
+      errors.push(`environments/${n}.json exists but is not readable JSON — the wizard never overwrites what it could not read; fix or remove the file by hand`);
+    }
+  }
+  for (const r of renames) {
+    if (r && (touchesUnreadable(String(r.from || '')) || touchesUnreadable(String(r.to || '')))) {
+      errors.push(`rename touches an unreadable environment file ("${r.from}" → "${r.to}") — fix or remove it by hand`);
+    }
+  }
+  for (const d of deletes) {
+    if (d && touchesUnreadable(String(d.name || ''))) {
+      errors.push(`delete "${d.name}" refused — the file is not readable JSON, so its content was never shown; remove it by hand if you mean it`);
+    }
   }
 
   // ── Ops: explicit, enumerated, consented — or refused ───────────────────

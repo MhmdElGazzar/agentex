@@ -510,6 +510,27 @@ const post = (route, body, headers = {}) =>
     assert.ok(!fs.existsSync(env3('stage2')), 'file deleted only as the explicit, confirmed op');
   });
 
+  await test('REJECTED: writing over or deleting an unreadable environment file', async () => {
+    const brokenBytes = fs.readFileSync(env3('broken'), 'utf8');
+    const r = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: { broken: { portalUrl: 'https://b.example', users: { u: { phone: '1' } } } },
+      ops: { renames: [], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /broken/);
+    const r2 = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [], deletes: [{ name: 'broken', confirmed: true }] },
+      secrets: {},
+    });
+    assert.strictEqual(r2.status, 400);
+    assert.strictEqual(fs.readFileSync(env3('broken'), 'utf8'), brokenBytes,
+      'the wizard never touches what it could not read');
+  });
+
   await test('REJECTED: deleting the last environment', async () => {
     // server 1's project has exactly one environment file (environments/qa.json)
     const r = await post('/api/save', {

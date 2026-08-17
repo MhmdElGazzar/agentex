@@ -163,14 +163,20 @@ server = http.createServer((req, res) => {
 
       // Never trust the browser: enumerate the disk, then re-validate the whole
       // plan — per-env configs, ops consent, collisions, path escapes, the
-      // at-least-one-environment rule, and the post-ops default check.
+      // at-least-one-environment rule, the post-ops default check, and the
+      // untouchability of files that exist but would not parse.
       const envDir = path.join(projectRoot, 'environments');
       const diskEnvNames = !fs.existsSync(envDir) ? [] :
         fs.readdirSync(envDir).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, ''));
-      const pristineNames = diskEnvNames.filter(n =>
-        isPristineSampleEnv(safeReadJSON(path.join(envDir, `${n}.json`)), pluginRoot));
+      const pristineNames = [];
+      const unreadableNames = [];
+      for (const n of diskEnvNames) {
+        const parsed = safeReadJSON(path.join(envDir, `${n}.json`));
+        if (parsed === null) unreadableNames.push(n);
+        else if (isPristineSampleEnv(parsed, pluginRoot)) pristineNames.push(n);
+      }
       const plan = planSave({ projectConfig, environments, ops: { renames, deletes } },
-        { envNames: diskEnvNames, pristineNames });
+        { envNames: diskEnvNames, pristineNames, unreadableNames });
       if (plan.errors.length) {
         respondJSON(res, 400, { ok: false, error: plan.errors.join('; ') });
         return;

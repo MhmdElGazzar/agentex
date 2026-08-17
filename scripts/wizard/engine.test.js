@@ -464,6 +464,24 @@ test('planSave reconciles pristine samples this save does not claim — and only
   assert.deepStrictEqual(claimed.reconcile, []);
 });
 
+test('planSave refuses touching an unreadable on-disk environment file', () => {
+  const proj = { name: 'd', defaultEnvironment: 'qa' };
+  const state = { envNames: ['qa', 'broken'], pristineNames: [], unreadableNames: ['broken'] };
+  // write over it
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk(), broken: cfgOk() }, ops: {} }, state)
+    .errors.join(), /broken/);
+  // rename it away
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'broken', to: 'fixed' })], deletes: [] } }, state).errors.join(), /broken/);
+  // rename onto it
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'qa', to: 'broken' })], deletes: [] } },
+    { envNames: ['qa', 'broken'], pristineNames: [], unreadableNames: ['broken'] }).errors.join(), /broken/);
+  // delete it
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: 'broken' })] } }, state).errors.join(), /broken/);
+});
+
 // ── buildEnvUsers: per-user unknown-prop preservation (invariant #11) ─────
 test('buildEnvUsers merges each entry onto its on-disk base — hand-added props survive', () => {
   const base = {
