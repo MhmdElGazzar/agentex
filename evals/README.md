@@ -51,7 +51,7 @@ two-line footers in the prompt.
 
 | case | result |
 |---|---|
-| trigger-browser-testing | PASS — invoked `agentex:browser-testing` + `agentex:init-test` |
+| trigger-browser-testing | PASS — invoked `agentex:browser-testing` + `agentex:init-test`; re-checked 2026-08-17 on installed 0.16.1 with define-flow present (discovery competition, 1 rep, score 1.0): still fires for the defect-hunt scenario |
 | trigger-test-design | PASS — invoked `agentex:design-test` |
 | trigger-task-estimation | PASS — invoked `agentex:task-estimation` |
 | trigger-bug-report-azure | FAIL on installed v0.12.0 — skill undiscoverable (frontmatter parse bug); agent fell back to `agentex:azure-integration` + manually reading the skill folder. Fixed in this branch; re-run once the fixed version is installed |
@@ -67,12 +67,12 @@ two-line footers in the prompt.
 | discipline-ui-check-reference-mode | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
 | discipline-ui-check-exact-noise | authored 2026-08-13, not yet executed (schematic screenshot fixtures, no network) |
 | discipline-ui-check-needs-user-deferral | PASS — 3/3 reps (2026-08-13, manual subagent run, hardened deferral wording, iteration 1): each deferred as NEEDS-USER with the precise question + both image paths, `0 pass / 0 fail, 1 needs-user` tally, no verdict finalized, pixel-diff used for localization only. QA-gate probe of the pre-hardening wording had scored 1/3 (silent PASS via noise attribution) |
-| trigger-define-flow | FAIL (environmental) — QA gate run 2026-08-13: installed plugin predates the merge, skill undiscoverable (trigger-bug-report-azure precedent); re-run once the merged version is installed, alongside trigger-browser-testing (a new skill description competes in discovery) |
+| trigger-define-flow | PASS — run 2026-08-17 on installed 0.16.1 (1 rep, score 1.0): invoked `agentex:define-flow`, planned target/goal elicitation + unique `define-*` session per protocol. (2026-08-13 QA-gate run was FAIL-environmental: installed plugin predated the merge — trigger-bug-report-azure precedent) |
 | discipline-define-flow-execute-before-next | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): step executed in the live browser before any next-step proposal |
 | discipline-define-flow-forward-only | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): declined the jump back, earlier steps untouched, offered post-save edit |
 | discipline-define-flow-symbolic-values | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): spec line symbolic ("the order number produced in step 3"), session literal kept as inline example only |
-| discipline-define-flow-agent-leads | authored 2026-08-13, not yet executed |
-| discipline-define-flow-user-directed | authored 2026-08-13, not yet executed |
+| discipline-define-flow-agent-leads | PASS — run 2026-08-17 (1 rep, score 1.0): select-shaped numbered options grounded in the live page; no spec text requested |
+| discipline-define-flow-user-directed | PASS — run 2026-08-17 (1 rep, score 1.0): user-directed delete executed without warning or double-check, recorded symbolically, no secrets |
 
 ## define-flow validation lanes
 
