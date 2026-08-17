@@ -34,6 +34,21 @@ file change; you run it, relay its report, and explain what it flagged.
 3. **Explain every `[manual]` and `[flag]` line.**
    - `[manual]` (e.g. both `integrations/` and `integration/` exist): describe the
      exact hand-move the message asks for.
+   - `[manual]` phantom sample environment (`phantom-sample-env`): the named
+     `environments/<name>.json` is a pristine leftover of the old scaffold —
+     structurally identical to the shipped sample, zero user values, and not the
+     project's default environment. Relay that finding and **ask the user
+     explicitly** whether to remove it. Only after the user confirms, re-run the
+     engine with the consent flag — the engine deletes it, never you:
+
+     ```
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/migrate.js" --remove-phantom-sample
+     ```
+
+     Never delete the file by hand, and never pass the flag without the user's
+     explicit confirmation. If the user wants to keep the file, tell them the
+     alternative the message names: rename it or change any value in it
+     (claiming it), then re-run this command to finish and stamp.
    - `[flag]` on a catalog `connection` block: the DB connection now lives in the
      environment file's `db` block, which takes precedence; the legacy block still
      works and can be deleted whenever convenient.

@@ -11,6 +11,7 @@
 // printing — callers own the report format.
 const fs = require('fs');
 const path = require('path');
+const { isDeepStrictEqual } = require('util');
 const { ENV_KEY_MAP } = require('./env_key_map.js');
 
 // The executions/ guidance appended to the consumer's CLAUDE.md.
@@ -34,6 +35,16 @@ function hasSpecFiles(dir) {
     else if (/\.md$/i.test(entry.name) && entry.name.toLowerCase() !== 'readme.md') return true;
   }
   return false;
+}
+
+// Any environment file at all? The sample environment is scaffolded only into a
+// project with none — a project that already has environments (wizard-saved,
+// hand-written, or legacy) must never get a sample injected beside them, or it
+// survives as a phantom environment the user never configured.
+function hasEnvFiles(projectRoot) {
+  const dir = path.join(projectRoot, 'environments');
+  if (!fs.existsSync(dir)) return false;
+  return fs.readdirSync(dir).some(f => f.endsWith('.json'));
 }
 
 // ── .gitignore: the .env entry ───────────────────────────────────────────────
@@ -148,16 +159,71 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
                      path.join(integrationDir, 'sample_db.json'));
   }
 
-  // 4b. Project config + environments (new layout; .env keeps only secrets)
+  // 4b. Project config + environments (new layout; .env keeps only secrets).
+  // The sample environment lands ONLY in a project with no environment files at
+  // all: fresh scaffolds get the editable starting point, while /init-test
+  // re-runs and m07 fill-gaps on projects that already have environments never
+  // inject a phantom sample beside them.
   copyFileIfAbsent(path.join(pluginRoot, 'templates', 'config', 'project.json'),
                    path.join(projectRoot, 'config', 'project.json'));
-  copyFileIfAbsent(path.join(pluginRoot, 'templates', 'environments', 'qa.json'),
-                   path.join(projectRoot, 'environments', 'qa.json'));
+  if (hasEnvFiles(projectRoot)) {
+    push('skipped', path.join(projectRoot, 'environments'), 'environment file(s) present — sample environment not copied');
+  } else {
+    copyFileIfAbsent(path.join(pluginRoot, 'templates', 'environments', 'qc.json'),
+                     path.join(projectRoot, 'environments', 'qc.json'));
+  }
 
   // 5. CLAUDE.md guidance (append-only)
   actions.push(ensureClaudeMdBullet(projectRoot, { dryRun }));
 
   return actions;
+}
+
+// ── Pristine sample-environment detection ────────────────────────────────────
+// A "pristine sample" is an environment file structurally identical (JSON-parse +
+// deep-equal; whitespace/key-order insensitive) to a sample template this plugin
+// has EVER shipped — it verifiably carries zero user values. That is what turns
+// "delete a file" (forbidden by invariant #11) into "remove a plugin artifact,
+// announced first": the wizard's save-time reconciliation and migration m10 both
+// judge against this one set. A file that differs in any value is user-touched
+// and is treated as the user's, always.
+//
+// HISTORICAL_SAMPLE_ENV_SHAPES holds every shipped revision of
+// templates/environments/* from the plugin's git history (currently one: the
+// qa.json shipped from 0.11.0 through 0.16.x, byte-equal to today's qc.json).
+// When the template changes, append the outgoing shape here — pre-change
+// projects still carry it.
+const HISTORICAL_SAMPLE_ENV_SHAPES = [
+  {
+    portalUrl: 'https://example.com',
+    defaults: { otp: '0000', password: 'Test@1234' },
+    users: {
+      valid_user: { phone: '0550000001', role: 'customer' },
+      expired_user: { phone: '0550000002', notes: 'for negative login scenarios' },
+    },
+    db: {
+      server: 'localhost', port: 1433, name: 'my-database', user: 'qa_user',
+      password: { envSecret: 'SQLCMDPASSWORD' },
+    },
+    api: { baseUrl: 'https://jsonplaceholder.typicode.com', token: { envSecret: 'API_TOKEN' } },
+  },
+];
+
+// Every sample-environment shape ever shipped: current template first (read from
+// the installed plugin), then the historical revisions.
+function sampleEnvShapes(pluginRoot) {
+  const shapes = [];
+  try {
+    shapes.push(JSON.parse(fs.readFileSync(
+      path.join(pluginRoot, 'templates', 'environments', 'qc.json'), 'utf8')));
+  } catch { /* unreadable template — historical shapes still apply */ }
+  return shapes.concat(HISTORICAL_SAMPLE_ENV_SHAPES);
+}
+
+// Is this parsed environment JSON structurally identical to a shipped sample?
+function isPristineSampleEnv(parsed, pluginRoot) {
+  if (!parsed || typeof parsed !== 'object') return false;
+  return sampleEnvShapes(pluginRoot).some(shape => isDeepStrictEqual(parsed, shape));
 }
 
 // ── Legacy signals — does this project predate current conventions? ──────────
@@ -211,7 +277,8 @@ function readPluginVersion(pluginRoot) {
 
 module.exports = {
   CLAUDE_MD_BULLET, STAMP_REL,
-  hasSpecFiles, scaffoldProject, hasLegacySignals,
+  hasSpecFiles, hasEnvFiles, scaffoldProject, hasLegacySignals,
+  sampleEnvShapes, isPristineSampleEnv,
   gitignoreHasEnvEntry, ensureGitignoreEnv,
   claudeMdHasBullet, ensureClaudeMdBullet,
   stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,

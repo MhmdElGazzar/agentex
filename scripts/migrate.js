@@ -26,9 +26,16 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const scaffold = require('./lib/scaffold.js');
 const { loadProjectConfig } = require('./lib/project_config.js');
+const { DEFAULT_ENV_NAME } = require('./wizard/engine.js');
 
 const pluginRoot = path.resolve(__dirname, '..');
-const projectRoot = path.resolve(process.argv[2] || process.cwd());
+// Args: [projectDir] plus consent flags. Flags exist for exactly one purpose —
+// re-running the engine WITH the user's explicit go-ahead for an action a
+// migration may only offer (invariant #11): the mechanics stay deterministic in
+// the engine, the consent stays with the user.
+const cliArgs = process.argv.slice(2);
+const flagArgs = cliArgs.filter(a => a.startsWith('--'));
+const projectRoot = path.resolve(cliArgs.find(a => !a.startsWith('--')) || process.cwd());
 
 function abort(reason) {
   console.error(`[abort] ${reason}`);
@@ -115,13 +122,15 @@ function readJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
 
 const ctx = {
   projectRoot, pluginRoot, report,
+  // User-consented flags relayed by /update-agentex (see cliArgs above).
+  flags: { removePhantomSample: flagArgs.includes('--remove-phantom-sample') },
   templates: {
     project: readJson(path.join(pluginRoot, 'templates', 'config', 'project.json')),
-    environment: readJson(path.join(pluginRoot, 'templates', 'environments', 'qa.json')),
+    environment: readJson(path.join(pluginRoot, 'templates', 'environments', `${DEFAULT_ENV_NAME}.json`)),
   },
   // Active environment name — recomputed on demand because earlier migrations may
   // create config/project.json mid-pipeline.
-  envName() { return loadProjectConfig(projectRoot).defaultEnvironment || 'qa'; },
+  envName() { return loadProjectConfig(projectRoot).defaultEnvironment || DEFAULT_ENV_NAME; },
   saveJson(file, data) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf8');

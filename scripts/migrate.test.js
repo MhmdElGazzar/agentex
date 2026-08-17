@@ -50,9 +50,9 @@ function gitInit(dir) { git(dir, 'init', '-q'); commitAll(dir); }
 function commitAll(dir) { git(dir, 'add', '-A'); git(dir, 'commit', '-qm', 'fixture', '--allow-empty'); }
 function repo(files = {}) { const dir = proj(files); gitInit(dir); return dir; }
 
-function run(dir) {
+function run(dir, ...extraArgs) {
   try {
-    const out = execFileSync(process.execPath, [MIGRATE, dir], { encoding: 'utf8' });
+    const out = execFileSync(process.execPath, [MIGRATE, dir, ...extraArgs], { encoding: 'utf8' });
     ALL_OUTPUT.push(out);
     return { code: 0, out };
   } catch (e) {
@@ -191,7 +191,7 @@ test('0.10 era: values land in their JSON homes, secrets stay in .env', () => {
   assert.strictEqual(project.kb.baseUrl, 'https://kb.example.test');
   assert.strictEqual(project.kb.project, 'demo-kb');
 
-  const env = readJson(dir, 'environments/qa.json');
+  const env = readJson(dir, 'environments/qc.json');
   assert.strictEqual(env.portalUrl, 'https://qa.example.test/ar');
   assert.strictEqual(env.db.server, 'db01.internal.test');
   assert.strictEqual(env.db.port, 1434);
@@ -231,7 +231,7 @@ test('0.10 era: structure and schemas match a fresh init.js scaffold', () => {
   assert.strictEqual(run(dir).code, 0);
   const fresh = proj();
   runInit(fresh);
-  for (const p of ['config/project.json', 'environments/qa.json', '.agentex/version.json', '.gitignore', 'CLAUDE.md']) {
+  for (const p of ['config/project.json', 'environments/qc.json', '.agentex/version.json', '.gitignore', 'CLAUDE.md']) {
     assert.ok(exists(dir, p), `migrated project should have ${p}`);
     assert.ok(exists(fresh, p), `fresh scaffold should have ${p}`);
   }
@@ -241,8 +241,8 @@ test('0.10 era: structure and schemas match a fresh init.js scaffold', () => {
     Object.keys(readJson(dir, 'config/project.json')).sort(),
     Object.keys(readJson(fresh, 'config/project.json')).sort(), 'project.json schema');
   assert.deepStrictEqual(
-    Object.keys(readJson(dir, 'environments/qa.json')).sort(),
-    Object.keys(readJson(fresh, 'environments/qa.json')).sort(), 'environment schema');
+    Object.keys(readJson(dir, 'environments/qc.json')).sort(),
+    Object.keys(readJson(fresh, 'environments/qc.json')).sort(), 'environment schema');
 });
 
 // ── 0.2-style era fixture ─────────────────────────────────────────────────────
@@ -255,7 +255,7 @@ test('0.2 era: gaps filled, user specs kept, sample specs NOT copied in', () => 
   const before = snapshot(dir);
   const r = run(dir);
   assert.strictEqual(r.code, 0, r.out);
-  assert.strictEqual(readJson(dir, 'environments/qa.json').portalUrl, 'https://old.example.test');
+  assert.strictEqual(readJson(dir, 'environments/qc.json').portalUrl, 'https://old.example.test');
   assert.ok(exists(dir, 'config/project.json'));
   assert.ok(exists(dir, 'integration/sample_api.json'));
   assert.ok(exists(dir, '.gitignore'));
@@ -267,6 +267,23 @@ test('0.2 era: gaps filled, user specs kept, sample specs NOT copied in', () => 
   assert.deepStrictEqual(subset(after, 'executions/'), subset(before, 'executions/'));
   assert.ok(!/^QA_TARGET_URL=/m.test(readText(dir, '.env')));
   assert.match(readText(dir, '.env'), new RegExp(`^AZURE_PAT=${SENTINELS.pat}$`, 'm'));
+});
+
+// m07 fill-gaps must not inject a sample environment into a project that already
+// has environments — the sample would survive as a phantom under a name the user
+// never chose (the same bug the scaffold had; both share scaffoldProject).
+test('m07: legacy project with its own environment gets NO sample env injected', () => {
+  const dir = repo({
+    'test/suite1/smoke.md': SPEC_02,
+    'config/project.json': { name: 'p', defaultEnvironment: 'uat', login: { mode: 'session' } },
+    'environments/uat.json': { portalUrl: 'https://uat.example.test', defaults: {}, users: { u1: { phone: '1' } } },
+    '.gitignore': '.env\n',
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!exists(dir, 'environments/qc.json'), 'no sample beside the user environment');
+  assert.ok(!exists(dir, 'environments/qa.json'), 'no legacy-named sample either');
+  assert.strictEqual(readJson(dir, 'environments/uat.json').portalUrl, 'https://uat.example.test');
 });
 
 // ── 0.6-style era fixture ─────────────────────────────────────────────────────
@@ -292,7 +309,7 @@ test('0.6 era: integrations/ renamed, contents intact, spec drift flagged', () =
   assert.strictEqual(readText(dir, 'integration/shop_db.json'), catalogBytes, 'catalog byte-identical after rename');
   assert.ok(exists(dir, 'integration/shop_api.json'));
   assert.ok(!exists(dir, 'integration/sample_db.json'), 'rename must run before gap-fill (no samples beside user catalog)');
-  const env = readJson(dir, 'environments/qa.json');
+  const env = readJson(dir, 'environments/qc.json');
   assert.strictEqual(env.db.server, 'db6.test');
   assert.strictEqual(env.db.name, 'Shop6');
   // spec drift flagged, spec untouched
@@ -500,7 +517,7 @@ test('init.js withholds the stamp on a legacy project; /update-agentex then migr
   assert.match(r.out, /\[migrated\] absorb-agentex-config/);
   assert.match(r.out, /\[migrated\] env-split/);
   assert.strictEqual(readJson(dir, 'config/project.json').kb.baseUrl, 'https://kb.legacy.test');
-  assert.strictEqual(readJson(dir, 'environments/qa.json').portalUrl, 'https://legacy.example.test');
+  assert.strictEqual(readJson(dir, 'environments/qc.json').portalUrl, 'https://legacy.example.test');
   assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'migration stamps at the end');
 });
 
@@ -564,6 +581,76 @@ test('m09 + init: fresh scaffold carries the figma block and the FIGMA_TOKEN key
   assert.deepStrictEqual(readJson(dir, 'config/project.json').figma,
     { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } });
   assert.match(readText(dir, '.env'), /^FIGMA_TOKEN=$/m, '.env scaffold keeps the key, blanks the value');
+});
+
+// ── m10 phantom-sample-env — consent-gated removal of pristine leftovers ─────
+const SAMPLE_ENV = JSON.parse(fs.readFileSync(
+  path.join(PLUGIN_ROOT, 'templates', 'environments', 'qc.json'), 'utf8'));
+
+function phantomFixture() {
+  return repo({
+    'test/suite1/a.md': SPEC_02,
+    'config/project.json': {
+      name: 'p', defaultEnvironment: 'uat', login: { mode: 'session' },
+      figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } },
+    },
+    'environments/uat.json': { portalUrl: 'https://uat.example.test', defaults: {}, users: { u: { phone: '1' } } },
+    'environments/qa.json': SAMPLE_ENV,   // the old scaffold's leftover, historical name
+    '.gitignore': '.env\n',
+    '.env': 'FIGMA_TOKEN=\n',
+  });
+}
+
+test('m10: pristine phantom sample → [manual] offer, file kept, stamp withheld', () => {
+  const dir = phantomFixture();
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[manual\].*environments\/qa\.json/);
+  assert.match(r.out, /--remove-phantom-sample/, 'the consent instruction is in the message');
+  assert.ok(exists(dir, 'environments/qa.json'), 'never deleted without explicit consent');
+  assert.ok(!exists(dir, '.agentex/version.json'), 'stamp withheld while the phantom remains');
+});
+
+test('m10: consented re-run with --remove-phantom-sample deletes the phantom and stamps', () => {
+  const dir = phantomFixture();
+  run(dir);                    // [manual] offer
+  commitAll(dir);              // clean-tree guard: commit run-1 output first
+  const r = run(dir, '--remove-phantom-sample');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] phantom-sample-env/);
+  assert.ok(!exists(dir, 'environments/qa.json'), 'phantom removed on consent');
+  assert.strictEqual(readJson(dir, 'environments/uat.json').portalUrl, 'https://uat.example.test',
+    'the user environment is untouched');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'stamped once resolved');
+});
+
+test('m10: a lone pristine sample on an unconfigured project is legitimate scaffolding', () => {
+  const dir = repo({
+    'test/suite1/a.md': SPEC_02,
+    'config/project.json': {
+      name: 'my-project', defaultEnvironment: 'qc', login: { mode: 'session' },
+      figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } },
+    },
+    'environments/qc.json': SAMPLE_ENV,
+    '.gitignore': '.env\n',
+    '.env': 'FIGMA_TOKEN=\n',
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!r.out.includes('phantom-sample-env'), 'not flagged');
+  assert.ok(exists(dir, 'environments/qc.json'), 'sample kept');
+});
+
+test('m10: a claimed file (any value changed) is the user\'s — never flagged', () => {
+  const dir = phantomFixture();
+  const claimed = JSON.parse(JSON.stringify(SAMPLE_ENV));
+  claimed.portalUrl = 'https://claimed.example.test';
+  addFiles(dir, { 'environments/qa.json': claimed });
+  commitAll(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!r.out.includes('phantom-sample-env'), 'user-touched file is not a phantom');
+  assert.ok(exists(dir, 'environments/qa.json'));
 });
 
 // ── secrecy ───────────────────────────────────────────────────────────────────

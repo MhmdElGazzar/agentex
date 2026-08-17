@@ -1,5 +1,5 @@
 ---
-description: Initialize AgenTeX in the current project — scaffold a sample test suite, config/project.json, environments/qa.json, the executions output folder, a keys-only .env file, and CLAUDE.md guidance.
+description: Initialize AgenTeX in the current project — scaffold a sample test suite, config/project.json, environments/qc.json, the executions output folder, a keys-only .env file, and CLAUDE.md guidance.
 ---
 
 Initialize **AgenTeX** in the current project so the user has a working starting point.
@@ -17,7 +17,7 @@ Do these steps, then report what was created:
      already has their own specs under `./test/`)
    - `./executions/` output folder (no timestamped run folder — that happens at run time)
    - `./config/project.json` — project settings (Azure org/project, default environment, login mode)
-   - `./environments/qa.json` — sample environment (portal URL, defaults, test users, db/api targets)
+   - `./environments/qc.json` — sample environment (portal URL, defaults, test users, db/api targets); copied only when `./environments/` has no environment files yet, and the wizard reconciles it to the name the user actually chooses
    - keys-only secrets `./.env` (PAT, DB password, API token, KB key) from the plugin's `.env.example` (every value left empty) and a `.env` entry in `.gitignore`
    - `./integration/` with `sample_api.json` + `sample_db.json`
    - the `executions/` guidance bullet in `CLAUDE.md`

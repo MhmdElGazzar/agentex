@@ -465,6 +465,13 @@ let existingProject = null;
 let existingEnv     = null;
 let loadedEnvName   = null;   // environment the prefill came from
 let currentEnvSelection = null;
+// /api/config pristine report: the default's on-disk file is an untouched
+// scaffold sample (zero user values). It is never prefilled, and saving under
+// another name reconciles it away (listed on the review step first).
+let samplePristine    = false;
+let sampleName        = null;
+// The existing default names an environment file that is not on disk at all.
+let defaultEnvMissing = false;
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 async function init() {
@@ -486,19 +493,30 @@ async function loadExistingConfig() {
   catch { return; }
   const proj = cfg && cfg.projectConfig;
   const env  = cfg && cfg.envConfig;
-  if (cfg && cfg.unreadable && cfg.unreadable.length) {
+  const unreadable = (cfg && cfg.unreadable) || [];
+  samplePristine = !!(cfg && cfg.samplePristine);
+  sampleName     = (cfg && cfg.sampleName) || null;
+  const projPristine = !!(cfg && cfg.projectPristine);
+  if (unreadable.length) {
     // Say it out loud: saving would replace a file we could not read.
-    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقري:\n\n${cfg.unreadable.join('\n')}\n\n` +
+    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقري:\n\n${unreadable.join('\n')}\n\n` +
           `لو كملت وحفظت هتتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.`);
   }
+  defaultEnvMissing = !!(proj && proj.defaultEnvironment && !env && !samplePristine &&
+                         !unreadable.some(u => u.startsWith('environments/')));
   if (!proj && !env) return;
 
+  // On-disk files stay the merge base, so keys the wizard has no input for
+  // survive saving — but a still-pristine template never PREFILLS the form:
+  // scaffolding presented as "your existing configuration" is exactly the
+  // phantom-environment bug. The wizard starts from schema defaults instead.
   existingProject = proj || null;
   existingEnv     = env  || null;
+  const projLoaded = !!(proj && !projPristine);
 
-  if (proj) {
+  if (projLoaded) {
     if (proj.name) answers['name'] = proj.name;
-    answers['defaultEnvironment'] = cfg.envName || proj.defaultEnvironment || 'qa';
+    answers['defaultEnvironment'] = cfg.envName || proj.defaultEnvironment || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
     if (proj.login && proj.login.mode) answers['login.mode'] = proj.login.mode;
     for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']]]) {
       for (const k of keys) {
@@ -511,8 +529,9 @@ async function loadExistingConfig() {
   }
 
   if (env) fillEnvironmentAnswers(env);
-  loadedEnvName = answers['defaultEnvironment'];
-  showToast('📂 تم تحميل إعدادات المشروع الحالية');
+  loadedEnvName = env ? (cfg.envName || answers['defaultEnvironment'] || null) : null;
+  // The toast announces USER data that was loaded — an untouched scaffold is not that.
+  if (projLoaded || env) showToast('📂 تم تحميل إعدادات المشروع الحالية');
 }
 
 /** Environment-scoped answer keys — everything that belongs to ONE environment file. */
@@ -1130,6 +1149,16 @@ function renderReviewStep() {
   wrap.appendChild(tabBar);
   wrap.appendChild(code);
   wrap.appendChild(copyBtn);
+
+  // Reconciliation transparency: the save will remove the pristine leftover
+  // sample — it is listed here BEFORE anything happens, never silently.
+  if (samplePristine && sampleName && sampleName !== envName) {
+    const note = document.createElement('div');
+    note.style.cssText = 'border:1px solid var(--warning);background:var(--warning-lt);color:var(--text-1);border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.7';
+    note.textContent = `⚠️ عند الحفظ هيتشال ملف البيئة النموذجي environments/${sampleName}.json` +
+      ` (نسخة السكافولد من غير أي تعديل) — بيحل محله environments/${envName}.json.`;
+    wrap.appendChild(note);
+  }
   return wrap;
 }
 
@@ -1256,15 +1285,19 @@ function buildSecretsPayload() {
 
 /* ── Build Configs ───────────────────────────────────────────────────────── */
 function buildConfigs() {
-  const envName = answers['defaultEnvironment'] || 'qa';
+  const envName = answers['defaultEnvironment'] || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
   // Start from what's on disk so keys the wizard has no input for (azure.areaPath,
   // kb.org, custom fields) survive a re-run instead of being silently dropped.
   const proj = Object.assign({}, existingProject, {
     name: answers['name'] || 'my-project',
-    // Adding another environment must not silently re-point the project: the
-    // existing default stands, and only a brand-new project takes its first
-    // environment as the default.
-    defaultEnvironment: (existingProject && existingProject.defaultEnvironment) || envName,
+    // Adding another environment must not silently re-point the project: a
+    // user-configured default stands. But a default that points at a pristine
+    // sample (or at no file at all) is scaffolding, not configuration — the
+    // first environment the user actually configures claims it.
+    defaultEnvironment:
+      (existingProject && existingProject.defaultEnvironment && !samplePristine && !defaultEnvMissing)
+        ? existingProject.defaultEnvironment
+        : envName,
     login: Object.assign({}, existingProject && existingProject.login, { mode: answers['login.mode'] || 'session' }),
   });
   // Managed keys mirror the screen EXACTLY: a value sets the key, an empty

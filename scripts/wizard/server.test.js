@@ -222,7 +222,112 @@ const post = (route, body, headers = {}) =>
     assert.ok(!stdout.includes('tok-test') && !stdout.includes('tok-updated'), 'stdout leaked a secret');
   });
 
+  // ── Pristine-aware prefill + save-time reconciliation ─────────────────────
+  // A second server over a freshly-scaffolded project (template config + sample
+  // environment straight from templates/) — the state the wizard meets right
+  // after /init-test.
+  const PLUGIN = path.join(__dirname, '..', '..');
+  const projectDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv2-'));
+  fs.mkdirSync(path.join(projectDir2, 'config'), { recursive: true });
+  fs.mkdirSync(path.join(projectDir2, 'environments'), { recursive: true });
+  fs.copyFileSync(path.join(PLUGIN, 'templates', 'config', 'project.json'),
+                  path.join(projectDir2, 'config', 'project.json'));
+  fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'),
+                  path.join(projectDir2, 'environments', 'qc.json'));
+  const PORT2 = 7392;
+  const BASE2 = `http://127.0.0.1:${PORT2}`;
+  const child2 = spawn(process.execPath, [SERVER, projectDir2, `--port=${PORT2}`, '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout2 = '';
+  child2.stdout.on('data', d => { stdout2 += d; });
+  await new Promise(r => {
+    const t = setInterval(() => { if (stdout2.includes('Wizard running')) { clearInterval(t); r(); } }, 100);
+  });
+  const TOKEN2 = (await (await fetch(`${BASE2}/setup`)).text()).match(/const TOKEN = '([a-f0-9]+)'/)[1];
+  const get2 = route => fetch(`${BASE2}${route}`, { headers: { 'X-Wizard-Token': TOKEN2 } });
+  const post2 = (route, body) =>
+    fetch(`${BASE2}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Wizard-Token': TOKEN2 },
+      body: JSON.stringify(body),
+    });
+
+  await test('a fresh scaffold is reported pristine, never prefilled as user data', async () => {
+    const data = await (await get2('/api/config')).json();
+    assert.strictEqual(data.samplePristine, true, 'sample must be recognized as pristine');
+    assert.strictEqual(data.envConfig, null, 'pristine sample must not be prefilled');
+    assert.strictEqual(data.sampleName, 'qc');
+    assert.strictEqual(data.envName, 'qc');
+    assert.strictEqual(data.projectPristine, true, 'template project.json is scaffolding, not config');
+  });
+
+  await test('a user-touched environment under the default name is prefilled and protected', async () => {
+    const envPath = path.join(projectDir2, 'environments', 'qc.json');
+    const touched = JSON.parse(fs.readFileSync(envPath, 'utf8'));
+    touched.portalUrl = 'https://my-real-app.example';
+    fs.writeFileSync(envPath, JSON.stringify(touched, null, 2) + '\n');
+    const data = await (await get2('/api/config')).json();
+    assert.strictEqual(data.samplePristine, false);
+    assert.strictEqual(data.envConfig.portalUrl, 'https://my-real-app.example', 'user data prefilled exactly as before');
+    // restore the pristine sample for the reconciliation tests below
+    fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'), envPath);
+  });
+
+  await test('saving under another name reconciles the pristine sample away, announced', async () => {
+    const r = await post2('/api/save', {
+      projectConfig: { name: 'demo2', defaultEnvironment: 'uat', login: { mode: 'session' } },
+      envConfig: { portalUrl: 'https://uat.example', users: { u1: { phone: '1' } } },
+      envName: 'uat', secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    const res = await r.json();
+    assert.deepStrictEqual(res.reconciled, ['environments/qc.json'], 'removal echoed in the response');
+    assert.ok(!fs.existsSync(path.join(projectDir2, 'environments', 'qc.json')), 'pristine sample removed');
+    assert.ok(fs.existsSync(path.join(projectDir2, 'environments', 'uat.json')), 'user environment written');
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir2, 'config', 'project.json'), 'utf8'));
+    assert.strictEqual(proj.defaultEnvironment, 'uat', 'default names the environment that exists');
+  });
+
+  await test('save rejects a defaultEnvironment that names no post-save file', async () => {
+    const r = await post2('/api/save', {
+      projectConfig: { name: 'demo2', defaultEnvironment: 'ghost' },
+      envConfig: { portalUrl: 'https://x.example', users: { u1: { phone: '1' } } },
+      envName: 'uat3', secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /defaultEnvironment/);
+    assert.ok(!fs.existsSync(path.join(projectDir2, 'environments', 'uat3.json')), 'nothing written on reject');
+  });
+
+  await test('a pristine sample under the historical qa name is reconciled too', async () => {
+    fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'),
+                    path.join(projectDir2, 'environments', 'qa.json'));
+    const r = await post2('/api/save', {
+      projectConfig: { name: 'demo2', defaultEnvironment: 'uat', login: { mode: 'session' } },
+      envConfig: { portalUrl: 'https://uat.example', users: { u1: { phone: '1' } } },
+      envName: 'uat', secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual((await r.json()).reconciled, ['environments/qa.json']);
+    assert.ok(!fs.existsSync(path.join(projectDir2, 'environments', 'qa.json')));
+  });
+
+  await test('a non-pristine environment under another name is never touched', async () => {
+    const keepPath = path.join(projectDir2, 'environments', 'keep.json');
+    const keepBytes = '{\n  "portalUrl": "https://keep.example",\n  "users": { "k": { "phone": "9" } }\n}\n';
+    fs.writeFileSync(keepPath, keepBytes);
+    const r = await post2('/api/save', {
+      projectConfig: { name: 'demo2', defaultEnvironment: 'qc2' },
+      envConfig: { portalUrl: 'https://qc2.example', users: { u1: { phone: '1' } } },
+      envName: 'qc2', secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual((await r.json()).reconciled, [], 'nothing pristine, nothing removed');
+    assert.strictEqual(fs.readFileSync(keepPath, 'utf8'), keepBytes, 'user environment byte-identical');
+    assert.ok(fs.existsSync(path.join(projectDir2, 'environments', 'uat.json')), 'other user environment intact');
+  });
+
   child.kill();
+  child2.kill();
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

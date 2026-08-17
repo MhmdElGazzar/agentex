@@ -2,13 +2,34 @@
 // Tests for the wizard engine — extraction, validation, config building.
 // Run: node scripts/wizard/engine.test.js
 const assert = require('node:assert');
-const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate } = require('./engine.js');
+const fs = require('node:fs');
+const path = require('node:path');
+const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate, DEFAULT_ENV_NAME } = require('./engine.js');
 
 let passed = 0; const failures = [];
 function test(name, fn) {
   try { fn(); passed++; console.log(`  ok - ${name}`); }
   catch (e) { failures.push(name); console.error(`  FAIL - ${name}: ${e.message}`); }
 }
+
+// ── DEFAULT_ENV_NAME: one shared default, consistent on every surface ─────
+test('DEFAULT_ENV_NAME is "qc" and every declared default agrees with it', () => {
+  assert.strictEqual(DEFAULT_ENV_NAME, 'qc');
+  // engine fallback
+  assert.strictEqual(buildConfigs({ name: 'd' }, []).envName, DEFAULT_ENV_NAME);
+  // wizard schema default + placeholder
+  const schema = require('./schema.json');
+  const field = schema.steps.flatMap(s => s.fields || []).find(f => f.key === 'defaultEnvironment');
+  assert.strictEqual(field.default, DEFAULT_ENV_NAME, 'schema default');
+  assert.strictEqual(field.placeholder, DEFAULT_ENV_NAME, 'schema placeholder');
+  // shipped templates: project default + the sample file's own name
+  const projTemplate = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8'));
+  assert.strictEqual(projTemplate.defaultEnvironment, DEFAULT_ENV_NAME, 'project template default');
+  assert.ok(fs.existsSync(
+    path.join(__dirname, '..', '..', 'templates', 'environments', `${DEFAULT_ENV_NAME}.json`)),
+    'sample environment template carries the default name');
+});
 
 // ── extractFromText: .env source ──────────────────────────────────────────
 test('extracts an old .env into answer keys', () => {

@@ -13,7 +13,9 @@ const fs     = require('fs');
 const path   = require('path');
 const { execSync } = require('child_process');
 
-const { buildConfigs, validate, validateConfigs, extractFromText } = require('./engine.js');
+const { buildConfigs, validate, validateConfigs, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
+const { isPristineSampleEnv } = require('../lib/scaffold.js');
+const { isDeepStrictEqual } = require('util');
 
 // ── CLI args ──────────────────────────────────────────────────────────────
 const args        = process.argv.slice(2);
@@ -41,6 +43,10 @@ if (!FORCE && projectRoot === pluginRoot) {
 
 // ── Schema ────────────────────────────────────────────────────────────────
 const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+
+// Shipped project template — a config/project.json still structurally equal to
+// it is scaffolding, not the user's configuration.
+const projectTemplate = safeReadJSON(path.join(pluginRoot, 'templates', 'config', 'project.json'));
 
 // ── Server ────────────────────────────────────────────────────────────────
 let server;
@@ -92,7 +98,7 @@ server = http.createServer((req, res) => {
   if (method === 'GET' && url.pathname === '/api/config') {
     const projCfgPath = path.join(projectRoot, 'config', 'project.json');
     const existingProj = safeReadJSON(projCfgPath);
-    const envName = existingProj?.defaultEnvironment || 'qa';
+    const envName = existingProj?.defaultEnvironment || DEFAULT_ENV_NAME;
     const envCfgPath = path.join(projectRoot, 'environments', `${envName}.json`);
     const existingEnv = safeReadJSON(envCfgPath);
     // A file that exists but won't parse is NOT the same as no file: saying
@@ -101,7 +107,21 @@ server = http.createServer((req, res) => {
       [projCfgPath, existingProj, 'config/project.json'],
       [envCfgPath, existingEnv, `environments/${envName}.json`],
     ].filter(([p, parsed]) => parsed === null && fs.existsSync(p)).map(([, , label]) => label);
-    respondJSON(res, 200, { projectConfig: existingProj, envConfig: existingEnv, envName, unreadable });
+    // A structurally-pristine sample is scaffolding, not the user's data.
+    // Prefilling it would present example.com and sample users as "your existing
+    // configuration" — report it instead, and the wizard starts genuinely fresh.
+    const samplePristine = isPristineSampleEnv(existingEnv, pluginRoot);
+    const projectPristine = existingProj !== null && projectTemplate !== null &&
+      isDeepStrictEqual(existingProj, projectTemplate);
+    respondJSON(res, 200, {
+      projectConfig: existingProj,
+      envConfig: samplePristine ? null : existingEnv,
+      envName,
+      samplePristine,
+      sampleName: samplePristine ? envName : null,
+      projectPristine,
+      unreadable,
+    });
     return;
   }
 
@@ -134,6 +154,37 @@ server = http.createServer((req, res) => {
         return;
       }
 
+      // Save-time reconciliation (transparency, not silence): a differently-
+      // named environment file that is STRUCTURALLY PRISTINE — identical to a
+      // sample this plugin ever shipped — is a leftover scaffold artifact, not
+      // user data. It is removed as part of writing the user's file: the review
+      // step listed it beforehand, the response echoes it, the log records it.
+      // A non-pristine file under another name is simply another environment:
+      // never touched, never mentioned.
+      const envDir = path.join(projectRoot, 'environments');
+      const reconciled = [];
+      if (fs.existsSync(envDir)) {
+        for (const f of fs.readdirSync(envDir).filter(f => f.endsWith('.json'))) {
+          if (f === `${envName}.json`) continue;
+          if (isPristineSampleEnv(safeReadJSON(path.join(envDir, f)), pluginRoot)) reconciled.push(f);
+        }
+      }
+
+      // Defense-in-depth for the claim-default rule: once this save's writes
+      // land (user file written, pristine samples removed), defaultEnvironment
+      // must name a file that exists. Checked before anything is written.
+      const finalDefault = String(projectConfig.defaultEnvironment || '');
+      const defaultExistsAfterSave = finalDefault === envName ||
+        (finalDefault && !reconciled.includes(`${finalDefault}.json`) &&
+         fs.existsSync(path.join(envDir, `${finalDefault}.json`)));
+      if (!defaultExistsAfterSave) {
+        respondJSON(res, 400, {
+          ok: false,
+          error: `defaultEnvironment "${finalDefault}" would not name any environment file after this save`,
+        });
+        return;
+      }
+
       try {
         // Write config/project.json
         const projDir = path.join(projectRoot, 'config');
@@ -145,13 +196,20 @@ server = http.createServer((req, res) => {
         );
 
         // Write environments/<env>.json
-        const envDir = path.join(projectRoot, 'environments');
-        fs.mkdirSync(envDir, { recursive: true });
+        const envDirOut = path.join(projectRoot, 'environments');
+        fs.mkdirSync(envDirOut, { recursive: true });
         fs.writeFileSync(
-          path.join(envDir, `${envName}.json`),
+          path.join(envDirOut, `${envName}.json`),
           JSON.stringify(envConfig, null, 2) + '\n',
           'utf8'
         );
+
+        // Remove reconciled pristine samples AFTER the user's file is safely
+        // on disk — the project never has fewer environments than it should.
+        for (const f of reconciled) {
+          fs.unlinkSync(path.join(envDirOut, f));
+          console.log(`[setup-wizard] 🧹 removed pristine sample environments/${f} — replaced by environments/${envName}.json`);
+        }
 
         // Write secrets → .env silently (no UI mention)
         if (secrets && Object.keys(secrets).length > 0) {
@@ -162,7 +220,7 @@ server = http.createServer((req, res) => {
         console.log(`[setup-wizard] ✅ Saved:`);
         console.log(`  config/project.json`);
         console.log(`  environments/${envName}.json`);
-        respondJSON(res, 200, { ok: true });
+        respondJSON(res, 200, { ok: true, reconciled: reconciled.map(f => `environments/${f}`) });
       } catch(e) {
         respondJSON(res, 500, { ok: false, error: e.message });
       }

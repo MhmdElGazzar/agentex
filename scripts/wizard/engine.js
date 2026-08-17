@@ -4,6 +4,11 @@
 
 'use strict';
 
+// The prefilled, freely-editable default environment name — the ONE definition.
+// schema.json's default/placeholder, server.js's config-read fallback, and
+// ui.html's fallbacks all mirror this value; migrate.js requires it too.
+const DEFAULT_ENV_NAME = 'qc';
+
 /**
  * Given a flat answers object (keyed by field.key), build the two output config objects.
  * @param {object} answers  - e.g. { "name": "my-app", "azure.org": "myorg", "db.server": "..." }
@@ -11,7 +16,7 @@
  * @returns {{ projectConfig: object, envConfig: object, envName: string }}
  */
 function buildConfigs(answers, steps) {
-  const envName = answers['defaultEnvironment'] || 'qa';
+  const envName = answers['defaultEnvironment'] || DEFAULT_ENV_NAME;
 
   // ── project config skeleton ──────────────────────────────────────────────
   const projectConfig = {
@@ -360,6 +365,7 @@ function flattenObject(obj, prefix = '') {
 }
 
 module.exports = {
+  DEFAULT_ENV_NAME,
   buildConfigs, validate, validateConfigs, isHttpUrl,
   extractFromText, extractUsers, mergeExtracted, mergeUsers, flattenObject,
 };
