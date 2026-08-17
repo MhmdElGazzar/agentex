@@ -154,6 +154,37 @@ server = http.createServer((req, res) => {
         return;
       }
 
+      // Save-time reconciliation (transparency, not silence): a differently-
+      // named environment file that is STRUCTURALLY PRISTINE — identical to a
+      // sample this plugin ever shipped — is a leftover scaffold artifact, not
+      // user data. It is removed as part of writing the user's file: the review
+      // step listed it beforehand, the response echoes it, the log records it.
+      // A non-pristine file under another name is simply another environment:
+      // never touched, never mentioned.
+      const envDir = path.join(projectRoot, 'environments');
+      const reconciled = [];
+      if (fs.existsSync(envDir)) {
+        for (const f of fs.readdirSync(envDir).filter(f => f.endsWith('.json'))) {
+          if (f === `${envName}.json`) continue;
+          if (isPristineSampleEnv(safeReadJSON(path.join(envDir, f)), pluginRoot)) reconciled.push(f);
+        }
+      }
+
+      // Defense-in-depth for the claim-default rule: once this save's writes
+      // land (user file written, pristine samples removed), defaultEnvironment
+      // must name a file that exists. Checked before anything is written.
+      const finalDefault = String(projectConfig.defaultEnvironment || '');
+      const defaultExistsAfterSave = finalDefault === envName ||
+        (finalDefault && !reconciled.includes(`${finalDefault}.json`) &&
+         fs.existsSync(path.join(envDir, `${finalDefault}.json`)));
+      if (!defaultExistsAfterSave) {
+        respondJSON(res, 400, {
+          ok: false,
+          error: `defaultEnvironment "${finalDefault}" would not name any environment file after this save`,
+        });
+        return;
+      }
+
       try {
         // Write config/project.json
         const projDir = path.join(projectRoot, 'config');
@@ -165,13 +196,20 @@ server = http.createServer((req, res) => {
         );
 
         // Write environments/<env>.json
-        const envDir = path.join(projectRoot, 'environments');
-        fs.mkdirSync(envDir, { recursive: true });
+        const envDirOut = path.join(projectRoot, 'environments');
+        fs.mkdirSync(envDirOut, { recursive: true });
         fs.writeFileSync(
-          path.join(envDir, `${envName}.json`),
+          path.join(envDirOut, `${envName}.json`),
           JSON.stringify(envConfig, null, 2) + '\n',
           'utf8'
         );
+
+        // Remove reconciled pristine samples AFTER the user's file is safely
+        // on disk — the project never has fewer environments than it should.
+        for (const f of reconciled) {
+          fs.unlinkSync(path.join(envDirOut, f));
+          console.log(`[setup-wizard] 🧹 removed pristine sample environments/${f} — replaced by environments/${envName}.json`);
+        }
 
         // Write secrets → .env silently (no UI mention)
         if (secrets && Object.keys(secrets).length > 0) {
@@ -182,7 +220,7 @@ server = http.createServer((req, res) => {
         console.log(`[setup-wizard] ✅ Saved:`);
         console.log(`  config/project.json`);
         console.log(`  environments/${envName}.json`);
-        respondJSON(res, 200, { ok: true });
+        respondJSON(res, 200, { ok: true, reconciled: reconciled.map(f => `environments/${f}`) });
       } catch(e) {
         respondJSON(res, 500, { ok: false, error: e.message });
       }

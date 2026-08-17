@@ -1149,6 +1149,16 @@ function renderReviewStep() {
   wrap.appendChild(tabBar);
   wrap.appendChild(code);
   wrap.appendChild(copyBtn);
+
+  // Reconciliation transparency: the save will remove the pristine leftover
+  // sample — it is listed here BEFORE anything happens, never silently.
+  if (samplePristine && sampleName && sampleName !== envName) {
+    const note = document.createElement('div');
+    note.style.cssText = 'border:1px solid var(--warning);background:var(--warning-lt);color:var(--text-1);border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.7';
+    note.textContent = `⚠️ عند الحفظ هيتشال ملف البيئة النموذجي environments/${sampleName}.json` +
+      ` (نسخة السكافولد من غير أي تعديل) — بيحل محله environments/${envName}.json.`;
+    wrap.appendChild(note);
+  }
   return wrap;
 }
 
@@ -1280,10 +1290,14 @@ function buildConfigs() {
   // kb.org, custom fields) survive a re-run instead of being silently dropped.
   const proj = Object.assign({}, existingProject, {
     name: answers['name'] || 'my-project',
-    // Adding another environment must not silently re-point the project: the
-    // existing default stands, and only a brand-new project takes its first
-    // environment as the default.
-    defaultEnvironment: (existingProject && existingProject.defaultEnvironment) || envName,
+    // Adding another environment must not silently re-point the project: a
+    // user-configured default stands. But a default that points at a pristine
+    // sample (or at no file at all) is scaffolding, not configuration — the
+    // first environment the user actually configures claims it.
+    defaultEnvironment:
+      (existingProject && existingProject.defaultEnvironment && !samplePristine && !defaultEnvMissing)
+        ? existingProject.defaultEnvironment
+        : envName,
     login: Object.assign({}, existingProject && existingProject.login, { mode: answers['login.mode'] || 'session' }),
   });
   // Managed keys mirror the screen EXACTLY: a value sets the key, an empty
