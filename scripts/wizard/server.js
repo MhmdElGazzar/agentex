@@ -13,7 +13,7 @@ const fs     = require('fs');
 const path   = require('path');
 const { execSync } = require('child_process');
 
-const { buildConfigs, validate, validateConfigs, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
+const { buildConfigs, validate, planSave, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
 const { isPristineSampleEnv } = require('../lib/scaffold.js');
 const { isDeepStrictEqual } = require('util');
 
@@ -95,38 +95,40 @@ server = http.createServer((req, res) => {
   }
 
   // ── GET /api/config  →  read current project config files ──────────────
+  // Multi-environment (design #3): enumerates EVERY environments/*.json.
+  // Readable user data is returned for editing; a structurally-pristine sample
+  // is scaffolding, not the user's data — reported by name (pristineSamples),
+  // never presented as an editable environment; an unreadable file is flagged
+  // (null + unreadable[]) and excluded from editing, never silently rewritten.
   if (method === 'GET' && url.pathname === '/api/config') {
     const projCfgPath = path.join(projectRoot, 'config', 'project.json');
     const existingProj = safeReadJSON(projCfgPath);
-    const envName = existingProj?.defaultEnvironment || DEFAULT_ENV_NAME;
-    const envCfgPath = path.join(projectRoot, 'environments', `${envName}.json`);
-    const existingEnv = safeReadJSON(envCfgPath);
     // A file that exists but won't parse is NOT the same as no file: saying
     // nothing would let the wizard quietly overwrite whatever it couldn't read.
-    const unreadable = [
-      [projCfgPath, existingProj, 'config/project.json'],
-      [envCfgPath, existingEnv, `environments/${envName}.json`],
-    ].filter(([p, parsed]) => parsed === null && fs.existsSync(p)).map(([, , label]) => label);
-    // A structurally-pristine sample is scaffolding, not the user's data.
-    // Prefilling it would present example.com and sample users as "your existing
-    // configuration" — report it instead, and the wizard starts genuinely fresh.
-    const samplePristine = isPristineSampleEnv(existingEnv, pluginRoot);
+    const unreadable = [];
+    if (existingProj === null && fs.existsSync(projCfgPath)) unreadable.push('config/project.json');
     const projectPristine = existingProj !== null && projectTemplate !== null &&
       isDeepStrictEqual(existingProj, projectTemplate);
-    // EVERY pristine sample, whatever its name — the same scan /api/save
-    // reconciles by, run up front so the review step can list, by name, each
-    // file a save under a different name would remove. One rule, two moments.
     const envDir = path.join(projectRoot, 'environments');
-    const pristineSamples = !fs.existsSync(envDir) ? [] :
-      fs.readdirSync(envDir).filter(f => f.endsWith('.json'))
-        .filter(f => isPristineSampleEnv(safeReadJSON(path.join(envDir, f)), pluginRoot))
-        .map(f => f.replace(/\.json$/, ''));
+    const environments = {};
+    const pristineSamples = [];
+    if (fs.existsSync(envDir)) {
+      for (const f of fs.readdirSync(envDir).filter(f => f.endsWith('.json')).sort()) {
+        const name = f.replace(/\.json$/, '');
+        const parsed = safeReadJSON(path.join(envDir, f));
+        if (parsed === null) { environments[name] = null; unreadable.push(`environments/${f}`); continue; }
+        if (isPristineSampleEnv(parsed, pluginRoot)) { pristineSamples.push(name); continue; }
+        environments[name] = parsed;
+      }
+    }
+    const defaultEnvironment = existingProj?.defaultEnvironment || DEFAULT_ENV_NAME;
+    const samplePristine = pristineSamples.includes(defaultEnvironment);
     respondJSON(res, 200, {
       projectConfig: existingProj,
-      envConfig: samplePristine ? null : existingEnv,
-      envName,
+      environments,
+      defaultEnvironment,
       samplePristine,
-      sampleName: samplePristine ? envName : null,
+      sampleName: samplePristine ? defaultEnvironment : null,
       pristineSamples,
       projectPristine,
       unreadable,
@@ -134,24 +136,43 @@ server = http.createServer((req, res) => {
     return;
   }
 
-  // ── POST /api/save  →  write config files + secrets → .env ─────────────
+  // ── POST /api/save  →  write config files + execute confirmed ops ───────
+  // Multi-environment batch save (design #3): one payload carries the project
+  // config, every dirty/new environment, and the explicit user-confirmed
+  // renames/deletes. planSave (engine.js) validates it all — the wizard's
+  // first destructive capability executes ONLY what a clean plan allows, and
+  // the response echoes every file op performed.
   if (method === 'POST' && url.pathname === '/api/save') {
     readBody(req, buf => {
       let payload;
       try { payload = JSON.parse(buf.toString('utf8')); }
       catch { respondJSON(res, 400, { ok: false, error: 'Invalid JSON' }); return; }
 
-      const { projectConfig, envConfig, envName, secrets } = payload;
-      if (!projectConfig || !envConfig || !envName) {
-        respondJSON(res, 400, { ok: false, error: 'Missing projectConfig, envConfig, or envName' });
+      // Legacy single-environment shape → a one-entry environments map.
+      if (!payload.environments && payload.envConfig && payload.envName !== undefined) {
+        payload.environments = { [payload.envName]: payload.envConfig };
+      }
+      const { projectConfig, environments, secrets } = payload;
+      const ops = payload.ops || {};
+      const renames = Array.isArray(ops.renames) ? ops.renames : [];
+      const deletes = Array.isArray(ops.deletes) ? ops.deletes : [];
+      if (!projectConfig || !environments) {
+        respondJSON(res, 400, { ok: false, error: 'Missing projectConfig or environments' });
         return;
       }
 
-      // Never trust the browser: re-validate, and reject an envName that could
-      // escape environments/ (it becomes a file name below).
-      const errors = validateConfigs(projectConfig, envConfig, envName);
-      if (errors.length) {
-        respondJSON(res, 400, { ok: false, error: errors.join('; ') });
+      // Never trust the browser: enumerate the disk, then re-validate the whole
+      // plan — per-env configs, ops consent, collisions, path escapes, the
+      // at-least-one-environment rule, and the post-ops default check.
+      const envDir = path.join(projectRoot, 'environments');
+      const diskEnvNames = !fs.existsSync(envDir) ? [] :
+        fs.readdirSync(envDir).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, ''));
+      const pristineNames = diskEnvNames.filter(n =>
+        isPristineSampleEnv(safeReadJSON(path.join(envDir, `${n}.json`)), pluginRoot));
+      const plan = planSave({ projectConfig, environments, ops: { renames, deletes } },
+        { envNames: diskEnvNames, pristineNames });
+      if (plan.errors.length) {
+        respondJSON(res, 400, { ok: false, error: plan.errors.join('; ') });
         return;
       }
 
@@ -160,37 +181,6 @@ server = http.createServer((req, res) => {
       const badSecretKeys = Object.keys(secrets || {}).filter(k => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k));
       if (badSecretKeys.length) {
         respondJSON(res, 400, { ok: false, error: `invalid secret env var name(s): ${badSecretKeys.join(', ')}` });
-        return;
-      }
-
-      // Save-time reconciliation (transparency, not silence): a differently-
-      // named environment file that is STRUCTURALLY PRISTINE — identical to a
-      // sample this plugin ever shipped — is a leftover scaffold artifact, not
-      // user data. It is removed as part of writing the user's file: the review
-      // step listed it beforehand, the response echoes it, the log records it.
-      // A non-pristine file under another name is simply another environment:
-      // never touched, never mentioned.
-      const envDir = path.join(projectRoot, 'environments');
-      const reconciled = [];
-      if (fs.existsSync(envDir)) {
-        for (const f of fs.readdirSync(envDir).filter(f => f.endsWith('.json'))) {
-          if (f === `${envName}.json`) continue;
-          if (isPristineSampleEnv(safeReadJSON(path.join(envDir, f)), pluginRoot)) reconciled.push(f);
-        }
-      }
-
-      // Defense-in-depth for the claim-default rule: once this save's writes
-      // land (user file written, pristine samples removed), defaultEnvironment
-      // must name a file that exists. Checked before anything is written.
-      const finalDefault = String(projectConfig.defaultEnvironment || '');
-      const defaultExistsAfterSave = finalDefault === envName ||
-        (finalDefault && !reconciled.includes(`${finalDefault}.json`) &&
-         fs.existsSync(path.join(envDir, `${finalDefault}.json`)));
-      if (!defaultExistsAfterSave) {
-        respondJSON(res, 400, {
-          ok: false,
-          error: `defaultEnvironment "${finalDefault}" would not name any environment file after this save`,
-        });
         return;
       }
 
@@ -203,21 +193,50 @@ server = http.createServer((req, res) => {
           JSON.stringify(projectConfig, null, 2) + '\n',
           'utf8'
         );
+        const written = ['config/project.json'];
 
-        // Write environments/<env>.json
+        // Write every environment in the payload
         const envDirOut = path.join(projectRoot, 'environments');
         fs.mkdirSync(envDirOut, { recursive: true });
-        fs.writeFileSync(
-          path.join(envDirOut, `${envName}.json`),
-          JSON.stringify(envConfig, null, 2) + '\n',
-          'utf8'
-        );
+        for (const [name, envConfig] of Object.entries(environments)) {
+          fs.writeFileSync(
+            path.join(envDirOut, `${name}.json`),
+            JSON.stringify(envConfig, null, 2) + '\n',
+            'utf8'
+          );
+          written.push(`environments/${name}.json`);
+        }
 
-        // Remove reconciled pristine samples AFTER the user's file is safely
-        // on disk — the project never has fewer environments than it should.
-        for (const f of reconciled) {
-          fs.unlinkSync(path.join(envDirOut, f));
-          console.log(`[setup-wizard] 🧹 removed pristine sample environments/${f} — replaced by environments/${envName}.json`);
+        // Apply renames (user-confirmed, validated above). A renamed-and-edited
+        // environment was just written under its NEW name — renaming over it
+        // would resurrect the old content, so only the old file is removed.
+        const renamed = [];
+        for (const r of renames) {
+          const fromPath = path.join(envDirOut, `${r.from}.json`);
+          if (Object.prototype.hasOwnProperty.call(environments, r.to)) {
+            fs.unlinkSync(fromPath);
+          } else {
+            fs.renameSync(fromPath, path.join(envDirOut, `${r.to}.json`));
+          }
+          renamed.push({ from: `environments/${r.from}.json`, to: `environments/${r.to}.json` });
+          console.log(`[setup-wizard] 📝 renamed environments/${r.from}.json → environments/${r.to}.json (user-confirmed)`);
+        }
+
+        // Apply deletes (user-confirmed, validated above) — never silent.
+        const deleted = [];
+        for (const d of deletes) {
+          fs.unlinkSync(path.join(envDirOut, `${d.name}.json`));
+          deleted.push(`environments/${d.name}.json`);
+          console.log(`[setup-wizard] 🗑️ deleted environments/${d.name}.json (user-confirmed)`);
+        }
+
+        // Save-time reconciliation (transparency, not silence): remove the
+        // structurally-pristine leftover samples the plan enumerated — AFTER
+        // the user's files are safely on disk, announced on the review step
+        // beforehand and echoed below.
+        for (const n of plan.reconcile) {
+          fs.unlinkSync(path.join(envDirOut, `${n}.json`));
+          console.log(`[setup-wizard] 🧹 removed pristine sample environments/${n}.json — scaffold artifact replaced by this save`);
         }
 
         // Write secrets → .env silently (no UI mention)
@@ -227,9 +246,14 @@ server = http.createServer((req, res) => {
         }
 
         console.log(`[setup-wizard] ✅ Saved:`);
-        console.log(`  config/project.json`);
-        console.log(`  environments/${envName}.json`);
-        respondJSON(res, 200, { ok: true, reconciled: reconciled.map(f => `environments/${f}`) });
+        for (const f of written) console.log(`  ${f}`);
+        respondJSON(res, 200, {
+          ok: true,
+          written,
+          renamed,
+          deleted,
+          reconciled: plan.reconcile.map(n => `environments/${n}.json`),
+        });
       } catch(e) {
         respondJSON(res, 500, { ok: false, error: e.message });
       }
