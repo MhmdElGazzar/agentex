@@ -417,6 +417,72 @@ body { min-height: 100vh; }
 .toast.warn { background: var(--warning); color: #FFFFFF; }
 .toast.success { background: var(--success); color: #FFFFFF; }
 
+/* ── Environments manager (E0) ──────────────────────────────────────────── */
+.env-list { display: flex; flex-direction: column; gap: 10px; }
+.env-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px;
+}
+.env-row-name { font-family: var(--mono); font-size: 14px; font-weight: 700; direction: ltr; unicode-bidi: embed; }
+.env-badge {
+  font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-2);
+}
+.env-badge.default { background: var(--accent-lt); border-color: rgba(91,80,240,.25); color: var(--accent); }
+.env-badge.new     { background: var(--success-lt); border-color: rgba(22,163,74,.25); color: var(--success); }
+.env-badge.edited  { background: var(--warning-lt); border-color: rgba(217,119,6,.25); color: var(--warning); }
+.env-row-actions { margin-inline-start: auto; display: flex; gap: 6px; }
+.env-note { font-size: 11px; color: var(--text-3); font-family: var(--mono); direction: ltr; unicode-bidi: embed; width: 100%; }
+.btn-sm {
+  padding: 6px 12px; border-radius: 8px; font-family: var(--font);
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: all .2s;
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-2);
+}
+.btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+.btn-sm.danger { color: var(--danger); border-color: rgba(220,38,38,.25); }
+.btn-sm.danger:hover { background: var(--danger-lt); border-color: var(--danger); color: var(--danger); }
+
+/* ── Modal (confirm dialogs — the moment-of-action consent) ─────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(26,29,46,.45); z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-card {
+  width: 100%; max-width: 480px; background: var(--bg-card);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  padding: 24px; display: flex; flex-direction: column; gap: 14px;
+  animation: fadeUp .18s ease; max-height: 90vh; overflow-y: auto;
+}
+.modal-title { font-size: 17px; font-weight: 800; }
+.modal-body { font-size: 13.5px; color: var(--text-2); line-height: 1.8; }
+.modal-fileop {
+  font-family: var(--mono); font-size: 12px; direction: ltr; text-align: left;
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; word-break: break-all;
+}
+.modal-fileop.modal-danger { border-color: rgba(220,38,38,.35); background: var(--danger-lt); color: var(--danger); }
+.modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #b91c1c; }
+.copy-opts { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.copy-opts label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.copy-opts input[type="radio"], .copy-opts input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+
+/* ── Ops list (review + manager): every file op, before it happens ──────── */
+.ops-list {
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 6px; font-size: 13px;
+}
+.ops-list-title { font-weight: 700; color: var(--text-2); }
+.op-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.op-line code {
+  font-family: var(--mono); font-size: 11.5px; direction: ltr; unicode-bidi: embed;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 6px; padding: 1px 6px;
+}
+
 /* ── Animations ─────────────────────────────────────────────────────────── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(10px); }
@@ -474,8 +540,8 @@ function apiFetch(path, opts = {}) {
 
 /* ── State ──────────────────────────────────────────────────────────────── */
 let schema   = null;
-let answers  = {};
-let secrets  = {};          // keyed by FIELD key; mapped to env var names at save → .env
+let answers  = {};          // ACTIVE working set: project answers + the active environment's env-scoped answers
+let secrets  = {};          // PROJECT-scoped secret fields (azure.pat, figma.token, kb.key); env-scoped secrets live per environment
 let users    = [
   { handle: 'valid_user',   phone: '', role: 'customer' },
   { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
@@ -490,65 +556,108 @@ let extractedData = null;
 // Config already on disk (re-run of the wizard) — the base saving merges onto,
 // so fields the wizard doesn't manage survive.
 let existingProject = null;
-let existingEnv     = null;
-let loadedEnvName   = null;   // environment the prefill came from
-let currentEnvSelection = null;
 // /api/config pristine report: the default's on-disk file is an untouched
-// scaffold sample (zero user values). It is never prefilled, and saving under
-// another name reconciles it away (listed on the review step first).
+// scaffold sample (zero user values). It is never prefilled, and saving
+// reconciles unclaimed samples away (listed on the review step first).
 let samplePristine    = false;
 let sampleName        = null;
 // EVERY pristine sample on disk, whatever its name — the review step lists
-// each one a save under a different name will reconcile away.
+// each one a save that doesn't claim it will reconcile away.
 let pristineSamples   = [];
 // The existing default names an environment file that is not on disk at all.
 let defaultEnvMissing = false;
+// defaultEnvironment as read from config/project.json (or the shipped default).
+let diskDefault       = null;
+// On-disk environment files that would not parse: flagged by /api/config,
+// excluded from editing entirely, their names blocked for add/rename.
+let unreadableEnvNames = [];
+
+/* ── Multi-environment session store (design #3) ─────────────────────────
+ * `envs` is the primary store — one entry per environment (loaded from disk
+ * or added this session). The active environment's values live flattened in
+ * `answers`/`users` while it is open; switching snapshots them back in.
+ * File operations are NEVER performed here: renames are derived from
+ * diskName≠name (recorded via the rename confirm dialog), deletes accumulate
+ * in pendingDeletes (recorded via the delete confirm dialog), and ONE batch
+ * save executes everything after the review step lists it all.
+ */
+let envs = {};             // name → session entry (makeEnvEntry)
+let envOrder = [];         // display + claim order: first entry claims the default when none is valid
+let activeEnv = null;      // the environment currently flattened into `answers`/`users`
+let pendingDeletes = [];   // DISK names of on-disk environments the user confirmed for deletion
+let newDefaultName = null; // session name the user designated when deleting the default
+
+function makeEnvEntry() {
+  return {
+    answers: {},            // ENV_SCOPED_KEYS only
+    users: starterUsers(),
+    usersPristine: true,
+    secrets: {},            // env-scoped secret values (db.password, api.token)
+    existsOnDisk: false,
+    diskName: null,         // the on-disk file name (rename ops derive from diskName ≠ current name)
+    loadedFrom: null,       // parsed disk JSON — the invariant-#11 merge base (incl. per-user props)
+    dirty: false,           // true → this save writes the file
+  };
+}
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
+// Env-scoped secret field keys (db.password, api.token) — schema-derived; their
+// values are stored per environment, not in the global project secrets.
+let ENV_SECRET_KEYS = new Set();
+
 async function init() {
   schema = await loadSchema();
+  ENV_SECRET_KEYS = new Set(schema.steps.filter(s => s.group === 'environment')
+    .flatMap(s => s.fields || []).filter(f => f.secret).map(f => f.key));
   await loadExistingConfig();
   renderIntro();
 }
 
 /**
  * Re-running the wizard on a configured project must show what is already there,
- * not a blank form. Flatten the saved files back into `answers` (and `users`), and
- * remember the untouched parts of project.json so saving can't drop hand-added
- * fields the wizard has no input for (e.g. azure.areaPath).
+ * not a blank form. /api/config enumerates EVERY environment: readable user
+ * data seeds the session store (one entry per environment, prefilled for
+ * editing), pristine samples are reported by name only (scaffolding — never
+ * presented as "your existing configuration"), unreadable files are announced
+ * and excluded from editing entirely.
  */
 async function loadExistingConfig() {
-  if (MODE !== 'local') return;
+  if (MODE !== 'local') { seedFreshEnv('qc'); return; }   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
   let cfg;
   try { cfg = await (await apiFetch('/api/config')).json(); }
-  catch { return; }
+  catch { seedFreshEnv('qc'); return; }
   const proj = cfg && cfg.projectConfig;
-  const env  = cfg && cfg.envConfig;
+  const envMap = (cfg && cfg.environments) || {};
   const unreadable = (cfg && cfg.unreadable) || [];
-  samplePristine = !!(cfg && cfg.samplePristine);
-  sampleName     = (cfg && cfg.sampleName) || null;
+  samplePristine  = !!(cfg && cfg.samplePristine);
+  sampleName      = (cfg && cfg.sampleName) || null;
   pristineSamples = (cfg && cfg.pristineSamples) || [];
+  diskDefault     = (cfg && cfg.defaultEnvironment) || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
   const projPristine = !!(cfg && cfg.projectPristine);
+  unreadableEnvNames = Object.keys(envMap).filter(n => envMap[n] === null);
   if (unreadable.length) {
-    // Say it out loud: saving would replace a file we could not read.
-    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقرا:\n\n${unreadable.join('\n')}\n\n` +
-          `لو كملت وحفظت هتتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.`);
+    // Say it out loud — and say each file's real fate. An unreadable
+    // project.json is rewritten on save; unreadable ENVIRONMENT files are
+    // excluded from the wizard entirely: never edited, never overwritten.
+    let msg = `⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقرا:\n\n${unreadable.join('\n')}\n\n`;
+    if (unreadable.includes('config/project.json')) {
+      msg += 'لو كملت وحفظت، config/project.json هيتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.\n';
+    }
+    if (unreadableEnvNames.length) {
+      msg += 'ملفات البيئات دي مش هتظهر في الويزارد ومش هتتلمس — أسماؤها محجوزة، وصلّحها بإيدك لو محتاجها.';
+    }
+    alert(msg);
   }
-  defaultEnvMissing = !!(proj && proj.defaultEnvironment && !env && !samplePristine &&
-                         !unreadable.some(u => u.startsWith('environments/')));
-  if (!proj && !env) return;
 
   // On-disk files stay the merge base, so keys the wizard has no input for
   // survive saving — but a still-pristine template never PREFILLS the form:
   // scaffolding presented as "your existing configuration" is exactly the
   // phantom-environment bug. The wizard starts from schema defaults instead.
   existingProject = proj || null;
-  existingEnv     = env  || null;
   const projLoaded = !!(proj && !projPristine);
 
   if (projLoaded) {
     if (proj.name) answers['name'] = proj.name;
-    answers['envName'] = cfg.envName || proj.defaultEnvironment || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
     if (proj.login && proj.login.mode) answers['login.mode'] = proj.login.mode;
     for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']]]) {
       for (const k of keys) {
@@ -560,10 +669,33 @@ async function loadExistingConfig() {
     if (proj.figma && proj.figma.token && proj.figma.token.envSecret) answers['figma.tokenEnvVar'] = proj.figma.token.envSecret;
   }
 
-  if (env) fillEnvironmentAnswers(env);
-  loadedEnvName = env ? (cfg.envName || answers['envName'] || null) : null;
+  // Seed the session store: every readable, non-pristine environment on disk,
+  // the default first (it is also the first claimant when a default is needed).
+  const names = Object.keys(envMap).filter(n => envMap[n] !== null)
+    .sort((a, b) => (a === diskDefault ? -1 : b === diskDefault ? 1 : a.localeCompare(b)));
+  for (const name of names) {
+    const env = envMap[name];
+    const e = makeEnvEntry();
+    e.answers = envAnswersFrom(env);
+    e.users = usersFromEnv(env);
+    e.usersPristine = !(env.users && Object.keys(env.users).length);
+    e.existsOnDisk = true;
+    e.diskName = name;
+    e.loadedFrom = env;
+    envs[name] = e;
+    envOrder.push(name);
+  }
+  defaultEnvMissing = !!(proj && proj.defaultEnvironment && !envs[proj.defaultEnvironment] &&
+                         !samplePristine && !unreadableEnvNames.includes(proj.defaultEnvironment));
+  if (envOrder.length === 0) {
+    // Nothing configured yet (fresh scaffold / pristine-only): start a new
+    // environment under the default's name — first configured claims it.
+    seedFreshEnv(diskDefault);
+  } else {
+    restoreEnv(envOrder[0]);
+  }
   // The toast announces USER data that was loaded — an untouched scaffold is not that.
-  if (projLoaded || env) showToast('📂 تم تحميل إعدادات المشروع الحالية');
+  if (projLoaded || names.length) showToast('📂 تم تحميل إعدادات المشروع الحالية');
 }
 
 /** Environment-scoped answer keys — everything that belongs to ONE environment file. */
@@ -578,81 +710,153 @@ const starterUsers = () => ([
   { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
 ]);
 
-function fillEnvironmentAnswers(env) {
-  if (env.portalUrl) answers['portalUrl'] = env.portalUrl;
+/** Flatten one environment file's JSON into env-scoped answer keys. */
+function envAnswersFrom(env) {
+  const a = {};
+  if (env.portalUrl) a['portalUrl'] = env.portalUrl;
   if (env.defaults) {
-    if (env.defaults.otp)      answers['defaults.otp']      = env.defaults.otp;
-    if (env.defaults.password) answers['defaults.password'] = env.defaults.password;
+    if (env.defaults.otp)      a['defaults.otp']      = env.defaults.otp;
+    if (env.defaults.password) a['defaults.password'] = env.defaults.password;
   }
   if (env.db) {
-    if (env.db.server) answers['db.server'] = env.db.server;
-    if (env.db.port)   answers['db.port']   = String(env.db.port);
-    if (env.db.name)   answers['db.name']   = env.db.name;
-    if (env.db.user)   answers['db.user']   = env.db.user;
-    if (env.db.password && env.db.password.envSecret) answers['db.passwordEnvVar'] = env.db.password.envSecret;
+    if (env.db.server) a['db.server'] = env.db.server;
+    if (env.db.port)   a['db.port']   = String(env.db.port);
+    if (env.db.name)   a['db.name']   = env.db.name;
+    if (env.db.user)   a['db.user']   = env.db.user;
+    if (env.db.password && env.db.password.envSecret) a['db.passwordEnvVar'] = env.db.password.envSecret;
   }
   if (env.api) {
-    if (env.api.baseUrl) answers['api.baseUrl'] = env.api.baseUrl;
-    if (env.api.token && env.api.token.envSecret) answers['api.tokenEnvVar'] = env.api.token.envSecret;
+    if (env.api.baseUrl) a['api.baseUrl'] = env.api.baseUrl;
+    if (env.api.token && env.api.token.envSecret) a['api.tokenEnvVar'] = env.api.token.envSecret;
   }
+  return a;
+}
+
+function usersFromEnv(env) {
   const entries = Object.entries(env.users || {});
-  if (entries.length) {
-    users = entries.map(([handle, u]) => ({ handle, phone: u.phone || '', role: u.role || '', email: u.email || '', notes: u.notes || '' }));
-    answers['users'] = users;
-    usersPristine = false;
+  if (!entries.length) return starterUsers();
+  return entries.map(([handle, u]) =>
+    ({ handle, phone: u.phone || '', role: u.role || '', email: u.email || '', notes: u.notes || '' }));
+}
+
+/* ── Session store mechanics ──────────────────────────────────────────────
+ * The active environment's env-scoped values live flattened in `answers` and
+ * `users` (so every existing field/validation path keeps working unchanged);
+ * snapshotActiveEnv() writes them back into its store entry, restoreEnv()
+ * flattens another entry out. Switching never touches connection targets of
+ * other environments — each entry is isolated by construction.
+ */
+function snapshotActiveEnv() {
+  if (!activeEnv || !envs[activeEnv]) return;
+  const e = envs[activeEnv];
+  e.answers = {};
+  for (const k of ENV_SCOPED_KEYS) if (answers[k] !== undefined) e.answers[k] = answers[k];
+  e.users = users.map(u => ({ ...u }));
+  e.usersPristine = usersPristine;
+}
+
+function restoreEnv(name) {
+  const e = envs[name];
+  if (!e) return;
+  activeEnv = name;
+  for (const k of ENV_SCOPED_KEYS) {
+    if (e.answers[k] !== undefined) answers[k] = e.answers[k]; else delete answers[k];
   }
+  users = e.users.map(u => ({ ...u }));
+  usersPristine = e.usersPristine;
+  answers['users'] = users;
+  answers['envName'] = name;
+}
+
+function switchEnv(name) {
+  if (name === activeEnv || !envs[name]) return;
+  snapshotActiveEnv();
+  restoreEnv(name);
+}
+
+function markActiveEnvDirty() {
+  if (activeEnv && envs[activeEnv]) envs[activeEnv].dirty = true;
+}
+
+function seedFreshEnv(name) {
+  const e = makeEnvEntry();
+  e.dirty = true;
+  envs = { [name]: e };
+  envOrder = [name];
+  restoreEnv(name);
+}
+
+/** Create a new environment; copy-on-create takes SAFE sections only (owner
+ *  decision): test-user VALUES and defaults VALUES. portalUrl / db / api are
+ *  never offered and never inherited — a new environment must not silently
+ *  point at another environment's systems. */
+function createEnv(name, opts = {}) {
+  snapshotActiveEnv();
+  const e = makeEnvEntry();
+  e.dirty = true;
+  const src = opts.copyFrom ? envs[opts.copyFrom] : null;
+  if (src) {
+    if (opts.copyUsers) {
+      e.users = src.users.map(u => ({ ...u }));
+      e.usersPristine = false;
+    }
+    if (opts.copyDefaults) {
+      for (const k of ['defaults.otp', 'defaults.password']) {
+        if (src.answers[k] !== undefined) e.answers[k] = src.answers[k];
+      }
+    }
+  }
+  envs[name] = e;
+  envOrder.push(name);
+}
+
+/** Rename inside the session store. File ops are derived, not performed:
+ *  deriveRenames() emits {from: diskName, to: name} at save time (renaming
+ *  back to the disk name simply makes the op disappear). */
+function renameSessionEnv(oldName, newName) {
+  envs[newName] = envs[oldName];
+  delete envs[oldName];
+  envOrder = envOrder.map(n => (n === oldName ? newName : n));
+  if (activeEnv === oldName) { activeEnv = newName; answers['envName'] = newName; }
+  if (newDefaultName === oldName) newDefaultName = newName;
+}
+
+/** The rename ops this save performs — confirmed: the ONLY path that makes
+ *  diskName ≠ name is the rename confirm dialog. */
+function deriveRenames() {
+  return envOrder
+    .filter(n => envs[n].existsOnDisk && envs[n].diskName !== n)
+    .map(n => ({ from: envs[n].diskName, to: n, confirmed: true }));
 }
 
 /**
- * Typing a different environment name means a NEW environment file. It starts
- * empty — inheriting the loaded environment's portal/db/api would quietly point
- * the new environment at the old one's database. Switching back restores what
- * you had IN THIS SESSION (including users added minutes ago), falling back to
- * the on-disk snapshot only if the name was never visited.
- * Returns true when env-scoped answers changed — the name field now lives on
- * the SAME page as portalUrl/defaults, so the caller must re-render or the
- * inputs on screen would show values the answers no longer hold.
+ * The defaultEnvironment this save writes. Never silently re-pointed:
+ * a valid on-disk default stands (following its session rename); a deleted
+ * default moves to the user-designated replacement; otherwise — the default
+ * was scaffolding (pristine sample) or pointed at no file — the FIRST
+ * environment configured claims it.
  */
-const envSession = {};   // per-environment in-session edits, keyed by env name
-
-function snapshotEnvSession(name) {
-  if (!name) return;
-  const snap = { users: users.map(u => ({ ...u })), usersPristine };
-  for (const k of ENV_SCOPED_KEYS) if (answers[k] !== undefined) snap[k] = answers[k];
-  envSession[name] = snap;
+function currentDefaultName() {
+  const validDiskDefault = existingProject && existingProject.defaultEnvironment &&
+    !samplePristine && !defaultEnvMissing;
+  if (validDiskDefault) {
+    const d = existingProject.defaultEnvironment;
+    for (const n of envOrder) if (envs[n].existsOnDisk && envs[n].diskName === d) return n;
+    if (pendingDeletes.includes(d)) return newDefaultName || envOrder[0] || null;
+  }
+  return envOrder[0] || null;
 }
 
-function restoreEnvSession(snap) {
-  for (const k of ENV_SCOPED_KEYS) {
-    if (snap[k] !== undefined) answers[k] = snap[k]; else delete answers[k];
-  }
-  users = snap.users.map(u => ({ ...u }));
-  usersPristine = snap.usersPristine;
-  answers['users'] = users;
-}
+const ENV_NAME_RE_UI = /^[a-z0-9][a-z0-9_-]{0,30}$/;
 
-function onEnvironmentNameChanged(newName) {
-  if (!existingEnv || !loadedEnvName || newName === currentEnvSelection) return false;
-  snapshotEnvSession(currentEnvSelection || loadedEnvName);
-  currentEnvSelection = newName;
-
-  const snap = envSession[newName];
-  if (snap) {
-    restoreEnvSession(snap);
-    showToast(`↩️ رجعنا لبيئة «${newName}» بتعديلات هذه الجلسة`);
-    return true;
-  }
-  if (newName === loadedEnvName) {
-    fillEnvironmentAnswers(existingEnv);
-    showToast(`↩️ رجعنا لبيئة «${loadedEnvName}» بإعداداتها المحفوظة`);
-    return true;
-  }
-  for (const key of ENV_SCOPED_KEYS) delete answers[key];
-  users = starterUsers();
-  usersPristine = true;
-  answers['users'] = users;
-  showToast(`🆕 بيئة جديدة «${newName}» — الحقول فاضية عشان ماتورثش إعدادات «${loadedEnvName}»`);
-  return true;
+/** Why this name cannot be used for an add/rename right now — or null. */
+function envNameProblem(name, opts = {}) {
+  if (!ENV_NAME_RE_UI.test(name)) return 'حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف';
+  if (envs[name]) return `«${name}» موجودة بالفعل في الجلسة`;
+  if (unreadableEnvNames.includes(name)) return `«${name}» اسم ملف موجود على القرص لكنه غير صالح JSON — الاسم محجوز لحد ما يتصلّح`;
+  if (pendingDeletes.includes(name)) return `«${name}» متعلَّم عليها حذف في الجلسة دي — استخدم اسمًا تانيًا`;
+  if (opts.forRename && pristineSamples.includes(name)) return `«${name}» ملف نموذجي لسه موجود على القرص — ماينفعش إعادة التسمية عليه`;
+  return null;
 }
 
 async function loadSchema() {
@@ -927,6 +1131,7 @@ function renderStep() {
   body.className = 'card-body';
   if (step.type === 'review') body.appendChild(renderReviewStep());
   else if (step.type === 'dynamic-list') body.appendChild(renderUsersStep(step));
+  else if (step.type === 'env-manager') body.appendChild(renderEnvManagerStep());
   else renderFields(step, body);
   card.appendChild(body);
 
@@ -935,15 +1140,9 @@ function renderStep() {
 }
 
 /* ── Fields ─────────────────────────────────────────────────────────────── */
-/** The one config file this page writes — {envName} resolves live as the user types. */
+/** The one config file this page writes — {envName} resolves to the ACTIVE environment. */
 function resolveTarget(target) {
   return target.replace('{envName}', String(answers['envName'] || '').trim() || 'qc');   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
-}
-
-function updateTargetChip() {
-  const chip = document.getElementById('target-chip');
-  const step = schema.steps[current];
-  if (chip && step && step.target) chip.textContent = resolveTarget(step.target);
 }
 
 function renderFields(step, container) {
@@ -970,13 +1169,45 @@ function renderFields(step, container) {
   }
 }
 
+// db/api env-var NAME fields: on a 2nd+ environment they prefill a suffixed
+// suggestion (API_TOKEN_UAT) so two environments do not silently share one
+// .env secret slot — a visible, editable prefill, never silent behavior (B5).
+const SUFFIXED_ENV_VAR_KEYS = ['db.passwordEnvVar', 'api.tokenEnvVar'];
+const envVarSuffix = (name) => String(name || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+
 function buildField(field) {
   const div = document.createElement('div');
   div.className = 'field';
 
-  const savedVal = field.secret
-    ? (secrets[field.key] || '')
+  // The environment name is managed by the environments page: shown here as a
+  // read-only label whose ONE affordance routes through the rename confirm
+  // dialog — typing can no longer silently fork a fresh environment.
+  if (field.readonly && field.key === 'envName') {
+    answers['envName'] = activeEnv;
+    div.innerHTML = `
+      <label class="field-label">${field.label}</label>
+      ${field.hint ? `<div class="field-hint">${field.hint}</div>` : ''}
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" value="${esc(activeEnv || '')}" readonly
+          style="background:var(--bg-muted);cursor:default;direction:ltr" />
+        <button type="button" class="btn-sm" style="white-space:nowrap">🏷️ إعادة تسمية</button>
+      </div>`;
+    div.querySelector('button').onclick = () => openRenameDialog(activeEnv);
+    return div;
+  }
+
+  // Environment-scoped secrets (db/api) live per environment — two
+  // environments may each carry a DB password without clobbering each other.
+  const isEnvSecret = field.secret && ENV_SECRET_KEYS.has(field.key);
+  const secretStore = isEnvSecret ? envs[activeEnv].secrets : secrets;
+
+  let savedVal = field.secret
+    ? (secretStore[field.key] || '')
     : (answers[field.key] !== undefined ? answers[field.key] : (field.default ?? ''));
+  if (!field.secret && answers[field.key] === undefined && field.default &&
+      SUFFIXED_ENV_VAR_KEYS.includes(field.key) && envOrder.indexOf(activeEnv) > 0) {
+    savedVal = `${field.default}_${envVarSuffix(activeEnv)}`;
+  }
 
   div.innerHTML = `
     <label class="field-label">
@@ -991,22 +1222,16 @@ function buildField(field) {
   if (inp) {
     if (field.secret) {
       inp.classList.add('secret-input');
-      inp.addEventListener('input', () => { secrets[field.key] = inp.value; });
+      inp.addEventListener('input', () => { secretStore[field.key] = inp.value; });
     } else {
       // Seed the answer with the rendered value (defaults included) so an
       // untouched field with a default — e.g. a preselected <select> — is
       // "filled" for validation, not just visually.
       if (answers[field.key] === undefined && inp.value !== '') answers[field.key] = inp.value;
-      inp.addEventListener('change', () => {
-        answers[field.key] = inp.value;
-        // Committing a different environment name may clear/restore the
-        // env-scoped answers that live on THIS page — re-render so the
-        // inputs on screen match what will be saved.
-        if (field.key === 'envName' && onEnvironmentNameChanged(inp.value.trim())) renderStep();
-      });
+      inp.addEventListener('change', () => { answers[field.key] = inp.value; });
       inp.addEventListener('input',  () => {
         answers[field.key] = inp.value;
-        if (field.key === 'envName') updateTargetChip();
+        if (ENV_SCOPED_KEYS.includes(field.key)) markActiveEnvDirty();
       });
     }
   }
@@ -1101,6 +1326,246 @@ function removeUser(i) {
 function usersDirty() {
   usersPristine = false;
   answers['users'] = users;
+  markActiveEnvDirty();
+}
+
+/* ── Environments manager (E0) ──────────────────────────────────────────── */
+/** All environments — on disk and added this session — with state badges and
+ *  the explicit controls. No file changes happen here: every operation is
+ *  recorded in the session and executed once, by the reviewed batch save. */
+function renderEnvManagerStep() {
+  snapshotActiveEnv();
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
+
+  const list = document.createElement('div');
+  list.className = 'env-list';
+  const defName = currentDefaultName();
+  for (const name of envOrder) {
+    const e = envs[name];
+    const badges = [];
+    if (name === defName) badges.push('<span class="env-badge default">⭐ الافتراضية</span>');
+    if (!e.existsOnDisk) badges.push('<span class="env-badge new">جديدة</span>');
+    else if (e.dirty) badges.push('<span class="env-badge edited">معدّلة</span>');
+    else badges.push('<span class="env-badge">على القرص</span>');
+    const renameNote = (e.existsOnDisk && e.diskName !== name)
+      ? `<div class="env-note">${esc(e.diskName)}.json → ${esc(name)}.json عند الحفظ</div>` : '';
+    const row = document.createElement('div');
+    row.className = 'env-row';
+    row.innerHTML = `
+      <span class="env-row-name">${esc(name)}.json</span>
+      ${badges.join('')}
+      ${renameNote}
+      <div class="env-row-actions">
+        <button class="btn-sm" data-act="open">✏️ فتح</button>
+        <button class="btn-sm" data-act="rename">🏷️ إعادة تسمية</button>
+        <button class="btn-sm danger" data-act="delete">🗑️ حذف</button>
+      </div>`;
+    row.querySelector('[data-act="open"]').onclick = () => { switchEnv(name); goTo(current + 1); };
+    row.querySelector('[data-act="rename"]').onclick = () => openRenameDialog(name);
+    row.querySelector('[data-act="delete"]').onclick = () => openDeleteDialog(name);
+    list.appendChild(row);
+  }
+  wrap.appendChild(list);
+
+  if (pendingDeletes.length) {
+    const note = document.createElement('div');
+    note.className = 'ops-list';
+    note.innerHTML = `<div class="ops-list-title">🗑️ هتتحذف عند الحفظ (بعد تأكيدك):</div>` +
+      pendingDeletes.map(n => `<div class="op-line"><code>environments/${esc(n)}.json</code></div>`).join('');
+    wrap.appendChild(note);
+  }
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-add';
+  addBtn.innerHTML = '+ إضافة بيئة';
+  addBtn.onclick = openAddEnvDialog;
+  wrap.appendChild(addBtn);
+
+  const hint = document.createElement('div');
+  hint.className = 'field-hint';
+  hint.textContent = 'مافيش أي ملف بيتغير دلوقتي — كل العمليات بتتنفذ مرة واحدة عند الحفظ، بعد ما تراجعها كلها في الخطوة الأخيرة.';
+  wrap.appendChild(hint);
+  return wrap;
+}
+
+/* ── Modal dialogs — moment-of-action consent (invariant #11) ───────────── */
+function openModal(html) {
+  closeModal();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.id = 'modal-overlay';
+  ov.innerHTML = `<div class="modal-card">${html}</div>`;
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
+  document.body.appendChild(ov);
+  return ov;
+}
+function closeModal() {
+  const ov = document.getElementById('modal-overlay');
+  if (ov) ov.remove();
+}
+
+/** Add a new environment: validated name + interactive copy-on-create.
+ *  SAFE sections only appear (test users values, defaults values) — the
+ *  connection targets (portalUrl / db / api) are never offered. */
+function openAddEnvDialog() {
+  snapshotActiveEnv();
+  const suggestion = ['uat', 'staging', 'dev', 'qa', 'preprod'].find(n => !envNameProblem(n)) || '';
+  const sources = envOrder.slice();
+  const ov = openModal(`
+    <div class="modal-title">➕ إضافة بيئة جديدة</div>
+    <div class="modal-body">اختر اسم البيئة — هو نفسه اسم الملف اللي هيتكتب عند الحفظ.</div>
+    <div class="field">
+      <label class="field-label">اسم البيئة</label>
+      <input type="text" id="add-env-name" value="${esc(suggestion)}" placeholder="uat" style="direction:ltr" />
+      <div class="field-hint" id="add-env-err"></div>
+    </div>
+    <div class="copy-opts">
+      <label><input type="radio" name="add-mode" value="blank" checked /> ابدأ بيئة فاضية</label>
+      <label><input type="radio" name="add-mode" value="copy"${sources.length ? '' : ' disabled'} /> انسخ أقسامًا آمنة من بيئة موجودة</label>
+      <div id="copy-section" style="display:none;flex-direction:column;gap:8px;padding-right:24px">
+        <select id="copy-src">${sources.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
+        <label><input type="checkbox" id="copy-users" checked /> مستخدمو الاختبار (القيم)</label>
+        <label><input type="checkbox" id="copy-defaults" checked /> القيم الافتراضية (OTP وكلمة المرور)</label>
+        <div class="field-hint">روابط الاتصال (Portal URL وقاعدة البيانات والـ API) عمرها ما بتتنسخ — البيئة الجديدة بتبدأ من غيرها عشان ماتشاورش على أنظمة بيئة تانية.</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="add-env-ok">إنشاء البيئة</button>
+      <button class="btn btn-outline" id="add-env-cancel">إلغاء</button>
+    </div>`);
+  const copySection = ov.querySelector('#copy-section');
+  ov.querySelectorAll('input[name="add-mode"]').forEach(r => {
+    r.onchange = () => {
+      copySection.style.display =
+        ov.querySelector('input[name="add-mode"]:checked').value === 'copy' ? 'flex' : 'none';
+    };
+  });
+  ov.querySelector('#add-env-cancel').onclick = closeModal;
+  ov.querySelector('#add-env-ok').onclick = () => {
+    const name = ov.querySelector('#add-env-name').value.trim();
+    const problem = envNameProblem(name);
+    if (problem) { ov.querySelector('#add-env-err').textContent = '❌ ' + problem; return; }
+    const mode = ov.querySelector('input[name="add-mode"]:checked').value;
+    const opts = mode === 'copy'
+      ? { copyFrom: ov.querySelector('#copy-src').value,
+          copyUsers: ov.querySelector('#copy-users').checked,
+          copyDefaults: ov.querySelector('#copy-defaults').checked }
+      : {};
+    createEnv(name, opts);
+    closeModal();
+    switchEnv(name);
+    showToast(opts.copyFrom
+      ? `🆕 بيئة جديدة «${name}» — اتنسخت الأقسام المختارة من «${opts.copyFrom}»، من غير أي روابط اتصال`
+      : `🆕 بيئة جديدة «${name}» — ابدأ من الأول`, 'success');
+    renderStep();
+  };
+  setTimeout(() => ov.querySelector('#add-env-name').focus(), 50);
+}
+
+/** Rename: the confirm dialog states the exact file operation before anything
+ *  is recorded; renaming the default states that defaultEnvironment follows. */
+function openRenameDialog(name) {
+  snapshotActiveEnv();
+  const e = envs[name];
+  if (!e) return;
+  const isDefault = currentDefaultName() === name;
+  const ov = openModal(`
+    <div class="modal-title">🏷️ إعادة تسمية «${esc(name)}»</div>
+    ${e.existsOnDisk
+      ? `<div class="modal-body">عند الحفظ، الملف الموجود على القرص هيتنقل للاسم الجديد — العملية دي بتتنفذ مرة واحدة بعد ما تراجعها في خطوة المراجعة، ومش هيتلمس أي ملف تاني.</div>`
+      : `<div class="modal-body">البيئة دي جديدة ولسه ماتحفظتش — تغيير الاسم هنا بيغيّر اسم الملف اللي هيتكتب، من غير أي عملية على ملفات موجودة.</div>`}
+    <div class="field">
+      <label class="field-label">الاسم الجديد</label>
+      <input type="text" id="rn-name" value="${esc(name)}" style="direction:ltr" />
+      <div class="field-hint" id="rn-err"></div>
+    </div>
+    <div class="modal-fileop" id="rn-fileop"></div>
+    ${isDefault ? '<div class="modal-body">⭐ دي البيئة الافتراضية — <code>defaultEnvironment</code> في config/project.json هيتحدّث للاسم الجديد في نفس الحفظة.</div>' : ''}
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="rn-ok">تأكيد إعادة التسمية</button>
+      <button class="btn btn-outline" id="rn-cancel">إلغاء</button>
+    </div>`);
+  const input = ov.querySelector('#rn-name');
+  const fileop = ov.querySelector('#rn-fileop');
+  const refreshOp = () => {
+    const nn = input.value.trim() || '?';
+    fileop.textContent = e.existsOnDisk
+      ? `environments/${e.diskName}.json  →  environments/${nn}.json`
+      : `environments/${nn}.json (ملف جديد)`;
+  };
+  input.oninput = refreshOp;
+  refreshOp();
+  ov.querySelector('#rn-cancel').onclick = closeModal;
+  ov.querySelector('#rn-ok').onclick = () => {
+    const newName = input.value.trim();
+    if (newName === name) { closeModal(); return; }
+    // Renaming an ON-DISK file onto a pristine sample's name would collide at
+    // execution time — blocked here (forRename); a NEW env may take the name
+    // (its write claims the sample).
+    const problem = envNameProblem(newName, { forRename: e.existsOnDisk });
+    if (problem) { ov.querySelector('#rn-err').textContent = '❌ ' + problem; return; }
+    renameSessionEnv(name, newName);
+    closeModal();
+    showToast(e.existsOnDisk
+      ? `🏷️ «${name}» → «${newName}» — الملف هيتنقل عند الحفظ`
+      : `🏷️ «${name}» → «${newName}»`, 'success');
+    renderStep();
+  };
+}
+
+/** Delete: never silent. The dialog names the exact file; deleting the default
+ *  cannot be confirmed until a new default is designated in the same dialog;
+ *  the last environment cannot be deleted at all. */
+function openDeleteDialog(name) {
+  snapshotActiveEnv();
+  const e = envs[name];
+  if (!e) return;
+  if (envOrder.length <= 1) {
+    showToast('❌ لازم تفضل بيئة واحدة على الأقل — ماينفعش حذف آخر بيئة', 'error');
+    return;
+  }
+  const isDefault = currentDefaultName() === name;
+  const others = envOrder.filter(n => n !== name);
+  const ov = openModal(`
+    <div class="modal-title">🗑️ حذف «${esc(name)}»</div>
+    ${e.existsOnDisk
+      ? `<div class="modal-body">عند الحفظ، الملف ده هيتحذف نهائيًا من القرص — مافيش تراجع بعد الحفظ. العملية بتتنفذ مرة واحدة بعد المراجعة، ومش هيتلمس أي ملف تاني.</div>
+         <div class="modal-fileop modal-danger">environments/${esc(e.diskName)}.json — DELETE</div>`
+      : `<div class="modal-body">البيئة دي جديدة في الجلسة ولسه ماتحفظتش — هتتشال من الجلسة بس، من غير أي عملية على القرص.</div>`}
+    ${isDefault ? `
+      <div class="modal-body">⭐ دي البيئة الافتراضية — لازم تختار بيئة افتراضية جديدة قبل تأكيد الحذف، عشان <code>defaultEnvironment</code> مايشاورش على ملف مش موجود.</div>
+      <div class="field">
+        <label class="field-label">البيئة الافتراضية الجديدة</label>
+        <select id="del-new-default">
+          <option value="">— اختر —</option>
+          ${others.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+        </select>
+      </div>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="del-ok"${isDefault ? ' disabled' : ''}>تأكيد الحذف</button>
+      <button class="btn btn-outline" id="del-cancel">إلغاء</button>
+    </div>`);
+  if (isDefault) {
+    ov.querySelector('#del-new-default').onchange = ev => {
+      ov.querySelector('#del-ok').disabled = !ev.target.value;
+    };
+  }
+  ov.querySelector('#del-cancel').onclick = closeModal;
+  ov.querySelector('#del-ok').onclick = () => {
+    if (isDefault) {
+      const nd = ov.querySelector('#del-new-default').value;
+      if (!nd) return;
+      newDefaultName = nd;
+    }
+    if (e.existsOnDisk) pendingDeletes.push(e.diskName);
+    delete envs[name];
+    envOrder = envOrder.filter(n => n !== name);
+    if (activeEnv === name) { activeEnv = null; restoreEnv(envOrder[0]); }
+    closeModal();
+    showToast(e.existsOnDisk ? `🗑️ «${name}» هتتحذف عند الحفظ` : `🗑️ اتشالت «${name}» من الجلسة`, 'warn');
+    renderStep();
+  };
 }
 
 /* ── File pick / extract (used by the file-import screen) ─────────────────── */
@@ -1148,14 +1613,27 @@ function resetFile() {
 }
 
 function applyExtracted(data) {
+  let touchedEnvScoped = false;
   function flat(obj, p='') {
     for (const [k,v] of Object.entries(obj||{})) {
       const key = p ? `${p}.${k}` : k;
       if (v && typeof v==='object' && !Array.isArray(v)) flat(v, key);
-      else if (key !== 'users' && !key.startsWith('_') && !answers[key]) answers[key] = v;
+      else if (key !== 'users' && key !== 'envName' && !key.startsWith('_') && !answers[key]) {
+        answers[key] = v;
+        if (ENV_SCOPED_KEYS.includes(key)) touchedEnvScoped = true;
+      }
     }
   }
   flat(data);
+  if (touchedEnvScoped) markActiveEnvDirty();
+  // An extracted environment name renames the CURRENT session environment only
+  // when it is a fresh, never-saved one — an on-disk environment's name changes
+  // only through the explicit rename dialog (invariant #11).
+  const extractedName = data && String(data.envName || '').trim();
+  if (extractedName && activeEnv && envs[activeEnv] && !envs[activeEnv].existsOnDisk &&
+      extractedName !== activeEnv && !envNameProblem(extractedName)) {
+    renameSessionEnv(activeEnv, extractedName);
+  }
   if (Array.isArray(data.users) && data.users.length > 0) {
     // Mirror of engine.js mergeUsers(): imports MERGE by handle — they never
     // replace users the user typed or that came from an existing config
@@ -1173,26 +1651,41 @@ function applyExtracted(data) {
     }
     usersPristine = false;
     answers['users'] = users;
+    markActiveEnvDirty();
   }
 }
 
 /* ── Review Step ─────────────────────────────────────────────────────────── */
+/** Environments this save writes: added this session, or edited this session.
+ *  A clean on-disk environment is not rewritten (its file already says this). */
+function dirtyEnvNames() {
+  return envOrder.filter(n => envs[n].dirty || !envs[n].existsOnDisk);
+}
+
 function renderReviewStep() {
+  snapshotActiveEnv();
   const step = schema.steps[current];
-  const { projectConfig, envConfig, envName } = buildConfigs();
-  const built = { projectConfig, envConfig };
+  const projectConfig = buildProjectConfig();
+  const writes = dirtyEnvNames();
+  const renames = deriveRenames();
+
   // One tab per output file, straight from the schema's file-keyed outputs —
-  // the page order groups by file, the review groups by file, the save writes
-  // by file: one story, told three times the same way.
-  const tabs = (step.outputs || []).map(o => ({
-    label: String(o.file || '').replace('{envName}', envName),
-    data: built[o.key],
-  }));
+  // the environments/{envName}.json output expands to one tab per environment
+  // file this save writes. Page order groups by file, review groups by file,
+  // the save writes by file: one story, told three times the same way.
+  const tabs = [];
+  for (const o of (step.outputs || [])) {
+    if (o.key === 'projectConfig') tabs.push({ label: String(o.file || ''), data: projectConfig });
+    else if (o.key === 'envConfig') {
+      for (const n of writes) tabs.push({ label: `environments/${n}.json`, data: buildEnvConfig(n) });
+    }
+  }
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
 
   const tabBar = document.createElement('div');
   tabBar.className = 'rtabs';
+  tabBar.style.flexWrap = 'wrap';
   tabs.forEach((t, i) => {
     const btn = document.createElement('button');
     btn.className = `rtab${i===0?' active':''}`;
@@ -1219,6 +1712,23 @@ function renderReviewStep() {
   wrap.appendChild(code);
   wrap.appendChild(copyBtn);
 
+  // ── The operations list: EVERY file operation this one save performs —
+  // listed here, before anything happens (the second half of the double
+  // consent; each rename/delete was already confirmed in its own dialog).
+  const ops = document.createElement('div');
+  ops.className = 'ops-list';
+  const lines = [];
+  for (const t of tabs) lines.push(`<div class="op-line">✍️ هيتكتب <code>${esc(t.label)}</code></div>`);
+  for (const r of renames) lines.push(`<div class="op-line">🏷️ إعادة تسمية مأكّدة: <code>environments/${esc(r.from)}.json → environments/${esc(r.to)}.json</code></div>`);
+  for (const d of pendingDeletes) lines.push(`<div class="op-line">🗑️ حذف مأكّد: <code>environments/${esc(d)}.json</code></div>`);
+  const untouched = envOrder.filter(n => envs[n].existsOnDisk && !envs[n].dirty && envs[n].diskName === n);
+  if (untouched.length) {
+    lines.push(`<div class="op-line">🔒 من غير أي تغيير: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join('، ')}</div>`);
+  }
+  lines.push(`<div class="op-line">⭐ البيئة الافتراضية: <code>${esc(currentDefaultName() || '?')}</code></div>`);
+  ops.innerHTML = `<div class="ops-list-title">📋 العمليات اللي هتتنفذ عند الحفظ:</div>` + lines.join('');
+  wrap.appendChild(ops);
+
   // .env keys summary — names only, never values (invariant #5). The secret
   // fields' "محفوظ بشكل آمن" note promised safe keeping; this says where.
   const secretKeys = Object.keys(buildSecretsPayload());
@@ -1231,16 +1741,17 @@ function renderReviewStep() {
   wrap.appendChild(envSum);
 
   // Reconciliation transparency: the save removes EVERY structurally-pristine
-  // leftover sample under another name — all listed here BEFORE anything
-  // happens, never silently.
-  const toReconcile = pristineSamples.filter(n => n !== envName);
+  // leftover sample this session does not claim (write / rename / delete) —
+  // all listed here BEFORE anything happens, never silently.
+  const claimed = new Set([...writes, ...renames.map(r => r.to), ...renames.map(r => r.from), ...pendingDeletes]);
+  const toReconcile = pristineSamples.filter(n => !claimed.has(n));
   if (toReconcile.length) {
     const files = toReconcile.map(n => `environments/${n}.json`).join('، ');
     const note = document.createElement('div');
     note.style.cssText = 'border:1px solid var(--warning);background:var(--warning-lt);color:var(--text-1);border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.7';
     note.textContent = toReconcile.length === 1
-      ? `⚠️ عند الحفظ هيتشال ملف البيئة النموذجي ${files} (نسخة السكافولد من غير أي تعديل) — بيحل محله environments/${envName}.json.`
-      : `⚠️ عند الحفظ هتتشال ملفات البيئة النموذجية دي (نسخ السكافولد من غير أي تعديل): ${files} — بيحل محلها environments/${envName}.json.`;
+      ? `⚠️ عند الحفظ هيتشال ملف البيئة النموذجي ${files} (نسخة السكافولد من غير أي تعديل) — بيئاتك الحقيقية بتحل محله.`
+      : `⚠️ عند الحفظ هتتشال ملفات البيئة النموذجية دي (نسخ السكافولد من غير أي تعديل): ${files} — بيئاتك الحقيقية بتحل محلها.`;
     wrap.appendChild(note);
   }
   return wrap;
@@ -1346,42 +1857,56 @@ function collectAnswers() {
 }
 
 /**
- * Map typed secrets (keyed by field key) to the env var names they will live
- * under in .env. When the step has a sibling "env var name" answer (envKeyFrom
- * — e.g. db.passwordEnvVar), THAT name wins: it is the one the JSON's
- * envSecret references, so writing anywhere else produces a broken config.
+ * Map typed secrets to the env var names they will live under in .env.
+ * Project-scoped secret fields read the global store; environment-scoped ones
+ * (db/api) are collected from EVERY session environment, each resolving its
+ * own envKeyFrom answer — so two environments keep separate secret slots
+ * (API_TOKEN / API_TOKEN_UAT). When the step has a sibling "env var name"
+ * answer (envKeyFrom), THAT name wins: it is the one the JSON's envSecret
+ * references, so writing anywhere else produces a broken config.
+ * Call after snapshotActiveEnv() so the active environment's answers are fresh.
  */
 function buildSecretsPayload() {
   const out = {};
   for (const step of schema.steps) {
     for (const f of (step.fields || [])) {
-      if (!f.secret || !secrets[f.key]) continue;
-      let envKey = f.envKey;
-      if (f.envKeyFrom) {
-        const chosen = String(answers[f.envKeyFrom] || '').trim();
-        if (chosen) envKey = chosen;
+      if (!f.secret) continue;
+      if (step.group === 'environment') {
+        for (const n of envOrder) {
+          const v = envs[n].secrets[f.key];
+          if (!v) continue;
+          let envKey = f.envKey;
+          if (f.envKeyFrom) {
+            const chosen = String(envs[n].answers[f.envKeyFrom] || '').trim();
+            if (chosen) envKey = chosen;
+          }
+          out[envKey] = v;
+        }
+      } else {
+        if (!secrets[f.key]) continue;
+        let envKey = f.envKey;
+        if (f.envKeyFrom) {
+          const chosen = String(answers[f.envKeyFrom] || '').trim();
+          if (chosen) envKey = chosen;
+        }
+        out[envKey] = secrets[f.key];
       }
-      out[envKey] = secrets[f.key];
     }
   }
   return out;
 }
 
 /* ── Build Configs ───────────────────────────────────────────────────────── */
-function buildConfigs() {
-  const envName = answers['envName'] || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
+function buildProjectConfig() {
   // Start from what's on disk so keys the wizard has no input for (azure.areaPath,
   // kb.org, custom fields) survive a re-run instead of being silently dropped.
   const proj = Object.assign({}, existingProject, {
     name: answers['name'] || 'my-project',
-    // Adding another environment must not silently re-point the project: a
-    // user-configured default stands. But a default that points at a pristine
-    // sample (or at no file at all) is scaffolding, not configuration — the
-    // first environment the user actually configures claims it.
-    defaultEnvironment:
-      (existingProject && existingProject.defaultEnvironment && !samplePristine && !defaultEnvMissing)
-        ? existingProject.defaultEnvironment
-        : envName,
+    // Never silently re-pointed: currentDefaultName() keeps a valid existing
+    // default (following its confirmed rename), moves a deleted default to the
+    // user-designated replacement, and lets the first configured environment
+    // claim a default that was scaffolding or missing.
+    defaultEnvironment: currentDefaultName() || 'qc',   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
     login: Object.assign({}, existingProject && existingProject.login, { mode: answers['login.mode'] || 'session' }),
   });
   // Managed keys mirror the screen EXACTLY: a value sets the key, an empty
@@ -1391,38 +1916,44 @@ function buildConfigs() {
   // left in it.
   setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
   setManagedBlock(proj, 'kb', ['baseUrl', 'project']);
+  return proj;
+}
 
-  // Merge back only when rewriting the environment we loaded; a different name
-  // is a new environment file, which starts clean.
-  const envBase = (existingEnv && loadedEnvName === envName) ? existingEnv : null;
-  const env = Object.assign({}, envBase, {
-    portalUrl: answers['portalUrl'] || '',
-    defaults: Object.assign({}, envBase && envBase.defaults, {
-      otp:      answers['defaults.otp']      || '0000',
-      password: answers['defaults.password'] || 'Test@1234',
+/** Build one environment's file content from its session entry, merging onto
+ *  its own on-disk JSON so values the wizard does not manage survive
+ *  (invariant #11). Call after snapshotActiveEnv(). */
+function buildEnvConfig(name) {
+  const e = envs[name];
+  const a = e.answers;
+  const base = e.loadedFrom || null;
+  const env = Object.assign({}, base, {
+    portalUrl: a['portalUrl'] || '',
+    defaults: Object.assign({}, base && base.defaults, {
+      otp:      a['defaults.otp']      || '0000',
+      password: a['defaults.password'] || 'Test@1234',
     }),
-    users: buildUsersObj(),
+    users: buildUsersObj(e),
   });
-  if (answers['db.server']) {
+  if (a['db.server']) {
     env.db = {
-      server: answers['db.server'],
-      port:   Number(answers['db.port']) || 1433,
-      name:   answers['db.name']   || '',
-      user:   answers['db.user']   || '',
-      password: { envSecret: answers['db.passwordEnvVar'] || 'SQLCMDPASSWORD' },
+      server: a['db.server'],
+      port:   Number(a['db.port']) || 1433,
+      name:   a['db.name']   || '',
+      user:   a['db.user']   || '',
+      password: { envSecret: a['db.passwordEnvVar'] || 'SQLCMDPASSWORD' },
     };
   } else {
     delete env.db;    // cleared on screen → removed from the file, not restored
   }
-  if (answers['api.baseUrl']) {
+  if (a['api.baseUrl']) {
     env.api = {
-      baseUrl: answers['api.baseUrl'],
-      token:   { envSecret: answers['api.tokenEnvVar'] || 'API_TOKEN' },
+      baseUrl: a['api.baseUrl'],
+      token:   { envSecret: a['api.tokenEnvVar'] || 'API_TOKEN' },
     };
   } else {
     delete env.api;
   }
-  return { projectConfig: proj, envConfig: env, envName };
+  return env;
 }
 
 /** Write a group's managed keys from answers into target — set or unset, screen wins. */
@@ -1436,16 +1967,19 @@ function setManagedBlock(target, group, keys) {
   else delete target[group];
 }
 
-function buildUsersObj() {
+/** Mirror of engine.js buildEnvUsers(): each entry merges onto its on-disk
+ *  base entry, so hand-added per-user props the wizard has no input for
+ *  survive; the managed fields mirror the screen — set or unset. */
+function buildUsersObj(e) {
+  const base = (e.loadedFrom && e.loadedFrom.users) || {};
   const obj = {};
-  for (const u of (answers['users'] || users)) {
+  for (const u of e.users) {
     if (!u.handle) continue;
-    const e = {};
-    if (u.phone) e.phone = u.phone;
-    if (u.email) e.email = u.email;
-    if (u.role)  e.role  = u.role;
-    if (u.notes) e.notes = u.notes;
-    obj[u.handle] = e;
+    const entry = Object.assign({}, base[u.handle]);
+    for (const k of ['phone', 'email', 'role', 'notes']) {
+      if (u[k]) entry[k] = u[k]; else delete entry[k];
+    }
+    obj[u.handle] = entry;
   }
   return obj;
 }
@@ -1453,14 +1987,45 @@ function buildUsersObj() {
 /* ── Save ────────────────────────────────────────────────────────────────── */
 async function saveAndClose() {
   collectAnswers();
-  const { projectConfig, envConfig, envName } = buildConfigs();
+  snapshotActiveEnv();
+
+  // Client-side gate before the batch save (the server re-validates everything
+  // via planSave): every environment this save writes must be internally
+  // complete — the review can only be reached through the active environment's
+  // pages, so the OTHER environments get their completeness check here.
+  const writes = dirtyEnvNames();
+  for (const n of writes) {
+    const a = envs[n].answers;
+    let urlOk = false;
+    try { const u = new URL(a['portalUrl'] || ''); urlOk = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
+    if (!urlOk) {
+      showToast(`❌ بيئة «${n}»: رابط التطبيق ناقص أو غير صحيح — افتحها من صفحة إدارة البيئات وكمّلها`, 'error');
+      return;
+    }
+    if (!envs[n].users.some(u => String(u.handle || '').trim())) {
+      showToast(`❌ بيئة «${n}»: محتاجة مستخدم اختبار واحداً على الأقل — افتحها من صفحة إدارة البيئات`, 'error');
+      return;
+    }
+  }
+
+  const projectConfig = buildProjectConfig();
+  const environments = {};
+  for (const n of writes) environments[n] = buildEnvConfig(n);
+  // Every op is explicit and pre-confirmed: renames derive from the rename
+  // dialog's session changes, deletes accumulated through the delete dialog.
+  // confirmed: true is the consent the dialogs gathered, made wire-visible —
+  // the server refuses any op without it.
+  const ops = {
+    renames: deriveRenames(),
+    deletes: pendingDeletes.map(name => ({ name, confirmed: true })),
+  };
 
   if (MODE === 'local') {
     try {
       const r = await apiFetch('/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectConfig, envConfig, envName, secrets: buildSecretsPayload() }),
+        body: JSON.stringify({ projectConfig, environments, ops, secrets: buildSecretsPayload() }),
       });
       const res = await r.json();
       if (res.ok) {
@@ -1469,9 +2034,11 @@ async function saveAndClose() {
       } else { showToast('❌ ' + (res.error || 'خطأ'), 'error'); }
     } catch(e) { showToast('❌ ' + e.message, 'error'); }
   } else {
-    // Web mode
+    // Web mode: no server — download every file
     dlJSON(projectConfig, 'project.json');
-    setTimeout(() => dlJSON(envConfig, `${envName}.json`), 300);
+    Object.keys(environments).forEach((n, i) => {
+      setTimeout(() => dlJSON(environments[n], `${n}.json`), 300 * (i + 1));
+    });
     showToast('✅ تم تحميل الملفات!');
   }
 }

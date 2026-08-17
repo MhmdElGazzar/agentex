@@ -239,6 +239,19 @@ test('ui.html speaks envName — no stale defaultEnvironment answer key', () => 
     'the answer-key rename must be total: one mapping, no drift');
 });
 
+test('ui.html: the fork affordance is gone; manager, pending ops, and consent markers are in', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'ui.html'), 'utf8');
+  assert.ok(!ui.includes('onEnvironmentNameChanged'),
+    'typing a name must no longer silently fork a fresh environment');
+  assert.ok(ui.includes('env-manager'), 'the E0 environments manager is rendered');
+  assert.ok(ui.includes('pendingDeletes'), 'deletes are recorded as pending ops, executed only by the save');
+  assert.ok(ui.includes('confirmed: true'), 'ops go to the server explicitly consented');
+  assert.ok(ui.includes('openAddEnvDialog') && ui.includes('openRenameDialog') && ui.includes('openDeleteDialog'),
+    'add/rename/delete all route through explicit dialogs');
+  assert.ok(ui.includes('base[u.handle]'),
+    'per-user unknown-prop preservation (mirror of engine buildEnvUsers) is wired in');
+});
+
 // ── validateConfigs ───────────────────────────────────────────────────────
 test('validateConfigs accepts a well-formed payload', () => {
   const errs = validateConfigs(
