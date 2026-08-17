@@ -23,9 +23,11 @@ Resolve once, before any browser action, in this order:
 From the environment file: `portalUrl` is the target; `defaults` (fixed OTP, shared
 test password, captcha flag, …) and `users` are the test data for every scenario in
 the run. `users` is keyed by a descriptive handle — a spec step like "login as
-expired_user" means the `users.expired_user` entry. A user without a `password`
-field logs in with `defaults.password`. A `{ "envSecret": "NAME" }` value means:
-read variable `NAME` from `.env` — never print it. A spec naming a user that is not
+expired_user" means the `users.expired_user` entry; user entries are free-form (the
+wizard's field set is consumer-defined), so treat every field as test data. A user
+without a `password` field logs in with `defaults.password`. A `{ "envSecret": "NAME" }`
+value — on ANY user or defaults field, not just passwords/tokens — means: read variable
+`NAME` from `.env` — never print it. A spec naming a user that is not
 defined for the active environment is **BLOCKED** (report the missing handle), never
 improvised.
 
