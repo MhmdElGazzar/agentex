@@ -199,6 +199,16 @@
       ]
     },
     {
+      "id": "environments",
+      "title": "إدارة البيئات",
+      "titleEn": "Environments",
+      "description": "كل بيئات المشروع في مكان واحد — افتح بيئة للتعديل، أو أضف بيئة جديدة، أو أعد التسمية أو احذف (بتأكيد صريح قبل أي تغيير في الملفات)",
+      "descriptionEn": "All project environments — open one to edit, add a new one, rename, or delete (explicit confirmation before any file change)",
+      "icon": "🗂️",
+      "group": "environment",
+      "type": "env-manager"
+    },
+    {
       "id": "environment",
       "title": "بيئة الاختبار",
       "titleEn": "Test Environment",
@@ -216,10 +226,11 @@
           "placeholder": "qc",
           "default": "qc",
           "required": true,
+          "readonly": true,
           "pattern": "^[a-z0-9][a-z0-9_-]{0,30}$",
           "patternMsg": "حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف",
           "aiHint": "environment name being configured (e.g. qc, staging, uat)",
-          "hint": "اسم البيئة اللي هتتكتب: qc أو uat أو staging. البيئة الافتراضية للمشروع بتفضل زي ما هي."
+          "hint": "دي البيئة المفتوحة حالياً. تغيير الاسم بيتم من صفحة إدارة البيئات (إعادة تسمية) — بتأكيد صريح، مش بالكتابة هنا."
         },
         {
           "key": "portalUrl",

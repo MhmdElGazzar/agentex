@@ -145,9 +145,9 @@ test('mergeExtracted takes extracted users when there are none yet, and fills em
 });
 
 // ── schema shape: pages map one-to-one to config files, grouped by file ───
-test('schema has 9 numbered steps and no ai-import step', () => {
+test('schema has 10 numbered steps and no ai-import step', () => {
   const schema = require('./schema.json');
-  assert.strictEqual(schema.steps.length, 9);
+  assert.strictEqual(schema.steps.length, 10);
   assert.ok(!schema.steps.some(s => s.id === 'ai-import'), 'ai-import must not be a numbered step');
   assert.ok(!schema.steps.some(s => s.type === 'ai-extract'), 'no ai-extract step type in the flow');
   assert.strictEqual(schema.steps[schema.steps.length - 1].type, 'review', 'review stays last');
@@ -162,8 +162,11 @@ test('every content page declares exactly one target file, and same-file pages a
   const schema = require('./schema.json');
   const content = schema.steps.filter(s => s.type !== 'review');
   for (const s of content) {
-    assert.ok(typeof s.target === 'string' && s.target, `step ${s.id} must declare its one target file`);
     assert.ok(s.group === 'project' || s.group === 'environment', `step ${s.id} must belong to a group`);
+    // The environments manager (E0) writes no file itself — it manages which
+    // files exist; every other content page declares its ONE target file.
+    if (s.type === 'env-manager') continue;
+    assert.ok(typeof s.target === 'string' && s.target, `step ${s.id} must declare its one target file`);
     const expected = s.group === 'project' ? 'config/project.json' : 'environments/{envName}.json';
     assert.strictEqual(s.target, expected, `step ${s.id}: group and target must agree`);
   }
@@ -176,6 +179,21 @@ test('every content page declares exactly one target file, and same-file pages a
   // The steps-track group labels are schema-driven.
   assert.ok(schema.groups && schema.groups.project && schema.groups.project.label, 'project group label');
   assert.ok(schema.groups.environment && schema.groups.environment.label, 'environment group label');
+});
+
+test('the environments manager opens the environment group; the name field is read-only', () => {
+  const schema = require('./schema.json');
+  const idx = schema.steps.findIndex(s => s.id === 'environments');
+  assert.ok(idx > 0, 'environments manager step exists');
+  const mgr = schema.steps[idx];
+  assert.strictEqual(mgr.type, 'env-manager');
+  assert.strictEqual(mgr.group, 'environment');
+  const firstEnvIdx = schema.steps.findIndex(s => s.group === 'environment');
+  assert.strictEqual(idx, firstEnvIdx, 'the manager is the environment group opener (E0)');
+  assert.strictEqual(schema.steps[idx + 1].id, 'environment', 'environment details follow the manager');
+  const envName = schema.steps[idx + 1].fields.find(f => f.key === 'envName');
+  assert.strictEqual(envName.readonly, true,
+    'typing a new name must no longer fork a fresh environment — rename is an explicit, confirmed op');
 });
 
 test('the first page is pure project settings — the environment name lives on the environment page', () => {
