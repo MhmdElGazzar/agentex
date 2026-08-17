@@ -416,6 +416,18 @@ function planSave(payload, diskState) {
     deleteNames.push(name);
   }
 
+  // ── Chained/swapped renames: a target that equals ANOTHER rename's source
+  // cannot execute correctly with in-order renames — depending on order, the
+  // first rename silently overwrites the second's still-on-disk source
+  // (fs.renameSync replaces an existing destination), destroying its data
+  // behind an ok response. Refused whole, whatever the order: rename in
+  // separate saves instead.
+  for (const to of renameTos) {
+    if (renameFroms.includes(to)) {
+      errors.push(`rename target "${to}" is another rename's source — chained or swapped renames cannot run in one save; save between renames`);
+    }
+  }
+
   // ── Save-time reconciliation (design #1, generalized): a structurally-
   // pristine leftover sample this save does not claim (write to, rename
   // from/to, or explicitly delete) is a scaffold artifact and is removed —

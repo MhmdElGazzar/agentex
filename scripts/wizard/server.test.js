@@ -510,6 +510,52 @@ const post = (route, body, headers = {}) =>
     assert.ok(!fs.existsSync(env3('stage2')), 'file deleted only as the explicit, confirmed op');
   });
 
+  await test('REJECTED: chained or swapped renames — no file is touched', async () => {
+    // Chain: stg→stgx then prod→stg. In-order renameSync would land prod's
+    // content ON stg.json before stg moves away — refused whole, both intact.
+    const stgBytes = fs.readFileSync(env3('stg'), 'utf8');
+    const prodBytes = fs.readFileSync(env3('prod'), 'utf8');
+    const chain = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'stg' },
+      environments: {},
+      ops: { renames: [
+        { from: 'stg', to: 'stgx', confirmed: true },
+        { from: 'prod', to: 'stg', confirmed: true },
+      ], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(chain.status, 400);
+    assert.match((await chain.json()).error, /another rename/i);
+    const swap = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [
+        { from: 'prod', to: 'stg', confirmed: true },
+        { from: 'stg', to: 'prod', confirmed: true },
+      ], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(swap.status, 400);
+    assert.match((await swap.json()).error, /another rename/i);
+    assert.strictEqual(fs.readFileSync(env3('stg'), 'utf8'), stgBytes, 'stg.json byte-identical');
+    assert.strictEqual(fs.readFileSync(env3('prod'), 'utf8'), prodBytes, 'prod.json byte-identical');
+    assert.ok(!fs.existsSync(env3('stgx')), 'no partial rename landed');
+  });
+
+  await test('REJECTED: adding a new environment under a name vacated by a rename', async () => {
+    const stgBytes = fs.readFileSync(env3('stg'), 'utf8');
+    const r = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: { stg: { portalUrl: 'https://newstg.example', users: { u: { phone: '1' } } } },
+      ops: { renames: [{ from: 'stg', to: 'stgx', confirmed: true }], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /collides/i);
+    assert.strictEqual(fs.readFileSync(env3('stg'), 'utf8'), stgBytes, 'stg.json untouched');
+    assert.ok(!fs.existsSync(env3('stgx')), 'nothing renamed');
+  });
+
   await test('REJECTED: writing over or deleting an unreadable environment file', async () => {
     const brokenBytes = fs.readFileSync(env3('broken'), 'utf8');
     const r = await post3('/api/save', {

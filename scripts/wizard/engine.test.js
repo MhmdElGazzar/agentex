@@ -445,6 +445,35 @@ test('planSave: renamed-and-edited — written under the new name, the old file 
   assert.deepStrictEqual(plan.finalEnvNames, ['b']);
 });
 
+test('planSave refuses chained or swapped renames — a target that is another rename source', () => {
+  // In-order renameSync would silently overwrite the second rename's
+  // still-on-disk source: a→b lands ON b.json, then b→c moves a's content —
+  // b's data destroyed with an HTTP 200. Refused whole instead.
+  const chain = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'c' },
+    environments: {},
+    ops: { renames: [op({ from: 'a', to: 'b' }), op({ from: 'b', to: 'c' })], deletes: [] },
+  }, disk(['a', 'b']));
+  assert.match(chain.errors.join(), /another rename/i, 'chain a→b, b→c must be refused');
+  const swap = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'a' },
+    environments: {},
+    ops: { renames: [op({ from: 'a', to: 'b' }), op({ from: 'b', to: 'a' })], deletes: [] },
+  }, disk(['a', 'b']));
+  assert.match(swap.errors.join(), /another rename/i, 'swap a↔b must be refused');
+});
+
+test('planSave refuses adding a new environment under a name vacated by a rename', () => {
+  // rename b→c AND write a fresh b in one save: the rename executes after the
+  // write and would carry the fresh b.json away as c.json.
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'c' },
+    environments: { b: cfgOk() },
+    ops: { renames: [op({ from: 'b', to: 'c' })], deletes: [] },
+  }, disk(['b']));
+  assert.match(plan.errors.join(), /collides/i);
+});
+
 test('planSave reconciles pristine samples this save does not claim — and only those', () => {
   const plan = planSave({
     projectConfig: { name: 'd', defaultEnvironment: 'uat' },
