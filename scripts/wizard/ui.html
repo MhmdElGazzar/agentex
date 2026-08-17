@@ -629,6 +629,8 @@ let userFieldsSession = null;
 let defaultsFieldsSession = null;
 let removedUserFields = [];      // { key: ORIGINAL key, label, envs: [names with values] }
 let removedDefaultsFields = [];
+let overwrittenUserKeys = [];    // { key, envs } — consented rename-onto overwrites of hand-added disk values
+let overwrittenDefaultsKeys = [];
 
 /** Seed the effective field schema from config/project.json (or built-ins). */
 function seedFieldSchema(proj) {
@@ -639,6 +641,8 @@ function seedFieldSchema(proj) {
   defaultsFieldsSession = mk(proj && proj.defaultsFields, BUILTIN_DEFAULTS_FIELDS);
   removedUserFields = [];
   removedDefaultsFields = [];
+  overwrittenUserKeys = [];
+  overwrittenDefaultsKeys = [];
 }
 
 /** Strip session bookkeeping — what buildProjectConfig writes to the file. */
@@ -938,7 +942,140 @@ function fieldKeyProblem(kind, key, selfKey) {
 }
 
 function addField(kind, desc) {
+  // Re-adding a key removed this session cancels the pending removal — the
+  // base values stop being dropped and adoption below refills the slots.
+  const removed = kind === 'user' ? removedUserFields : removedDefaultsFields;
+  const idx = removed.findIndex(x => x.key === desc.key);
+  if (idx >= 0) removed.splice(idx, 1);
   fieldList(kind).push({ ...desc, _orig: null });
+  return adoptDiskValues(kind, desc);
+}
+
+/* ── Collision adoption (invariant #11) ───────────────────────────────────
+ * A new/renamed field key may already exist in environment files as a
+ * hand-added prop — the flagship adoption journey. The values are ADOPTED
+ * into the session slots (prefilled, per environment) so the save round-trips
+ * them; without this, the screen-wins build would silently delete them.
+ */
+
+/** Fill empty session slots under desc.key from each environment's on-disk
+ *  base values, where the shape matches the descriptor. Returns true when
+ *  anything was adopted. */
+function adoptDiskValues(kind, desc) {
+  const key = desc.key;
+  snapshotActiveEnv();
+  let adopted = false;
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (kind === 'user') {
+      const baseUsers = (e.loadedFrom && e.loadedFrom.users) || {};
+      for (const u of e.users) {
+        if (u[key]) continue;   // the session already has a value — screen wins
+        const v = baseUsers[u.handle] && baseUsers[u.handle][key];
+        if (v === undefined || v === null || v === '') continue;
+        if (desc.secret) {
+          if (v && typeof v === 'object' && typeof v.envSecret === 'string') { u[key] = v.envSecret; adopted = true; }
+        } else if (typeof v !== 'object') {
+          u[key] = String(v); adopted = true;
+        }
+      }
+    } else {
+      const v = e.loadedFrom && e.loadedFrom.defaults && e.loadedFrom.defaults[key];
+      if (v === undefined || v === null || v === '') continue;
+      if (desc.secret) {
+        if (v && typeof v === 'object' && typeof v.envSecret === 'string' && !e.answers[`defaults.${key}EnvVar`]) {
+          e.answers[`defaults.${key}EnvVar`] = v.envSecret; adopted = true;
+        }
+      } else if (typeof v !== 'object' && !e.answers[`defaults.${key}`]) {
+        e.answers[`defaults.${key}`] = String(v); adopted = true;
+      }
+    }
+  }
+  restoreEnv(activeEnv);
+  return adopted;
+}
+
+/** Why adding this key with this shape would lose on-disk values — or null.
+ *  Adoption needs matching shapes; a mismatch is refused with guidance
+ *  instead of silently deleting the hand-added values at save. */
+function fieldAddShapeConflict(kind, key, secret) {
+  snapshotActiveEnv();
+  let plain = false, ref = false, other = false;
+  for (const n of envOrder) {
+    const e = envs[n];
+    const vals = [];
+    if (kind === 'user') {
+      const baseUsers = (e.loadedFrom && e.loadedFrom.users) || {};
+      for (const u of e.users) {
+        const v = baseUsers[u.handle] && baseUsers[u.handle][key];
+        if (v !== undefined && v !== null && v !== '') vals.push(v);
+      }
+    } else {
+      const v = e.loadedFrom && e.loadedFrom.defaults && e.loadedFrom.defaults[key];
+      if (v !== undefined && v !== null && v !== '') vals.push(v);
+    }
+    for (const v of vals) {
+      if (v && typeof v === 'object') {
+        if (typeof v.envSecret === 'string') ref = true; else other = true;
+      } else plain = true;
+    }
+  }
+  if (other) return `في قيم مركّبة (object) محفوظة على القرص تحت «${key}» — الويزارد مايقدرش يعرضها كحقل؛ اختر مفتاحًا تانيًا أو عدّل الملف بإيدك`;
+  if (secret && plain) return `في قيم نصية محفوظة على القرص تحت «${key}» — أضفه كحقل نصي الأول عشان القيم تتحمّل، وبعدها حوّله لسرّي لو محتاج (التحويل بيمسح القيم بتأكيد صريح)`;
+  if (!secret && ref) return `«${key}» محفوظ على القرص بصيغة سرية (envSecret) — أضفه كحقل سرّي عشان اسم المتغير يتحمّل بدل ما القيمة تتمسح`;
+  return null;
+}
+
+/** Environments where renaming onto newKey would LOSE a hand-added disk value:
+ *  the value exists and is neither identical to the migrating session value
+ *  nor adoptable into an empty slot (shape mismatch counts as loss). */
+function renameOntoConflicts(kind, oldKey, newKey) {
+  snapshotActiveEnv();
+  const f = fieldList(kind).find(x => x.key === oldKey);
+  const secret = !!(f && f.secret);
+  const out = [];
+  const diskStr = (v) => (v && typeof v === 'object')
+    ? (secret && typeof v.envSecret === 'string' ? v.envSecret : null)
+    : (!secret ? String(v) : null);
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (kind === 'user') {
+      const baseUsers = (e.loadedFrom && e.loadedFrom.users) || {};
+      for (const u of e.users) {
+        const dv = baseUsers[u.handle] && baseUsers[u.handle][newKey];
+        if (dv === undefined || dv === null || dv === '') continue;
+        const d = diskStr(dv);
+        const sessionVal = String(u[oldKey] || '');
+        if (d !== null && (!sessionVal || sessionVal === d)) continue;   // adoptable or identical
+        out.push(n);
+        break;
+      }
+    } else {
+      const dv = e.loadedFrom && e.loadedFrom.defaults && e.loadedFrom.defaults[newKey];
+      if (dv === undefined || dv === null || dv === '') continue;
+      const d = diskStr(dv);
+      const sessionVal = String((secret ? e.answers[`defaults.${oldKey}EnvVar`] : e.answers[`defaults.${oldKey}`]) || '');
+      if (d !== null && (!sessionVal || sessionVal === d)) continue;
+      out.push(n);
+    }
+  }
+  return [...new Set(out)];
+}
+
+/** The editor's rename action: migrate, record any consented overwrite (the
+ *  editor gates on renameOntoConflicts BEFORE calling this), then adopt
+ *  matching disk values into slots the migration left empty. */
+function renameFieldAdopting(kind, oldKey, newKey, newLabel) {
+  const f = fieldList(kind).find(x => x.key === oldKey);
+  if (!f) return false;
+  const keyChanges = !!newKey && newKey !== oldKey;
+  const conflicts = keyChanges ? renameOntoConflicts(kind, oldKey, newKey) : [];
+  renameField(kind, oldKey, newKey, newLabel);
+  if (!keyChanges) return false;
+  if (conflicts.length) {
+    (kind === 'user' ? overwrittenUserKeys : overwrittenDefaultsKeys).push({ key: newKey, envs: conflicts });
+  }
+  return adoptDiskValues(kind, f);   // f.key is now newKey
 }
 
 /** Reorder a field one step up (-1) or down (+1). */
@@ -1950,6 +2087,16 @@ function fieldEditorRowHTML(kind, f, i, n, state) {
       </div>
     </div>`;
   }
+  if (state.renonto && state.renonto.from === key) {
+    const r = state.renonto;
+    return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(217,119,6,.35)">
+      <div class="modal-body" style="width:100%">⚠️ في قيم يدوية محفوظة على القرص تحت «${esc(r.to)}» في ${r.envs.length === 1 ? 'بيئة واحدة' : r.envs.length + ' بيئات'} (${r.envs.map(esc).join('، ')}) مختلفة عن قيم الحقل — لو أكّدت، قيم الجلسة هتتكتب فوقها عند الحفظ، والخانة الفاضية هتشيل قيمة القرص. العملية هتظهر في قائمة عمليات المراجعة.</div>
+      <div class="env-row-actions">
+        <button class="btn-sm danger" data-act="renonto-ok">تأكيد الكتابة فوقها</button>
+        <button class="btn-sm" data-act="renonto-cancel">إلغاء</button>
+      </div>
+    </div>`;
+  }
   if (state.toggling === key) {
     const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
     return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(217,119,6,.35)">
@@ -2025,8 +2172,28 @@ function renderFieldEditor(kind, state) {
       const newLabel = row.querySelector('.fe-edit-label').value.trim();
       const problem = fieldKeyProblem(kind, newKey, key);
       if (problem) { row.querySelector('.fe-edit-err').textContent = '❌ ' + problem; return; }
-      renameField(kind, key, newKey, newLabel);
-      if (newKey !== key) showToast(`🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات عند الحفظ`, 'success');
+      // Renaming ONTO a key that holds hand-added disk values which would be
+      // overwritten (or lost to a shape mismatch) needs explicit consent —
+      // never silent (invariant #11).
+      if (newKey !== key) {
+        const conflicts = renameOntoConflicts(kind, key, newKey);
+        if (conflicts.length) {
+          renderFieldEditor(kind, { renonto: { from: key, to: newKey, label: newLabel, envs: conflicts } });
+          return;
+        }
+      }
+      const adopted = renameFieldAdopting(kind, key, newKey, newLabel);
+      if (newKey !== key) {
+        showToast(adopted
+          ? `🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات، والقيم الموجودة على القرص تحت الاسم الجديد اتحمّلت في الخانات`
+          : `🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات عند الحفظ`, 'success');
+      }
+      renderFieldEditor(kind, {});
+    });
+    on('renonto-cancel', () => renderFieldEditor(kind, {}));
+    on('renonto-ok', () => {
+      renameFieldAdopting(kind, state.renonto.from, state.renonto.to, state.renonto.label);
+      showToast(`🏷️ «${state.renonto.from}» ← «${state.renonto.to}» — الكتابة فوق القيم اليدوية اتأكّدت وهتظهر في المراجعة`, 'warn');
       renderFieldEditor(kind, {});
     });
     on('secret', () => {
@@ -2049,12 +2216,19 @@ function renderFieldEditor(kind, state) {
     const key = ov.querySelector('#fe-add-key').value.trim();
     const problem = fieldKeyProblem(kind, key);
     if (problem) { ov.querySelector('#fe-add-err').textContent = '❌ ' + problem; return; }
+    const secret = ov.querySelector('#fe-add-secret').checked;
+    // Hand-added disk values under this key must survive: matching shapes are
+    // adopted below; a shape mismatch is refused with guidance, never lost.
+    const shape = fieldAddShapeConflict(kind, key, secret);
+    if (shape) { ov.querySelector('#fe-add-err').textContent = '❌ ' + shape; return; }
     const desc = { key, label: ov.querySelector('#fe-add-label').value.trim() || key };
     const type = ov.querySelector('#fe-add-type').value;
     if (type && type !== 'text') desc.type = type;
-    if (ov.querySelector('#fe-add-secret').checked) desc.secret = true;
-    addField(kind, desc);
-    showToast(`➕ اتضاف حقل «${key}» لكل ${kind === 'user' ? 'المستخدمين في كل البيئات' : 'البيئات'}`, 'success');
+    if (secret) desc.secret = true;
+    const adopted = addField(kind, desc);
+    showToast(adopted
+      ? `📥 اتضاف حقل «${key}» — القيم الموجودة على القرص تحته اتحمّلت في الخانات، راجعها قبل الحفظ`
+      : `➕ اتضاف حقل «${key}» لكل ${kind === 'user' ? 'المستخدمين في كل البيئات' : 'البيئات'}`, 'success');
     renderFieldEditor(kind, {});
   };
   ov.querySelector('#fe-done').onclick = () => { closeModal(); renderStep(); };
@@ -2227,6 +2401,12 @@ function renderReviewStep() {
   }
   for (const x of removedDefaultsFields) {
     lines.push(`<div class="op-line">🗑️ حذف حقل افتراضي مؤكّد: <code>defaults.${esc(x.key)}</code>${x.envs.length ? ` — القيم اللي تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتشال من الملفات` : ' — مافيش قيم محفوظة تحته'}</div>`);
+  }
+  for (const x of overwrittenUserKeys) {
+    lines.push(`<div class="op-line">✏️ كتابة مؤكّدة فوق قيم يدوية: <code>${esc(x.key)}</code> — قيم القرص تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتكتب فوقها قيم الجلسة</div>`);
+  }
+  for (const x of overwrittenDefaultsKeys) {
+    lines.push(`<div class="op-line">✏️ كتابة مؤكّدة فوق قيم يدوية: <code>defaults.${esc(x.key)}</code> — قيم القرص تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتكتب فوقها قيم الجلسة</div>`);
   }
   const untouched = envOrder.filter(n => envs[n].existsOnDisk && !envs[n].dirty && envs[n].diskName === n);
   if (untouched.length) {

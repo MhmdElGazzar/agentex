@@ -54,6 +54,9 @@ const ui = new Function(script + `
   addField, renameField, removeField, toggleFieldSecret, fieldKeyProblem,
   deriveUserFieldRenames, deriveDefaultsFieldRenames, userFieldDropKeys, defaultsFieldDropKeys,
   userFieldBlastRadius, defaultsFieldBlastRadius, envScopedKeys,
+  fieldAddShapeConflict, renameOntoConflicts, renameFieldAdopting,
+  get overwrittenUserKeysV(){return overwrittenUserKeys}, get overwrittenDefaultsKeysV(){return overwrittenDefaultsKeys},
+  get builtinUserFields(){return BUILTIN_USER_FIELDS}, get builtinDefaultsFields(){return BUILTIN_DEFAULTS_FIELDS},
   setEnvDisk: (name, diskName) => { envs[name].existsOnDisk = true; envs[name].diskName = diskName; envs[name].dirty = false; },
   setLoadedFrom: (name, v) => { envs[name].loadedFrom = v; },
 };`)();
@@ -261,6 +264,103 @@ setTimeout(() => {
   test('envScopedKeys follows the defaults schema (a custom key is snapshot/restore-scoped)', () => {
     assert.ok(ui.envScopedKeys().includes('defaults.pin'));
     assert.ok(!ui.envScopedKeys().includes('defaults.otp'), 'the renamed-away key is no longer scoped');
+  });
+
+  // ── Collision adoption (re-gate defect 1, invariant #11) ──────────────────
+  // The flagship first-run journey: a team that hand-edited environment files
+  // adopts those keys into the schema — the wizard must adopt the values, and
+  // silent loss must be impossible on every collision path.
+  test('ADD-collision adopts hand-added user values from disk (national_id probe)', () => {
+    ui.setLoadedFrom('prod', {
+      portalUrl: 'https://old.example', customTop: 'kept',
+      defaults: { locale: 'ar' },
+      users: {
+        valid_user: { userId: '0', apiKeyRef: 'hand-added', national_id: '1234567890' },
+        expired_user: {},
+      },
+    });
+    const adopted = ui.addField('user', { key: 'national_id', label: 'الرقم القومي' });
+    assert.strictEqual(adopted, true, 'addField reports the adoption');
+    assert.strictEqual(ui.users[0].national_id, '1234567890', 'the active form prefills from the disk value');
+    assert.strictEqual(ui.envs['prod'].users[0].national_id, '1234567890');
+    assert.ok(!ui.envs['uat'].users[0].national_id, 'no disk value elsewhere — that slot stays empty');
+    ui.snapshotActiveEnv();
+    assert.strictEqual(ui.buildEnvConfig('prod').users.valid_user.national_id, '1234567890',
+      'the hand-added value survives the save instead of being screen-wins deleted');
+  });
+
+  test('ADD-collision adopts hand-added defaults values from disk (locale probe)', () => {
+    const adopted = ui.addField('defaults', { key: 'locale', label: 'اللغة' });
+    assert.strictEqual(adopted, true);
+    assert.strictEqual(ui.answers['defaults.locale'], 'ar', 'the active form prefills from the disk value');
+    assert.strictEqual(ui.envs['prod'].answers['defaults.locale'], 'ar');
+    ui.snapshotActiveEnv();
+    assert.strictEqual(ui.buildEnvConfig('prod').defaults.locale, 'ar', 'now managed AND preserved');
+  });
+
+  test('ADD-collision with a shape mismatch is refused with guidance — never silent loss', () => {
+    ui.setLoadedFrom('prod', {
+      portalUrl: 'https://old.example', customTop: 'kept',
+      defaults: { locale: 'ar' },
+      users: {
+        valid_user: { userId: '0', apiKeyRef: 'hand-added', national_id: '1234567890',
+                      secretRef: { envSecret: 'X_REF' }, meta: { nested: true } },
+        expired_user: { legacy_id: 'OLD-EXP' },
+      },
+    });
+    assert.ok(ui.fieldAddShapeConflict('user', 'secretRef', false),
+      'a plaintext field over an envSecret-shaped prop is refused (the ref must not silently die)');
+    assert.ok(ui.fieldAddShapeConflict('user', 'meta', false),
+      'an object prop cannot become a field — refused, hands off');
+    assert.ok(ui.fieldAddShapeConflict('user', 'legacy_id', true),
+      'a secret field over plaintext values is refused (values must not silently die)');
+    assert.strictEqual(ui.fieldAddShapeConflict('user', 'secretRef', true), null,
+      'secret over envSecret-shaped is the matching shape — adoptable');
+    const adopted = ui.addField('user', { key: 'secretRef', label: 'S', secret: true });
+    assert.strictEqual(adopted, true);
+    assert.strictEqual(ui.envs['prod'].users[0].secretRef, 'X_REF', 'the env-var NAME is adopted into the name slot');
+    ui.snapshotActiveEnv();
+    assert.deepStrictEqual(ui.buildEnvConfig('prod').users.valid_user.secretRef, { envSecret: 'X_REF' });
+  });
+
+  test('RENAME-onto a hand-added key with a DIFFERING value needs consent; empty slots adopt', () => {
+    ui.setLoadedFrom('prod', {
+      portalUrl: 'https://old.example', customTop: 'kept',
+      defaults: { locale: 'ar' },
+      users: {
+        valid_user: { userId: '0', apiKeyRef: 'hand-added', legacy_id: 'OLD-9' },
+        expired_user: { legacy_id: 'OLD-EXP' },
+      },
+    });
+    assert.deepStrictEqual(ui.renameOntoConflicts('user', 'userId', 'legacy_id'), ['prod'],
+      'the differing hand-added value is a conflict — the silent path is closed');
+    // The consent dialog's confirm action:
+    ui.renameFieldAdopting('user', 'userId', 'legacy_id', 'Legacy ID');
+    assert.deepStrictEqual(ui.overwrittenUserKeysV, [{ key: 'legacy_id', envs: ['prod'] }],
+      'the consented overwrite is recorded for the review ops list');
+    assert.strictEqual(ui.envs['prod'].users[0].legacy_id, '0551112223', 'screen value wins after consent');
+    assert.strictEqual(ui.envs['prod'].users[1].legacy_id, 'OLD-EXP',
+      'an EMPTY migrated slot adopts the hand-added value instead of deleting it');
+    ui.snapshotActiveEnv();
+    const built = ui.buildEnvConfig('prod');
+    assert.strictEqual(built.users.valid_user.legacy_id, '0551112223');
+    assert.strictEqual(built.users.expired_user.legacy_id, 'OLD-EXP');
+    assert.deepStrictEqual(ui.deriveUserFieldRenames(), [{ from: 'phone', to: 'legacy_id' }],
+      'rename bookkeeping still chains from the original disk key');
+  });
+
+  test('re-adding a removed key cancels its pending removal and re-adopts', () => {
+    assert.deepStrictEqual(ui.removedUserFieldsV.map(x => x.key), ['email'], 'email removal pending');
+    ui.addField('user', { key: 'email', label: 'Email', type: 'email' });
+    assert.deepStrictEqual(ui.removedUserFieldsV, [], 'the pending removal is cancelled');
+    assert.ok(!ui.userFieldDropKeys().includes('email'), 'the base key is no longer dropped');
+  });
+
+  test('the ui built-in field arrays are deep-equal to the engine ones (labels/hints included)', () => {
+    const engine = require('./engine.js');
+    assert.deepStrictEqual(ui.builtinUserFields, engine.BUILTIN_USER_FIELDS,
+      'key-list equality is not enough — labels/hints/placeholders must not drift');
+    assert.deepStrictEqual(ui.builtinDefaultsFields, engine.BUILTIN_DEFAULTS_FIELDS);
   });
 
   // ── Static copy checks ────────────────────────────────────────────────────
