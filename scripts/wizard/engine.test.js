@@ -4,7 +4,8 @@
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate, DEFAULT_ENV_NAME } = require('./engine.js');
+const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate, DEFAULT_ENV_NAME,
+        planSave, buildEnvUsers } = require('./engine.js');
 
 let passed = 0; const failures = [];
 function test(name, fn) {
@@ -285,6 +286,175 @@ test('buildConfigs: figma block only when a file key is provided', () => {
   assert.deepStrictEqual(custom.projectConfig.figma.token, { envSecret: 'MY_FIGMA_TOKEN' });
   const none = buildConfigs({ name: 'd' }, []);
   assert.ok(!('figma' in none.projectConfig), 'no figma block without a file key');
+});
+
+// ── planSave: the multi-environment batch save plan (wizard design #3) ────
+// Pure plan validation + arithmetic: disk state comes in as data, so every
+// rejection path — the wizard's FIRST destructive capability — is testable
+// without IO. The server executes only what a clean plan allows.
+const disk = (envNames = [], pristineNames = []) => ({ envNames, pristineNames });
+const cfgOk = (url = 'https://ok.example') => ({ portalUrl: url, users: { u1: { phone: '1' } } });
+const op = (o) => ({ confirmed: true, ...o });
+
+test('planSave accepts a multi-env write and reports the final environment set', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: { qa: cfgOk(), uat: cfgOk('https://uat.example') },
+    ops: { renames: [], deletes: [] },
+  }, disk(['qa']));
+  assert.deepStrictEqual(plan.errors, []);
+  assert.deepStrictEqual([...plan.finalEnvNames].sort(), ['qa', 'uat']);
+  assert.deepStrictEqual(plan.reconcile, []);
+});
+
+test('planSave validates every environment, naming the file in the error', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: { qa: cfgOk(), uat: { portalUrl: 'nope', users: { u: {} } } },
+    ops: {},
+  }, disk(['qa']));
+  assert.match(plan.errors.join(), /uat/);
+  assert.match(plan.errors.join(), /portalUrl/);
+});
+
+test('planSave refuses an un-consented rename or delete (invariant #11 double consent)', () => {
+  const base = { projectConfig: { name: 'd', defaultEnvironment: 'qa' }, environments: { qa: cfgOk() } };
+  const r1 = planSave({ ...base, ops: { renames: [{ from: 'old', to: 'new2' }], deletes: [] } }, disk(['qa', 'old']));
+  assert.match(r1.errors.join(), /consent/i);
+  const r2 = planSave({ ...base, ops: { renames: [], deletes: [{ name: 'old' }] } }, disk(['qa', 'old']));
+  assert.match(r2.errors.join(), /consent/i);
+  const r3 = planSave({ ...base, ops: { renames: [], deletes: [{ name: 'old', confirmed: true }] } }, disk(['qa', 'old']));
+  assert.deepStrictEqual(r3.errors, [], 'the same op with explicit consent passes');
+});
+
+test('planSave refuses ops on files it did not enumerate', () => {
+  const base = { projectConfig: { name: 'd', defaultEnvironment: 'qa' }, environments: { qa: cfgOk() } };
+  const r1 = planSave({ ...base, ops: { renames: [op({ from: 'ghost', to: 'new2' })], deletes: [] } }, disk(['qa']));
+  assert.match(r1.errors.join(), /ghost/);
+  const r2 = planSave({ ...base, ops: { renames: [], deletes: [op({ name: 'ghost' })] } }, disk(['qa']));
+  assert.match(r2.errors.join(), /ghost/);
+});
+
+test('planSave refuses a save that would leave zero environments', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: {},
+    ops: { renames: [], deletes: [op({ name: 'qa' })] },
+  }, disk(['qa']));
+  assert.match(plan.errors.join(), /at least one environment/i);
+  // Reconciliation alone must not zero the project either: a lone pristine
+  // sample with nothing written stays where it is (the save is refused).
+  const r2 = planSave({ projectConfig: { name: 'd', defaultEnvironment: 'qc' }, environments: {}, ops: {} },
+    disk(['qc'], ['qc']));
+  assert.match(r2.errors.join(), /at least one environment/i);
+});
+
+test('planSave: rename arithmetic — the default follows a rename; a ghost default is refused', () => {
+  const good = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'b' },
+    environments: {},
+    ops: { renames: [op({ from: 'a', to: 'b' })], deletes: [] },
+  }, disk(['a']));
+  assert.deepStrictEqual(good.errors, []);
+  assert.deepStrictEqual(good.finalEnvNames, ['b']);
+  const bad = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'a' },
+    environments: {},
+    ops: { renames: [op({ from: 'a', to: 'b' })], deletes: [] },
+  }, disk(['a']));
+  assert.match(bad.errors.join(), /defaultEnvironment/);
+});
+
+test('planSave: deleting the default without re-designating is a ghost default — refused', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: { uat: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: 'qa' })] },
+  }, disk(['qa', 'uat']));
+  assert.match(plan.errors.join(), /defaultEnvironment/);
+  const fixed = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'uat' },
+    environments: { uat: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: 'qa' })] },
+  }, disk(['qa', 'uat']));
+  assert.deepStrictEqual(fixed.errors, []);
+});
+
+test('planSave refuses colliding or path-escaping op names', () => {
+  const proj = { name: 'd', defaultEnvironment: 'qa' };
+  // rename target collides with a surviving file
+  assert.match(planSave({ projectConfig: proj, environments: {},
+    ops: { renames: [op({ from: 'a', to: 'qa' })], deletes: [] } }, disk(['qa', 'a'])).errors.join(), /collid/i);
+  // two renames onto the same target
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'a', to: 'x' }), op({ from: 'b', to: 'x' })], deletes: [] } },
+    disk(['qa', 'a', 'b'])).errors.join(), /collid/i);
+  // deleting a file this save also writes (delete runs last — it would kill the fresh write)
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: 'qa' })] } }, disk(['qa'])).errors.join(), /collid/i);
+  // deleting a rename target (same ordering hazard)
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'a', to: 'b' })], deletes: [op({ name: 'b' })] } },
+    disk(['qa', 'a', 'b'])).errors.join(), /collid/i);
+  // rename from === to is not a rename
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'a', to: 'a' })], deletes: [] } }, disk(['qa', 'a'])).errors.join(), /rename/i);
+  // path traversal in an op name
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: '../evil' })] } }, disk(['qa'])).errors.join(), /name/i);
+});
+
+test('planSave: renamed-and-edited — written under the new name, the old file removed by the op', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'b' },
+    environments: { b: cfgOk() },
+    ops: { renames: [op({ from: 'a', to: 'b' })], deletes: [] },
+  }, disk(['a']));
+  assert.deepStrictEqual(plan.errors, []);
+  assert.deepStrictEqual(plan.finalEnvNames, ['b']);
+});
+
+test('planSave reconciles pristine samples this save does not claim — and only those', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'uat' },
+    environments: { uat: cfgOk() },
+    ops: { renames: [], deletes: [] },
+  }, disk(['qc', 'uat'], ['qc']));
+  assert.deepStrictEqual(plan.errors, []);
+  assert.deepStrictEqual(plan.reconcile, ['qc']);
+  assert.deepStrictEqual(plan.finalEnvNames, ['uat']);
+  // writing over the pristine name claims it — nothing reconciled
+  const claimed = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qc' },
+    environments: { qc: cfgOk() },
+    ops: {},
+  }, disk(['qc'], ['qc']));
+  assert.deepStrictEqual(claimed.errors, []);
+  assert.deepStrictEqual(claimed.reconcile, []);
+});
+
+// ── buildEnvUsers: per-user unknown-prop preservation (invariant #11) ─────
+test('buildEnvUsers merges each entry onto its on-disk base — hand-added props survive', () => {
+  const base = {
+    valid_user: { phone: '0550000001', role: 'customer', apiKeyRef: 'hand-added' },
+    old_user: { phone: '9' },
+  };
+  const out = buildEnvUsers([
+    { handle: 'valid_user', phone: '0550009999', email: '', role: 'customer', notes: '' },
+    { handle: 'new_user', phone: '1' },
+  ], base);
+  assert.deepStrictEqual(out.valid_user,
+    { phone: '0550009999', role: 'customer', apiKeyRef: 'hand-added' },
+    'managed fields mirror the screen; unmanaged props are preserved');
+  assert.deepStrictEqual(out.new_user, { phone: '1' });
+  assert.ok(!('old_user' in out), 'a user removed on screen is removed from the file');
+});
+
+test('buildEnvUsers: an emptied managed field clears the saved value (screen wins)', () => {
+  const out = buildEnvUsers(
+    [{ handle: 'u', phone: '', role: 'admin' }],
+    { u: { phone: '0550000001', notes: 'kept? no — cleared is cleared', custom: 'kept' } });
+  assert.deepStrictEqual(out.u, { role: 'admin', custom: 'kept' });
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

@@ -287,6 +287,16 @@ function validateConfigs(projectConfig, envConfig, envName) {
   const errors = [];
   if (!projectConfig || typeof projectConfig !== 'object') errors.push('projectConfig is required');
   else if (!String(projectConfig.name || '').trim()) errors.push('project name is required');
+  return errors.concat(validateEnvConfig(envConfig, envName));
+}
+
+/**
+ * Per-environment validation — one environment config against its target file
+ * name. Split out of validateConfigs so the multi-environment save plan can run
+ * it once per environment.
+ */
+function validateEnvConfig(envConfig, envName) {
+  const errors = [];
   if (!ENV_NAME_RE.test(String(envName || ''))) {
     errors.push('envName must be lowercase letters/digits/-/_ (max 31 chars)');
   }
@@ -302,6 +312,143 @@ function validateConfigs(projectConfig, envConfig, envName) {
     }
   }
   return errors;
+}
+
+/**
+ * Plan a multi-environment batch save (wizard design #3): validate every
+ * environment config plus the explicit, user-confirmed ops (renames/deletes),
+ * and compute the resulting on-disk state. Pure function — disk state comes in
+ * as data — so every rejection path of the wizard's first destructive
+ * capability is testable without IO.
+ *
+ * Consent is data (invariant #11): every rename/delete op must carry
+ * `confirmed: true`, set by the UI only after its confirm dialog. The server
+ * never renames or deletes anything not explicitly listed here — pristine
+ * sample reconciliation (announced, echoed) is the one design-#1 exception,
+ * and it too is computed in this plan, never improvised at write time.
+ *
+ * @param {{projectConfig: object, environments: object, ops: {renames?: {from,to,confirmed}[], deletes?: {name,confirmed}[]}}} payload
+ * @param {{envNames: string[], pristineNames: string[]}} diskState  environments/*.json base names on disk; which of them are pristine samples
+ * @returns {{errors: string[], reconcile: string[], finalEnvNames: string[]}}
+ */
+function planSave(payload, diskState) {
+  const errors = [];
+  const projectConfig = payload && payload.projectConfig;
+  const environments = (payload && payload.environments) || {};
+  const ops = (payload && payload.ops) || {};
+  const renames = Array.isArray(ops.renames) ? ops.renames : [];
+  const deletes = Array.isArray(ops.deletes) ? ops.deletes : [];
+  const diskEnvs = ((diskState && diskState.envNames) || []).map(String);
+  const pristine = ((diskState && diskState.pristineNames) || []).map(String);
+
+  if (!projectConfig || typeof projectConfig !== 'object') errors.push('projectConfig is required');
+  else if (!String(projectConfig.name || '').trim()) errors.push('project name is required');
+
+  if (!environments || typeof environments !== 'object' || Array.isArray(environments)) {
+    return { errors: errors.concat('environments must be an object keyed by environment name'), reconcile: [], finalEnvNames: [] };
+  }
+
+  // ── Per-environment validation, each error naming its file ──────────────
+  const written = Object.keys(environments);
+  for (const [name, cfg] of Object.entries(environments)) {
+    for (const e of validateEnvConfig(cfg, name)) errors.push(`environments/${name}.json: ${e}`);
+  }
+
+  // ── Ops: explicit, enumerated, consented — or refused ───────────────────
+  const unconsented = [];
+  for (const r of renames) if (!r || r.confirmed !== true) unconsented.push(`rename "${r && r.from}" → "${r && r.to}"`);
+  for (const d of deletes) if (!d || d.confirmed !== true) unconsented.push(`delete "${d && d.name}"`);
+  if (unconsented.length) {
+    errors.push(`refused without explicit consent (confirmed: true): ${unconsented.join(', ')}`);
+  }
+
+  const renameFroms = [];
+  const renameTos = [];
+  for (const r of renames) {
+    if (!r) continue;
+    const from = String(r.from || '');
+    const to = String(r.to || '');
+    if (!ENV_NAME_RE.test(from) || !ENV_NAME_RE.test(to)) {
+      errors.push(`rename names must be valid environment names: "${from}" → "${to}"`);
+      continue;
+    }
+    if (from === to) { errors.push(`rename "${from}" → "${to}" is not a rename`); continue; }
+    if (!diskEnvs.includes(from)) errors.push(`rename source "${from}" is not an environment file this project has`);
+    if (written.includes(from)) errors.push(`rename source "${from}" collides with a file this save also writes`);
+    if (renameFroms.includes(from)) errors.push(`"${from}" is renamed more than once`);
+    if (renameTos.includes(to)) errors.push(`rename target "${to}" collides with another rename target`);
+    renameFroms.push(from);
+    renameTos.push(to);
+  }
+
+  const deleteNames = [];
+  for (const d of deletes) {
+    if (!d) continue;
+    const name = String(d.name || '');
+    if (!ENV_NAME_RE.test(name)) { errors.push(`delete name must be a valid environment name: "${name}"`); continue; }
+    if (!diskEnvs.includes(name)) errors.push(`delete "${name}" is not an environment file this project has`);
+    // Execution order is writes → renames → deletes: a delete aimed at a file
+    // this save creates would destroy the fresh write. Refused outright.
+    if (written.includes(name) || renameTos.includes(name)) errors.push(`delete "${name}" collides with a file this save creates`);
+    if (renameFroms.includes(name)) errors.push(`delete "${name}" collides with a rename of the same file`);
+    if (deleteNames.includes(name)) errors.push(`"${name}" is deleted more than once`);
+    deleteNames.push(name);
+  }
+
+  // ── Save-time reconciliation (design #1, generalized): a structurally-
+  // pristine leftover sample this save does not claim (write to, rename
+  // from/to, or explicitly delete) is a scaffold artifact and is removed —
+  // listed in the plan so the review step and the response can both name it.
+  const reconcile = pristine.filter(n =>
+    diskEnvs.includes(n) && !written.includes(n) &&
+    !renameTos.includes(n) && !renameFroms.includes(n) && !deleteNames.includes(n)).sort();
+
+  // ── Final-state arithmetic ───────────────────────────────────────────────
+  const surviving = diskEnvs.filter(n =>
+    !deleteNames.includes(n) && !renameFroms.includes(n) && !reconcile.includes(n));
+  for (const to of renameTos) {
+    // A target that collides with a file surviving this save would clobber an
+    // environment the user never consented to touch — refused either way
+    // (plain rename-onto or renamed-and-edited-onto).
+    if (surviving.includes(to)) {
+      errors.push(`rename target "${to}" collides with an existing environment file`);
+    }
+  }
+  const finalEnvNames = [...new Set([...surviving, ...renameTos, ...written])].sort();
+
+  if (finalEnvNames.length === 0) {
+    errors.push('at least one environment must remain after this save');
+  }
+
+  const finalDefault = String((projectConfig && projectConfig.defaultEnvironment) || '');
+  if (!finalDefault) {
+    errors.push('projectConfig.defaultEnvironment is required');
+  } else if (finalEnvNames.length && !finalEnvNames.includes(finalDefault)) {
+    errors.push(`defaultEnvironment "${finalDefault}" would not name any environment file after this save`);
+  }
+
+  return { errors, reconcile, finalEnvNames };
+}
+
+/**
+ * Build an environment file's users object from the wizard's user list,
+ * merging each entry onto its on-disk base entry so hand-added properties the
+ * wizard has no input for survive a save (invariant #11). The managed fields
+ * mirror the screen exactly: a value sets the key, an empty field unsets it.
+ * ui.html's buildUsersObj mirrors this logic (browser copy — keep in sync).
+ */
+function buildEnvUsers(list, baseUsers) {
+  const base = baseUsers || {};
+  const users = {};
+  for (const u of (list || [])) {
+    if (!u || !u.handle) continue;
+    const entry = Object.assign({}, base[u.handle]);
+    for (const k of ['phone', 'email', 'role', 'notes']) {
+      if (u[k]) entry[k] = u[k]; else delete entry[k];
+    }
+    users[u.handle] = entry;
+  }
+  return users;
 }
 
 /**
@@ -369,6 +516,6 @@ function flattenObject(obj, prefix = '') {
 
 module.exports = {
   DEFAULT_ENV_NAME,
-  buildConfigs, validate, validateConfigs, isHttpUrl,
+  buildConfigs, validate, validateConfigs, validateEnvConfig, planSave, buildEnvUsers, isHttpUrl,
   extractFromText, extractUsers, mergeExtracted, mergeUsers, flattenObject,
 };
