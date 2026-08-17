@@ -855,6 +855,19 @@ function envNameProblem(name, opts = {}) {
   if (envs[name]) return `«${name}» موجودة بالفعل في الجلسة`;
   if (unreadableEnvNames.includes(name)) return `«${name}» اسم ملف موجود على القرص لكنه غير صالح JSON — الاسم محجوز لحد ما يتصلّح`;
   if (pendingDeletes.includes(name)) return `«${name}» متعلَّم عليها حذف في الجلسة دي — استخدم اسمًا تانيًا`;
+  // A name may look free in the session while its FILE is still on disk,
+  // vacated by a pending rename: reusing it would chain renames into the
+  // batch save's in-order execution — the exact path that silently
+  // overwrites and destroys an environment file. Blocked until the save
+  // lands (the server refuses it too, as the backstop). The one exception:
+  // renaming an environment BACK to its own disk name (opts.self), which
+  // simply cancels its pending rename.
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (n !== opts.self && e.existsOnDisk && e.diskName === name) {
+      return `«${name}» لسه اسم ملف موجود على القرص (هيتنقل لـ «${n}» عند الحفظ) — احفظ الأول وبعدين استخدم الاسم، أو اختر اسمًا تانيًا`;
+    }
+  }
   if (opts.forRename && pristineSamples.includes(name)) return `«${name}» ملف نموذجي لسه موجود على القرص — ماينفعش إعادة التسمية عليه`;
   return null;
 }
@@ -1502,8 +1515,9 @@ function openRenameDialog(name) {
     if (newName === name) { closeModal(); return; }
     // Renaming an ON-DISK file onto a pristine sample's name would collide at
     // execution time — blocked here (forRename); a NEW env may take the name
-    // (its write claims the sample).
-    const problem = envNameProblem(newName, { forRename: e.existsOnDisk });
+    // (its write claims the sample). self allows renaming back to the env's
+    // own disk name, which cancels its pending rename.
+    const problem = envNameProblem(newName, { forRename: e.existsOnDisk, self: name });
     if (problem) { ov.querySelector('#rn-err').textContent = '❌ ' + problem; return; }
     renameSessionEnv(name, newName);
     closeModal();
@@ -1719,8 +1733,8 @@ function renderReviewStep() {
   ops.className = 'ops-list';
   const lines = [];
   for (const t of tabs) lines.push(`<div class="op-line">✍️ هيتكتب <code>${esc(t.label)}</code></div>`);
-  for (const r of renames) lines.push(`<div class="op-line">🏷️ إعادة تسمية مأكّدة: <code>environments/${esc(r.from)}.json → environments/${esc(r.to)}.json</code></div>`);
-  for (const d of pendingDeletes) lines.push(`<div class="op-line">🗑️ حذف مأكّد: <code>environments/${esc(d)}.json</code></div>`);
+  for (const r of renames) lines.push(`<div class="op-line">🏷️ إعادة تسمية مؤكّدة: <code>environments/${esc(r.from)}.json → environments/${esc(r.to)}.json</code></div>`);
+  for (const d of pendingDeletes) lines.push(`<div class="op-line">🗑️ حذف مؤكّد: <code>environments/${esc(d)}.json</code></div>`);
   const untouched = envOrder.filter(n => envs[n].existsOnDisk && !envs[n].dirty && envs[n].diskName === n);
   if (untouched.length) {
     lines.push(`<div class="op-line">🔒 من غير أي تغيير: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join('، ')}</div>`);
