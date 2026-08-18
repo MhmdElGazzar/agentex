@@ -35,6 +35,39 @@ Naming an environment that has no file is an **error**: stop and list the files 
 `environments/`. Never silently fall back to another environment. Record the active
 environment name in `report.md`.
 
+## Session reuse (login modes)
+
+Resolve `login` from `config/project.json` (default `{ "mode": "fresh" }`):
+
+- **`fresh`** — every scenario performs a live login. No state is saved or reused. This is
+  the default and preserves legacy behavior exactly.
+- **`session`** — reuse a saved auth `storageState` per user; perform a live login only when
+  the saved state is missing or fails its landmark check, then save it. This is what lets an
+  authenticated app be tested without re-typing a login in every spec.
+
+`login.session` config:
+
+```json
+"login": {
+  "mode": "session",
+  "stateDir": "test/.auth",
+  "users": {
+    "staff_user": { "landmark": { "present": "role=button[name='Account']" } }
+  }
+}
+```
+
+State path per user is `<stateDir>/<environment>-<userHandle>-state.json`. A landmark is an
+element that is true ONLY when logged in, verified with a `find`/`eval` check — **never by
+URL**. Prefer a `present` landmark; `absent` (a logged-out marker) is allowed as a secondary
+condition. A user with `mode: session` but no landmark is an **error**: stop and report the
+missing landmark; never save or trust an unverified state. The `stateDir` holds live session
+tokens — the consuming project MUST gitignore it.
+
+Session reuse uses `playwright-cli`'s own `state-save` / `state-load` (see the
+`references/playwright-cli.md` "Storage / auth state" section) — the same tool that drives
+the run, so no separate browser or bridge is involved.
+
 ## Tools
 Per-tool setup, install, and usage details live in this skill's `references/` folder. **Read the
 relevant file BEFORE the first use of that tool in a session**, and again whenever one of its
@@ -64,6 +97,9 @@ Always-on rules (full details in the files above):
 - Specs may include **`ui-check:` steps** (compare the live page against a design baseline —
   a Figma frame or a screenshot image) — execute via the **ui-check** skill; read it before
   the first such step. Unresolvable baselines are BLOCKED, never improvised.
+- When `login.mode` is `session` (see "Session reuse" above), the **orchestrator**
+  establishes each user's auth state before any executor runs (see the mode steps below);
+  executors never perform login themselves — they receive a prepared state to load.
 - Helper scripts (all in `${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/scripts/`, each prints
   one JSON line): `preflight.js` — check all tools in one call at session start;
   `init_run.js [--sessions label1,label2]` — create the whole execution tree (use instead of
@@ -117,8 +153,12 @@ Follow this loop and STOP for approval at each checkpoint. Do not skip ahead.
 3. **EXECUTE** — Before the first browser action, run `init_run.js` (no `--sessions` needed)
    to create `executions/execu_<timestamp>/` and get this run's unique session name; prefix
    EVERY `playwright-cli` command with `-s=<that name>` (never run a bare, default-session
-   command). Run scenarios one at a time. After each scenario, report PASS/FAIL with evidence
-   (screenshot + observed vs. expected).
+   command). **In `session` login mode**, before the first scenario, establish the run's
+   user: `open <target>` → `state-load <path>` → verify the landmark; if it fails, perform
+   the live login once then `state-save <path>`, and continue from the authenticated session.
+   (In `fresh` mode skip this — scenarios log in live as written.) Run scenarios one at a
+   time. After each scenario, report PASS/FAIL with evidence (screenshot + observed vs.
+   expected).
    → Checkpoint: pause after each scenario before moving to the next.
 4. **REPORT** — Save screenshots/logs under `browser-sessions/<session>/` in the run folder,
    then write `report.md` + `bugs/` there, and close your session (`-s=<session> close` —
@@ -139,13 +179,22 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
    - **First run:** if no `test/` specs exist yet, copy the bundled samples from
      `${CLAUDE_PLUGIN_ROOT}/test/suite1/` into `./test/suite1/` as an editable starting point,
      and tell the user to adapt them to their app before a real regression.
-3. **DISPATCH** — Spawn one **`qa-executor`** subagent per test file, injecting its `SESSION`,
+3. **DISPATCH** — **Session login mode only, first — PREPARE AUTH:** compute the set of
+   *unique* users across all planned specs and, once each, in an orchestrator-owned session:
+   `open <target>` → `state-load <path>` → landmark check; if that fails, perform the live
+   login once, `state-save <path>`, and close. Doing this BEFORE dispatch keeps parallel
+   executors from all logging in at once (no lock needed) and makes the resulting
+   `storageState` files read-only inputs. If a user's login can't be established, mark every
+   spec needing that user BLOCKED and do not dispatch it.
+   Then spawn one **`qa-executor`** subagent per test file, injecting its `SESSION`,
    `SESSION_DIR` (`…/browser-sessions/<session>`), `WORKING_DIR`, `TARGET_URL`, `ENVIRONMENT`,
-   `TEST_DATA`, and `TEST_SPEC`. `ENVIRONMENT` is the resolved environment name (empty for
-   legacy projects); `TEST_DATA` is the environment's `defaults` + `users` JSON (secrets left
-   as `{ envSecret }` refs — the executor resolves them only at use time and never prints
-   them). Each uses its own `-s=<session>`. Launch them in a single batch so they run
-   concurrently. Expect ~6–8 browser sessions to run at once; the rest queue automatically.
+   `TEST_DATA`, `TEST_SPEC`, and — in `session` mode — `AUTH_STATE` (the prepared state path
+   for the spec's user) and `AUTH_LANDMARK` (that user's landmark); both are empty in `fresh`
+   mode. `ENVIRONMENT` is the resolved environment name (empty for legacy projects);
+   `TEST_DATA` is the environment's `defaults` + `users` JSON (secrets left as `{ envSecret }`
+   refs — the executor resolves them only at use time and never prints them). Each uses its
+   own `-s=<session>`. Launch them in a single batch so they run concurrently. Expect ~6–8
+   browser sessions to run at once; the rest queue automatically.
 4. **MERGE** — Collect each subagent's report. **Resolve deferred ui-check questions first:**
    executors cannot ask the user mid-run, so a `ui-check:` step needing a confirmation
    (exact-mode suspected rendering noise) or a stop-and-ask (an unintelligible variant set)

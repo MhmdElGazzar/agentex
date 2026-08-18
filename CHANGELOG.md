@@ -2,6 +2,25 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **Session login mode in the test-run path (`login.mode: session`).** Auth `storageState`
+  reuse is now wired into `browser-testing` (sequential + parallel) and `qa-executor`, not
+  just the `define-flow` authoring skill. In `session` mode the orchestrator establishes each
+  unique user's auth once (before parallel dispatch — no thundering herd, no lock) via the
+  driver's own `state-save`/`state-load`, and injects a read-only `AUTH_STATE` + `AUTH_LANDMARK`
+  into each executor, which loads the state and verifies a login-only landmark instead of
+  re-typing a live login. Landmark-verified (never URL-based); an invalid state fails loudly
+  as BLOCKED rather than proceeding unauthenticated. Default stays `fresh` (behavior
+  unchanged; `AUTH_STATE` absent). Motivation: on an authenticated multi-app product,
+  `login.mode: session` was already declarable in config but had no effect in the run path —
+  every run re-typed a full login per spec, which was both the dominant time cost and a
+  flakiness source (post-login timeouts/401s). `storageState` files also drop straight into a
+  compiled `.spec.ts` `storageState:` option for the regression tier.
+- **`references/playwright-cli.md` now documents the driver's Storage commands**
+  (`state-save` / `state-load`, `cookie-*` / `localstorage-*`, `open --persistent --profile`)
+  — previously omitted, though the run path now depends on them.
+
 ## [0.17.0] — 2026-08-17
 ### Added
 - **Customizable test-user fields — one shared, consumer-owned field schema.** The wizard's

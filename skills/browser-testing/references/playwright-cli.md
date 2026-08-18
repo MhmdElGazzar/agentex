@@ -47,6 +47,19 @@ when a `playwright-cli` command behaves unexpectedly.
   cleanup AND confirms no other execution is running.
 - `show` — open the playwright dashboard to watch sessions (works for headless too).
 
+## Storage / auth state
+- `state-save [file]` — write the current session's cookies + localStorage as a
+  Playwright-native `storageState` JSON. `state-load <file>` — load one into a session (call
+  it right after `open`, then `goto`/`reload` so it applies). This is how the `session` login
+  mode reuses a login across runs (see browser-testing SKILL.md "Session reuse"), and the
+  files feed a compiled `.spec.ts` `storageState:` option unchanged.
+- Granular access if you need it: `cookie-*`, `localstorage-*`, `sessionstorage-*`.
+- `open --persistent --profile <dir>` is an alternative reuse model (a persistent user-data
+  dir per identity); `state-save`/`state-load` is preferred — portable and regression-tier
+  compatible. `storageState` carries cookies + localStorage ONLY — an app that holds its
+  token purely in memory won't resume; the landmark check makes that fail loudly (BLOCKED),
+  not silently proceed unauthenticated.
+
 ## Concurrency
 - Effective parallelism is bound by the machine's CPU/RAM (each session is a real Chromium):
   plan for ~6–8 concurrent sessions; the harness queues the rest automatically.
