@@ -24,11 +24,17 @@ All notable changes to AgenTeX are documented here.
   cookies but **not** localStorage across a navigation (Playwright seeds localStorage only at
   context creation; the CLI's post-hoc load is wiped by the next `goto`), so it silently fails
   for localStorage-based auth. `session` mode therefore uses `open --persistent --profile`
-  (carries cookies + localStorage, drivable by the same CLI). Concurrency trade-off: a profile
-  dir can't be opened twice at once, so parallel specs sharing a user get a per-executor copy.
-  `state-save`'s `storageState` JSON is still the right artifact for a compiled `.spec.ts`
-  `storageState:` (that path seeds localStorage at newContext). A future open-time
-  `--storage-state` flag on the CLI would give portable-JSON reuse without profiles.
+  (carries cookies + localStorage, drivable by the same CLI). Concurrency limit: a profile dir
+  can't be opened twice at once, so parallel specs sharing a user get a per-executor copy — but
+  the copies **share one refresh token**, so concurrent same-user copies race on refresh-token
+  rotation (one is bounced with `REFRESH_TOKEN_INVALID`); schedule same-user specs sequentially
+  unless the app does not rotate on refresh (distinct users run concurrently). `state-save`'s
+  `storageState` JSON is still the right artifact for a compiled `.spec.ts` `storageState:`
+  (that path seeds localStorage at newContext). A future open-time `--storage-state` flag on
+  the CLI would give portable-JSON reuse without profiles. Field-validated across three
+  measurement gates (see PR discussion): ~3× faster authentication, 100% of login form
+  interaction eliminated, and immunity to the fresh-login rate-limit that fails a concurrent
+  baseline batch.
 
 ## [0.17.0] — 2026-08-17
 ### Added

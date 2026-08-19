@@ -54,8 +54,11 @@ when a `playwright-cli` command behaves unexpectedly.
   keep their auth token in **localStorage** (SPA / Capacitor / JWT-in-localStorage), and it is
   driven by the same `playwright-cli` as the test. Caveat: one profile dir can't be opened by
   two browsers at once (dir lock) — for concurrent same-user sessions, copy the authed profile
-  per session. This is how `session` login mode works (see browser-testing SKILL.md "Session
-  reuse").
+  per session. But the copies **share one refresh token**: if the app silent-refreshes on
+  load, concurrent copies of the same user race and one is bounced to login
+  (`REFRESH_TOKEN_INVALID`), so schedule same-user specs **sequentially** unless the app does
+  not rotate on refresh (distinct users are fine concurrently). This is how `session` login
+  mode works (see browser-testing SKILL.md "Session reuse").
 - **Do NOT rely on `state-load` for a localStorage-based login.** `state-save [file]` /
   `state-load <file>` round-trip a Playwright `storageState` JSON, but Playwright can only seed
   localStorage at context *creation* — the CLI's post-hoc `state-load` restores cookies while

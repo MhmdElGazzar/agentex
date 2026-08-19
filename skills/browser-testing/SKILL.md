@@ -78,6 +78,16 @@ lock), so **parallel** specs sharing a user get a per-executor copy of the authe
 `storageState` JSON is still the right artifact for a compiled `.spec.ts` `storageState:`,
 which DOES seed localStorage at newContext — see `references/playwright-cli.md`.)
 
+**Concurrency limit — copies share the refresh token (field-verified).** Copying the profile
+resolves the Chromium **dir lock**, but the copies still carry the **same refresh token**. If
+the app silent-refreshes on load, two copies of one user opened **concurrently** race: the
+first rotates the token and the second gets a `401`/`REFRESH_TOKEN_INVALID` and is bounced to
+login. So a profile copy is NOT an independent concurrent session for the *same* user —
+distinct users run in parallel freely, but **the same user across concurrent specs must run
+sequentially** (or the backend must issue multi-session refresh tokens). Prefer sequential
+scheduling for same-user specs; reserve the copy purely for the dir-lock case where the app
+does not rotate on refresh.
+
 ## Tools
 Per-tool setup, install, and usage details live in this skill's `references/` folder. **Read the
 relevant file BEFORE the first use of that tool in a session**, and again whenever one of its
@@ -195,10 +205,14 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
    that fails, perform the live login once (saved to the profile automatically) and close.
    Because a persistent profile can't be opened by two browsers at once, for any user shared
    by specs that will run **concurrently**, copy the authed profile dir per executor
-   (`profile-<user>` → `profile-<user>-<session>`) so each has its own. Doing all this BEFORE
-   dispatch keeps executors from logging in at once and makes each profile a ready input. If a
-   user's login can't be established, mark every spec needing that user BLOCKED and do not
-   dispatch it.
+   (`profile-<user>` → `profile-<user>-<session>`) so each clears the dir lock. **But the
+   copies share one refresh token** (see "Session reuse" concurrency limit): if the app
+   silent-refreshes on load, concurrent copies of the *same* user race and one is bounced to
+   login with `REFRESH_TOKEN_INVALID`. So **schedule same-user specs sequentially** by default
+   — the copy only helps when the app does not rotate on refresh. Distinct users dispatch
+   concurrently as normal. Doing all this BEFORE dispatch keeps executors from logging in at
+   once and makes each profile a ready input. If a user's login can't be established, mark
+   every spec needing that user BLOCKED and do not dispatch it.
    Then spawn one **`qa-executor`** subagent per test file, injecting its `SESSION`,
    `SESSION_DIR` (`…/browser-sessions/<session>`), `WORKING_DIR`, `TARGET_URL`, `ENVIRONMENT`,
    `TEST_DATA`, `TEST_SPEC`, and — in `session` mode — `AUTH_PROFILE` (the prepared per-executor
