@@ -35,6 +35,59 @@ Naming an environment that has no file is an **error**: stop and list the files 
 `environments/`. Never silently fall back to another environment. Record the active
 environment name in `report.md`.
 
+## Session reuse (login modes)
+
+Resolve `login` from `config/project.json` (default `{ "mode": "fresh" }`):
+
+- **`fresh`** — every scenario performs a live login. No state is saved or reused. This is
+  the default and preserves legacy behavior exactly.
+- **`session`** — reuse a per-user authenticated **persistent browser profile**; perform a
+  live login only when the profile is missing or fails its landmark check, then it is saved
+  on disk automatically. This is what lets an authenticated app be tested without re-typing a
+  login in every spec.
+
+`login.session` config:
+
+```json
+"login": {
+  "mode": "session",
+  "profileDir": "test/.auth",
+  "users": {
+    "staff_user": { "landmark": { "present": "[aria-label='Sign out']" } }
+  }
+}
+```
+
+Each user's profile is `<profileDir>/profile-<userHandle>/` — a real on-disk Chromium
+user-data dir, opened via `open --persistent --profile <dir>`. A landmark is an element that
+is true ONLY when logged in, verified with a `find`/`eval` check — **never by URL**. Prefer a
+`present` landmark; `absent` (a logged-out marker) is allowed as a secondary condition. A user
+with `mode: session` but no landmark is an **error**: stop and report the missing landmark;
+never trust an unverified profile. The `profileDir` holds live session state — the consuming
+project MUST gitignore it.
+
+**Why a persistent profile, not `state-save`/`state-load`:** the driver's `state-load` does
+not restore **localStorage** across a navigation (Playwright seeds localStorage only at
+context creation; the CLI's post-hoc load is wiped on the next `goto`) — so it silently fails
+for the very common case of an app keeping its auth token in localStorage (SPA / Capacitor /
+JWT-in-localStorage; field-verified). A persistent `--profile` is an on-disk profile that
+carries cookies AND localStorage across opens, and is drivable by the same `playwright-cli`
+that runs the test. Trade-off: a profile dir can't be opened by two browsers at once (dir
+lock), so **parallel** specs sharing a user get a per-executor copy of the authed profile
+(see DISPATCH); **sequential** runs share the one profile directly. (`state-save`'s
+`storageState` JSON is still the right artifact for a compiled `.spec.ts` `storageState:`,
+which DOES seed localStorage at newContext — see `references/playwright-cli.md`.)
+
+**Concurrency limit — copies share the refresh token (field-verified).** Copying the profile
+resolves the Chromium **dir lock**, but the copies still carry the **same refresh token**. If
+the app silent-refreshes on load, two copies of one user opened **concurrently** race: the
+first rotates the token and the second gets a `401`/`REFRESH_TOKEN_INVALID` and is bounced to
+login. So a profile copy is NOT an independent concurrent session for the *same* user —
+distinct users run in parallel freely, but **the same user across concurrent specs must run
+sequentially** (or the backend must issue multi-session refresh tokens). Prefer sequential
+scheduling for same-user specs; reserve the copy purely for the dir-lock case where the app
+does not rotate on refresh.
+
 ## Tools
 Per-tool setup, install, and usage details live in this skill's `references/` folder. **Read the
 relevant file BEFORE the first use of that tool in a session**, and again whenever one of its
@@ -64,6 +117,9 @@ Always-on rules (full details in the files above):
 - Specs may include **`ui-check:` steps** (compare the live page against a design baseline —
   a Figma frame or a screenshot image) — execute via the **ui-check** skill; read it before
   the first such step. Unresolvable baselines are BLOCKED, never improvised.
+- When `login.mode` is `session` (see "Session reuse" above), the **orchestrator**
+  establishes each user's auth state before any executor runs (see the mode steps below);
+  executors never perform login themselves — they receive a prepared state to load.
 - Helper scripts (all in `${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/scripts/`, each prints
   one JSON line): `preflight.js` — check all tools in one call at session start;
   `init_run.js [--sessions label1,label2]` — create the whole execution tree (use instead of
@@ -117,8 +173,12 @@ Follow this loop and STOP for approval at each checkpoint. Do not skip ahead.
 3. **EXECUTE** — Before the first browser action, run `init_run.js` (no `--sessions` needed)
    to create `executions/execu_<timestamp>/` and get this run's unique session name; prefix
    EVERY `playwright-cli` command with `-s=<that name>` (never run a bare, default-session
-   command). Run scenarios one at a time. After each scenario, report PASS/FAIL with evidence
-   (screenshot + observed vs. expected).
+   command). **In `session` login mode**, before the first scenario, establish the run's
+   user: `open <target> --persistent --profile <profileDir>/profile-<user>` → verify the
+   landmark; if it fails (missing/expired profile), perform the live login once — it is saved
+   to the profile automatically — and continue from the authenticated session. (In `fresh`
+   mode skip this — scenarios log in live as written.) Run scenarios one at a time. After each
+   scenario, report PASS/FAIL with evidence (screenshot + observed vs. expected).
    → Checkpoint: pause after each scenario before moving to the next.
 4. **REPORT** — Save screenshots/logs under `browser-sessions/<session>/` in the run folder,
    then write `report.md` + `bugs/` there, and close your session (`-s=<session> close` —
@@ -139,13 +199,29 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
    - **First run:** if no `test/` specs exist yet, copy the bundled samples from
      `${CLAUDE_PLUGIN_ROOT}/test/suite1/` into `./test/suite1/` as an editable starting point,
      and tell the user to adapt them to their app before a real regression.
-3. **DISPATCH** — Spawn one **`qa-executor`** subagent per test file, injecting its `SESSION`,
+3. **DISPATCH** — **Session login mode only, first — PREPARE AUTH:** compute the set of
+   *unique* users across all planned specs and, once each, in an orchestrator-owned session:
+   `open <target> --persistent --profile <profileDir>/profile-<user>` → landmark check; if
+   that fails, perform the live login once (saved to the profile automatically) and close.
+   Because a persistent profile can't be opened by two browsers at once, for any user shared
+   by specs that will run **concurrently**, copy the authed profile dir per executor
+   (`profile-<user>` → `profile-<user>-<session>`) so each clears the dir lock. **But the
+   copies share one refresh token** (see "Session reuse" concurrency limit): if the app
+   silent-refreshes on load, concurrent copies of the *same* user race and one is bounced to
+   login with `REFRESH_TOKEN_INVALID`. So **schedule same-user specs sequentially** by default
+   — the copy only helps when the app does not rotate on refresh. Distinct users dispatch
+   concurrently as normal. Doing all this BEFORE dispatch keeps executors from logging in at
+   once and makes each profile a ready input. If a user's login can't be established, mark
+   every spec needing that user BLOCKED and do not dispatch it.
+   Then spawn one **`qa-executor`** subagent per test file, injecting its `SESSION`,
    `SESSION_DIR` (`…/browser-sessions/<session>`), `WORKING_DIR`, `TARGET_URL`, `ENVIRONMENT`,
-   `TEST_DATA`, and `TEST_SPEC`. `ENVIRONMENT` is the resolved environment name (empty for
-   legacy projects); `TEST_DATA` is the environment's `defaults` + `users` JSON (secrets left
-   as `{ envSecret }` refs — the executor resolves them only at use time and never prints
-   them). Each uses its own `-s=<session>`. Launch them in a single batch so they run
-   concurrently. Expect ~6–8 browser sessions to run at once; the rest queue automatically.
+   `TEST_DATA`, `TEST_SPEC`, and — in `session` mode — `AUTH_PROFILE` (the prepared per-executor
+   profile dir for the spec's user) and `AUTH_LANDMARK` (that user's landmark); both are empty
+   in `fresh` mode. `ENVIRONMENT` is the resolved environment name (empty for legacy projects);
+   `TEST_DATA` is the environment's `defaults` + `users` JSON (secrets left as `{ envSecret }`
+   refs — the executor resolves them only at use time and never prints them). Each uses its
+   own `-s=<session>`. Launch them in a single batch so they run concurrently. Expect ~6–8
+   browser sessions to run at once; the rest queue automatically.
 4. **MERGE** — Collect each subagent's report. **Resolve deferred ui-check questions first:**
    executors cannot ask the user mid-run, so a `ui-check:` step needing a confirmation
    (exact-mode suspected rendering noise) or a stop-and-ask (an unintelligible variant set)

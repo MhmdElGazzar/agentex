@@ -15,6 +15,8 @@ ENVIRONMENT:    {{ENVIRONMENT}}            # active environment name ("" for leg
 TEST_DATA:      {{TEST_DATA}}              # defaults + users JSON from environments/<ENVIRONMENT>.json ("" if none)
 WORKING_DIR:    {{WORKING_DIR}}
 SESSION_DIR:    {{SESSION_DIR}}            # e.g. executions/execu_<ts>/browser-sessions/{{SESSION}}
+AUTH_PROFILE:   {{AUTH_PROFILE}}           # persistent browser-profile dir to open authenticated ("" = fresh mode, log in per spec)
+AUTH_LANDMARK:  {{AUTH_LANDMARK}}          # element true ONLY when logged in ("" if AUTH_PROFILE empty)
 TEST SPECIFICATION:
 {{TEST_SPEC}}
 === END PARAMETERS ===
@@ -32,6 +34,20 @@ BROWSER TOOL
   re-snapshot after each page load.
 - No `requests` subcommand exists; capture network with `run-code` + a one-line
   page.on('request'/'response') listener.
+
+SESSION AUTH (only when AUTH_PROFILE is non-empty)
+- The orchestrator already logged this user into the persistent profile at AUTH_PROFILE. Open
+  your session FROM that profile — you start authenticated — then verify the landmark BEFORE
+  scenario 1. Do NOT re-type any login:
+    npx playwright-cli -s={{SESSION}} open {{TARGET_URL}} --persistent --profile {{AUTH_PROFILE}}
+    npx playwright-cli -s={{SESSION}} find "{{AUTH_LANDMARK}}"     # landmark present == authenticated
+- Confirm the landmark's element is actually visible (verify via `eval` on its computed
+  display, not just DOM presence). If it is absent (e.g. you were redirected to a login page),
+  STOP and report the whole spec BLOCKED ("auth profile invalid: {{AUTH_LANDMARK}}"). You never
+  establish login yourself — the orchestrator owns it; do not fall back to typing credentials.
+- Do NOT use `state-load` to restore the session — it does not persist localStorage across a
+  navigation (see the playwright-cli reference); the persistent profile is the mechanism.
+- When AUTH_PROFILE is empty you are in fresh mode: follow the EXECUTION RULES below as written.
 
 WHERE TO SAVE EVIDENCE (your session slice only)
 - Screenshots -> `SESSION_DIR/screenshots/<scenario>.png` (use --filename=, NOT a positional path):
@@ -102,8 +118,11 @@ EXECUTION RULES
 - Execute the scenarios in the TEST SPECIFICATION in the order written.
 - If the spec marks scenarios as a stateful chain, keep them strictly sequential in this one
   session; otherwise treat them as independent steps.
-- Skip auth-gated actions: no real signup / login / checkout. NEVER use real personal data —
-  use disposable values (e.g. qa.tester@example.com). Validation-only checks are allowed.
+- In fresh mode (empty AUTH_PROFILE): skip auth-gated actions — no real signup / login /
+  checkout. In session mode (AUTH_PROFILE provided) the session is already authenticated, so
+  auth-gated scenarios ARE in scope. In BOTH modes: NEVER create real accounts, complete real
+  checkout, or use real personal data — use disposable values (e.g. qa.tester@example.com).
+  Validation-only checks are allowed.
 - Never read or print secrets.
 - For any "success" UI, verify the element's computed display/visibility via `eval` — do not
   trust that the text merely exists in the DOM (it may be static markup).

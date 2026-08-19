@@ -2,6 +2,40 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **Session login mode in the test-run path (`login.mode: session`).** Login reuse is now
+  wired into `browser-testing` (sequential + parallel) and `qa-executor`, not just the
+  `define-flow` authoring skill. In `session` mode the orchestrator logs each unique user into
+  a **persistent browser profile** once (before parallel dispatch — no thundering herd), and
+  injects a read-only `AUTH_PROFILE` + `AUTH_LANDMARK` into each executor, which opens
+  `--persistent --profile <dir>` (starting authenticated) and verifies a login-only landmark
+  instead of re-typing a live login. Landmark-verified (never URL-based); an invalid profile
+  fails loudly as BLOCKED. Default stays `fresh` (behavior unchanged; `AUTH_PROFILE` absent).
+  Motivation: on an authenticated multi-app product, `login.mode: session` was already
+  declarable in config but had no effect in the run path — every run re-typed a full login per
+  spec, the dominant time cost and a flakiness source (post-login timeouts/401s).
+- **`references/playwright-cli.md` now documents the driver's Storage commands** — previously
+  omitted, though the run path now depends on them.
+
+### Notes
+- **Reuse mechanism is a persistent `--profile`, not `state-load`.** Field-testing on a
+  Capacitor/Angular app (auth token in `localStorage`) found the driver's `state-load` restores
+  cookies but **not** localStorage across a navigation (Playwright seeds localStorage only at
+  context creation; the CLI's post-hoc load is wiped by the next `goto`), so it silently fails
+  for localStorage-based auth. `session` mode therefore uses `open --persistent --profile`
+  (carries cookies + localStorage, drivable by the same CLI). Concurrency limit: a profile dir
+  can't be opened twice at once, so parallel specs sharing a user get a per-executor copy — but
+  the copies **share one refresh token**, so concurrent same-user copies race on refresh-token
+  rotation (one is bounced with `REFRESH_TOKEN_INVALID`); schedule same-user specs sequentially
+  unless the app does not rotate on refresh (distinct users run concurrently). `state-save`'s
+  `storageState` JSON is still the right artifact for a compiled `.spec.ts` `storageState:`
+  (that path seeds localStorage at newContext). A future open-time `--storage-state` flag on
+  the CLI would give portable-JSON reuse without profiles. Field-validated across three
+  measurement gates (see PR discussion): ~3× faster authentication, 100% of login form
+  interaction eliminated, and immunity to the fresh-login rate-limit that fails a concurrent
+  baseline batch.
+
 ## [0.17.0] — 2026-08-17
 ### Added
 - **Customizable test-user fields — one shared, consumer-owned field schema.** The wizard's

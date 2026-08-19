@@ -47,6 +47,30 @@ when a `playwright-cli` command behaves unexpectedly.
   cleanup AND confirms no other execution is running.
 - `show` — open the playwright dashboard to watch sessions (works for headless too).
 
+## Storage / auth state
+- **Reusing a login across runs → `open --persistent --profile <dir>`.** A real on-disk
+  Chromium user-data dir: log a user in once into the profile, and every later `open` with the
+  same `--profile` starts already authenticated. This is the reliable mechanism for apps that
+  keep their auth token in **localStorage** (SPA / Capacitor / JWT-in-localStorage), and it is
+  driven by the same `playwright-cli` as the test. Caveat: one profile dir can't be opened by
+  two browsers at once (dir lock) — for concurrent same-user sessions, copy the authed profile
+  per session. But the copies **share one refresh token**: if the app silent-refreshes on
+  load, concurrent copies of the same user race and one is bounced to login
+  (`REFRESH_TOKEN_INVALID`), so schedule same-user specs **sequentially** unless the app does
+  not rotate on refresh (distinct users are fine concurrently). This is how `session` login
+  mode works (see browser-testing SKILL.md "Session reuse").
+- **Do NOT rely on `state-load` for a localStorage-based login.** `state-save [file]` /
+  `state-load <file>` round-trip a Playwright `storageState` JSON, but Playwright can only seed
+  localStorage at context *creation* — the CLI's post-hoc `state-load` restores cookies while
+  localStorage is wiped on the next `goto` (field-verified on a Capacitor/Angular app whose
+  token lives in `localStorage`: it redirected to `/login` after `state-load` + navigate).
+  `state-load` is fine for cookie-only sessions; and the `storageState` JSON that `state-save`
+  produces still feeds a compiled `.spec.ts` `storageState:` option unchanged (that path DOES
+  seed localStorage, at newContext).
+- Granular access if you need it: `cookie-*`, `localstorage-*`, `sessionstorage-*`.
+- The cleanest future fix for portable-JSON reuse in the CLI would be an open-time
+  `--storage-state <file>` flag (seed at newContext) — not available in the CLI today.
+
 ## Concurrency
 - Effective parallelism is bound by the machine's CPU/RAM (each session is a real Chromium):
   plan for ~6–8 concurrent sessions; the harness queues the rest automatically.
