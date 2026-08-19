@@ -48,17 +48,25 @@ when a `playwright-cli` command behaves unexpectedly.
 - `show` — open the playwright dashboard to watch sessions (works for headless too).
 
 ## Storage / auth state
-- `state-save [file]` — write the current session's cookies + localStorage as a
-  Playwright-native `storageState` JSON. `state-load <file>` — load one into a session (call
-  it right after `open`, then `goto`/`reload` so it applies). This is how the `session` login
-  mode reuses a login across runs (see browser-testing SKILL.md "Session reuse"), and the
-  files feed a compiled `.spec.ts` `storageState:` option unchanged.
+- **Reusing a login across runs → `open --persistent --profile <dir>`.** A real on-disk
+  Chromium user-data dir: log a user in once into the profile, and every later `open` with the
+  same `--profile` starts already authenticated. This is the reliable mechanism for apps that
+  keep their auth token in **localStorage** (SPA / Capacitor / JWT-in-localStorage), and it is
+  driven by the same `playwright-cli` as the test. Caveat: one profile dir can't be opened by
+  two browsers at once (dir lock) — for concurrent same-user sessions, copy the authed profile
+  per session. This is how `session` login mode works (see browser-testing SKILL.md "Session
+  reuse").
+- **Do NOT rely on `state-load` for a localStorage-based login.** `state-save [file]` /
+  `state-load <file>` round-trip a Playwright `storageState` JSON, but Playwright can only seed
+  localStorage at context *creation* — the CLI's post-hoc `state-load` restores cookies while
+  localStorage is wiped on the next `goto` (field-verified on a Capacitor/Angular app whose
+  token lives in `localStorage`: it redirected to `/login` after `state-load` + navigate).
+  `state-load` is fine for cookie-only sessions; and the `storageState` JSON that `state-save`
+  produces still feeds a compiled `.spec.ts` `storageState:` option unchanged (that path DOES
+  seed localStorage, at newContext).
 - Granular access if you need it: `cookie-*`, `localstorage-*`, `sessionstorage-*`.
-- `open --persistent --profile <dir>` is an alternative reuse model (a persistent user-data
-  dir per identity); `state-save`/`state-load` is preferred — portable and regression-tier
-  compatible. `storageState` carries cookies + localStorage ONLY — an app that holds its
-  token purely in memory won't resume; the landmark check makes that fail loudly (BLOCKED),
-  not silently proceed unauthenticated.
+- The cleanest future fix for portable-JSON reuse in the CLI would be an open-time
+  `--storage-state <file>` flag (seed at newContext) — not available in the CLI today.
 
 ## Concurrency
 - Effective parallelism is bound by the machine's CPU/RAM (each session is a real Chromium):
