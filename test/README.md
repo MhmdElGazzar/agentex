@@ -42,8 +42,12 @@ db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
 
 ## Rules the agent already follows
 
-- Never uses real personal data or completes real signup/login/checkout — use disposable
-  values like `qa.tester@example.com`.
+- Logging in is part of the job: a step like "login as expired_user" signs in with that user
+  from `environments/<env>.json` (its own `password`, or `defaults.password`). What the agent
+  never does is CREATE an account, complete a payment or any other irreversible transaction,
+  or use real personal data — it uses disposable values like `qa.tester@example.com`. A step
+  needing a user you have not defined for the active environment is reported BLOCKED, never
+  improvised.
 - Never reads or prints secrets, never modifies your application source.
 - Captures a screenshot on every scenario (pass and fail); console errors and failed
   requests count as defects even when the UI looks fine.
