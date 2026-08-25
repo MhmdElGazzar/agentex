@@ -2,6 +2,75 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **A provider-neutral tracker layer** (`scripts/lib/tracker/`) — resolution
+  (`resolveTracker`, fail-closed on no/many/unsupported providers), a `WritePlan` ledger
+  (declared intents, first failure stops, no retry/no cleanup, IDs of completed steps
+  survive a later throw), a per-project field-metadata cache
+  (`.agentex/cache/tracker-fields-ado.json`, schemaVersion-stamped, gitignored by default
+  with a documented `!.agentex/cache/` commit opt-in, `--refresh-fields` to rebuild), and
+  an **Azure DevOps REST adapter** over Node's built-in fetch: work-item show/WIQL/create
+  (with server-side `validateOnly`)/patch, attachment upload, field metadata with
+  `$expand=allowedValues`, test-plan suites/cases/points, suite-entries add, and test
+  runs/results. Capability flags (`validateOnly`, `attachments`, `testPlans`/`testRuns`,
+  `relations`, `dialect`, `query`) are shaped so a future Jira adapter (plain-JSON
+  dialect, JQL, no test-plan APIs, no Tested-By) fits without interface rework — a
+  provider gap is detected and told to the user, never silently substituted. Zero runtime
+  npm dependencies; every module carries a sibling offline test with an injected fake fetch.
+- **Three bug-filing discipline evals** — `discipline-bug-filing-one-gate`,
+  `discipline-bug-filing-ledger`, `discipline-bug-filing-cache-refresh` — one per new
+  user-visible rule; recorded as authored, pending the release run on the installed build.
+
+### Changed
+- **Bug filing is one gate, fail-closed, and ledger-accounted — and no longer needs the
+  Azure CLI at all.** The old flow forced 7 mandatory interactions (max 10) and ~10–12
+  `az` process launches per filing; the PAT only reached `az` if the user remembered a
+  manual `AZURE_DEVOPS_EXT_PAT` export (the likely root of the reported field failures);
+  custom picklists were never pre-validated; a post-create failure hid the orphan bug's
+  ID; and the duplicate check failed OPEN. Now `bug-report-azure` collects and validates
+  everything first with zero board writes — parent story really is a User Story, the
+  duplicate check **fails CLOSED**, severity/priority/custom picklists check against the
+  **project's real values** (a stale cache rejection surfaces the live options with
+  `cacheStale: true`), screenshots keep the two-pass evidence gate, and the server
+  pre-validates the create — then shows ONE consolidated screen (validated fields + the
+  exact write plan) and takes ONE approval. Writes run in a fixed fail-closed order
+  (attachments → create → parent link → ReproSteps/evidence patch) behind an exact
+  per-write ledger: done with ID + URL or not-done with the reason, created IDs always
+  reported, nothing retried, no cleanup without the user. The PAT is read from `.env` by
+  the scripts themselves and sent only in the Authorization header. Windows quirks die
+  with the transport: no more cmd.exe quoting/@tempfile passing, no 8191-char
+  command-line ceiling on repro HTML, no `PYTHONIOENCODING` workaround.
+- **Test-case mechanics moved home.** `testplan.js` now lives with the skill that owns
+  test cases — `skills/test-design/scripts/` — rebuilt directly on the tracker layer (no
+  move-then-rewrite); bug filing invokes it cross-skill for create-case / fail with the
+  same ledger guarantees (an orphaned Test Case or a run left InProgress is a named
+  ledger line, never a silent state). The shared ADO boards CLI reference moved out of
+  the Azure *resources* skill to the new plugin-root `references/tracker/ado-boards-cli.md`
+  (consumers: task-estimation and test-design, which still drive `az` until their own
+  migration); `azure-integration` now covers only the Azure resource plane. Every path
+  that pointed at the old homes was re-pointed; `/estimate-story` and `/design-test`
+  behavior is unchanged.
+- **Scaffold/migration:** `.gitignore` gains `.agentex/cache/` (a cache, safe to delete,
+  rebuilt on demand); the existing m05 picks it up on legacy projects and never re-adds
+  the ignore line over a user's `!.agentex/cache/` commit opt-in.
+
+### Removed
+- `skills/bug-report-azure/scripts/_lib.js` (the az process launcher: `shQuote`,
+  `@tempfile` arg passing, the cmd.exe `%VAR%` expansion guard, hardcoded
+  severity/priority tables) and the old az-based `testplan.js` — superseded by
+  `scripts/lib/tracker/` and the rebuilt scripts. No `az` invocation remains anywhere in
+  the bug-filing surface.
+
+### Credits
+- Pattern harvest from **PR #16** (closed with credit, not merged): the `validateOnly`
+  create pattern, the `uploadAttachmentBinary` and `patchWorkItem` fetch shapes, the
+  `resolvePat` pattern (env order inverted to put the scaffolded `AZURE_PAT` first), the
+  ledger's done/not-done messages, and the list-picklist semantics that became the
+  field-cache builder.
+- **PR #4** and **PR #11** (closed with credit, not merged): Jira operation semantics and
+  field mappings, recorded as design input for the Phase-3 Jira adapter.
+
 ## [0.18.0] — 2026-08-25
 ### Added
 - **A flake is reported, not retried away.** Nothing in the execution path said what to do

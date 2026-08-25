@@ -1,97 +1,87 @@
-# Azure DevOps — az CLI recipes & field schema (reference)
+# Azure DevOps — bug field schema & REST routes (reference)
 
-Backing detail for the `bug-report-azure` skill: the **bug-specific** `az` recipes (field schema,
-ReproSteps HTML, attachments, test-plan outcomes) that the three scripts wrap. Read this when you
-need exact field names or `az` invocations; day-to-day the scripts handle all of it. Everything
-here is **product/team agnostic** — substitute the `{{PLACEHOLDERS}}` from your `.env`
-(`AZURE_*` keys — see the repo-root `.env.example`).
+Backing detail for the `bug-report-azure` skill: the Bug field schema, the ReproSteps HTML
+shape, and the ADO REST routes the bundled tracker adapter uses. Day-to-day the scripts
+handle all of it — read this when you need exact field reference names or want to explain
+a route on the consolidated screen. Everything here is **product/team agnostic** —
+substitute the `{{PLACEHOLDERS}}` from `config/project.json`'s `azure` block.
 
-All commands use the **Azure CLI** only (`az devops` / `az boards`, and `az devops invoke` for the
-few routes `az boards` doesn't cover). No direct REST calls.
+**Transport:** every operation goes through the plugin's tracker layer
+(`scripts/lib/tracker/` — Node built-in `fetch` against `{{ORG_URL}}/{{PROJECT_NAME}}/_apis/…`).
+There is no Azure CLI anywhere in this flow, and the agent never composes REST calls by
+hand — the scripts own transport and auth.
 
 ## Connection & auth
 
-Install, PAT auth, and `az devops configure --defaults` are **not repeated here** — they live in
-the shared Azure reference (same setup the task-estimation / test-design skills use):
-
-- **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-devops-cli.md`** — install
-  the `azure-devops` extension, authenticate with a PAT, and configure org/project defaults.
-
-The scripts resolve org/project/etc. from the AgenTeX `.env` (`AZURE_URL`, `AZURE_PROJECT`,
-`AZURE_TEAM`, …), then `az` configured defaults. Auth is whatever `az` already uses: the PAT is
-read by `az` from `AZURE_DEVOPS_EXT_PAT` — the scripts never read, store, or print it. Set
-`PYTHONIOENCODING=utf-8` so non-ASCII fields don't trip cp1252 on Windows.
+- Org/project resolve from `azure.org` / `azure.project` (`config/project.json`), legacy
+  `AZURE_URL` / `AZURE_PROJECT` in `.env`. `azure.org` accepts a full URL
+  (`https://dev.azure.com/<org>`, on-prem collection URLs too) or a bare org name.
+- The **PAT** is read by the adapter from `.env` — `AZURE_PAT` first, then legacy
+  `AZURE_DEVOPS_EXT_PAT` / `AZURE_DEVOPS_PAT` — and becomes
+  `Authorization: Basic base64(":" + PAT)` per request. It is never printed, logged,
+  or placed on a command line; dry-run output shows `authorization: <Basic ***, not printed>`.
+- `api-version` comes from `azure.apiVersion` (default `7.1`).
+- No shell export and no `az` install are needed for bug filing.
 
 ## Bug field schema (template mirror)
 
 Mirror of the configured template bug `{{TEMPLATE_BUG_ID}}` (a child of a `{{TEAM_NAME}}`
-User Story). Adjust field reference names to your process if it differs from the default Agile Bug.
+User Story). Adjust field reference names to your process if it differs from the default
+Agile Bug.
 
 | Field (reference name) | Value | Notes |
 |---|---|---|
-| `System.WorkItemType` | `Bug` | `az boards work-item create --type Bug` |
-| `System.Title` | short defect statement | idempotency-checked before create |
+| `System.WorkItemType` | `Bug` | create route `POST …/_apis/wit/workitems/$Bug` |
+| `System.Title` | short defect statement | duplicate-checked before create (fails closed) |
 | `System.AreaPath` | `{{AREA_PATH}}` | inherit from parent story if unset |
 | `System.IterationPath` | `{{ITERATION_PATH}}` | inherit from parent story if unset |
-| `System.AssignedTo` | email | **ask the user** — from `assignees` config or "other" |
-| `Microsoft.VSTS.Common.Priority` | `1`–`4` | **ask the user** (recommended from run impact) — never silent |
-| `Microsoft.VSTS.Common.Severity` | `1 - Critical`…`4 - Low` | **ask the user** (recommended from run impact) |
-| `Microsoft.VSTS.Common.ValueArea` | `Business` | config default |
-| `Custom.Environment` | `{{ENVIRONMENT}}` | match the run's env (omit if your process has no such field) |
-| `Custom.BugCategory` | `{{BUG_CATEGORY}}` | e.g. `Functional` / `UI/UX` (omit if not in your process) |
-| `Microsoft.VSTS.TCM.ReproSteps` | HTML (see below) | the visible body of the bug |
+| `System.AssignedTo` | email | from the gate — `assignees` config or "other" |
+| `Microsoft.VSTS.Common.Priority` | `1`–`4` | recommended from run impact, approved at the gate |
+| `Microsoft.VSTS.Common.Severity` | `1 - Critical`…`4 - Low` | recommended from run impact, approved at the gate |
+| `Microsoft.VSTS.Common.ValueArea` | `Business` | sent only when the project's Bug type has the field |
+| `Custom.Environment` | `{{ENVIRONMENT}}` | validated against the field cache (omit if not in your process) |
+| `Custom.BugCategory` | `{{BUG_CATEGORY}}` | validated against the field cache (omit if not in your process) |
+| `Microsoft.VSTS.TCM.ReproSteps` | HTML (see below) | set post-create via json-patch — no size limit applies |
 
-> `Custom.*` fields exist only if your project defines them. `create-bug.js` emits them only when
-> the spec provides a value; leave them out of the spec for stock processes.
+> Severity, priority, and `Custom.*` picklists are validated against the **project's real
+> allowedValues** from the field cache (`.agentex/cache/tracker-fields-ado.json`), not a
+> hardcoded table. A field the project doesn't define blocks the run instead of being
+> emitted blind. Refresh the cache with `--refresh-fields`.
 
-Parent link (the **only** relation the skill may add):
-```bash
-az boards work-item relation add --id <bugId> --relation-type parent --target-id <storyId>
-```
-`--relation-type parent` maps to `System.LinkTypes.Hierarchy-Reverse`. Attachments are added
-separately (below).
+## REST routes the adapter uses
 
-## Reading / validating work items (reads — run freely)
+Reads (free, no gating):
 
-```bash
-# validate a parent story exists AND is a User Story
-az boards work-item show --id <storyId> \
-  --query "{id:id,type:fields.\"System.WorkItemType\",title:fields.\"System.Title\"}" -o json
+| Operation | Route |
+|---|---|
+| Show work item (story/template validation) | `GET {{ORG_URL}}/{{PROJECT_NAME}}/_apis/wit/workitems/{id}?api-version=7.1[&$expand=all]` |
+| Duplicate query (WIQL) | `POST …/_apis/wit/wiql` body `{"query": "SELECT [System.Id] FROM workitems WHERE …"}` |
+| Field/picklist metadata (cache builder) | `GET …/_apis/wit/workitemtypes/{type}/fields?$expand=allowedValues` |
+| Suites in a plan | `GET …/_apis/testplan/Plans/{plan}/suites` |
+| Cases in a suite | `GET …/_apis/testplan/Plans/{plan}/Suites/{suite}/TestCase` |
+| Test point for a case | `GET …/_apis/testplan/Plans/{plan}/Suites/{suite}/TestPoint?testCaseId={tc}` (per-suite — the global shortcut 404s on many orgs) |
+| Run results | `GET …/_apis/test/Runs/{run}/results` |
 
-# idempotency: any existing Bug with this exact title?  (WIQL via az boards query)
-az boards query --wiql \
-  "SELECT [System.Id] FROM workitems WHERE [System.TeamProject]='{{PROJECT_NAME}}' \
-   AND [System.WorkItemType]='Bug' AND [System.Title]='<title>'" -o json
-```
+Writes (dry-run by default; `--execute` only past the one approval):
 
-## Creating the Bug (write — only past explicit confirmation)
+| Operation | Route | Body |
+|---|---|---|
+| Server-side create validation | `POST …/_apis/wit/workitems/$Bug?validateOnly=true` | json-patch field ops |
+| Create the Bug | `POST …/_apis/wit/workitems/$Bug` | `application/json-patch+json` — `[{"op":"add","path":"/fields/<ref>","value":…}, …]` |
+| Parent link (the ONLY link) | `PATCH …/_apis/wit/workitems/{bugId}` | one relation op: `{"rel":"System.LinkTypes.Hierarchy-Reverse","url":"…/_apis/wit/workItems/{storyId}"}` |
+| Upload a screenshot | `POST …/_apis/wit/attachments?fileName={name.png}` | raw bytes, `application/octet-stream` → returns `{id, url}` |
+| ReproSteps + evidence relations | `PATCH …/_apis/wit/workitems/{bugId}` | ONE json-patch: the ReproSteps HTML + one `AttachedFile` relation per upload |
+| Create a Test Case | `POST …/_apis/wit/workitems/$Test%20Case` | json-patch (`System.Title`, optional `System.AreaPath`) |
+| Add TC to a suite | `PATCH …/_apis/testplan/suiteentry/{suiteId}?api-version=7.1-preview.2` | `[{"id": <tcId>}]` |
+| Create a test run | `POST …/_apis/test/runs` | `{name, plan:{id}, pointIds:[…], automated:false, state:"InProgress"}` |
+| Record the Failed result | `PATCH …/_apis/test/Runs/{run}/results` | `[{id, outcome:"Failed", state:"Completed", comment, associatedBugs:[{id}]}]` |
+| Complete the run | `PATCH …/_apis/test/runs/{run}` | `{state:"Completed"}` |
+| TC → bug durable link | `PATCH …/_apis/wit/workitems/{tcId}` | relation op `Microsoft.VSTS.Common.TestedBy-Reverse` |
 
-```bash
-# 1) create with the SHORT fields only. ReproSteps (large HTML) is intentionally NOT passed
-#    here — a big repro could exceed the Windows cmd.exe ~8191-char command-line limit.
-az boards work-item create --type Bug --title "<title>" \
-  --org {{ORG_URL}} --project "{{PROJECT_NAME}}" \
-  --fields \
-    "System.AreaPath=<area>" \
-    "System.IterationPath=<iteration>" \
-    "System.AssignedTo=<email>" \
-    "Microsoft.VSTS.Common.Priority=<1-4>" \
-    "Microsoft.VSTS.Common.Severity=<sev>" \
-    "Microsoft.VSTS.Common.ValueArea=Business" \
-  -o json
-
-# 2) parent link
-az boards work-item relation add --id <newId> --relation-type parent --target-id <storyId>
-
-# 3) set ReproSteps + attach screenshots in ONE JSON-Patch read from a file (off the
-#    command line), sent as application/json-patch+json:
-#    [{"op":"add","path":"/fields/Microsoft.VSTS.TCM.ReproSteps","value":"<html>"},
-#     {"op":"add","path":"/relations/-","value":{"rel":"AttachedFile","url":"<attUrl>","attributes":{"comment":"<name>"}}}]
-az devops invoke --area wit --resource workitems \
-  --route-parameters id=<newId> --http-method PATCH \
-  --media-type application/json-patch+json --api-version 7.1 \
-  --in-file <repro+attachments>.json
-```
+The write sequence for a bug filing is fixed and fail-closed: validate everything → upload
+attachments → create Bug → link parent → ReproSteps/evidence patch. The first failure
+stops the sequence and every intended write lands in the ledger — done with ID + URL, or
+not-done with the reason. Nothing is retried and nothing is cleaned up automatically.
 
 ## ReproSteps HTML shape
 
@@ -103,73 +93,23 @@ az devops invoke --area wit --resource workitems \
               <u>Actual Result</u>    {text}  <img src={attachment-url}>      </table>
 [hr] <table>  <b>Test Configuration:</b> | {testConfig}                      </table>
 ```
-`create-bug.js` regenerates this exact structure from the spec JSON — you don't hand-write HTML.
 
-## Attachments (via `az devops invoke` — `az boards` has no native verb)
+`create-bug.js` regenerates this exact structure from the spec JSON — you don't hand-write
+HTML. It travels as a request body, so a large repro can never hit a command-line length
+limit. The returned attachment `url` is embedded as `<img src=…>` inside ReproSteps *and*
+added as an `AttachedFile` relation, so the evidence renders in the bug body and lists
+under Attachments.
 
-```bash
-# 1) upload the file, get back {id, url}. Body is raw bytes → octet-stream, not JSON.
-az devops invoke --area wit --resource attachments \
-  --route-parameters project="{{PROJECT_NAME}}" \
-  --query-parameters fileName=<name.png> \
-  --http-method POST --in-file <path/to/name.png> \
-  --media-type application/octet-stream \
-  --api-version 7.1 -o json
+## Failing an existing test case (what `testplan.js fail` does)
 
-# 2) attach it to the bug (relation) — PATCH the work item's relations.
-#    A JSON Patch body MUST be sent as application/json-patch+json or the server rejects it.
-az devops invoke --area wit --resource workitems \
-  --route-parameters id=<bugId> \
-  --http-method PATCH --api-version 7.1 \
-  --media-type application/json-patch+json \
-  --in-file <patch.json>   # [{"op":"add","path":"/relations/-","value":{"rel":"AttachedFile","url":"<attachmentUrl>","attributes":{"comment":"<name>"}}}]
-```
-The returned attachment `url` is also embedded as `<img src=…>` inside ReproSteps so the evidence
-renders in the bug body. `create-bug.js` does all of this and prints each command first.
+A Test Case work item has a **State** (Design/Ready/Closed), not pass/fail — the outcome
+lives on a **Test Point** inside a Plan/Suite. `fail` locates the point (iterating the
+plan's suites), then runs the fixed plan: create run → record the Failed result (reading
+the real result id first — never guessed) → complete the run → tested-by link. A failure
+partway names the run left `InProgress` in the ledger; completing or deleting it is the
+user's call.
 
-## Test plans / suites / cases (reads via `az devops invoke`)
+## Related references
 
-`az boards` has limited test-plan coverage, so reads go through `az devops invoke --area testplan`:
-
-```bash
-# suites in a plan
-az devops invoke --area testplan --resource suites \
-  --route-parameters project="{{PROJECT_NAME}}" planId=<plan> --api-version 7.1 -o json
-
-# cases in a suite
-az devops invoke --area testplan --resource "suite entries" ...   # or resource=TestCase per suite
-```
-`testplan.js` wraps the exact resource/route names; adjust `--api-version` per your org if a route
-404s.
-
-## Creating a NEW test case (only on explicit user choice)
-
-```bash
-az boards work-item create --type "Test Case" --title "<title>" \
-  --org {{ORG_URL}} --project "{{PROJECT_NAME}}" \
-  --fields "System.AreaPath={{AREA_PATH}}" -o json
-# then add it to the chosen suite (az devops invoke --area testplan --resource "suite entries" ... PATCH),
-# and link TestedBy to the bug per the user's instruction.
-```
-
-## Failing an existing test case (record a Failed outcome)
-
-A Test Case work item has a **State** (Design/Ready/Closed), not pass/fail — the outcome lives on a
-**Test Point** inside a Plan/Suite. `testplan.js fail` (via `az devops invoke --area test`) does:
-
-1. find the test point: iterate the plan's suites → `Suites/{suite}/TestPoint?testCaseId={tc}`.
-2. `POST test/runs` `{name, plan:{id}, pointIds:[point], automated:false, state:"InProgress"}`.
-3. `GET Runs/{run}/results` → resultId; `PATCH`
-   `[{id, outcome:"Failed", state:"Completed", comment, associatedBugs:[{id:bug}]}]`.
-4. `PATCH test/runs/{run}` `{state:"Completed"}`.
-5. Durable link: add `Microsoft.VSTS.Common.TestedBy-Reverse` on the TC → the bug
-   (`az boards work-item relation add --relation-type "tested by" ...`).
-
-Each step is a printed `az devops invoke` command; nothing runs without `--execute`.
-
-## Quick raw read
-
-```bash
-export AZURE_DEVOPS_EXT_PAT=<pat>; export PYTHONIOENCODING=utf-8
-az boards work-item show --id {{TEMPLATE_BUG_ID}} --expand all -o json
-```
+- Estimation / test-design flows (still `az`-driven until their migration):
+  `${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards-cli.md` — not used by bug filing.

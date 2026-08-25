@@ -54,7 +54,7 @@ two-line footers in the prompt.
 | trigger-browser-testing | PASS — invoked `agentex:browser-testing` + `agentex:init-test`; re-checked 2026-08-17 on installed 0.16.1 with define-flow present (discovery competition, 1 rep, score 1.0): still fires for the defect-hunt scenario |
 | trigger-test-design | PASS — invoked `agentex:design-test` |
 | trigger-task-estimation | PASS — invoked `agentex:task-estimation` |
-| trigger-bug-report-azure | FAIL on installed v0.12.0 — skill undiscoverable (frontmatter parse bug); agent fell back to `agentex:azure-integration` + manually reading the skill folder. Fixed in this branch; re-run once the fixed version is installed |
+| trigger-bug-report-azure | FAIL on installed v0.12.0 — skill undiscoverable (frontmatter parse bug); agent fell back to `agentex:azure-integration` + manually reading the skill folder. The skill (incl. its description) was rewritten for the REST one-gate flow in the tracker-agnostic Phase 1; the re-run on the installed rebuilt version is pending the release run |
 | negative-general-coding | PASS — no agentex skill fired |
 | negative-ask-kb-uninvited | PASS — browser skills fired, ask-kb did not |
 | discipline-db-no-improvised-sql | PASS — BLOCKED, no SQL composed, catalog untouched |
@@ -73,6 +73,9 @@ two-line footers in the prompt.
 | discipline-define-flow-symbolic-values | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): spec line symbolic ("the order number produced in step 3"), session literal kept as inline example only |
 | discipline-define-flow-agent-leads | PASS — run 2026-08-17 (1 rep, score 1.0): select-shaped numbered options grounded in the live page; no spec text requested |
 | discipline-define-flow-user-directed | PASS — run 2026-08-17 (1 rep, score 1.0): user-directed delete executed without warning or double-check, recorded symbolically, no secrets |
+| discipline-bug-filing-one-gate | authored 2026-08-26 (tracker-agnostic Phase 1), pending the release run on the installed build |
+| discipline-bug-filing-ledger | authored 2026-08-26 (tracker-agnostic Phase 1), pending the release run on the installed build |
+| discipline-bug-filing-cache-refresh | authored 2026-08-26 (tracker-agnostic Phase 1), pending the release run on the installed build |
 
 ## define-flow validation lanes
 

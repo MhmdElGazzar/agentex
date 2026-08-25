@@ -61,7 +61,12 @@ function hasEnvFiles(projectRoot) {
 // One entry is not a credential at all: test/.ui-baselines/ is the ui-check fallback
 // baseline cache — design PNGs the runner re-fetches on demand. It is ignored to keep
 // binaries out of a QA repo, and it carries its own comment so the block does not
-// claim a cache holds a session.
+// claim a cache holds a session. Same for .agentex/cache/ — tracker field metadata
+// (picklist allowedValues etc.), safe to delete, rebuilt on demand by the tracker
+// scripts. Committing that cache is a documented one-line opt-in: appending
+// `!.agentex/cache/` to .gitignore — the negation both re-includes the directory
+// and is listed in the entry's covers, so this scaffold (and m05) never re-adds
+// the ignore line over the user's opt-in.
 //
 // Append-only and per-entry: a project that already ignores one of them (under
 // any of the spellings below) keeps its own line; only what is genuinely missing
@@ -81,6 +86,15 @@ const GITIGNORE_ENTRIES = [
     comment: '# and this one is only a cache — ui-check re-fetches these design baselines',
     covers: ['test/.ui-baselines/', 'test/.ui-baselines', '/test/.ui-baselines/',
       '/test/.ui-baselines', '.ui-baselines/', '.ui-baselines'],
+  },
+  {
+    entry: '.agentex/cache/',
+    comment: '# and this one is only a cache too — tracker field metadata, safe to delete, rebuilt on demand',
+    covers: ['.agentex/cache/', '.agentex/cache', '/.agentex/cache/', '/.agentex/cache',
+      '.agentex/', '.agentex', '/.agentex/', '/.agentex',
+      // The documented commit opt-in: the user re-included the cache on purpose —
+      // never add the ignore line back over it.
+      '!.agentex/cache/', '!.agentex/cache'],
   },
 ];
 
@@ -103,7 +117,7 @@ function ensureGitignore(projectRoot, { dryRun = false } = {}) {
     return {
       kind: 'skipped',
       path: rel(projectRoot, gitignore),
-      note: 'secrets, saved sessions and the baseline cache already gitignored',
+      note: 'secrets, saved sessions and the caches already gitignored',
     };
   }
   const current = existed ? fs.readFileSync(gitignore, 'utf8') : '';

@@ -1,73 +1,78 @@
 #!/usr/bin/env node
-// create-bug.js — Create an Azure DevOps Bug that mirrors a configurable team
-// template and link it as a CHILD of a parent User Story. GENERIC / team-agnostic:
-// org, project, area path, assignees, template, custom fields all come from the
-// AgenTeX `.env` (AZURE_* keys) or the spec — nothing team-specific is hardcoded.
+// create-bug.js — file a defect as an Azure DevOps Bug: validate EVERYTHING
+// first (zero board writes), then — only behind --execute — run the fixed
+// fail-closed write sequence with an exact per-write ledger.
 //
-// TOOLING: everything runs through the Azure CLI (`az boards`, and `az devops invoke`
-// for attachment upload/relations that `az boards` can't do). No direct REST calls.
+// Rebuilt on the tracker layer (scripts/lib/tracker/): direct ADO REST over
+// Node's built-in fetch. No az CLI, no process spawning, zero npm dependencies.
+// The PAT is read from .env by the adapter (AZURE_PAT, legacy
+// AZURE_DEVOPS_EXT_PAT / AZURE_DEVOPS_PAT) and sent only in the Authorization
+// header — never printed, logged, or placed on a command line (invariant 5).
 //
-// SAFE BY DEFAULT: with no --execute it only prints the PLAN + the exact `az` commands
-// it WOULD run (a dry run). Nothing is written to Azure until --execute is passed. This
-// is the tooling-level enforcement of the skill's single-confirmation gate.
+// DRY RUN (default) — the validation gate behind the skill's ONE approval:
+//   parent exists and is a User Story; duplicate check (WIQL) — a dup-check
+//   FAILURE blocks (fails CLOSED), a dup found blocks without --allow-duplicate;
+//   every picklist value checked against the project's field cache
+//   (.agentex/cache/tracker-fields-ado.json, rebuilt on --refresh-fields);
+//   attachment structural check; a server-side validateOnly create. Output is
+//   the full plan JSON: validated facts + every intended write with its route.
+//   If the server rejects a value the cache accepted, the REAL current
+//   allowedValues are re-fetched live and returned with cacheStale:true — the
+//   refresh stays the user's call; nothing is retried.
 //
-// Usage:
-//   node create-bug.js --spec bug.json            # dry run (plan + idempotency + attachment checks + az cmds)
-//   node create-bug.js --spec bug.json --execute  # upload attachments + create bug + parent link
-//   flags: --no-screenshots  create with no evidence (deliberate waiver)
-//          --force           proceed even if an attachment fails the structural check
-//          --allow-duplicate proceed even if a same-title Bug already exists (after user says so)
+// --execute — the write phase (D-5 order): re-validate (cheap stale-plan
+//   guard; validateOnly was proven in the dry run) -> upload attachments ->
+//   create the Bug -> link the parent (System.LinkTypes.Hierarchy-Reverse, the
+//   ONLY link) -> one json-patch setting ReproSteps HTML + AttachedFile
+//   relations. First failure stops the sequence; the ledger reports every
+//   intended write as done (id + url) or not-done (reason); created IDs are in
+//   the JSON even when a later step throws. No auto-retry, no cleanup writes.
 //
-// The ONLY link it ever creates is the parent User Story link
-// (az boards work-item relation add --relation-type parent). It never edits the parent
-// story's fields and never touches any test artifact.
+// Output: ONE JSON line (invariant 9). Exit codes:
+//   dry run   0 = plan valid and ready | 2 = BLOCKED by validation | 1 = unexpected
+//   --execute 0 = every intended write done | 1 = partial/failed (see ledger)
+//             | 2 = refused before any write
 //
-// spec JSON fields — see SKILL.md "Spec JSON shape". Required:
-//   title, severity, priority, parentStoryId, assignedTo, summary, steps, expected, actual
-// Optional: environment, bugCategory, valueArea, areaPath, iterationPath, testConfig,
-//           timestamp, attachments[]
+// Flags: --spec <file.json> (required), --execute, --allow-duplicate,
+//        --no-screenshots (deliberate evidence waiver), --force (attachment
+//        structural-check override), --refresh-fields (rebuild the field cache).
 //
-// Priority and Severity are NOT invented here — they come from the user's choice (SKILL
-// step 4) and the script errors if either is missing or invalid. (Requirement: never
-// infer/auto-fill required fields.)
-
+// Spec JSON shape — see SKILL.md. Required: title, severity, priority,
+// parentStoryId, assignedTo, summary, steps, expected, actual. Severity and
+// priority come from the user's choice at the gate — this script never invents
+// them, and validates them against the PROJECT'S real picklist values.
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
-const os = require('node:os');
-const {
-  loadConfig, orgArgs, az, fileArg, parseArgs, showWorkItem, findByTitle,
-  VALID_SEVERITY, VALID_PRIORITY,
-} = require('./_lib.js');
+const LIB = path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'tracker');
+const { resolveTracker, TrackerError } = require(path.join(LIB, 'index.js'));
+const fieldCache = require(path.join(LIB, 'cache.js'));
+const { WritePlan } = require(path.join(LIB, 'ledger.js'));
 
-const args = parseArgs(process.argv.slice(2));
-if (!args.spec) { console.error('ERROR: --spec <file.json> is required'); process.exit(2); }
-
-const spec = JSON.parse(fs.readFileSync(args.spec, 'utf8'));
-const cfg = loadConfig();
-
-// ---- validate spec ----------------------------------------------------------
-const req = ['title', 'severity', 'priority', 'parentStoryId', 'assignedTo', 'summary', 'steps', 'expected', 'actual'];
-for (const k of req) {
-  if (spec[k] === undefined || spec[k] === null || spec[k] === '') {
-    console.error(`ERROR: spec.${k} is required (do not infer it — ask the user).`); process.exit(2);
+// ---- CLI arg parser: --key value / --key=value / --flag ----------------------
+function parseArgs(argv) {
+  const out = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      const eq = a.indexOf('=');
+      if (eq !== -1) out[a.slice(2, eq)] = a.slice(eq + 1);
+      else {
+        const next = argv[i + 1];
+        if (next === undefined || next.startsWith('--')) out[a.slice(2)] = true;
+        else { out[a.slice(2)] = next; i++; }
+      }
+    } else out._.push(a);
   }
-}
-if (!VALID_SEVERITY.includes(spec.severity)) {
-  console.error(`ERROR: severity must be one of: ${VALID_SEVERITY.join(', ')}`); process.exit(2);
-}
-if (!VALID_PRIORITY.includes(Number(spec.priority))) {
-  console.error(`ERROR: priority must be one of: ${VALID_PRIORITY.join(', ')}`); process.exit(2);
-}
-if (!Array.isArray(spec.steps) || spec.steps.length === 0) {
-  console.error('ERROR: spec.steps must be a non-empty array'); process.exit(2);
+  return out;
 }
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// Last-line STRUCTURAL guard on an attachment (valid PNG/JPEG header + non-zero dims + not tiny).
-// The thorough check (blankness + bug-relatedness) lives in check-image.js / the vision pass.
+// Last-line STRUCTURAL guard on an attachment (valid PNG/JPEG header + non-zero
+// dims + not tiny). The thorough pass (blankness + bug-relatedness) lives in
+// check-image.js + the agent's vision pass.
 function structuralCheck(file) {
   if (!fs.existsSync(file)) return { ok: false, reason: 'not-found' };
   const buf = fs.readFileSync(file);
@@ -81,222 +86,318 @@ function structuralCheck(file) {
   return { ok: false, reason: 'not-an-image (bad magic)' };
 }
 
-// Build ReproSteps HTML mirroring the template (timestamp+summary / steps / expected /
-// actual + embedded screenshots / test config).
-function buildReproHtml(uploaded) {
+// ReproSteps HTML mirroring the template (timestamp+summary / steps / expected /
+// actual + embedded screenshots / test config). Travels as a request BODY — no
+// command-line length limit applies.
+function buildReproHtml(spec, uploaded) {
   const ts = spec.timestamp || '';
   const stepsLi = spec.steps.map((s) => `<li>${esc(s)}</li>`).join('');
   const imgs = uploaded.map((u) => `<div><img src="${u.url}" alt="${esc(u.name)}"></div>`).join('');
   return [
-    `<hr style="border-color:black;">`,
-    `<table><tbody><tr>`,
+    '<hr style="border-color:black;">',
+    '<table><tbody><tr>',
     `<td style="vertical-align:top;padding:2px 7px;font-weight:bold;">${esc(ts)}</td>`,
     `<td style="vertical-align:top;padding:2px 7px 2px 10px;">${esc(spec.summary)}</td>`,
-    `</tr></tbody></table>`,
-    `<hr style="border-color:black;">`,
-    `<table><tbody>`,
-    `<tr><td style="vertical-align:top;padding:2px 7px;font-weight:bold;">Steps:</td></tr>`,
+    '</tr></tbody></table>',
+    '<hr style="border-color:black;">',
+    '<table><tbody>',
+    '<tr><td style="vertical-align:top;padding:2px 7px;font-weight:bold;">Steps:</td></tr>',
     `<tr><td style="vertical-align:top;padding:2px 7px;"><ol>${stepsLi}</ol></td></tr>`,
-    `<tr><td style="vertical-align:top;padding:2px 7px;">`,
-    `<div style="padding-top:10px;text-decoration:underline;">Expected Result</div>`,
+    '<tr><td style="vertical-align:top;padding:2px 7px;">',
+    '<div style="padding-top:10px;text-decoration:underline;">Expected Result</div>',
     `<div>${esc(spec.expected)}</div>`,
-    `<div><br></div>`,
-    `<div style="text-decoration:underline;">Actual Result</div>`,
+    '<div><br></div>',
+    '<div style="text-decoration:underline;">Actual Result</div>',
     `<div>${esc(spec.actual)}</div>`,
     imgs,
-    `</td></tr>`,
-    `</tbody></table>`,
-    `<hr style="border-color:white;">`,
-    `<table><tbody><tr>`,
-    `<td style="vertical-align:top;padding:2px 7px;font-weight:bold;">Test Configuration:</td>`,
+    '</td></tr>',
+    '</tbody></table>',
+    '<hr style="border-color:white;">',
+    '<table><tbody><tr>',
+    '<td style="vertical-align:top;padding:2px 7px;font-weight:bold;">Test Configuration:</td>',
     `<td style="vertical-align:top;padding:2px 7px 2px 100px;">${esc(spec.testConfig || 'Windows 11 / Chrome')}</td>`,
-    `</tr></tbody></table>`,
+    '</tr></tbody></table>',
   ].join('');
 }
 
-// Upload one attachment via `az devops invoke` (az boards has no attachment verb) → {id,url}.
-// Media type MUST be octet-stream: the attachments POST body is the raw file bytes, not JSON.
-function uploadAttachment(cfg, filePath, execute) {
-  const name = path.basename(filePath);
-  const argv = [
-    'devops', 'invoke',
-    '--area', 'wit', '--resource', 'attachments',
-    '--http-method', 'POST',
-    '--route-parameters', `project=${cfg.project || ''}`,
-    '--query-parameters', `fileName=${name}`,
-    '--in-file', filePath,
-    '--media-type', 'application/octet-stream',
-    '--api-version', cfg.apiVersion,
-    ...(cfg.org ? ['--org', cfg.org] : []),
-    '-o', 'json',
+const REQUIRED = ['title', 'severity', 'priority', 'parentStoryId', 'assignedTo', 'summary', 'steps', 'expected', 'actual'];
+const PARENT_LINK = 'System.LinkTypes.Hierarchy-Reverse'; // the ONLY link this script creates
+
+// ---- validation phase (shared by dry run and the pre-write guard) ------------
+// Reads + local checks only — NOTHING here writes to the board.
+async function validate(adapter, spec, args, cwd) {
+  const cfg = adapter.config;
+  const blocked = [];
+  const validation = {};
+  let cacheStale = false;
+
+  // 1) parent exists and is a User Story
+  let parentFields = {};
+  try {
+    const parent = await adapter.getWorkItem(spec.parentStoryId);
+    parentFields = (parent && parent.fields) || {};
+    const type = parentFields['System.WorkItemType'];
+    if (type !== 'User Story') {
+      blocked.push({
+        reason: 'parent-not-a-user-story',
+        message: `parent #${spec.parentStoryId} is a "${type || '?'}", not a User Story — a Bug may only hang off a User Story`,
+      });
+    }
+    validation.parent = {
+      id: spec.parentStoryId, type: type || null,
+      title: parentFields['System.Title'] || null, state: parentFields['System.State'] || null,
+    };
+  } catch (e) {
+    blocked.push({ reason: 'parent-not-found', message: `parent story #${spec.parentStoryId} could not be read: ${e.message}` });
+  }
+
+  // 2) duplicate check — FAILS CLOSED: an unanswerable dup check blocks the filing.
+  try {
+    const dupes = await adapter.findByTitle('Bug', spec.title);
+    validation.duplicates = dupes;
+    if (dupes.length && !args['allow-duplicate']) {
+      blocked.push({
+        reason: 'duplicate-title', ids: dupes,
+        message: `${dupes.length} existing Bug(s) share this exact title (#${dupes.join(', #')}) — confirm with the user, then pass --allow-duplicate`,
+      });
+    }
+  } catch (e) {
+    blocked.push({ reason: 'dup-check-failed', message: `duplicate check failed — refusing to file blind (fails closed): ${e.message}` });
+  }
+
+  // 3) field cache + picklist validation against the PROJECT'S real values
+  let cacheInfo = null; let fieldMap = {};
+  try {
+    cacheInfo = await fieldCache.ensure(cwd, adapter, { types: ['Bug'], refresh: Boolean(args['refresh-fields']) });
+    fieldMap = (cacheInfo.cache.types.Bug && cacheInfo.cache.types.Bug.fields) || {};
+  } catch (e) {
+    blocked.push({ reason: 'field-cache-failed', message: `field metadata could not be read: ${e.message}` });
+  }
+
+  const areaPath = spec.areaPath || cfg.areaPath || parentFields['System.AreaPath'] || null;
+  const iterationPath = spec.iterationPath || cfg.iterationPath || parentFields['System.IterationPath'] || null;
+  const envVal = spec.environment || cfg.environment || null;
+  const catVal = spec.bugCategory || cfg.bugCategory || null;
+  // ValueArea: an explicit value (spec/config) is validated as-is; the historic
+  // 'Business' default is applied only when the project's Bug type HAS the field.
+  const valueAreaExplicit = spec.valueArea || cfg.valueArea || null;
+  const valueArea = valueAreaExplicit || (fieldMap['Microsoft.VSTS.Common.ValueArea'] ? 'Business' : null);
+
+  const toValidate = [
+    { field: 'Microsoft.VSTS.Common.Severity', value: spec.severity },
+    { field: 'Microsoft.VSTS.Common.Priority', value: spec.priority },
+    ...(valueArea ? [{ field: 'Microsoft.VSTS.Common.ValueArea', value: valueArea }] : []),
+    ...(envVal ? [{ field: 'Custom.Environment', value: envVal }] : []),
+    ...(catVal ? [{ field: 'Custom.BugCategory', value: catVal }] : []),
   ];
-  const r = az(argv, { write: true, execute });
-  if (!r.ran) return { name, id: '<dry-run>', url: '<dry-run-attachment-url>' };
-  return { name, id: r.json?.id, url: r.json?.url };
+  if (cacheInfo) {
+    const results = fieldCache.validateValues(cacheInfo.cache, 'Bug', toValidate);
+    validation.fields = results;
+    for (const r of results) {
+      if (r.ok) continue;
+      // An invalid value blocks the run; the correction is for the run only —
+      // the consumer's config is never rewritten (invariant 11).
+      blocked.push({
+        reason: r.reason, field: r.field, value: r.value,
+        ...(r.allowedValues ? { allowedValues: r.allowedValues } : {}),
+        message: r.reason === 'field-not-on-type'
+          ? `field ${r.field} does not exist on this project's Bug type — drop it from the spec/config for this run`
+          : `"${r.value}" is not a valid value for ${r.field} — valid: ${r.allowedValues.join(' | ')}`,
+      });
+    }
+  }
+
+  // 4) attachment structural checks + evidence policy
+  const atts = spec.attachments || [];
+  validation.attachments = atts.map((a) => {
+    const c = structuralCheck(a);
+    return { file: a, ok: c.ok, ...(c.fmt ? { format: c.fmt } : {}), ...(c.w ? { width: c.w, height: c.h } : {}), ...(c.reason ? { reason: c.reason } : {}) };
+  });
+  const bad = validation.attachments.filter((a) => !a.ok);
+  if (bad.length && !args.force) {
+    blocked.push({
+      reason: 'attachment-invalid', files: bad,
+      message: `${bad.length} attachment(s) failed the structural check (${bad.map((b) => `${b.file}: ${b.reason}`).join('; ')}) — fix/drop them or pass --force`,
+    });
+  }
+  if (atts.length === 0 && !args['no-screenshots']) {
+    blocked.push({
+      reason: 'no-evidence',
+      message: 'no screenshots attached — bugs carry evidence; pass --no-screenshots only as a deliberate, user-confirmed waiver',
+    });
+  }
+
+  // The fields the create will send (title always; paths only when resolvable).
+  const fields = {
+    'System.Title': spec.title,
+    ...(areaPath ? { 'System.AreaPath': areaPath } : {}),
+    ...(iterationPath ? { 'System.IterationPath': iterationPath } : {}),
+    'System.AssignedTo': spec.assignedTo,
+    'Microsoft.VSTS.Common.Priority': Number(spec.priority),
+    'Microsoft.VSTS.Common.Severity': spec.severity,
+    ...(valueArea ? { 'Microsoft.VSTS.Common.ValueArea': valueArea } : {}),
+    ...(envVal ? { 'Custom.Environment': envVal } : {}),
+    ...(catVal ? { 'Custom.BugCategory': catVal } : {}),
+  };
+
+  // 5) server-side validateOnly create — dry run only (D-5: proven once, not re-proven
+  // during --execute, where the real create carries the same validation server-side).
+  if (!args.execute && blocked.length === 0 && adapter.capabilities.validateOnly) {
+    try {
+      await adapter.createWorkItem('Bug', { fields }, { validateOnly: true, execute: true });
+      validation.validateOnly = 'passed';
+    } catch (e) {
+      // The server rejected what the cache accepted — re-fetch the REAL current
+      // allowedValues live (no error-prose parsing, no cache write, no retry).
+      const staleFields = [];
+      try {
+        const live = await fieldCache.liveFieldMap(adapter, 'Bug');
+        for (const { field } of toValidate) {
+          const cached = fieldMap[field] && fieldMap[field].allowedValues;
+          const cur = live[field] && live[field].allowedValues;
+          if (JSON.stringify(cached) !== JSON.stringify(cur)) {
+            staleFields.push({ field, allowedValues: cur || null });
+          }
+        }
+      } catch { /* live read failed — the server message still blocks the run */ }
+      cacheStale = staleFields.length > 0;
+      validation.validateOnly = 'rejected';
+      blocked.push({
+        reason: 'server-rejected-create',
+        status: e.status ?? null,
+        serverMessage: e.serverMessage || e.message,
+        ...(staleFields.length ? { fields: staleFields } : {}),
+        message: cacheStale
+          ? 'the server rejected a value the cache accepted — the field cache is stale; the real current options are included, ask the user and offer --refresh-fields'
+          : 'the server rejected the create during validateOnly — nothing was written',
+      });
+    }
+  }
+
+  return { blocked, validation, fields, atts, cacheInfo, cacheStale };
 }
 
-// ---- main -------------------------------------------------------------------
-(async () => {
-  // 1) validate + inherit from parent story (READ)
-  const parent = showWorkItem(cfg, spec.parentStoryId);
-  const pf = parent?.fields || {};
-  if (pf['System.WorkItemType'] !== 'User Story') {
-    console.error(`ERROR: parent #${spec.parentStoryId} is a "${pf['System.WorkItemType'] || '?'}", not a User Story. `
-      + `Per skill constraints a Bug may only be a child of a User Story.`);
-    process.exit(2);
-  }
-  const areaPath = spec.areaPath || cfg.areaPath || pf['System.AreaPath'];
-  const iterationPath = spec.iterationPath || cfg.iterationPath || pf['System.IterationPath'];
+// ---- main ---------------------------------------------------------------------
+// Returns { code, out }; prints nothing. opts.fetch is the offline-test seam.
+async function run(argv, { cwd = process.cwd(), fetch } = {}) {
+  const args = parseArgs(argv);
+  const mode = args.execute ? 'executed' : 'plan';
+  try {
+    if (!args.spec) return { code: 2, out: { ok: false, mode, error: { message: '--spec <file.json> is required' } } };
+    let spec;
+    try { spec = JSON.parse(fs.readFileSync(args.spec, 'utf8')); }
+    catch (e) { return { code: 2, out: { ok: false, mode, error: { message: `could not read spec: ${e.message}` } } }; }
 
-  // 2) idempotency check (READ) — same-title Bug already on the board?
-  let dupes = [];
-  try { dupes = findByTitle(cfg, 'Bug', spec.title); } catch (e) {
-    console.log('(idempotency check skipped — query failed:', e.message.split('\n')[0], ')');
-  }
-
-  console.log('=== PLAN (Bug create) ===');
-  console.log('Org / Project :', cfg.org || '(az default)', '/', cfg.project || '(az default)');
-  console.log('Title         :', spec.title);
-  console.log('Parent story  :', `#${spec.parentStoryId}  "${pf['System.Title']}"  [${pf['System.State']}]`);
-  console.log('Link type     : parent (System.LinkTypes.Hierarchy-Reverse)  [ONLY link created]');
-  console.log('Assigned to   :', spec.assignedTo);
-  console.log('Priority      :', spec.priority, ' (from user choice)');
-  console.log('Severity      :', spec.severity, ' (from user choice)');
-  console.log('Area Path     :', areaPath, spec.areaPath ? '' : '(inherited/env)');
-  console.log('Iteration     :', iterationPath, spec.iterationPath ? '' : '(inherited/env)');
-  if (spec.environment || cfg.environment) console.log('Environment   :', spec.environment || cfg.environment);
-  if (spec.bugCategory || cfg.bugCategory) console.log('Bug Category  :', spec.bugCategory || cfg.bugCategory);
-  console.log('Value Area    :', spec.valueArea || cfg.valueArea);
-  console.log('Attachments   :', (spec.attachments || []).join(', ') || '(none)');
-  console.log('\n--- Repro (rendered text) ---');
-  console.log(spec.timestamp ? `[${spec.timestamp}] ${spec.summary}` : spec.summary);
-  console.log('Steps:'); spec.steps.forEach((s, i) => console.log(`  ${i + 1}. ${s}`));
-  console.log('Expected Result:', spec.expected);
-  console.log('Actual Result  :', spec.actual);
-
-  if (dupes.length) {
-    console.log(`\n⚠ IDEMPOTENCY: ${dupes.length} existing Bug(s) with this exact title: #${dupes.join(', #')}`);
-    if (args.execute && !args['allow-duplicate']) {
-      console.error('REFUSING to create a possible duplicate. Confirm with the user, then pass --allow-duplicate.');
-      process.exit(2);
+    // Required fields are never inferred — missing means BLOCKED, before any read.
+    const missing = REQUIRED.filter((k) => spec[k] === undefined || spec[k] === null || spec[k] === '');
+    if (!missing.includes('steps') && (!Array.isArray(spec.steps) || spec.steps.length === 0)) missing.push('steps');
+    if (missing.length) {
+      return {
+        code: 2,
+        out: { ok: false, mode, blocked: missing.map((k) => ({ reason: 'missing-required-field', field: k, message: `spec.${k} is required — ask the user, never infer it` })) },
+      };
     }
-  }
 
-  // 3) attachment structural checks (dry run included)
-  const atts = spec.attachments || [];
-  const badAtts = [];
-  for (const a of atts) {
-    const c = structuralCheck(a);
-    const dim = c.w ? `${c.w}x${c.h}` : (c.fmt || '');
-    console.log(`  attachment: ${a} -> ${c.ok ? 'OK ' + dim : 'INVALID (' + c.reason + ')'}`);
-    if (!c.ok) badAtts.push(a);
-  }
-  // Requirement (SKILL.md): the dry run always shows the full plan + az commands,
-  // even when an attachment is invalid — so the refusal below only fires AFTER
-  // that transparency output, not before it.
-  const refuseIfBadAttachments = () => {
-    if (badAtts.length && !args.force) {
-      console.error(`\nERROR: ${badAtts.length} attachment(s) failed the structural check. `
-        + `Fix or drop them (run check-image.js + the vision pass), or pass --force to override.`);
-      process.exit(2);
+    const adapter = resolveTracker(cwd, { fetch });
+    const { blocked, validation, fields, atts, cacheInfo, cacheStale } = await validate(adapter, spec, args, cwd);
+    const cacheOut = cacheInfo
+      ? { file: cacheInfo.file, rebuilt: cacheInfo.rebuilt, builtAt: cacheInfo.cache.builtAt, ...(cacheInfo.reason ? { reason: cacheInfo.reason } : {}) }
+      : null;
+
+    if (blocked.length) {
+      return { code: 2, out: { ok: false, mode, blocked, validation, ...(cacheOut ? { cache: cacheOut } : {}), ...(cacheStale ? { cacheStale: true } : {}) } };
     }
-  };
-  if (atts.length === 0) {
-    console.log('\n⚠ No screenshots attached. Bugs should include evidence — validate & attach some.');
-    if (args.execute && !args['no-screenshots']) {
-      console.error('REFUSING to create an evidence-less bug. Pass --no-screenshots to do it deliberately.');
-      process.exit(2);
+
+    if (!args.execute) {
+      // The PLAN: every intended write, in order, with its exact route — rendered
+      // by the agent on the consolidated screen. Nothing has been written.
+      const plannedUploads = atts.map((a) => ({ name: path.basename(a), url: '{attachment-url}' }));
+      const plan = [];
+      for (const a of atts) {
+        const d = await adapter.uploadAttachment(a, { execute: false });
+        plan.push({ step: 'upload-attachment', describe: `${d.method} ${d.url}`, file: a, request: d });
+      }
+      const dCreate = await adapter.createWorkItem('Bug', { fields }, { execute: false });
+      plan.push({ step: 'create-bug', describe: `${dCreate.method} ${dCreate.url}`, request: dCreate });
+      const dLink = await adapter.addRelation('{new-bug-id}', PARENT_LINK, spec.parentStoryId, { execute: false });
+      plan.push({ step: 'link-parent', describe: `${dLink.method} ${dLink.url} (${PARENT_LINK} -> #${spec.parentStoryId}, the only link)`, request: dLink });
+      const dPatch = await adapter.updateWorkItem('{new-bug-id}', {
+        fields: { 'Microsoft.VSTS.TCM.ReproSteps': buildReproHtml(spec, plannedUploads) },
+        addRelations: plannedUploads.map((u) => ({ rel: 'AttachedFile', url: u.url, attributes: { comment: u.name } })),
+      }, { execute: false });
+      plan.push({ step: 'set-repro-and-evidence', describe: `${dPatch.method} ${dPatch.url}`, request: dPatch });
+      return { code: 0, out: { ok: true, mode: 'plan', validation, plan, cache: cacheOut } };
     }
+
+    // ---- WRITE PHASE (only past explicit --execute, i.e. past the user's one approval)
+    const uploaded = [];
+    let bugId = null; let bugUrl = null;
+    const intents = [
+      ...atts.map((a) => ({
+        step: 'upload-attachment',
+        describe: `upload ${path.basename(a)} (POST _apis/wit/attachments)`,
+        run: async () => {
+          const u = await adapter.uploadAttachment(a, { execute: true });
+          uploaded.push(u);
+          return { id: u.id, url: u.url };
+        },
+      })),
+      {
+        step: 'create-bug',
+        describe: 'create the Bug (POST _apis/wit/workitems/$Bug)',
+        run: async () => {
+          const r = await adapter.createWorkItem('Bug', { fields }, { execute: true });
+          bugId = r.id; bugUrl = r.url;
+          return { id: r.id, url: r.url };
+        },
+      },
+      {
+        step: 'link-parent',
+        describe: `link parent User Story #${spec.parentStoryId} (${PARENT_LINK} — the only link)`,
+        run: async () => {
+          await adapter.addRelation(bugId, PARENT_LINK, spec.parentStoryId, { execute: true });
+          return { id: bugId, url: bugUrl };
+        },
+      },
+      {
+        step: 'set-repro-and-evidence',
+        describe: 'set ReproSteps HTML + attach evidence (PATCH _apis/wit/workitems/{id}, json-patch)',
+        run: async () => {
+          await adapter.updateWorkItem(bugId, {
+            fields: { 'Microsoft.VSTS.TCM.ReproSteps': buildReproHtml(spec, uploaded) },
+            addRelations: uploaded.map((u) => ({ rel: 'AttachedFile', url: u.url, attributes: { comment: u.name } })),
+          }, { execute: true });
+          return { id: bugId, url: bugUrl };
+        },
+      },
+    ];
+
+    const ledger = await new WritePlan(intents).execute();
+    const allDone = ledger.every((l) => l.status === 'done');
+    return {
+      code: allDone ? 0 : 1,
+      out: {
+        ok: allDone,
+        mode: 'executed',
+        ledger,
+        // Created IDs are ALWAYS surfaced, even when a later step threw.
+        created: { ...(bugId ? { bugId, url: bugUrl } : {}), attachments: uploaded },
+        ...(cacheOut ? { cache: cacheOut } : {}),
+      },
+    };
+  } catch (e) {
+    if (e instanceof TrackerError) {
+      return { code: 1, out: { ok: false, mode, error: { message: e.message, op: e.op, status: e.status, serverMessage: e.serverMessage, ...(e.credentialHint ? { credentialHint: e.credentialHint } : {}) } } };
+    }
+    return { code: e.exitCode === 2 ? 2 : 1, out: { ok: false, mode, error: { message: e.message } } };
   }
+}
 
-  // 4) show the exact az write commands (transparency), always — dry or execute.
-  console.log('\n--- az write commands ---');
+module.exports = { run };
 
-  if (!args.execute) {
-    // Print representative commands without running them.
-    uploadAttachment(cfg, '<each attachment>', false);
-    az(['boards', 'work-item', 'create', '--type', 'Bug', '--title', fileArg(spec.title), ...orgArgs(cfg),
-      '--fields', fileArg('System.AreaPath=' + areaPath), '…(+ iteration/assignedTo/priority/severity/valueArea)'],
-    { write: true, execute: false });
-    az(['boards', 'work-item', 'relation', 'add', '--id', '<newBugId>',
-      '--relation-type', 'parent', '--target-id', String(spec.parentStoryId), ...orgArgs(cfg)],
-    { write: true, execute: false });
-    // ReproSteps HTML + screenshot attachments are set together via ONE --in-file JSON-Patch,
-    // so the (potentially large) repro body never touches the command line.
-    az(['devops', 'invoke', '--area', 'wit', '--resource', 'workitems',
-      '--route-parameters', 'id=<newBugId>', '--http-method', 'PATCH',
-      '--media-type', 'application/json-patch+json', '--api-version', cfg.apiVersion,
-      '--in-file', '<repro+attachments>.json', ...(cfg.org ? ['--org', cfg.org] : [])],
-    { write: true, execute: false });
-    console.log('\nDRY RUN — nothing written. Re-run with --execute after the user confirms the summary.');
-    refuseIfBadAttachments();
-    return;
-  }
-
-  refuseIfBadAttachments();
-
-  // ---- WRITE PATH (only past explicit --execute) ----
-  const uploaded = [];
-  for (const a of atts) uploaded.push(uploadAttachment(cfg, a, true));
-
-  // Only SHORT, bounded fields go on the create command line. The large, variable-length
-  // ReproSteps HTML is deliberately NOT here — it is set via the --in-file PATCH below so
-  // it can never blow past the Windows cmd.exe ~8191-char command-line limit.
-  // untrusted: free text from the spec/.env, routed through fileArg (@file) so it never
-  // touches the cmd.exe-parsed command line — see _lib.js's fileArg doc comment.
-  const fields = [
-    { key: 'System.AreaPath', value: areaPath, untrusted: true },
-    { key: 'System.IterationPath', value: iterationPath, untrusted: true },
-    { key: 'System.AssignedTo', value: spec.assignedTo, untrusted: true },
-    { key: 'Microsoft.VSTS.Common.Priority', value: Number(spec.priority) },
-    { key: 'Microsoft.VSTS.Common.Severity', value: spec.severity },
-    { key: 'Microsoft.VSTS.Common.ValueArea', value: spec.valueArea || cfg.valueArea, untrusted: true },
-  ];
-  const envVal = spec.environment || cfg.environment;
-  const catVal = spec.bugCategory || cfg.bugCategory;
-  if (envVal) fields.push({ key: 'Custom.Environment', value: envVal, untrusted: true });
-  if (catVal) fields.push({ key: 'Custom.BugCategory', value: catVal, untrusted: true });
-
-  const createArgv = ['boards', 'work-item', 'create', '--type', 'Bug', '--title', fileArg(spec.title),
-    ...orgArgs(cfg)];
-  for (const f of fields) {
-    const raw = `${f.key}=${f.value}`;
-    createArgv.push('--fields', f.untrusted ? fileArg(raw) : raw);
-  }
-  createArgv.push('-o', 'json');
-
-  const created = az(createArgv, { write: true, execute: true });
-  const id = created.json?.id;
-  if (!id) { console.error('FAILED: could not read new work item id from az output.'); process.exit(1); }
-
-  // parent link (the ONLY relation of that type)
-  az(['boards', 'work-item', 'relation', 'add', '--id', String(id),
-    '--relation-type', 'parent', '--target-id', String(spec.parentStoryId),
-    ...orgArgs(cfg), '-o', 'json'], { write: true, execute: true });
-
-  // ONE consolidated JSON-Patch that (a) sets the ReproSteps HTML and (b) attaches every
-  // uploaded screenshot. Both the HTML body and the attachment relations travel inside the
-  // --in-file JSON — never on the command line. A JSON Patch body MUST be sent as
-  // application/json-patch+json or the server rejects it.
-  const patch = [
-    { op: 'add', path: '/fields/Microsoft.VSTS.TCM.ReproSteps', value: buildReproHtml(uploaded) },
-    ...uploaded.map((u) => ({ op: 'add', path: '/relations/-',
-      value: { rel: 'AttachedFile', url: u.url, attributes: { comment: u.name } } })),
-  ];
-  const tmp = path.join(os.tmpdir(), `bug-${id}-body.json`);
-  fs.writeFileSync(tmp, JSON.stringify(patch));
-  az(['devops', 'invoke', '--area', 'wit', '--resource', 'workitems',
-    '--route-parameters', `id=${id}`, '--http-method', 'PATCH',
-    '--media-type', 'application/json-patch+json',
-    '--api-version', cfg.apiVersion, '--in-file', tmp,
-    ...(cfg.org ? ['--org', cfg.org] : []), '-o', 'json'], { write: true, execute: true });
-  fs.rmSync(tmp, { force: true });
-
-  const webUrl = cfg.org
-    ? `${cfg.org}/${encodeURIComponent(cfg.project || '')}/_workitems/edit/${id}`
-    : `(open work item #${id} in your org)`;
-  console.log(`\n✅ Created Bug #${id}`);
-  console.log('   ', webUrl);
-  console.log(`   Parent: #${spec.parentStoryId}  |  Severity: ${spec.severity}  |  Priority: ${spec.priority}`);
-  console.log('BUG_ID=' + id); // machine-readable line for the caller
-})().catch((e) => { console.error('\nFAILED:', e.message); process.exit(1); });
+if (require.main === module) {
+  run(process.argv.slice(2)).then(({ code, out }) => {
+    console.log(JSON.stringify(out));
+    process.exit(code);
+  });
+}
