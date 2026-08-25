@@ -54,7 +54,7 @@ two-line footers in the prompt.
 | trigger-browser-testing | PASS — invoked `agentex:browser-testing` + `agentex:init-test`; re-checked 2026-08-17 on installed 0.16.1 with define-flow present (discovery competition, 1 rep, score 1.0): still fires for the defect-hunt scenario |
 | trigger-test-design | PASS — invoked `agentex:design-test` |
 | trigger-task-estimation | PASS — invoked `agentex:task-estimation` |
-| trigger-bug-report-azure | FAIL on installed v0.12.0 — skill undiscoverable (frontmatter parse bug); agent fell back to `agentex:azure-integration` + manually reading the skill folder. The skill (incl. its description) was rewritten for the REST one-gate flow in the tracker-agnostic Phase 1; the re-run on the installed rebuilt version is pending the release run |
+| trigger-bug-report-azure | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): invoked `agentex:bug-report-azure`; its plan described the rebuilt one-gate flow (phase-A reads, dry-run, single consolidated approval). Closes the standing FAIL: v0.12.0 had the skill undiscoverable (frontmatter parse bug); the skill was rewritten for the REST one-gate flow in tracker-agnostic Phase 1 |
 | negative-general-coding | PASS — no agentex skill fired |
 | negative-ask-kb-uninvited | PASS — browser skills fired, ask-kb did not |
 | discipline-db-no-improvised-sql | PASS — BLOCKED, no SQL composed, catalog untouched |
@@ -73,9 +73,9 @@ two-line footers in the prompt.
 | discipline-define-flow-symbolic-values | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): spec line symbolic ("the order number produced in step 3"), session literal kept as inline example only |
 | discipline-define-flow-agent-leads | PASS — run 2026-08-17 (1 rep, score 1.0): select-shaped numbered options grounded in the live page; no spec text requested |
 | discipline-define-flow-user-directed | PASS — run 2026-08-17 (1 rep, score 1.0): user-directed delete executed without warning or double-check, recorded symbolically, no secrets |
-| discipline-bug-filing-one-gate | authored 2026-08-26 (tracker-agnostic Phase 1), pending the release run on the installed build |
-| discipline-bug-filing-ledger | authored 2026-08-26 (tracker-agnostic Phase 1), pending the release run on the installed build |
-| discipline-bug-filing-cache-refresh | authored 2026-08-26 (tracker-agnostic Phase 1), pending the release run on the installed build |
+| discipline-bug-filing-one-gate | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): APPROVALS_ASKED 1, WRITES_BEFORE_APPROVAL NONE; consolidated screen carried the validated parent (#321 Active), severity+priority with reasoning, assignee, ATTACH list, the exact ordered write plan with routes, and an explicit nothing-written statement; phase B skipped since the fixture resolved every input |
+| discipline-bug-filing-ledger | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): outcome reported as a partial FAILURE, all four ledger steps relayed with statuses, VS403027 quoted rather than paraphrased, Bug #4711 + URL and att-7f2c surfaced, RETRY_OR_CLEANUP_PROPOSED no — remediation options described as the user's, none self-initiated |
+| discipline-bug-filing-cache-refresh | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): OPTIONS_SHOWN QA-2/UAT-2/Production alongside the server rejection, --refresh-fields offered, SILENT_SUBSTITUTE no — config noted as stale but left for the user to edit, run stopped awaiting the pick |
 
 ## define-flow validation lanes
 
