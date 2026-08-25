@@ -2,6 +2,129 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **A flake is reported, not retried away.** Nothing in the execution path said what to do
+  when a scenario failed for a reason that had nothing to do with the app, so the call was the
+  executor's to improvise — and both improvisations are harmful: a silent retry turns an
+  intermittent defect into a green tick, and a defect filed against a network blip sends the
+  tester after a bug that was never there. The browser-testing skill now carries a **Flake
+  doctrine**, and `references/playwright-cli.md` a symptom list that separates "the app never
+  answered" (retry once, that scenario only, from a clean state) from "the app answered and the
+  answer was wrong" (a defect — never retried). A scenario that only passed on its one retry is
+  **FLAKY**: out of the pass/fail tally, named in the tally line, reported under its own
+  *Unstable results* heading with both attempts' evidence and the attempt-1 symptom verbatim,
+  and kept out of `bugs/bug-list.md` because nothing is proven yet. The same app failure twice
+  is a FAIL reported as reproduced on 2 of 2 attempts; the same infrastructure symptom twice is
+  BLOCKED. `flaky` became a first-class status in `extent-report.html` — own color, stat card,
+  donut segment, and a rollup that can never read green — and the orchestrator may not
+  re-dispatch an executor to obtain a cleaner report, which is the same silent retry one level
+  up.
+- **The Setup Wizard speaks English.** The schema had carried `titleEn`/`labelEn` twins that
+  nothing ever read, so a tester who does not read Arabic faced ~190 strings of Arabic-only UI
+  with no way out of it. Every string now renders through `L(ar, en)` (the page's own copy) or
+  `loc(obj, key)` (anything the schema supplies), with an EN/ع toggle in the header that redraws
+  the current screen without losing what was typed, remembers the choice, and sets `lang`/`dir`
+  so the layout reads the right way — four RTL-only CSS rules became logical properties. Arabic
+  is still the boot default, so an existing tester sees exactly the wizard they had.
+  `node scripts/wizard/server.js --lang=en` (or `/setup?lang=en`) opens it in English directly,
+  and `/init-test` now addresses the user in whatever language they have been using instead of
+  one hardcoded Arabic line. Twelve schema strings that had no English twin were written, and
+  three new guards make a one-language string a test failure: every Arabic-bearing schema string
+  must have a non-empty twin, every `L()` call must carry both sides, and the English copy of
+  every screen must still be present.
+
+### Fixed
+- **A Figma rate limit no longer costs the tester every ui-check in the run.** A parallel
+  regression is two Figma calls per `ui-check:` step, so a 19-step sweep fired 38 at once and
+  the limiter answered 429 — a status `fetch_baseline.js` had no branch for, so all 19 checks
+  BLOCKED on designs that had not changed in weeks. 429 and 5xx are now retried (`Retry-After`
+  honoured, then exponential, plus jitter so 19 callers do not come back in the same instant
+  and earn the same 429), and every successful fetch leaves a copy in `test/.ui-baselines/`,
+  keyed on file key + node + scale with a sidecar carrying the dimensions, node identity and
+  variants. That cache is a **fallback, never a first choice**: the live design is always
+  fetched first, because a cache read that quietly stood in for a design that HAD moved would
+  produce a confident wrong PASS — worse than any BLOCKED. So it is read only after a
+  transient failure, never on a 403 or a 404 (broken config has to stay visible), never past
+  the 7-day ceiling (`--cache-max-age-days`, and `--no-cache` turns it off), and never
+  silently: a fallback emits `cached: true`, `cachedAt` and a reason, the skill requires that
+  caveat in the step report, a conforming result is PASS + warning rather than a clean PASS,
+  and a deviation names the cache date so nobody files a design *change* as a defect.
+- **`/define-flow` no longer edits the file it was given.** Walkthrough mode forbade
+  rewriting the user's spec and then instructed writing a note into it — invariant #11 with a
+  hole in the middle, next to an ambiguous "the recorded step" that made reaching for the
+  original the easy read. A definition session now writes exactly two things: its draft in the
+  transient scratch, and the new spec file confirmed at ASSEMBLE. The cross-reference line
+  keeps its value as an *offer* — the one line that may ever be added to an original, and only
+  after the user says yes; a no is a complete outcome, and both paths are named either way.
+- **`/optimize-login`'s session check actually runs on a QA machine.** `session.js` required
+  `playwright` bare, which resolves through the PLUGIN's install directory — so a project
+  that had run `npm i -D playwright` still got `Cannot find module` with a stack, curable
+  only by a `NODE_PATH=` prefix buried in one doc line. It now resolves the package from the
+  project (working directory upwards, monorepo hoists included, `NODE_PATH` still honoured)
+  and, when it genuinely is missing, prints the install command instead of a resolver stack.
+  It also hardcoded `channel: "chrome"`, demanding a Google Chrome install on machines where
+  `npx playwright install chromium` had already provided a browser; the bundled Chromium is
+  now the default, with `--channel` / `PLAYWRIGHT_CHANNEL` to opt into a real browser and no
+  silent substitution when the one you asked for will not launch. New `--headed` flag.
+  `preflight.js` probes the package the same way now, next to `playwright-cli`, so a missing
+  library shows up as a preflight line instead of as a resume that dies mid-run.
+- **A failed session resume no longer leaks a browser.** Only the landmark check closed the
+  browser it had launched, so a bad URL, a navigation timeout or any context error left a
+  headless browser running for the rest of the run — one per attempt, noticed as memory
+  rather than as an error. Everything past launch now closes on the way out, and a missing
+  state file is reported before a browser is started at all. Covered by a new
+  `session.test.js` (16 cases) that fakes the browser, so it runs with no browser installed.
+- **Logging in is the job, not a forbidden action.** The executor agent carried the rule
+  "skip auth-gated actions: no real signup / login / checkout" while the rest of the plugin
+  handed it test users, `defaults.password`, an `/optimize-login` skill and a `login.mode`
+  setting — so an executor that read its own instructions literally skipped every scenario
+  behind a login, which is most of them. The rule now says what is actually off limits
+  (creating an account, completing a payment or any other irreversible transaction, real
+  personal data) and names logging in with a configured test user as expected work; a spec
+  naming a user the active environment does not define is BLOCKED, never improvised.
+- **`login.mode` reaches the run that needs it.** The wizard collected it and
+  `config/project.json` stored it, but no reader in the run path ever looked at it, so
+  choosing "reuse the saved session" changed nothing. The orchestrator now resolves it
+  alongside the environment (absent → `fresh`) and injects it into every executor as
+  `LOGIN_MODE`, and the executor knows both branches. The wizard also wrote `"per-test"`
+  where every doc and template said `"fresh"`; new projects get `"fresh"` and the old
+  spelling keeps working as a synonym.
+- **Saved login sessions are gitignored for real.** A Playwright storage-state file is a live
+  bearer token, and the docs called `test/.auth/` "gitignored by convention" — but the only
+  entry `/init-test` ever wrote was `.env`, so on every scaffolded project a `git add -A`
+  after an `/optimize-login` run committed a working session. The shared scaffold action now
+  ensures three entries — `.env`, `test/.auth/`, `.playwright-cli/` — appending only what is
+  genuinely missing (a project already ignoring one under any common spelling keeps its own
+  line), and migration **m05** (renamed `gitignore-env` → `gitignore-secrets`) backfills them
+  into existing projects.
+- **Spec files named in a non-Latin script get usable session names.** A session label is a
+  spec file name, and sanitizing it to ASCII left nothing at all for an Arabic or CJK title —
+  every such label collapsed to `-`, so a whole suite ran as `-`, `-2`, `-3` and the session
+  name (which is also the screenshots/logs folder) no longer said which spec had failed.
+  `init_run.js` now falls back to `spec<n>-<digest of the label>` — distinct per spec, stable
+  across runs — trims leading/trailing separators from sanitized names, and echoes the label as
+  given back on each session (`sessions[name].label`) so the report can print the spec's real
+  title next to its ASCII session. Covered by a new `init_run.test.js`.
+- **m03 env-split no longer resolves alias collisions by file order.** Six legacy names mean
+  `portalUrl` and two mean `db.name`; when two of them held different values and the JSON
+  field was unset, the first line in the .env won, the second was reported as "JSON wins over
+  .env <KEY>" — about a value that had just been written from the .env in that same run — and
+  its line was then deleted, discarding a value the tester had set. Entries are now grouped by
+  target: agreement carries once and removes every alias, disagreement is left completely
+  untouched (nothing written, no .env line removed) and raised as a `[manual]` item naming the
+  colliding keys, which withholds the version stamp until the tester picks.
+- **`settings.example.json` now matches what a run actually issues.** It allowed no `node`
+  command while the plugin does all its non-browser work through nine bundled `node` scripts
+  (a permission prompt at every one of them); `Bash(npm install *)` never matched anything
+  (prefix rules need `:*`); `Edit(./src/**)` left `Write`/`MultiEdit` free to reach the same
+  files; `Bash(rm -rf:*)` was defeated by `rm -fr` and by Windows `Remove-Item`; and `curl`/
+  `sqlcmd` were pre-approved rather than prompted. Secret reads (`.env`, `*.pem`, `*.key`,
+  `*.pfx`, `id_rsa*`, `.npmrc`, `test/.auth/`) are now denied, destructive git and delete
+  commands are denied per spelling, and a `//notes` block explains each choice plus the two
+  entries a tester must adapt. [docs/configuration.md](docs/configuration.md) no longer
+  claims protections the file did not have.
+
 ## [0.17.0] — 2026-08-17
 ### Added
 - **Customizable test-user fields — one shared, consumer-owned field schema.** The wizard's
