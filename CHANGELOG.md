@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.18.0] — 2026-08-25
 ### Added
 - **A flake is reported, not retried away.** Nothing in the execution path said what to do
   when a scenario failed for a reason that had nothing to do with the app, so the call was the

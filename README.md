@@ -2,7 +2,7 @@
 
 **Agentic QA for Claude Code — an agent plans, runs, and reports your tests so you don't click through them by hand.**
 
-[![Version](https://img.shields.io/badge/version-0.17.0-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.18.0-blue.svg)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-8A2BE2.svg)](https://docs.anthropic.com/en/docs/claude-code)
 [![Playwright](https://img.shields.io/badge/Playwright-CLI-2EAD33.svg?logo=playwright&logoColor=white)](https://www.npmjs.com/package/@playwright/cli)
