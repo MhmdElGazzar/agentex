@@ -46,6 +46,12 @@ mid-run interaction.
   outcome; they live in the transient `.playwright-cli/` scratch and are cleaned at the end.
   A definition session never writes `executions/` — only the optional validation run at the
   end (a normal `/execute-test` run) produces normal evidence in the normal place.
+- **The user's existing files are never edited.** A definition session writes exactly two
+  things: its draft in the transient scratch, and the new spec file the user confirms at
+  ASSEMBLE. An existing spec is *input* — walkthrough mode reads it and produces a NEW file
+  beside it. It is never rewritten, reformatted, re-numbered, or silently annotated. The one
+  line that may ever be added to an original is the cross-reference offered in walkthrough
+  mode step 3, and only after the user says yes to it.
 - Never modify application source code. Config files may be read to resolve the target;
   never print, log, or pass secret values.
 
@@ -147,12 +153,16 @@ instead of eliciting new ones:
 2. STEP LOOP over the spec's steps, in order: execute each step live and present the actual
    outcome. Steps you find **unclear** — ambiguous target, unstated expected result,
    unresolvable value — become questions to the user (answer/confirm/select shaped, as
-   always); the confirmed clarification **replaces the unclear text** in the recorded step.
+   always); the confirmed clarification **replaces the unclear text in the draft** — the
+   original file is not touched.
    Clear steps still get executed and asserted before moving on. Forward-only and one-sitting
    apply unchanged.
 3. ASSEMBLE the result as a **new spec file** (same conventions and naming proposal as
-   above). **Do not rewrite the original spec.** Add exactly one note at the top of the
-   original file — "Defined flow available at `<path to the new file>`" — so the team sees
-   at a glance that this spec has a proven, defined counterpart. The original's body is
-   otherwise untouched.
+   above). **The original spec is never rewritten** — not reformatted, not re-numbered, not
+   annotated in passing. Then *offer* one cross-reference: a single line at the top of the
+   original — "Defined flow available at `<path to the new file>`" — so the team sees at a
+   glance that this spec has a proven counterpart. Say plainly that this one line is all that
+   would change, and write it only if the user says yes. A no is a complete outcome, not a
+   half-finished one: the new spec stands on its own. Name both paths in your closing summary
+   either way.
 4. VALIDATE (offered) runs the new file.
