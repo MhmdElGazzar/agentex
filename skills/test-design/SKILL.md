@@ -24,9 +24,15 @@ when to confirm). Command mechanics live in the references — **read them befor
 - **`${CLAUDE_PLUGIN_ROOT}/skills/test-design/references/test-case-mechanics.md`** — Test Case
   creation specifics: Steps XML format, the file+`$STEPS` quoting trick, `Tested By` link
   direction, the no-delete gotcha, retry notes.
-- **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-devops-cli.md`** — shared
+- **`${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards-cli.md`** — shared
   `az devops` basics: extension install, auth, `configure --defaults`, fetching the current
   iteration, WIQL queries.
+
+This skill also owns the test-plan mechanics script
+`${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js` (list-suites / list-cases /
+find-case / create-case / fail — REST-backed, dry-run by default, one JSON line). The
+bug-report-azure skill invokes it cross-skill for its create-case and fail-the-test-case
+steps; this skill's own workflow below still drives `az boards` directly.
 
 ## Configuration (never hardcode)
 

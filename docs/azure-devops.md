@@ -75,6 +75,6 @@ succeeded" or "tail the app's logs."
 | Estimate QA effort (`/estimate-story`) | `skills/task-estimation/SKILL.md` | — |
 | Design test cases (`/design-test`) | `skills/test-design/SKILL.md` | `skills/test-design/references/test-case-mechanics.md` |
 | File bugs (`bug-report-azure`) | `skills/bug-report-azure/SKILL.md` | `skills/bug-report-azure/references/azure-devops.md` |
-| Azure resources | `skills/azure-integration/SKILL.md` | `skills/azure-integration/references/azure-cli.md`, `azure-devops-cli.md` |
+| Azure resources | `skills/azure-integration/SKILL.md` | `skills/azure-integration/references/azure-cli.md` |
 
 Configuration: see [configuration](./configuration.md)

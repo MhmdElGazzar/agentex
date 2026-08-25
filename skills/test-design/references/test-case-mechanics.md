@@ -2,8 +2,8 @@
 
 Test-Case-specific `az boards` mechanics. Read this before creating or linking test cases, or
 when a command behaves unexpectedly. For shared basics (extension install, auth,
-`configure --defaults`, current-iteration fetch, WIQL), see the azure-integration skill's
-`references/azure-devops-cli.md`.
+`configure --defaults`, current-iteration fetch, WIQL), see the shared tracker reference
+`references/tracker/ado-boards-cli.md` (plugin root).
 
 ## Fetch a story for analysis
 

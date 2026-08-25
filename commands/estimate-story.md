@@ -9,7 +9,7 @@ Scope / notes: $ARGUMENTS
 - Resolve configuration first (organization, project, team, assignee). Take any values named in
   the arguments; otherwise use the `AZURE_*` keys the user has set, and ask once for anything
   missing. Never hardcode an org/project/team/email.
-- Read the skill's `references/azure-devops-cli.md` before the first `az boards` command. If `az`
+- Read the shared boards reference `references/tracker/ado-boards-cli.md` (plugin root) before the first `az boards` command. If `az`
   or the `azure-devops` extension isn't installed, follow the reference's preflight/install steps.
 - Process **one story at a time**: show the estimate, wait for confirmation ("yes" / "تمام" /
   "approved"), then create the 5 tasks. Never batch-create without approval.

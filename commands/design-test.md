@@ -11,7 +11,7 @@ Story IDs / scope: $ARGUMENTS
 - Read the project conventions from `./.agentex/test-template.md`; if it doesn't exist, scaffold
   it from the skill's template and ask the user to fill it in before designing.
 - Read the skill's `references/test-case-mechanics.md` before creating any Test Case, and the
-  azure-integration skill's `references/azure-devops-cli.md` for shared `az devops` basics.
+  shared boards reference `references/tracker/ado-boards-cli.md` (plugin root) for `az devops` basics.
 - Present the mapped test conditions and **wait for confirmation** before creating anything.
 - After creating, link every test case to its story (`Tested By`, `--id` = story) and finish
   with the coverage check table.

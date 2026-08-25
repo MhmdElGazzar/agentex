@@ -2,8 +2,11 @@
 
 The Azure DevOps extension for the Azure CLI. Read this before the first `az boards` / `az devops`
 command in a session, or when one behaves unexpectedly. For installing/authenticating `az` itself,
-see the sibling reference `azure-cli.md`. Used by the **task-estimation** and **test-design**
-skills.
+see the azure-integration skill's `references/azure-cli.md`. Shared home for cross-skill tracker
+references (plugin-root `references/tracker/`); consumed by the **task-estimation** and
+**test-design** skills, which still drive `az` until their tracker-lib migration retires this
+az-flavored reference. Bug filing no longer uses `az` at all — it runs on the bundled REST
+scripts (`scripts/lib/tracker/`).
 
 ## Preflight & install
 - Preflight: `az extension show --name azure-devops` (verify the extension is present).
