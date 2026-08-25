@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // AgenTeX Setup Wizard — Local HTTP Server (Phase 1: Plugin delivery)
-// Usage: node scripts/wizard/server.js [projectRoot] [--port=7373] [--no-open]
+// Usage: node scripts/wizard/server.js [projectRoot] [--port=7373] [--no-open] [--lang=ar|en]
 // Serves the wizard UI on http://127.0.0.1:<port>/setup
 // Writes config/project.json + environments/<env>.json on save.
 // Zero external dependencies — Node.js built-ins only.
@@ -24,9 +24,14 @@ const portArg     = args.find(a => a.startsWith('--port='));
 const PORT        = portArg ? parseInt(portArg.split('=')[1]) : 7373;
 const FORCE       = args.includes('--force');
 const NO_OPEN     = args.includes('--no-open');   // tests/agents: never launch a real browser
+// The wizard is bilingual and boots Arabic. --lang=en opens it in English for a
+// caller who already knows which language the user reads; an unrecognised value
+// is dropped rather than guessed at, and the in-page toggle overrides either way.
+const langArg     = args.find(a => a.startsWith('--lang='));
+const LANG        = ['ar', 'en'].includes(langArg?.split('=')[1]) ? langArg.split('=')[1] : '';
 const HOST        = '127.0.0.1';
 const BASE_URL    = `http://${HOST}:${PORT}`;
-const WIZARD_URL  = `${BASE_URL}/setup`;
+const WIZARD_URL  = `${BASE_URL}/setup${LANG ? `?lang=${LANG}` : ''}`;
 
 // Per-run secret the served page carries; API calls must echo it back.
 const TOKEN       = crypto.randomBytes(24).toString('hex');
@@ -58,7 +63,12 @@ server = http.createServer((req, res) => {
   // ── GET /setup  →  serve wizard HTML ───────────────────────────────────
   if (method === 'GET' && url.pathname === '/setup') {
     let html = fs.readFileSync(uiPath, 'utf8');
-    // Inject mode, API base, and this run's token into the page.
+    // The page opens in Arabic unless the URL asks otherwise (?lang=en) — an
+    // unknown value is ignored rather than guessed at, and a language the
+    // tester picked with the in-page toggle still wins over this default.
+    const askedLang = url.searchParams.get('lang');
+    const lang = ['ar', 'en'].includes(askedLang) ? askedLang : '';
+    // Inject mode, API base, this run's token and the requested language.
     html = html.replace(
       "const MODE = window.WIZARD_MODE || 'local';",
       "const MODE = 'local';"
@@ -68,6 +78,9 @@ server = http.createServer((req, res) => {
     ).replace(
       "const TOKEN = window.WIZARD_TOKEN || '';",
       `const TOKEN = '${TOKEN}';`
+    ).replace(
+      "const LANG_REQUESTED = window.WIZARD_LANG || '';",
+      `const LANG_REQUESTED = '${lang}';`
     );
     respond(res, 200, 'text/html; charset=utf-8', html);
     return;

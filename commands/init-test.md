@@ -18,7 +18,7 @@ Do these steps, then report what was created:
    - `./executions/` output folder (no timestamped run folder — that happens at run time)
    - `./config/project.json` — project settings (Azure org/project, default environment, login mode)
    - `./environments/qc.json` — sample environment (portal URL, defaults, test users, db/api targets); copied only when `./environments/` has no environment files yet, and the wizard reconciles it to the name the user actually chooses
-   - keys-only secrets `./.env` (PAT, DB password, API token, KB key) from the plugin's `.env.example` (every value left empty) and a `.env` entry in `.gitignore`
+   - keys-only secrets `./.env` (PAT, DB password, API token, KB key) from the plugin's `.env.example` (every value left empty) and, in `.gitignore`, entries for everything that holds a live credential — `.env`, `test/.auth/` (saved login sessions) and `.playwright-cli/` (browser scratch profile)
    - `./integration/` with `sample_api.json` + `sample_db.json`
    - the `executions/` guidance bullet in `CLAUDE.md`
 
@@ -33,11 +33,16 @@ Do these steps, then report what was created:
    ```
 
    This starts a local web server and opens the browser automatically at
-   `http://127.0.0.1:7373/setup`. Tell the user:
-   > "فتحت Setup Wizard في المتصفح — عبّي بيانات مشروعك بالترتيب وهيتم حفظ الملفات تلقائياً."
+   `http://127.0.0.1:7373/setup`. The wizard is bilingual: it opens in Arabic and carries
+   an EN/ع toggle in its header. If the user has been writing to you in English, add
+   `--lang=en` to the command above and it opens in English instead.
 
-   Wait silently for the wizard to complete. The server shuts down automatically when the
-   user clicks "حفظ وإغلاق" (the browser calls `/api/done`). You will see:
+   Tell the user — in the language they have been using with you — that the Setup Wizard
+   is now open in their browser, that they should fill in their project data in order,
+   and that the files are saved for them automatically.
+
+   Wait silently for the wizard to complete. The server shuts itself down once the user
+   saves and closes the wizard (the browser calls `/api/done`). You will see:
    `[setup-wizard] ✅ Done. Closing server.`
    in the terminal output when it finishes.
 

@@ -18,7 +18,7 @@ const DEFAULT_ENV_NAME = 'qc';
  * written; templates/config/project.json ships the same arrays (m11 backfills
  * existing projects) and ui.html mirrors them (browser copy — keep in sync).
  * Descriptor: { key, label, labelEn?, type?: text|email|number|url,
- * secret?: bool, required?: bool, default?, hint?, placeholder? }.
+ * secret?: bool, required?: bool, default?, hint?, hintEn?, placeholder?, placeholderEn? }.
  */
 const BUILTIN_USER_FIELDS = [
   { key: 'phone', label: 'رقم الهاتف', labelEn: 'Phone', type: 'text', placeholder: '0550000001' },
@@ -28,7 +28,8 @@ const BUILTIN_USER_FIELDS = [
 ];
 const BUILTIN_DEFAULTS_FIELDS = [
   { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
-    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)' },
+    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+    hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
   { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
 ];
 

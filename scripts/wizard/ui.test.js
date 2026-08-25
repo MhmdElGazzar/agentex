@@ -27,9 +27,32 @@ const elStub = () => ({
   querySelector() { return elStub(); }, querySelectorAll() { return []; },
   onclick: null, oninput: null, onchange: null, focus() {},
 });
-global.window = { WIZARD_MODE: 'web', WIZARD_SCHEMA: require('./schema.json'), scrollTo() {} };
+// An element that remembers what was set on it — the language chrome writes
+// attributes and text the tests need to read back.
+const recordingStub = () => {
+  const el = elStub();
+  el.attrs = {};
+  el.setAttribute = (k, v) => { el.attrs[k] = v; };
+  return el;
+};
+// Only these ids are stable across lookups; everything else stays a fresh stub
+// so the existing tests keep reading empty inputs rather than stale render state.
+const STABLE_IDS = ['lang-btn', 'logo-sub'];
+const stable = {};
+for (const id of STABLE_IDS) stable[id] = recordingStub();
+
+const store = new Map();
+global.window = {
+  WIZARD_MODE: 'web', WIZARD_SCHEMA: require('./schema.json'), scrollTo() {},
+  localStorage: {
+    getItem: k => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => { store.set(k, String(v)); },
+  },
+};
 global.document = {
-  getElementById: () => elStub(),
+  documentElement: recordingStub(),
+  title: '',
+  getElementById: id => stable[id] || elStub(),
   createElement: () => elStub(),
   querySelectorAll: () => [],
   body: elStub(),
@@ -59,6 +82,8 @@ const ui = new Function(script + `
   get builtinUserFields(){return BUILTIN_USER_FIELDS}, get builtinDefaultsFields(){return BUILTIN_DEFAULTS_FIELDS},
   setEnvDisk: (name, diskName) => { envs[name].existsOnDisk = true; envs[name].diskName = diskName; envs[name].dirty = false; },
   setLoadedFrom: (name, v) => { envs[name].loadedFrom = v; },
+  L, loc, setLang, toggleLang, KNOWN_LANGS,
+  get LANG(){return LANG}, get screen(){return screen}, LANG_KEY,
 };`)();
 
 // init() is async (web mode: no network) — assert after it settles.
@@ -379,6 +404,166 @@ setTimeout(() => {
   test('tanween sits on the pre-alif letter — the flagged wrong forms are gone', () => {
     assert.ok(!html.includes('سراً') && !html.includes('حقيقياً'),
       'ليست سرًّا حقيقيًا — التنوين على الحرف قبل الألف، مش على الألف');
+  });
+
+  // ── Bilingual wizard (English support) ────────────────────────────────────
+  // A tester who never touches the toggle must see the wizard they already had,
+  // and a tester who does must not lose a single string to Arabic-only copy.
+
+  test('Arabic is the boot default — an unasked-for language never appears', () => {
+    assert.strictEqual(ui.LANG, 'ar', 'no stored preference and no ?lang= means Arabic');
+    assert.strictEqual(ui.L('عربي', 'English'), 'عربي');
+  });
+
+  test('loc() takes the En twin, degrades to the original, and is never undefined', () => {
+    const withTwin = { label: 'رابط التطبيق', labelEn: 'Application URL' };
+    const noTwin   = { label: 'حقل بدون ترجمة' };
+    const emptyEn  = { label: 'حقل', labelEn: '' };
+    assert.strictEqual(ui.loc(withTwin, 'label'), 'رابط التطبيق', 'Arabic mode reads the original');
+    ui.setLang('en');
+    assert.strictEqual(ui.loc(withTwin, 'label'), 'Application URL', 'English mode reads the twin');
+    assert.strictEqual(ui.loc(noTwin, 'label'), 'حقل بدون ترجمة', 'a missing twin degrades to Arabic');
+    assert.strictEqual(ui.loc(emptyEn, 'label'), 'حقل', 'an empty twin is not a translation');
+    assert.strictEqual(ui.loc(undefined, 'label'), '', 'a missing object is a blank, never undefined');
+    assert.strictEqual(ui.loc({}, 'label'), '', 'a missing key is a blank, never undefined');
+  });
+
+  test('setLang("en") turns the page over: L(), direction, title, toggle, memory', () => {
+    assert.strictEqual(ui.LANG, 'en');
+    assert.strictEqual(ui.L('عربي', 'English'), 'English');
+    assert.strictEqual(document.documentElement.attrs.lang, 'en');
+    assert.strictEqual(document.documentElement.attrs.dir, 'ltr', 'English reads left-to-right');
+    assert.ok(/Project Setup/.test(document.title), 'the tab title follows the language');
+    assert.strictEqual(stable['logo-sub'].textContent, 'Project Setup');
+    assert.strictEqual(stable['lang-btn'].textContent, 'ع', 'the toggle offers the OTHER language');
+    assert.strictEqual(stable['lang-btn'].attrs['aria-label'], 'التبديل إلى العربية',
+      'the toggle names its destination for a screen reader');
+    assert.strictEqual(window.localStorage.getItem(ui.LANG_KEY), 'en', 'the choice is remembered');
+  });
+
+  test('an unknown language is ignored, not guessed at', () => {
+    ui.setLang('fr');
+    assert.strictEqual(ui.LANG, 'en', 'a language the wizard has no copy for changes nothing');
+    ui.setLang('');
+    assert.strictEqual(ui.LANG, 'en');
+  });
+
+  test('the toggle goes back — Arabic restores RTL and the Arabic chrome', () => {
+    ui.toggleLang();
+    assert.strictEqual(ui.LANG, 'ar');
+    assert.strictEqual(document.documentElement.attrs.dir, 'rtl');
+    assert.strictEqual(stable['lang-btn'].textContent, 'EN');
+    assert.strictEqual(window.localStorage.getItem(ui.LANG_KEY), 'ar');
+    ui.toggleLang();
+    assert.strictEqual(ui.LANG, 'en', 'and it goes forward again');
+    ui.setLang('ar');   // leave the boot language in place for anything after this
+  });
+
+  test('switching language redraws the current screen without losing typed work', () => {
+    ui.answers['portalUrl'] = 'https://kept.example';
+    const before = ui.screen;
+    ui.setLang('en');
+    assert.strictEqual(ui.screen, before, 'the same screen stays on the card');
+    assert.strictEqual(ui.answers['portalUrl'], 'https://kept.example',
+      'a display choice must never cost the tester work in progress');
+    ui.setLang('ar');
+  });
+
+  // ── Both-languages-or-neither: the guards that stop English rotting away ──
+
+  test('every Arabic string the schema supplies has a non-empty English twin', () => {
+    const schema = require('./schema.json');
+    const KEYS = ['title', 'description', 'label', 'hint', 'placeholder', 'patternMsg'];
+    const ARABIC = /[\u0600-\u06FF]/;
+    const missing = [];
+    let checked = 0;
+    (function walk(o, at) {
+      if (Array.isArray(o)) return o.forEach((v, i) => walk(v, `${at}[${i}]`));
+      if (!o || typeof o !== 'object') return;
+      for (const k of KEYS) {
+        const v = o[k];
+        if (typeof v !== 'string' || !ARABIC.test(v)) continue;   // an ASCII label needs no twin
+        checked++;
+        const en = o[k + 'En'];
+        if (typeof en !== 'string' || !en.trim()) missing.push(`${at}.${k}En`);
+      }
+      for (const k of Object.keys(o)) walk(o[k], `${at}.${k}`);
+    })(schema, 'schema');
+    assert.ok(checked > 30, `the walk found only ${checked} Arabic strings — it stopped seeing the schema`);
+    assert.deepStrictEqual(missing, [], 'an English-mode tester would read Arabic here');
+  });
+
+  test('every built-in field descriptor carries its English twin too', () => {
+    const ARABIC = /[\u0600-\u06FF]/;
+    const missing = [];
+    for (const [kind, arr] of [['user', ui.builtinUserFields], ['defaults', ui.builtinDefaultsFields]]) {
+      for (const f of arr) {
+        for (const k of ['label', 'hint', 'placeholder']) {
+          if (typeof f[k] === 'string' && ARABIC.test(f[k]) && !(f[k + 'En'] || '').trim()) {
+            missing.push(`${kind}.${f.key}.${k}En`);
+          }
+        }
+      }
+    }
+    assert.deepStrictEqual(missing, [], 'the field editor would show Arabic in English mode');
+  });
+
+  test('every L() call carries both languages — a one-sided call is a missing translation', () => {
+    // Walk each L( occurrence, respecting quotes, and split its top-level commas.
+    const oneSided = [];
+    let calls = 0;
+    for (let i = 0; i < script.length; i++) {
+      if (script[i] !== 'L' || script[i + 1] !== '(') continue;
+      const before = script[i - 1] || ' ';
+      if (/[A-Za-z0-9_$.]/.test(before)) continue;      // someElse.L( / callL( is not our helper
+      calls++;
+      let depth = 0, quote = null, args = [''], j = i + 1;
+      for (; j < script.length; j++) {
+        const c = script[j], prev = script[j - 1];
+        if (quote) {
+          if (c === quote && prev !== '\\') quote = null;
+        } else if (c === '"' || c === "'" || c === '`') {
+          quote = c;
+        } else if (c === '(' || c === '[' || c === '{') {
+          depth++;
+        } else if (c === ')' || c === ']' || c === '}') {
+          depth--;
+          if (depth === 0) break;
+        } else if (c === ',' && depth === 1) {
+          args.push(''); continue;
+        }
+        if (j > i + 1) args[args.length - 1] += c;
+      }
+      const parts = args.map(a => a.trim()).filter(a => a !== '');
+      if (parts.length !== 2) oneSided.push(script.slice(i, Math.min(i + 70, j + 1)).replace(/\n/g, ' '));
+    }
+    assert.ok(calls > 100, `only ${calls} L() calls found — the scanner stopped seeing the script`);
+    assert.deepStrictEqual(oneSided, [], 'each of these renders the same text in both languages');
+  });
+
+  test('the language toggle is reachable from the header in either language', () => {
+    assert.ok(html.includes('id="lang-btn"'), 'the toggle button exists');
+    assert.ok(html.includes('onclick="toggleLang()"'), 'and it is wired to the toggle');
+    assert.ok(html.includes("const LANG_REQUESTED = window.WIZARD_LANG || '';"),
+      'the injection point the server rewrites for ?lang= must keep its exact shape');
+  });
+
+  test('the English copy is present across the surfaces a tester actually walks', () => {
+    // A sample from every screen: if a pass ever drops the English half, this
+    // fails instead of silently shipping an Arabic-only wizard again.
+    for (const s of ['Project Setup', 'Extract the data', '⚡ Optional', 'Secrets',
+                     'Stored safely', 'is required', 'What this save will do:',
+                     'confirmed rename', '← Back', 'Next →', '💾 Save', 'Setup complete',
+                     'Switch to English']) {
+      assert.ok(html.includes(s), `English copy missing: ${s}`);
+    }
+  });
+
+  test('the bidirectional layout rules survive — no RTL-only physical offsets', () => {
+    assert.ok(html.includes('inset-inline-start: 20px'), 'the selected-mode tick follows the reading edge');
+    assert.ok(html.includes('margin-inline-end: 8px'), 'the optional pill trails its label either way');
+    assert.ok(html.includes('[dir="ltr"] .field select'), 'the select chevron flips with the direction');
+    assert.ok(html.includes('padding-inline-start:24px'), 'the copy-options block indents from the reading edge');
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

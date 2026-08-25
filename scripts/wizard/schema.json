@@ -40,14 +40,16 @@
           "options": [
             {
               "value": "session",
-              "label": "Session (موصى به — مرة واحدة لكل جلسة)"
+              "label": "Session (موصى به — مرة واحدة لكل جلسة)",
+              "labelEn": "Session (recommended — log in once per session)"
             },
             {
-              "value": "per-test",
-              "label": "Per-Test (تسجيل دخول في كل اختبار)"
+              "value": "fresh",
+              "label": "Fresh (تسجيل دخول في كل اختبار)",
+              "labelEn": "Fresh (log in through the UI every run)"
             }
           ],
-          "aiHint": "login strategy: session-based or per-test"
+          "aiHint": "login strategy: reuse a saved session, or log in fresh every run"
         }
       ]
     },
@@ -103,6 +105,7 @@
           "label": "Azure DevOps PAT Token",
           "type": "password",
           "placeholder": "Personal Access Token من dev.azure.com",
+          "placeholderEn": "Personal Access Token from dev.azure.com",
           "required": false,
           "secret": true,
           "envKey": "AZURE_PAT",
@@ -129,6 +132,7 @@
           "placeholder": "AbCdEf123456",
           "required": false,
           "hint": "مفتاح ملف Figma من الرابط: figma.com/design/<FILE KEY>/...",
+          "hintEn": "The Figma file key from the URL: figma.com/design/<FILE KEY>/...",
           "aiHint": "Figma file key (the path segment after /design/ or /file/ in a Figma URL)"
         },
         {
@@ -141,6 +145,7 @@
           "required": false,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
+          "patternMsgEn": "an environment-variable name only: A-Z, digits and _ , no spaces",
           "aiHint": "environment variable name for the Figma personal access token"
         },
         {
@@ -175,6 +180,7 @@
           "placeholder": "http://localhost:3000",
           "required": false,
           "hint": "عنوان سيرفر الـ KB Ask API (الهوست فقط، من غير مسار)",
+          "hintEn": "The KB Ask API server address (host only, no path)",
           "aiHint": "knowledge base (KB Ask) API base URL"
         },
         {
@@ -191,6 +197,7 @@
           "label": "KB Ask API Key",
           "type": "password",
           "placeholder": "المفتاح السري المرسل في x-api-key",
+          "placeholderEn": "the secret sent in the x-api-key header",
           "required": false,
           "secret": true,
           "envKey": "KB_ASK_API_KEY",
@@ -230,8 +237,10 @@
           "readonly": true,
           "pattern": "^[a-z0-9][a-z0-9_-]{0,30}$",
           "patternMsg": "حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف",
+          "patternMsgEn": "lowercase letters, digits, - and _ only (31 characters max) — it becomes a file name",
           "aiHint": "environment name being configured (e.g. qc, staging, uat)",
-          "hint": "دي البيئة المفتوحة حالياً. تغيير الاسم بيتم من صفحة إدارة البيئات (إعادة تسمية) — بتأكيد صريح، مش بالكتابة هنا."
+          "hint": "دي البيئة المفتوحة حالياً. تغيير الاسم بيتم من صفحة إدارة البيئات (إعادة تسمية) — بتأكيد صريح، مش بالكتابة هنا.",
+          "hintEn": "The environment you have open. Renaming happens on the Environments page (Rename) — on an explicit confirmation, not by typing here."
         },
         {
           "key": "portalUrl",
@@ -325,11 +334,13 @@
           "required": false,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
+          "patternMsgEn": "an environment-variable name only: A-Z, digits and _ , no spaces",
           "aiHint": "environment variable name for DB password"
         },
         {
           "key": "db.password",
           "label": "كلمة مرور قاعدة البيانات",
+          "labelEn": "Database Password",
           "type": "password",
           "placeholder": "••••••••",
           "required": false,
@@ -369,6 +380,7 @@
           "required": false,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
+          "patternMsgEn": "an environment-variable name only: A-Z, digits and _ , no spaces",
           "aiHint": "environment variable name for API bearer token"
         },
         {
