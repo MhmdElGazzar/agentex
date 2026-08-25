@@ -46,14 +46,15 @@ point the step appears — no extra navigation.
 node ${CLAUDE_PLUGIN_ROOT}/skills/ui-check/scripts/fetch_baseline.js \
   --source figma --id <node-id | frame URL> \
   --out <SESSION_DIR>/screenshots/<scenario>-ui-check-baseline.png \
-  --log <SESSION_DIR>/logs/<scenario>-ui-check.log [--scale 2]
+  --log <SESSION_DIR>/logs/<scenario>-ui-check.log [--scale 2] \
+  [--no-cache] [--cache-dir <dir>] [--cache-max-age-days <n>]
 
 node ${CLAUDE_PLUGIN_ROOT}/skills/ui-check/scripts/fetch_baseline.js \
   --source image --path <baseline image> --out ... --log ...
 ```
 
 It prints one JSON line:
-`{"result":"OK|BLOCKED","baseline":…,"width":…,"height":…,"node":{…},"variants":[…],"fileKeyMismatch":…,"reason":…}`
+`{"result":"OK|BLOCKED","baseline":…,"width":…,"height":…,"node":{…},"variants":[…],"cached":…,"cachedAt":…,"fileKeyMismatch":…,"reason":…}`
 (exit 0 OK / 2 BLOCKED). Figma config comes from `config/project.json`'s `figma` block —
 a story carries only the frame identifier.
 
@@ -62,6 +63,20 @@ a story carries only the frame identifier.
   what is missing and stop this check.)
 - **`fileKeyMismatch: true`** (frame URL names a different file than the configured
   `figma.fileKey`) → raise it with the user; the differing URL is never silently used.
+- **`cached: true`** → Figma was unreachable (`reason` names how: a rate limit, a 5xx, a
+  dead download) and the runner fell back to the baseline it cached at `cachedAt`. A
+  parallel run is two Figma calls per ui-check step, so 19 steps earn a 429 from a design
+  that has not moved in weeks — the check is worth running, but the caveat is not optional:
+  - carry `reason` verbatim into the step report, cache date included;
+  - a conforming result is **PASS + warning**, never a clean PASS — the page matched a
+    baseline from `cachedAt`, which is not the same claim as matching the live design;
+  - a deviation is still a **FAIL**, and its Evidence line must say the baseline was cached
+    on `<cachedAt>`, so nobody files a design defect that is really a design *change*.
+    Re-run the check once Figma answers before that bug is confirmed.
+  The runner will not fall back past 7 days (`--cache-max-age-days`), and never falls back
+  on a rejected token or an unknown node — those stay BLOCKED, because a config error that
+  quietly resolves itself from cache is a config error nobody ever fixes. `--no-cache`
+  turns the fallback off entirely.
 
 ### 2. Variant gate
 
@@ -138,7 +153,7 @@ first-class:
 | Outcome | Meaning | extent-report status |
 |---|---|---|
 | PASS | conforms per the mode | `passed` |
-| PASS + warning | reference-mode layout drift, or unconfident variant pick | `warning` (summary count `warnings`) |
+| PASS + warning | reference-mode layout drift, unconfident variant pick, or a cached (not live) baseline | `warning` (summary count `warnings`) |
 | FAIL | clear deviation (exact) / violated enumerated detail (reference) | `failed` |
 | VIEW MISMATCH ERROR | form factors differ; no PASS/FAIL | `viewMismatch` (note names the mismatch) |
 | BLOCKED | unresolvable baseline (script's named reason, verbatim) | `blocked` |

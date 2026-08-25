@@ -8,14 +8,22 @@ node_modules/
 executions/*
 !executions/README.md
 
+# Saved login sessions (optimize-login storage state = a live token)
+test/.auth/
+
 # Secrets
 .env
 .env.*
 !.env.example
 
-# Claude Code local settings (machine-specific)
-.claude/settings.local.json
+# Claude Code local dev config — machine settings, per-branch worktrees, and the pipeline
+# agents / /pm / project-manager skill. Untracked on purpose: everything committed here ships
+# to every consumer through the marketplace. Snapshotted each release into .planning/dev-agents/.
+.claude/
 
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Private planning repo (own git, never published with the plugin)
+.planning/

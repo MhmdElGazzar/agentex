@@ -24,7 +24,8 @@
   ],
   "defaultsFields": [
     { "key": "password", "label": "كلمة المرور الافتراضية", "labelEn": "Default Password", "default": "Test@1234",
-      "hint": "كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)" },
+      "hint": "كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)",
+      "hintEn": "The shared test-account password — written as-is into the environment file (not a real secret)" },
     { "key": "otp", "label": "OTP الافتراضي", "labelEn": "Default OTP", "default": "0000" }
   ]
 }

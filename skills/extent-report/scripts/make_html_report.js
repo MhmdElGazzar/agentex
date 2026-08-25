@@ -8,19 +8,22 @@
 //   "title": "Suite1+Suite2 Parallel Run",
 //   "date": "2026-07-08",
 //   "summary": {"total":14,"passed":10,"failed":2,"blocked":2,"naDescoped":0,"notRun":0,
-//               "warnings":0,"viewMismatch":0},
+//               "warnings":0,"viewMismatch":0,"flaky":0},
 //   "testCases": [
 //     {
 //       "name": "suite1-product-search",
 //       "spec": "test/suite1/product-search.md",
 //       "status": "failed",
-//       "steps": [ {"desc":"...", "status":"passed|failed|blocked|na|notrun|warning|viewMismatch", "note":"..."} ]
+//       "steps": [ {"desc":"...", "status":"passed|failed|blocked|na|notrun|warning|viewMismatch|flaky", "note":"..."} ]
 //     }
 //   ]
 // }
 // `warnings` / `viewMismatch` counts and the `warning` / `viewMismatch` statuses are
-// first-class ui-check outcomes (own colors, pills, stat cards, donut segments).
-// Both are optional — a run-summary JSON without them renders exactly as before.
+// first-class ui-check outcomes; `flaky` is the execution outcome for a scenario that
+// failed on infrastructure and then passed on its one retry (browser-testing skill,
+// "Flake doctrine") — an unstable result, never folded into `passed`. All three carry
+// own colors, pills, stat cards and donut segments, and all three are optional — a
+// run-summary JSON without them renders exactly as before.
 const fs = require('fs');
 
 const inPath = process.argv[2];
@@ -38,6 +41,7 @@ const COLORS = {
   warning: '#EAC54F',
   failed: '#D6293E',
   blocked: '#F2A93B',
+  flaky: '#E0619B',
   viewMismatch: '#4D9DE0',
   naDescoped: '#8B5CF6',
   notRun: '#B0B0B0',
@@ -47,6 +51,7 @@ const LABELS = {
   warning: 'Warning',
   failed: 'Failed',
   blocked: 'Blocked',
+  flaky: 'Flaky',
   viewMismatch: 'View Mismatch',
   naDescoped: 'N/A - De-scoped',
   notRun: 'Not Run',
@@ -72,7 +77,7 @@ function polar(angleDeg, radius) {
 
 let cum = 0;
 let donutPaths = '';
-const order = ['passed', 'warning', 'failed', 'blocked', 'viewMismatch', 'naDescoped', 'notRun'];
+const order = ['passed', 'warning', 'failed', 'blocked', 'flaky', 'viewMismatch', 'naDescoped', 'notRun'];
 for (const key of order) {
   const count = summaryCount(key);
   if (count <= 0) continue;
@@ -91,10 +96,10 @@ for (const key of order) {
   donutPaths += `<path d="M${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${largeArc} 1 ${x2.toFixed(2)},${y2.toFixed(2)} L${x2i.toFixed(2)},${y2i.toFixed(2)} A${rInner},${rInner} 0 ${largeArc} 0 ${x1i.toFixed(2)},${y1i.toFixed(2)} Z" fill="${COLORS[key]}" stroke="#1a2327" stroke-width="1.5"/>\n`;
 }
 
-// Exercised = every scenario that actually ran to an outcome (warning and
-// viewMismatch checks were executed — they count toward coverage).
+// Exercised = every scenario that actually ran to an outcome (warning, viewMismatch
+// and flaky scenarios were executed — they count toward coverage).
 const coveragePct = Math.round(((summary.passed || 0) + (summary.failed || 0) + (summary.blocked || 0)
-  + (summary.warnings || 0) + (summary.viewMismatch || 0)) / total * 100);
+  + (summary.warnings || 0) + (summary.viewMismatch || 0) + (summary.flaky || 0)) / total * 100);
 
 const donutSvg = `<svg width="220" height="220" viewBox="0 0 220 220">
   ${donutPaths}
@@ -105,7 +110,7 @@ const donutSvg = `<svg width="220" height="220" viewBox="0 0 220 220">
 // ---- status pills ----
 function statusPill(status) {
   const key = status || 'notrun';
-  const map = { passed: 'passed', warning: 'warning', failed: 'failed', blocked: 'blocked', viewMismatch: 'viewMismatch', na: 'naDescoped', notrun: 'notRun' };
+  const map = { passed: 'passed', warning: 'warning', failed: 'failed', blocked: 'blocked', flaky: 'flaky', viewMismatch: 'viewMismatch', na: 'naDescoped', notrun: 'notRun' };
   const colorKey = map[key] || 'notRun';
   const label = key === 'na' ? 'N/A'
     : key === 'notrun' ? 'Not Run'
@@ -115,7 +120,7 @@ function statusPill(status) {
 }
 
 function rollupColor(status) {
-  const map = { passed: COLORS.passed, warning: COLORS.warning, failed: COLORS.failed, blocked: COLORS.blocked, viewMismatch: COLORS.viewMismatch, na: COLORS.naDescoped, notrun: COLORS.notRun };
+  const map = { passed: COLORS.passed, warning: COLORS.warning, failed: COLORS.failed, blocked: COLORS.blocked, flaky: COLORS.flaky, viewMismatch: COLORS.viewMismatch, na: COLORS.naDescoped, notrun: COLORS.notRun };
   return map[status] || COLORS.notRun;
 }
 
@@ -147,9 +152,9 @@ testCases.forEach((tc, i) => {
   </div>`;
 });
 
-// Legend: the two ui-check statuses appear only when present, so run-summary
+// Legend: the ui-check statuses and flaky appear only when present, so run-summary
 // JSONs without them keep the classic 5-row legend.
-const legendHtml = order.filter((key) => !['warning', 'viewMismatch'].includes(key) || summaryCount(key) > 0).map((key) => `
+const legendHtml = order.filter((key) => !['warning', 'viewMismatch', 'flaky'].includes(key) || summaryCount(key) > 0).map((key) => `
   <div class="legend-item">
     <span class="dot" style="background:${COLORS[key]}"></span>
     <span class="legend-label">${LABELS[key]}</span>
@@ -232,6 +237,7 @@ const html = `<div class="ext-report">
       <div class="stat-card" style="border-color:${COLORS.blocked}66"><div class="n" style="color:${COLORS.blocked}">${summary.blocked || 0}</div><div class="l">BLOCKED</div></div>
       ${summary.warnings ? `<div class="stat-card" style="border-color:${COLORS.warning}66"><div class="n" style="color:${COLORS.warning}">${summary.warnings}</div><div class="l">WARNING</div></div>` : ''}
       ${summary.viewMismatch ? `<div class="stat-card" style="border-color:${COLORS.viewMismatch}66"><div class="n" style="color:${COLORS.viewMismatch}">${summary.viewMismatch}</div><div class="l">VIEW MISMATCH</div></div>` : ''}
+      ${summary.flaky ? `<div class="stat-card" style="border-color:${COLORS.flaky}66"><div class="n" style="color:${COLORS.flaky}">${summary.flaky}</div><div class="l">FLAKY</div></div>` : ''}
     </div>
   </div>
   ${rowsHtml}

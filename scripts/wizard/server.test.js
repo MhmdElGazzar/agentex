@@ -64,6 +64,37 @@ const post = (route, body, headers = {}) =>
     assert.strictEqual(r.headers.get('access-control-allow-origin'), null);
   });
 
+  // ── The language the page opens in ──────────────────────────────────────
+  // The wizard is bilingual; the URL that opened the tab can name a language,
+  // and anything it cannot honour is left to the page's own default.
+  const langOf = async qs => {
+    const body = await (await fetch(`${BASE}/setup${qs}`)).text();
+    const m = body.match(/const LANG_REQUESTED = '([^']*)';/);
+    assert.ok(m, 'the served page must keep the LANG_REQUESTED injection point');
+    return m[1];
+  };
+
+  await test('/setup?lang=en asks the page for English', async () => {
+    assert.strictEqual(await langOf('?lang=en'), 'en');
+  });
+
+  await test('/setup?lang=ar asks for Arabic explicitly', async () => {
+    assert.strictEqual(await langOf('?lang=ar'), 'ar');
+  });
+
+  await test('/setup with no lang leaves the page on its own default', async () => {
+    assert.strictEqual(await langOf(''), '', 'an absent request is not a request for Arabic');
+  });
+
+  await test('an unsupported lang is ignored, never guessed at or injected raw', async () => {
+    assert.strictEqual(await langOf('?lang=fr'), '', 'no copy exists for it');
+    // The value lands inside a single-quoted JS literal — it must never be
+    // attacker-controlled text, only one of the two languages that exist.
+    assert.strictEqual(await langOf("?lang=en';alert(1);//"), '');
+    const body = await (await fetch(`${BASE}/setup?lang=en';alert(1);//`)).text();
+    assert.ok(!body.includes('alert(1)'), 'the query string never reaches the page as code');
+  });
+
   await test('extracts Arabic labels sent over HTTP (UTF-8, not latin1)', async () => {
     const arName = 'اسم المشروع';   // اسم المشروع
     const arUrl  = 'الرابط';                            // الرابط
@@ -664,9 +695,47 @@ const post = (route, body, headers = {}) =>
     assert.match((await r.json()).error, /envSecret/);
   });
 
+  // ── --lang=en: the URL the server hands the browser ─────────────────────
+  // A caller who already knows which language the user reads should not have to
+  // make them find the toggle.
+  const PORT4 = 7394;
+  const projectDir4 = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv4-'));
+  const child4 = spawn(process.execPath, [SERVER, projectDir4, `--port=${PORT4}`, '--no-open', '--lang=en'],
+    { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout4 = '';
+  child4.stdout.on('data', d => { stdout4 += d; });
+  await new Promise(r => {
+    const t = setInterval(() => { if (stdout4.includes('Wizard running')) { clearInterval(t); r(); } }, 100);
+  });
+
+  await test('--lang=en opens the wizard in English and the page honours it', async () => {
+    assert.ok(stdout4.includes(`http://127.0.0.1:${PORT4}/setup?lang=en`),
+      `expected the announced URL to carry the language, got: ${stdout4.trim()}`);
+    const body = await (await fetch(`http://127.0.0.1:${PORT4}/setup?lang=en`)).text();
+    assert.match(body, /const LANG_REQUESTED = 'en';/);
+  });
+
+  await test('--lang=de is dropped — the wizard opens on its own default', async () => {
+    const PORT5 = 7395;
+    const dir5 = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv5-'));
+    const c5 = spawn(process.execPath, [SERVER, dir5, `--port=${PORT5}`, '--no-open', '--lang=de'],
+      { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out5 = '';
+    c5.stdout.on('data', d => { out5 += d; });
+    await new Promise(r => {
+      const t = setInterval(() => { if (out5.includes('Wizard running')) { clearInterval(t); r(); } }, 100);
+    });
+    const line5 = (out5.split(String.fromCharCode(10)).find(l => l.includes('/setup')) || '').trim();
+    assert.ok(line5.includes(':' + PORT5 + '/setup'), 'the wizard URL is announced: ' + line5);
+    assert.ok(!line5.includes('?'), 'no query string is appended for a language that has no copy');
+    assert.ok(!out5.includes('lang=de'), 'an unsupported language is never echoed into the URL');
+    c5.kill();
+  });
+
   child.kill();
   child2.kill();
   child3.kill();
+  child4.kill();
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

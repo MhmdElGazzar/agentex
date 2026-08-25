@@ -8,6 +8,11 @@ when a `playwright-cli` command behaves unexpectedly.
   `playwright-cli` package is **deprecated** — do NOT install it).
 - Preflight before testing: `npx playwright-cli --version`.
   - If missing: `npm install -D @playwright/cli` then `npx playwright-cli install-browser chromium`.
+- `preflight.js` also reports a **`playwright`** key — the npm **library**, which is a
+  different thing from this CLI and is needed only by `/optimize-login` when it resumes a
+  saved session (only the library can load a `storageState`). `ok: false` there does not
+  block a normal run; if you do need it: `npm i -D playwright` then
+  `npx playwright install chromium`.
 - Invoke as `npx playwright-cli <command>` (local devDependency, not global).
 - Headed (for demos / watching): add `--headed`, e.g. `npx playwright-cli open <url> --headed`.
   For parallel/regression sweeps run headless (omit `--headed`).
@@ -30,6 +35,35 @@ when a `playwright-cli` command behaves unexpectedly.
 - Pass `run-code` as a **single line** (no newlines — the shell mangles multi-line code).
   Example (one line):
   `npx playwright-cli -s=<s> run-code "async (page) => { const r=[]; page.on('request',q=>r.push(q.method()+' '+q.url())); await page.click('#x'); await page.waitForTimeout(1500); return JSON.stringify(r); }"`
+
+## Driver error vs app defect
+When a command fails, the first question is whether the app ever answered. Only the first list
+earns the single retry the browser-testing **Flake doctrine** allows; the second list is a
+defect, and retrying it buries a real bug.
+
+**Infrastructure — the app never answered (retry once, from a clean state):**
+- `net::ERR_CONNECTION_REFUSED` / `ERR_CONNECTION_RESET` / `ERR_NAME_NOT_RESOLVED` /
+  `ERR_PROXY_CONNECTION_FAILED` / `ERR_INTERNET_DISCONNECTED` — nothing was served.
+- `Target page, context or browser has been closed`, a `browserType.launch` failure, or
+  `Session closed` — the session died under the test.
+- `Timeout <n>ms exceeded` on `open` with no page rendered at all.
+- `npx playwright-cli` exiting non-zero with a driver or usage error rather than a test result,
+  or `snapshot` returning no page.
+- `Executable doesn't exist … install-browser chromium` — a missing browser binary is a
+  preflight problem, not a defect. Fix it and start the run again; that is not a "retry".
+
+**Defect — the app answered, and the answer was wrong (NEVER retried):**
+- Element not found, `strict mode violation`, or a locator timing out on a page that DID
+  render — the UI is not what the spec expects.
+- Wrong text, wrong count, wrong state, or a "success" message that turns out to be static
+  markup (check computed visibility via `eval`).
+- Any 4xx/5xx served BY THE APP UNDER TEST, a 500 on submit included.
+- JS console errors (`console error`) — a defect even when the UI looks fine.
+- A step that fails intermittently on a page that renders every time: that is an intermittent
+  DEFECT. The honest verdict is FLAKY, not a quiet second attempt.
+
+A timeout is the one that needs a look before you decide: a timeout with no page is
+infrastructure, a timeout waiting for an element on a page that rendered is a defect.
 
 ## Sessions
 - `-s=<session>` selects a named browser session. **EVERY command in EVERY run — sequential

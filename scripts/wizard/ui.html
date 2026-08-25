@@ -68,6 +68,15 @@ body { min-height: 100vh; }
   border-radius: 20px; display: none;
 }
 .step-pill.show { display: block; }
+/* Language toggle — shows the language you GET, not the one you are in. */
+.lang-btn {
+  background: var(--bg-muted); color: var(--text-2);
+  border: 1px solid var(--border); border-radius: 20px;
+  font-family: inherit; font-size: 12px; font-weight: 700;
+  min-width: 42px; padding: 5px 12px; cursor: pointer; line-height: 1.2;
+}
+.lang-btn:hover { color: var(--accent); border-color: var(--accent); }
+.lang-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Progress bar ───────────────────────────────────────────────────────── */
 .progress-bar-wrap {
@@ -153,7 +162,7 @@ body { min-height: 100vh; }
 .mode-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mode-card.selected { border-color: var(--accent); background: var(--accent-lt); }
 .mode-card.selected::after {
-  content: '✓'; position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+  content: '✓'; position: absolute; inset-inline-start: 20px; top: 50%; transform: translateY(-50%);
   width: 22px; height: 22px; border-radius: 50%;
   background: var(--accent); color: white; font-size: 12px; font-weight: 800;
   display: flex; align-items: center; justify-content: center;
@@ -221,7 +230,7 @@ body { min-height: 100vh; }
   padding: 2px 10px; border-radius: 20px;
   background: var(--warning-lt); border: 1px solid rgba(217,119,6,.25);
   font-size: 11px; color: var(--warning); font-weight: 700;
-  margin-right: 8px; vertical-align: middle;
+  margin-inline-end: 8px; vertical-align: middle;
 }
 
 /* ── Card Body ──────────────────────────────────────────────────────────── */
@@ -255,6 +264,7 @@ body { min-height: 100vh; }
 }
 .field input[type="password"] { font-family: var(--mono); letter-spacing: 1px; }
 .field select { appearance: none; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a92b2' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 12px center; padding-left: 36px; }
+[dir="ltr"] .field select { background-position: right 12px center; padding-left: 14px; padding-right: 36px; }
 .field input[type="number"] { -moz-appearance: textfield; }
 .field input.secret-input { border-color: rgba(217,119,6,.3); background: #fffbf0; }
 .field input.secret-input:focus { border-color: var(--warning); box-shadow: 0 0 0 3px rgba(217,119,6,.1); }
@@ -498,10 +508,11 @@ body { min-height: 100vh; }
     <div class="logo-mark"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
     <div>
       <div class="logo-name">AgenTeX</div>
-      <div class="logo-sub">إعداد المشروع</div>
+      <div class="logo-sub" id="logo-sub">إعداد المشروع</div>
     </div>
   </div>
   <div class="spacer"></div>
+  <button type="button" class="lang-btn" id="lang-btn" onclick="toggleLang()">EN</button>
   <div class="step-pill" id="hdr-pill"></div>
 </header>
 
@@ -536,6 +547,89 @@ function apiFetch(path, opts = {}) {
     ...opts,
     headers: { ...(opts.headers || {}), 'X-Wizard-Token': TOKEN },
   });
+}
+
+/* ── Language ───────────────────────────────────────────────────────────── */
+// The wizard shipped Arabic-only. The schema already carried titleEn/labelEn
+// twins, but nothing ever read them, so an English-speaking tester had no way
+// in at all. Both languages now sit side by side at the point of use —
+// L('عربي', 'English') for the page's own copy, loc(obj, 'label') for anything
+// the schema supplies — so a string cannot quietly be added in one language.
+// Arabic stays the default: a tester who never touches the toggle sees exactly
+// the wizard they had before.
+const LANG_KEY = 'agentex-wizard-lang';
+function storedLang() {
+  // A file:// open or a locked-down browser throws on localStorage; a missing
+  // preference is not a reason to fail to boot.
+  try { return window.localStorage.getItem(LANG_KEY); } catch (e) { return null; }
+}
+const KNOWN_LANGS = ['ar', 'en'];
+// A default the host can ask for: the server rewrites this line when /setup is
+// opened as ?lang=en, and any page embedding the wizard can set
+// window.WIZARD_LANG before this script runs. A choice the tester made with
+// the toggle still wins — their own voice outranks the URL that opened the tab.
+const LANG_REQUESTED = window.WIZARD_LANG || '';
+let LANG = KNOWN_LANGS.includes(storedLang()) ? storedLang()
+  : (KNOWN_LANGS.includes(LANG_REQUESTED) ? LANG_REQUESTED : 'ar');
+
+/** The page's own copy: both languages at the call site. */
+function L(ar, en) { return LANG === 'en' ? en : ar; }
+
+/** A schema-supplied string: the `<key>En` twin when there is one, else the
+ *  original — a missing translation degrades to Arabic, never to `undefined`. */
+function loc(obj, key) {
+  if (!obj) return '';
+  const en = obj[key + 'En'];
+  if (LANG === 'en' && en !== undefined && en !== null && en !== '') return en;
+  return obj[key] !== undefined && obj[key] !== null ? obj[key] : '';
+}
+
+/** Which screen is on the card, so a language switch redraws exactly it. */
+let screen = 'intro';   // 'intro' | 'paste' | 'file' | 'step' | 'done'
+
+function setLang(next) {
+  if (!KNOWN_LANGS.includes(next) || next === LANG) return;
+  LANG = next;
+  try { window.localStorage.setItem(LANG_KEY, LANG); } catch (e) {}   // remembering is a nicety, not a requirement
+  applyLangChrome();
+  rerender();
+}
+function toggleLang() { setLang(LANG === 'ar' ? 'en' : 'ar'); }
+
+/** Everything outside the card: document direction, title, header, the toggle. */
+function applyLangChrome() {
+  const root = document.documentElement;
+  if (root && root.setAttribute) {
+    root.setAttribute('lang', LANG);
+    root.setAttribute('dir', LANG === 'en' ? 'ltr' : 'rtl');
+  }
+  document.title = L('AgenTeX — إعداد المشروع', 'AgenTeX — Project Setup');
+  const sub = document.getElementById('logo-sub');
+  if (sub) sub.textContent = L('إعداد المشروع', 'Project Setup');
+  const btn = document.getElementById('lang-btn');
+  if (btn) {
+    btn.textContent = L('EN', 'ع');
+    const hint = L('Switch to English', 'التبديل إلى العربية');
+    btn.setAttribute('aria-label', hint);
+    btn.setAttribute('title', hint);
+  }
+  updateProgress();
+}
+
+/** Redraw the current screen in the active language, keeping what was typed:
+ *  switching language is a display choice and must never cost work in progress. */
+function rerender() {
+  if (screen === 'step')  { collectAnswers(); renderStep(); return; }
+  if (screen === 'paste') {
+    const keep = (document.getElementById('paste-text') || {}).value || '';
+    renderPasteMode();
+    const box = document.getElementById('paste-text');
+    if (box) box.value = keep;
+    return;
+  }
+  if (screen === 'file')  { renderFileMode(); if (window._file) pickFile(window._file); return; }
+  if (screen === 'done')  { renderFinished(); return; }
+  renderIntro();
 }
 
 /* ── State ──────────────────────────────────────────────────────────────── */
@@ -619,7 +713,8 @@ const BUILTIN_USER_FIELDS = [
 ];
 const BUILTIN_DEFAULTS_FIELDS = [
   { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
-    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)' },
+    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+    hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
   { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
 ];
 const FIELD_KEY_RE_UI = /^[a-zA-Z][a-zA-Z0-9_]*$/;
@@ -688,12 +783,12 @@ async function loadExistingConfig() {
     // Say it out loud — and say each file's real fate. An unreadable
     // project.json is rewritten on save; unreadable ENVIRONMENT files are
     // excluded from the wizard entirely: never edited, never overwritten.
-    let msg = `⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقرا:\n\n${unreadable.join('\n')}\n\n`;
+    let msg = L(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقرا:\n\n${unreadable.join('\n')}\n\n`, `⚠️ These files exist but are not valid JSON, so they cannot be read:\n\n${unreadable.join('\n')}\n\n`);
     if (unreadable.includes('config/project.json')) {
-      msg += 'لو كملت وحفظت، config/project.json هيتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.\n';
+      msg += L('لو كملت وحفظت، config/project.json هيتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.\n', 'If you continue and save, config/project.json is written from scratch — fix the JSON first if you need to keep what is in it.\n');
     }
     if (unreadableEnvNames.length) {
-      msg += 'ملفات البيئات دي مش هتظهر في الويزارد ومش هتتلمس — أسماؤها محجوزة، وصلّحها بإيدك لو محتاجها.';
+      msg += L('ملفات البيئات دي مش هتظهر في الويزارد ومش هتتلمس — أسماؤها محجوزة، وصلّحها بإيدك لو محتاجها.', 'These environment files will not appear in the wizard and will not be touched — their names stay reserved; fix them by hand if you need them.');
     }
     alert(msg);
   }
@@ -748,7 +843,7 @@ async function loadExistingConfig() {
     restoreEnv(envOrder[0]);
   }
   // The toast announces USER data that was loaded — an untouched scaffold is not that.
-  if (projLoaded || names.length) showToast('📂 تم تحميل إعدادات المشروع الحالية');
+  if (projLoaded || names.length) showToast(L('📂 تم تحميل إعدادات المشروع الحالية', '📂 Loaded your existing project configuration'));
 }
 
 /** Environment-scoped answer keys — everything that belongs to ONE environment
@@ -934,10 +1029,10 @@ function markAllEnvsDirty() { for (const n of envOrder) envs[n].dirty = true; }
 /** Why this key cannot be used for an add/rename right now — or null. */
 function fieldKeyProblem(kind, key, selfKey) {
   if (!FIELD_KEY_RE_UI.test(String(key || ''))) {
-    return 'اسم الحقل لازم يبدأ بحرف إنجليزي ويحتوي حروفًا إنجليزية وأرقامًا و _ بس — هو المفتاح اللي بيتكتب في ملف الـ JSON';
+    return L('اسم الحقل لازم يبدأ بحرف إنجليزي ويحتوي حروفًا إنجليزية وأرقامًا و _ بس — هو المفتاح اللي بيتكتب في ملف الـ JSON', 'A field key must start with a letter and hold only letters, digits and _ — it is the key written into the JSON file');
   }
-  if (kind === 'user' && key === 'handle') return '«handle» محجوز — هو مفتاح المستخدم نفسه، موجود دايمًا ومش بيتغير';
-  if (fieldList(kind).some(f => f.key === key && f.key !== selfKey)) return `«${key}» موجود بالفعل في مجموعة الحقول`;
+  if (kind === 'user' && key === 'handle') return L('«handle» محجوز — هو مفتاح المستخدم نفسه، موجود دايمًا ومش بيتغير', '«handle» is reserved — it is the user key itself: always there, never changed');
+  if (fieldList(kind).some(f => f.key === key && f.key !== selfKey)) return L(`«${key}» موجود بالفعل في مجموعة الحقول`, `«${key}» is already in the field set`);
   return null;
 }
 
@@ -1020,9 +1115,9 @@ function fieldAddShapeConflict(kind, key, secret) {
       } else plain = true;
     }
   }
-  if (other) return `في قيم مركّبة (object) محفوظة على القرص تحت «${key}» — الويزارد مايقدرش يعرضها كحقل؛ اختر مفتاحًا تانيًا أو عدّل الملف بإيدك`;
-  if (secret && plain) return `في قيم نصية محفوظة على القرص تحت «${key}» — أضفه كحقل نصي الأول عشان القيم تتحمّل، وبعدها حوّله لسرّي لو محتاج (التحويل بيمسح القيم بتأكيد صريح)`;
-  if (!secret && ref) return `«${key}» محفوظ على القرص بصيغة سرية (envSecret) — أضفه كحقل سرّي عشان اسم المتغير يتحمّل بدل ما القيمة تتمسح`;
+  if (other) return L(`في قيم مركّبة (object) محفوظة على القرص تحت «${key}» — الويزارد مايقدرش يعرضها كحقل؛ اختر مفتاحًا تانيًا أو عدّل الملف بإيدك`, `there are structured (object) values on disk under «${key}» — the wizard cannot show those as a field; pick another key, or edit the file by hand`);
+  if (secret && plain) return L(`في قيم نصية محفوظة على القرص تحت «${key}» — أضفه كحقل نصي الأول عشان القيم تتحمّل، وبعدها حوّله لسرّي لو محتاج (التحويل بيمسح القيم بتأكيد صريح)`, `there are plain-text values on disk under «${key}» — add it as a text field first so those values load, then make it secret if you need to (that switch clears the values, on an explicit confirmation)`);
+  if (!secret && ref) return L(`«${key}» محفوظ على القرص بصيغة سرية (envSecret) — أضفه كحقل سرّي عشان اسم المتغير يتحمّل بدل ما القيمة تتمسح`, `«${key}» is on disk in secret form (envSecret) — add it as a secret field so the variable name loads instead of the value being wiped`);
   return null;
 }
 
@@ -1217,10 +1312,10 @@ const ENV_NAME_RE_UI = /^[a-z0-9][a-z0-9_-]{0,30}$/;
 
 /** Why this name cannot be used for an add/rename right now — or null. */
 function envNameProblem(name, opts = {}) {
-  if (!ENV_NAME_RE_UI.test(name)) return 'حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف';
-  if (envs[name]) return `«${name}» موجودة بالفعل في الجلسة`;
-  if (unreadableEnvNames.includes(name)) return `«${name}» اسم ملف موجود على القرص لكنه غير صالح JSON — الاسم محجوز لحد ما يتصلّح`;
-  if (pendingDeletes.includes(name)) return `«${name}» متعلَّم عليها حذف في الجلسة دي — استخدم اسمًا تانيًا`;
+  if (!ENV_NAME_RE_UI.test(name)) return L('حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف', 'lowercase letters, digits, - and _ only (31 characters max) — it becomes a file name');
+  if (envs[name]) return L(`«${name}» موجودة بالفعل في الجلسة`, `«${name}» already exists in this session`);
+  if (unreadableEnvNames.includes(name)) return L(`«${name}» اسم ملف موجود على القرص لكنه غير صالح JSON — الاسم محجوز لحد ما يتصلّح`, `«${name}» is a file on disk that is not valid JSON — the name stays reserved until it is fixed`);
+  if (pendingDeletes.includes(name)) return L(`«${name}» متعلَّم عليها حذف في الجلسة دي — استخدم اسمًا تانيًا`, `«${name}» is marked for deletion in this session — use another name`);
   // A name may look free in the session while its FILE is still on disk,
   // vacated by a pending rename: reusing it would chain renames into the
   // batch save's in-order execution — the exact path that silently
@@ -1231,10 +1326,10 @@ function envNameProblem(name, opts = {}) {
   for (const n of envOrder) {
     const e = envs[n];
     if (n !== opts.self && e.existsOnDisk && e.diskName === name) {
-      return `«${name}» لسه اسم ملف موجود على القرص (هيتنقل لـ «${n}» عند الحفظ) — احفظ الأول وبعدين استخدم الاسم، أو اختر اسمًا تانيًا`;
+      return L(`«${name}» لسه اسم ملف موجود على القرص (هيتنقل لـ «${n}» عند الحفظ) — احفظ الأول وبعدين استخدم الاسم، أو اختر اسمًا تانيًا`, `«${name}» is still a file on disk (it moves to «${n}» on save) — save first and then use the name, or pick another one`);
     }
   }
-  if (opts.forRename && pristineSamples.includes(name)) return `«${name}» ملف نموذجي لسه موجود على القرص — ماينفعش إعادة التسمية عليه`;
+  if (opts.forRename && pristineSamples.includes(name)) return L(`«${name}» ملف نموذجي لسه موجود على القرص — ماينفعش إعادة التسمية عليه`, `«${name}» is a sample file still on disk — renaming onto it is not allowed`);
   return null;
 }
 
@@ -1248,6 +1343,7 @@ async function loadSchema() {
 
 /* ── Intro Screen ───────────────────────────────────────────────────────── */
 function renderIntro() {
+  screen = 'intro';
   current = -1;
   updateProgress();
   document.getElementById('hdr-pill').classList.remove('show');
@@ -1256,39 +1352,39 @@ function renderIntro() {
   document.getElementById('card').innerHTML = `
     <div class="intro">
       <div class="intro-head">
-        <div class="intro-title">مرحباً بك في AgenTeX 👋</div>
-        <div class="intro-sub">اختر الطريقة التي تريد إعداد مشروعك بها:</div>
+        <div class="intro-title">${L('مرحباً بك في AgenTeX 👋', 'Welcome to AgenTeX 👋')}</div>
+        <div class="intro-sub">${L('اختر الطريقة التي تريد إعداد مشروعك بها:', 'Choose how you want to set your project up:')}</div>
       </div>
 
-      <div class="mode-grid" role="radiogroup" aria-label="طريقة الإعداد">
+      <div class="mode-grid" role="radiogroup" aria-label="${L('طريقة الإعداد', 'Setup method')}">
         <div class="mode-card" id="mc-file" role="radio" aria-checked="false" tabindex="0"
              onclick="selectMode('file')" onkeydown="modeKey(event,'file')">
           <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg></div>
           <div>
-            <div class="mode-title">رفع ملف</div>
-            <div class="mode-desc">ارفع ملفاً نصياً (md، txt، json…) وسيستخلص Claude البيانات تلقائياً</div>
+            <div class="mode-title">${L('رفع ملف', 'Upload a file')}</div>
+            <div class="mode-desc">${L('ارفع ملفاً نصياً (md، txt، json…) وسيستخلص Claude البيانات تلقائياً', 'Upload a text file (md, txt, json…) and Claude pulls the data out of it')}</div>
           </div>
         </div>
         <div class="mode-card" id="mc-paste" role="radio" aria-checked="false" tabindex="0"
              onclick="selectMode('paste')" onkeydown="modeKey(event,'paste')">
           <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/></svg></div>
           <div>
-            <div class="mode-title">لصق تفاصيل</div>
-            <div class="mode-desc">الصق وصف المشروع ليقوم Claude بتحليله واستخراج البيانات</div>
+            <div class="mode-title">${L('لصق تفاصيل', 'Paste details')}</div>
+            <div class="mode-desc">${L('الصق وصف المشروع ليقوم Claude بتحليله واستخراج البيانات', 'Paste a project description for Claude to read and extract the data from')}</div>
           </div>
         </div>
         <div class="mode-card" id="mc-steps" role="radio" aria-checked="false" tabindex="0"
              onclick="selectMode('steps')" onkeydown="modeKey(event,'steps')">
           <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h12"/><path d="M2 12h12"/><path d="M2 18h12"/><circle cx="19.5" cy="6" r="1.5"/><circle cx="19.5" cy="12" r="1.5"/><circle cx="19.5" cy="18" r="1.5"/></svg></div>
           <div>
-            <div class="mode-title">خطوة بخطوة</div>
-            <div class="mode-desc">املأ بيانات المشروع بنفسك في ${schema.steps.length} خطوات قصيرة</div>
+            <div class="mode-title">${L('خطوة بخطوة', 'Step by step')}</div>
+            <div class="mode-desc">${L(`املأ بيانات المشروع بنفسك في ${schema.steps.length} خطوات قصيرة`, `Fill your project data in yourself, across ${schema.steps.length} short steps`)}</div>
           </div>
         </div>
       </div>
 
       <button class="btn-start" onclick="startWizard()" id="btn-start" disabled>
-        ابدأ الإعداد ←
+        ${L('ابدأ الإعداد ←', 'Start setup →')}
       </button>
     </div>`;
   if (importMode) selectMode(importMode);
@@ -1319,28 +1415,29 @@ function startWizard() {
 
 /* ── Paste Mode ─────────────────────────────────────────────────────────── */
 function renderPasteMode() {
+  screen = 'paste';
   document.getElementById('hdr-pill').classList.remove('show');
   document.getElementById('steps-scroll').classList.remove('show');
   document.getElementById('card').innerHTML = `
     <div class="paste-mode">
       <div class="intro-head">
-        <h2>📋 لصق تفاصيل المشروع</h2>
-        <p>الصق أي وصف أو مستند أو تفاصيل عن مشروعك في الحقل أدناه وسيستخلص Claude البيانات تلقائياً.</p>
+        <h2>${L('📋 لصق تفاصيل المشروع', '📋 Paste project details')}</h2>
+        <p>${L('الصق أي وصف أو مستند أو تفاصيل عن مشروعك في الحقل أدناه وسيستخلص Claude البيانات تلقائياً.', 'Paste any description, document or details about your project below and Claude extracts the data.')}</p>
       </div>
       <textarea class="paste-area" id="paste-text"
-        placeholder="مثال: اسم المشروع: تطبيق الإدارة&#10;الرابط: https://app.example.com&#10;Azure Org: myorg, Project: MyProject&#10;مستخدمون: valid_user (0550000001), admin (0550000002)&#10;..."></textarea>
+        placeholder="${L('مثال: اسم المشروع: تطبيق الإدارة&#10;الرابط: https://app.example.com&#10;Azure Org: myorg, Project: MyProject&#10;مستخدمون: valid_user (0550000001), admin (0550000002)&#10;...', 'Example: Project name: Admin App&#10;URL: https://app.example.com&#10;Azure Org: myorg, Project: MyProject&#10;Users: valid_user (0550000001), admin (0550000002)&#10;...')}"></textarea>
       <div style="display:flex;gap:10px;align-items:center">
         <button class="btn btn-primary" id="btn-extract-paste" onclick="extractFromPaste()">
-          🤖 استخلاص البيانات
+          ${L('🤖 استخلاص البيانات', '🤖 Extract the data')}
         </button>
-        <button class="btn btn-outline" onclick="renderIntro()">→ رجوع</button>
+        <button class="btn btn-outline" onclick="renderIntro()">${L('→ رجوع', '← Back')}</button>
       </div>
       <div class="extract-preview" id="paste-preview">
-        <div class="ep-title">✅ تم الاستخلاص — راجع البيانات:</div>
+        <div class="ep-title">${L('✅ تم الاستخلاص — راجع البيانات:', '✅ Extracted — check the data:')}</div>
         <div class="ep-code" id="paste-preview-code"></div>
         <div style="display:flex;gap:8px;margin-top:4px">
-          <button class="btn btn-primary" onclick="applyAndStart()">تطبيق والمتابعة ←</button>
-          <button class="btn btn-outline" onclick="document.getElementById('paste-preview').classList.remove('show')">تعديل النص</button>
+          <button class="btn btn-primary" onclick="applyAndStart()">${L('تطبيق والمتابعة ←', 'Apply and continue →')}</button>
+          <button class="btn btn-outline" onclick="document.getElementById('paste-preview').classList.remove('show')">${L('تعديل النص', 'Edit the text')}</button>
         </div>
       </div>
     </div>`;
@@ -1348,10 +1445,10 @@ function renderPasteMode() {
 
 async function extractFromPaste() {
   const text = document.getElementById('paste-text').value.trim();
-  if (!text) { showToast('الرجاء لصق النص أولاً', 'warn'); return; }
+  if (!text) { showToast(L('الرجاء لصق النص أولاً', 'Paste some text first'), 'warn'); return; }
 
   const btn = document.getElementById('btn-extract-paste');
-  btn.innerHTML = '<div class="spin"></div> جارٍ الاستخلاص...';
+  btn.innerHTML = '<div class="spin"></div> ' + L('جارٍ الاستخلاص...', 'Extracting…');
   btn.disabled = true;
 
   try {
@@ -1363,7 +1460,7 @@ async function extractFromPaste() {
       });
       extractedData = await r.json();
       if (!r.ok || extractedData.error) {
-        showToast('فشل الاستخلاص: ' + (extractedData.message || extractedData.error || ('HTTP ' + r.status)), 'error');
+        showToast(L('فشل الاستخلاص: ', 'Extraction failed: ') + (extractedData.message || extractedData.error || ('HTTP ' + r.status)), 'error');
         extractedData = null;
         return;
       }
@@ -1374,9 +1471,9 @@ async function extractFromPaste() {
       JSON.stringify(extractedData, null, 2);
     document.getElementById('paste-preview').classList.add('show');
   } catch(e) {
-    showToast('فشل الاستخلاص: ' + e.message, 'error');
+    showToast(L('فشل الاستخلاص: ', 'Extraction failed: ') + e.message, 'error');
   } finally {
-    btn.innerHTML = '🤖 استخلاص البيانات';
+    btn.innerHTML = L('🤖 استخلاص البيانات', '🤖 Extract the data');
     btn.disabled = false;
   }
 }
@@ -1384,25 +1481,29 @@ async function extractFromPaste() {
 function applyAndStart() {
   if (extractedData) applyExtracted(extractedData);
   const n = Object.keys(extractedData || {}).filter(k => !k.startsWith('_')).length;
-  showToast(n ? 'تم تعبئة الحقول — راجعها خطوة بخطوة' : 'لم نتعرف على أي بيانات — املأ الحقول يدوياً', n ? 'success' : 'warn');
+  showToast(n
+    ? L('تم تعبئة الحقول — راجعها خطوة بخطوة', 'Fields filled in — review them step by step')
+    : L('لم نتعرف على أي بيانات — املأ الحقول يدوياً', 'Nothing recognizable found — fill the fields in by hand'),
+    n ? 'success' : 'warn');
   goTo(0);
 }
 
 /* ── File Import Mode (dedicated screen, like paste mode) ─────────────────── */
 function renderFileMode() {
+  screen = 'file';
   document.getElementById('hdr-pill').classList.remove('show');
   document.getElementById('steps-scroll').classList.remove('show');
   document.getElementById('card').innerHTML = `
     <div class="paste-mode">
       <div class="intro-head">
-        <h2>📄 استيراد من ملف</h2>
-        <p>ارفع ملفاً نصياً (BRD بصيغة .md أو .txt، أو ملف .env قديم) وسيستخلص Claude البيانات تلقائياً.</p>
+        <h2>${L('📄 استيراد من ملف', '📄 Import from a file')}</h2>
+        <p>${L('ارفع ملفاً نصياً (BRD بصيغة .md أو .txt، أو ملف .env قديم) وسيستخلص Claude البيانات تلقائياً.', 'Upload a text file (a BRD as .md or .txt, or an old .env) and Claude extracts the data.')}</p>
       </div>
       <div class="dropzone" id="dz">
         <input type="file" id="fi" accept=".md,.txt,.env,.json,.yml,.yaml" style="display:none" />
         <div class="dz-icon">📄</div>
-        <div class="dz-title">اسحب الملف هنا أو انقر للاختيار</div>
-        <div class="dz-sub">ملفات نصية فقط — ملفات PDF/Word غير مدعومة حالياً</div>
+        <div class="dz-title">${L('اسحب الملف هنا أو انقر للاختيار', 'Drop a file here, or click to choose one')}</div>
+        <div class="dz-sub">${L('ملفات نصية فقط — ملفات PDF/Word غير مدعومة حالياً', 'Text files only — PDF/Word are not supported yet')}</div>
         <div class="dz-types">.env · .md · .txt · .json · .yml · .yaml</div>
       </div>
       <div class="file-ready" id="file-ready">
@@ -1412,18 +1513,18 @@ function renderFileMode() {
           <div class="file-ready-size" id="fs">—</div>
         </div>
         <button class="btn btn-primary" id="btn-ex" onclick="runExtract()">
-          🤖 استخلاص البيانات
+          ${L('🤖 استخلاص البيانات', '🤖 Extract the data')}
         </button>
       </div>
       <div class="extract-preview" id="ep">
-        <div class="ep-title">✅ تم الاستخلاص — راجع البيانات قبل التطبيق:</div>
+        <div class="ep-title">${L('✅ تم الاستخلاص — راجع البيانات قبل التطبيق:', '✅ Extracted — check the data before applying it:')}</div>
         <div class="ep-code" id="ep-code"></div>
         <div style="display:flex;gap:8px;margin-top:6px">
-          <button class="btn btn-primary" onclick="applyAndStart()">تطبيق والمتابعة ←</button>
-          <button class="btn btn-outline" onclick="resetFile()">اختيار ملف آخر</button>
+          <button class="btn btn-primary" onclick="applyAndStart()">${L('تطبيق والمتابعة ←', 'Apply and continue →')}</button>
+          <button class="btn btn-outline" onclick="resetFile()">${L('اختيار ملف آخر', 'Choose another file')}</button>
         </div>
       </div>
-      <div><button class="btn btn-outline" onclick="renderIntro()">→ رجوع</button></div>
+      <div><button class="btn btn-outline" onclick="renderIntro()">${L('→ رجوع', '← Back')}</button></div>
     </div>`;
   // Bind synchronously: this markup is already in the document, so there is no
   // render race (the old step-based version bound via setTimeout(…, 50) and
@@ -1449,7 +1550,7 @@ function buildTrack() {
       // "المشروع: … | البيئات: …", mirroring the two config homes.
       const label = document.createElement('div');
       label.className = 'sgroup-label';
-      label.textContent = schema.groups[group].label;
+      label.textContent = loc(schema.groups[group], 'label');
       track.appendChild(label);
     } else if (i > 0) {
       const conn = document.createElement('div');
@@ -1460,7 +1561,7 @@ function buildTrack() {
     node.className = `snode${i === current ? ' active' : ''}${i < current ? ' done' : ''}`;
     node.innerHTML = `
       <div class="sbubble">${i < current ? '✓' : step.icon || (i+1)}</div>
-      <div class="slabel">${step.title}</div>`;
+      <div class="slabel">${loc(step, 'title')}</div>`;
     node.onclick = () => { if (i <= current) goTo(i); };
     track.appendChild(node);
     prevGroup = group;
@@ -1473,7 +1574,7 @@ function updateProgress() {
   document.getElementById('prog-fill').style.width = pct + '%';
   const pill = document.getElementById('hdr-pill');
   if (current >= 0) {
-    pill.textContent = `الخطوة ${current + 1} من ${total}`;
+    pill.textContent = L(`الخطوة ${current + 1} من ${total}`, `Step ${current + 1} of ${total}`);
     pill.classList.add('show');
   } else {
     pill.classList.remove('show');
@@ -1482,6 +1583,7 @@ function updateProgress() {
 
 /* ── Render Step ────────────────────────────────────────────────────────── */
 function renderStep() {
+  screen = 'step';
   updateProgress();
   buildTrack();
   document.getElementById('steps-scroll').classList.add('show');
@@ -1497,10 +1599,10 @@ function renderStep() {
     <div class="head-icon">${step.icon || '📝'}</div>
     <div>
       <div class="head-title">
-        ${step.title}
-        ${step.optional ? '<span class="optional-pill">⚡ اختياري</span>' : ''}
+        ${loc(step, 'title')}
+        ${step.optional ? '<span class="optional-pill">' + L('⚡ اختياري', '⚡ Optional') + '</span>' : ''}
       </div>
-      <div class="head-desc">${step.description}</div>
+      <div class="head-desc">${loc(step, 'description')}</div>
       ${step.target ? `<div class="target-chip" id="target-chip">${esc(resolveTarget(step.target))}</div>` : ''}
     </div>`;
   card.appendChild(head);
@@ -1545,7 +1647,7 @@ function renderFields(step, container) {
   if (secretFs.length > 0) {
     const div = document.createElement('div');
     div.className = 'section-divider';
-    div.textContent = 'بيانات سرية';
+    div.textContent = L('بيانات سرية', 'Secrets');
     container.appendChild(div);
     secretFs.forEach(f => container.appendChild(buildField(f)));
   }
@@ -1567,12 +1669,12 @@ function buildField(field) {
   if (field.readonly && field.key === 'envName') {
     answers['envName'] = activeEnv;
     div.innerHTML = `
-      <label class="field-label">${field.label}</label>
-      ${field.hint ? `<div class="field-hint">${field.hint}</div>` : ''}
+      <label class="field-label">${loc(field, 'label')}</label>
+      ${field.hint || field.hintEn ? `<div class="field-hint">${loc(field, 'hint')}</div>` : ''}
       <div style="display:flex;gap:8px;align-items:center">
         <input type="text" value="${esc(activeEnv || '')}" readonly
           style="background:var(--bg-muted);cursor:default;direction:ltr" />
-        <button type="button" class="btn-sm" style="white-space:nowrap">🏷️ إعادة تسمية</button>
+        <button type="button" class="btn-sm" style="white-space:nowrap">${L('🏷️ إعادة تسمية', '🏷️ Rename')}</button>
       </div>`;
     div.querySelector('button').onclick = () => openRenameDialog(activeEnv);
     return div;
@@ -1593,12 +1695,12 @@ function buildField(field) {
 
   div.innerHTML = `
     <label class="field-label">
-      ${field.label}
+      ${loc(field, 'label')}
       ${field.required ? '<span class="req">*</span>' : ''}
     </label>
-    ${field.hint ? `<div class="field-hint">${field.hint}</div>` : ''}
+    ${field.hint || field.hintEn ? `<div class="field-hint">${loc(field, 'hint')}</div>` : ''}
     ${buildInput(field, savedVal)}
-    ${field.secret ? `<div class="field-secret-note">محفوظ بشكل آمن</div>` : ''}`;
+    ${field.secret ? `<div class="field-secret-note">${L('محفوظ بشكل آمن', 'Stored safely')}</div>` : ''}`;
 
   const inp = div.querySelector('input,select,textarea');
   if (inp) {
@@ -1623,11 +1725,11 @@ function buildField(field) {
 function buildInput(field, val) {
   if (field.type === 'select') {
     const opts = field.options.map(o =>
-      `<option value="${o.value}"${val===o.value?' selected':''}>${o.label}</option>`).join('');
+      `<option value="${o.value}"${val===o.value?' selected':''}>${loc(o, 'label')}</option>`).join('');
     return `<select>${opts}</select>`;
   }
   const t = { password:'password', email:'email', number:'number', url:'url' }[field.type] || 'text';
-  return `<input type="${t}" value="${esc(val)}" placeholder="${esc(field.placeholder||'')}" />`;
+  return `<input type="${t}" value="${esc(val)}" placeholder="${esc(loc(field, 'placeholder'))}" />`;
 }
 
 function esc(s) { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
@@ -1640,24 +1742,25 @@ function renderDefaultsSection() {
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:18px';
   const div = document.createElement('div');
   div.className = 'section-divider';
-  div.textContent = 'القيم الافتراضية';
+  div.textContent = L('القيم الافتراضية', 'Default values');
   wrap.appendChild(div);
   for (const f of defaultsFieldsSession) {
     if (f.secret) { wrap.appendChild(buildDefaultsSecretField(f)); continue; }
     wrap.appendChild(buildField({
-      key: `defaults.${f.key}`, label: f.label || f.key, type: f.type || 'text',
+      key: `defaults.${f.key}`, label: f.label || f.key, labelEn: f.labelEn, type: f.type || 'text',
       placeholder: f.placeholder !== undefined ? f.placeholder : (f.default || ''),
-      default: f.default, hint: f.hint, required: !!f.required,
+      placeholderEn: f.placeholderEn,
+      default: f.default, hint: f.hint, hintEn: f.hintEn, required: !!f.required,
     }));
   }
   const editBtn = document.createElement('button');
   editBtn.className = 'btn-add';
-  editBtn.innerHTML = '⚙️ تعديل الحقول';
+  editBtn.innerHTML = L('⚙️ تعديل الحقول', '⚙️ Edit the fields');
   editBtn.onclick = () => openFieldEditor('defaults');
   wrap.appendChild(editBtn);
   const hint = document.createElement('div');
   hint.className = 'field-hint';
-  hint.textContent = 'الحقول دي معرّفة مرة واحدة ومشتركة بين كل البيئات — القيم بس هي اللي بتختلف من بيئة لبيئة.';
+  hint.textContent = L('الحقول دي معرّفة مرة واحدة ومشتركة بين كل البيئات — القيم بس هي اللي بتختلف من بيئة لبيئة.', 'These fields are defined once and shared by every environment — only the values differ from one environment to the next.');
   wrap.appendChild(hint);
   return wrap;
 }
@@ -1672,15 +1775,15 @@ function buildDefaultsSecretField(f) {
   const nameVal = answers[nameKey] !== undefined ? answers[nameKey] : '';
   const secVal = (envs[activeEnv] && envs[activeEnv].secrets[`defaults.${f.key}`]) || '';
   div.innerHTML = `
-    <label class="field-label">${esc(f.label || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
-    ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}
+    <label class="field-label">${esc(loc(f, 'label') || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
+    ${f.hint || f.hintEn ? `<div class="field-hint">${loc(f, 'hint')}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input type="text" class="df-name" value="${esc(nameVal)}" placeholder="${esc(suggestion)}"
         style="direction:ltr;font-family:var(--mono);flex:1;min-width:150px" />
       <input type="password" class="df-val secret-input" value="${esc(secVal)}" placeholder="••••••••"
         style="flex:1;min-width:150px" />
     </div>
-    <div class="field-secret-note">القيمة بتتكتب في ‎.env تحت الاسم ده — عمرها ما بتتكتب في ملف البيئة</div>`;
+    <div class="field-secret-note">${L('القيمة بتتكتب في ‎.env تحت الاسم ده — عمرها ما بتتكتب في ملف البيئة', 'The value is written to ‎.env under this name — never into the environment file')}</div>`;
   const nameInp = div.querySelector('.df-name');
   const valInp = div.querySelector('.df-val');
   nameInp.addEventListener('input', () => { answers[nameKey] = nameInp.value; markActiveEnvDirty(); });
@@ -1711,7 +1814,7 @@ function renderUsersStep(_step) {
   row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap';
   const addBtn = document.createElement('button');
   addBtn.className = 'btn-add';
-  addBtn.innerHTML = '+ إضافة مستخدم';
+  addBtn.innerHTML = L('+ إضافة مستخدم', '+ Add a user');
   addBtn.onclick = () => {
     users.push({ handle: '' });
     usersDirty();
@@ -1719,14 +1822,14 @@ function renderUsersStep(_step) {
   };
   const editBtn = document.createElement('button');
   editBtn.className = 'btn-add';
-  editBtn.innerHTML = '⚙️ تعديل الحقول';
+  editBtn.innerHTML = L('⚙️ تعديل الحقول', '⚙️ Edit the fields');
   editBtn.onclick = () => openFieldEditor('user');
   row.appendChild(addBtn);
   row.appendChild(editBtn);
 
   const hint = document.createElement('div');
   hint.className = 'field-hint';
-  hint.textContent = 'مجموعة الحقول معرّفة مرة واحدة ومشتركة بين كل البيئات — أي تعديل فيها بيظهر لكل مستخدم في كل بيئة؛ القيم نفسها لكل بيئة على حدة.';
+  hint.textContent = L('مجموعة الحقول معرّفة مرة واحدة ومشتركة بين كل البيئات — أي تعديل فيها بيظهر لكل مستخدم في كل بيئة؛ القيم نفسها لكل بيئة على حدة.', 'The field set is defined once and shared by every environment — a change to it shows up for every user in every environment; the values themselves are per environment.');
 
   outer.appendChild(list);
   outer.appendChild(row);
@@ -1743,7 +1846,7 @@ function refreshUserCards(list) {
     card.className = 'user-card';
     const cells = [`
         <div class="field">
-          <label class="field-label">المعرّف <span class="req">*</span></label>
+          <label class="field-label">${L('المعرّف', 'Handle')} <span class="req">*</span></label>
           <input type="text" placeholder="valid_user" value="${esc(u.handle)}"
             oninput="users[${i}].handle=this.value;usersDirty()" />
         </div>`];
@@ -1751,7 +1854,7 @@ function refreshUserCards(list) {
       if (f.secret) {
         cells.push(`
         <div class="field" style="grid-column:1/-1">
-          <label class="field-label">${esc(f.label || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
+          <label class="field-label">${esc(loc(f, 'label') || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <input type="text" id="usf-${i}-${f.key}" value="${esc(u[f.key] || '')}"
               placeholder="${esc(suggestUserSecretName(u.handle, f.key))}"
@@ -1761,21 +1864,21 @@ function refreshUserCards(list) {
               placeholder="••••••••" style="flex:1;min-width:140px"
               oninput="userSecretInput(${i},'${f.key}',this)" />
           </div>
-          <div class="field-secret-note">القيمة بتتكتب في ‎.env تحت الاسم ده — ملف البيئة بيشاور عليها بـ envSecret بس</div>
+          <div class="field-secret-note">${L('القيمة بتتكتب في ‎.env تحت الاسم ده — ملف البيئة بيشاور عليها بـ envSecret بس', 'The value is written to ‎.env under this name — the environment file only points at it with envSecret')}</div>
         </div>`);
       } else {
         const t = { email: 'email', number: 'number', url: 'url' }[f.type] || 'text';
         cells.push(`
         <div class="field">
-          <label class="field-label">${esc(f.label || f.key)}${f.required ? ' <span class="req">*</span>' : ''}</label>
-          <input type="${t}" placeholder="${esc(f.placeholder || '')}" value="${esc(u[f.key] || '')}"
+          <label class="field-label">${esc(loc(f, 'label') || f.key)}${f.required ? ' <span class="req">*</span>' : ''}</label>
+          <input type="${t}" placeholder="${esc(loc(f, 'placeholder'))}" value="${esc(u[f.key] || '')}"
             oninput="users[${i}]['${f.key}']=this.value;usersDirty()" />
         </div>`);
       }
     }
     card.innerHTML = `
       <div class="user-card-head">
-        <div class="user-card-label">👤 مستخدم ${i+1}</div>
+        <div class="user-card-label">${L(`👤 مستخدم ${i+1}`, `👤 User ${i+1}`)}</div>
         ${users.length > 1
           ? `<button class="btn-rm" onclick="removeUser(${i})">✕</button>` : ''}
       </div>
@@ -1827,12 +1930,12 @@ function renderEnvManagerStep() {
   for (const name of envOrder) {
     const e = envs[name];
     const badges = [];
-    if (name === defName) badges.push('<span class="env-badge default">⭐ الافتراضية</span>');
-    if (!e.existsOnDisk) badges.push('<span class="env-badge new">جديدة</span>');
-    else if (e.dirty) badges.push('<span class="env-badge edited">معدّلة</span>');
-    else badges.push('<span class="env-badge">على القرص</span>');
+    if (name === defName) badges.push('<span class="env-badge default">' + L('⭐ الافتراضية', '⭐ Default') + '</span>');
+    if (!e.existsOnDisk) badges.push('<span class="env-badge new">' + L('جديدة', 'New') + '</span>');
+    else if (e.dirty) badges.push('<span class="env-badge edited">' + L('معدّلة', 'Edited') + '</span>');
+    else badges.push('<span class="env-badge">' + L('على القرص', 'On disk') + '</span>');
     const renameNote = (e.existsOnDisk && e.diskName !== name)
-      ? `<div class="env-note">${esc(e.diskName)}.json → ${esc(name)}.json عند الحفظ</div>` : '';
+      ? `<div class="env-note">${esc(e.diskName)}.json → ${esc(name)}.json ${L('عند الحفظ', 'on save')}</div>` : '';
     const row = document.createElement('div');
     row.className = 'env-row';
     row.innerHTML = `
@@ -1840,9 +1943,9 @@ function renderEnvManagerStep() {
       ${badges.join('')}
       ${renameNote}
       <div class="env-row-actions">
-        <button class="btn-sm" data-act="open">✏️ فتح</button>
-        <button class="btn-sm" data-act="rename">🏷️ إعادة تسمية</button>
-        <button class="btn-sm danger" data-act="delete">🗑️ حذف</button>
+        <button class="btn-sm" data-act="open">${L('✏️ فتح', '✏️ Open')}</button>
+        <button class="btn-sm" data-act="rename">${L('🏷️ إعادة تسمية', '🏷️ Rename')}</button>
+        <button class="btn-sm danger" data-act="delete">${L('🗑️ حذف', '🗑️ Delete')}</button>
       </div>`;
     row.querySelector('[data-act="open"]').onclick = () => { switchEnv(name); goTo(current + 1); };
     row.querySelector('[data-act="rename"]').onclick = () => openRenameDialog(name);
@@ -1854,20 +1957,20 @@ function renderEnvManagerStep() {
   if (pendingDeletes.length) {
     const note = document.createElement('div');
     note.className = 'ops-list';
-    note.innerHTML = `<div class="ops-list-title">🗑️ هتتحذف عند الحفظ (بعد تأكيدك):</div>` +
+    note.innerHTML = `<div class="ops-list-title">${L('🗑️ هتتحذف عند الحفظ (بعد تأكيدك):', '🗑️ To be deleted on save (after you confirm):')}</div>` +
       pendingDeletes.map(n => `<div class="op-line"><code>environments/${esc(n)}.json</code></div>`).join('');
     wrap.appendChild(note);
   }
 
   const addBtn = document.createElement('button');
   addBtn.className = 'btn-add';
-  addBtn.innerHTML = '+ إضافة بيئة';
+  addBtn.innerHTML = L('+ إضافة بيئة', '+ Add an environment');
   addBtn.onclick = openAddEnvDialog;
   wrap.appendChild(addBtn);
 
   const hint = document.createElement('div');
   hint.className = 'field-hint';
-  hint.textContent = 'مافيش أي ملف بيتغير دلوقتي — كل العمليات بتتنفذ مرة واحدة عند الحفظ، بعد ما تراجعها كلها في الخطوة الأخيرة.';
+  hint.textContent = L('مافيش أي ملف بيتغير دلوقتي — كل العمليات بتتنفذ مرة واحدة عند الحفظ، بعد ما تراجعها كلها في الخطوة الأخيرة.', 'Nothing on disk changes right now — every operation runs once, on save, after you have reviewed them all in the last step.');
   wrap.appendChild(hint);
   return wrap;
 }
@@ -1896,26 +1999,26 @@ function openAddEnvDialog() {
   const suggestion = ['uat', 'staging', 'dev', 'qa', 'preprod'].find(n => !envNameProblem(n)) || '';
   const sources = envOrder.slice();
   const ov = openModal(`
-    <div class="modal-title">➕ إضافة بيئة جديدة</div>
-    <div class="modal-body">اختر اسم البيئة — هو نفسه اسم الملف اللي هيتكتب عند الحفظ.</div>
+    <div class="modal-title">${L('➕ إضافة بيئة جديدة', '➕ Add a new environment')}</div>
+    <div class="modal-body">${L('اختر اسم البيئة — هو نفسه اسم الملف اللي هيتكتب عند الحفظ.', 'Pick the environment name — it is also the name of the file written on save.')}</div>
     <div class="field">
-      <label class="field-label">اسم البيئة</label>
+      <label class="field-label">${L('اسم البيئة', 'Environment name')}</label>
       <input type="text" id="add-env-name" value="${esc(suggestion)}" placeholder="uat" style="direction:ltr" />
       <div class="field-hint" id="add-env-err"></div>
     </div>
     <div class="copy-opts">
-      <label><input type="radio" name="add-mode" value="blank" checked /> ابدأ بيئة فاضية</label>
-      <label><input type="radio" name="add-mode" value="copy"${sources.length ? '' : ' disabled'} /> انسخ أقسامًا آمنة من بيئة موجودة</label>
-      <div id="copy-section" style="display:none;flex-direction:column;gap:8px;padding-right:24px">
+      <label><input type="radio" name="add-mode" value="blank" checked />${L(' ابدأ بيئة فاضية</label>', ' Start an empty environment</label>')}
+      <label><input type="radio" name="add-mode" value="copy"${sources.length ? '' : ' disabled'} />${L(' انسخ أقسامًا آمنة من بيئة موجودة</label>', ' Copy the safe sections from an existing environment</label>')}
+      <div id="copy-section" style="display:none;flex-direction:column;gap:8px;padding-inline-start:24px">
         <select id="copy-src">${sources.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
-        <label><input type="checkbox" id="copy-users" checked /> مستخدمو الاختبار (القيم)</label>
-        <label><input type="checkbox" id="copy-defaults" checked /> القيم الافتراضية (القيم بس — من غير الأسرار)</label>
-        <div class="field-hint">روابط الاتصال (Portal URL وقاعدة البيانات والـ API) عمرها ما بتتنسخ — البيئة الجديدة بتبدأ من غيرها عشان ماتشاورش على أنظمة بيئة تانية.</div>
+        <label><input type="checkbox" id="copy-users" checked />${L(' مستخدمو الاختبار (القيم)</label>', ' Test users (the values)</label>')}
+        <label><input type="checkbox" id="copy-defaults" checked />${L(' القيم الافتراضية (القيم بس — من غير الأسرار)</label>', ' Default values (values only — no secrets)</label>')}
+        <div class="field-hint">${L('روابط الاتصال (Portal URL وقاعدة البيانات والـ API) عمرها ما بتتنسخ — البيئة الجديدة بتبدأ من غيرها عشان ماتشاورش على أنظمة بيئة تانية.', 'Connection details (Portal URL, database, API) are never copied — a new environment starts without them so it cannot point at another environment’s systems.')}</div>
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" id="add-env-ok">إنشاء البيئة</button>
-      <button class="btn btn-outline" id="add-env-cancel">إلغاء</button>
+      <button class="btn btn-primary" id="add-env-ok">${L('إنشاء البيئة', 'Create the environment')}</button>
+      <button class="btn btn-outline" id="add-env-cancel">${L('إلغاء', 'Cancel')}</button>
     </div>`);
   const copySection = ov.querySelector('#copy-section');
   ov.querySelectorAll('input[name="add-mode"]').forEach(r => {
@@ -1939,8 +2042,10 @@ function openAddEnvDialog() {
     closeModal();
     switchEnv(name);
     showToast(opts.copyFrom
-      ? `🆕 بيئة جديدة «${name}» — اتنسخت الأقسام المختارة من «${opts.copyFrom}»، من غير أي روابط اتصال`
-      : `🆕 بيئة جديدة «${name}» — ابدأ من الأول`, 'success');
+      ? L(`🆕 بيئة جديدة «${name}» — اتنسخت الأقسام المختارة من «${opts.copyFrom}»، من غير أي روابط اتصال`,
+          `🆕 New environment «${name}» — the sections you picked were copied from «${opts.copyFrom}», with no connection details`)
+      : L(`🆕 بيئة جديدة «${name}» — ابدأ من الأول`,
+          `🆕 New environment «${name}» — start from scratch`), 'success');
     renderStep();
   };
   setTimeout(() => ov.querySelector('#add-env-name').focus(), 50);
@@ -1954,20 +2059,20 @@ function openRenameDialog(name) {
   if (!e) return;
   const isDefault = currentDefaultName() === name;
   const ov = openModal(`
-    <div class="modal-title">🏷️ إعادة تسمية «${esc(name)}»</div>
+    <div class="modal-title">${L(`🏷️ إعادة تسمية «${esc(name)}»`, `🏷️ Rename «${esc(name)}»`)}</div>
     ${e.existsOnDisk
-      ? `<div class="modal-body">عند الحفظ، الملف الموجود على القرص هيتنقل للاسم الجديد — العملية دي بتتنفذ مرة واحدة بعد ما تراجعها في خطوة المراجعة، ومش هيتلمس أي ملف تاني.</div>`
-      : `<div class="modal-body">البيئة دي جديدة ولسه ماتحفظتش — تغيير الاسم هنا بيغيّر اسم الملف اللي هيتكتب، من غير أي عملية على ملفات موجودة.</div>`}
+      ? `<div class="modal-body">${L('عند الحفظ، الملف الموجود على القرص هيتنقل للاسم الجديد — العملية دي بتتنفذ مرة واحدة بعد ما تراجعها في خطوة المراجعة، ومش هيتلمس أي ملف تاني.', 'On save, the file on disk moves to the new name — it happens once, after you have reviewed it on the review step, and no other file is touched.')}</div>`
+      : `<div class="modal-body">${L('البيئة دي جديدة ولسه ماتحفظتش — تغيير الاسم هنا بيغيّر اسم الملف اللي هيتكتب، من غير أي عملية على ملفات موجودة.', 'This environment is new and has not been saved yet — renaming it here changes the name of the file that gets written, with no operation on any existing file.')}</div>`}
     <div class="field">
-      <label class="field-label">الاسم الجديد</label>
+      <label class="field-label">${L('الاسم الجديد', 'New name')}</label>
       <input type="text" id="rn-name" value="${esc(name)}" style="direction:ltr" />
       <div class="field-hint" id="rn-err"></div>
     </div>
     <div class="modal-fileop" id="rn-fileop"></div>
-    ${isDefault ? '<div class="modal-body">⭐ دي البيئة الافتراضية — <code>defaultEnvironment</code> في config/project.json هيتحدّث للاسم الجديد في نفس الحفظة.</div>' : ''}
+    ${isDefault ? '<div class="modal-body">' + L('⭐ دي البيئة الافتراضية — <code>defaultEnvironment</code> في config/project.json هيتحدّث للاسم الجديد في نفس الحفظة.', '⭐ This is the default environment — <code>defaultEnvironment</code> in config/project.json is updated to the new name in the same save.') + '</div>' : ''}
     <div class="modal-actions">
-      <button class="btn btn-primary" id="rn-ok">تأكيد إعادة التسمية</button>
-      <button class="btn btn-outline" id="rn-cancel">إلغاء</button>
+      <button class="btn btn-primary" id="rn-ok">${L('تأكيد إعادة التسمية', 'Confirm the rename')}</button>
+      <button class="btn btn-outline" id="rn-cancel">${L('إلغاء', 'Cancel')}</button>
     </div>`);
   const input = ov.querySelector('#rn-name');
   const fileop = ov.querySelector('#rn-fileop');
@@ -1975,7 +2080,7 @@ function openRenameDialog(name) {
     const nn = input.value.trim() || '?';
     fileop.textContent = e.existsOnDisk
       ? `environments/${e.diskName}.json  →  environments/${nn}.json`
-      : `environments/${nn}.json (ملف جديد)`;
+      : `environments/${nn}.json ${L('(ملف جديد)', '(a new file)')}`;
   };
   input.oninput = refreshOp;
   refreshOp();
@@ -1992,7 +2097,8 @@ function openRenameDialog(name) {
     renameSessionEnv(name, newName);
     closeModal();
     showToast(e.existsOnDisk
-      ? `🏷️ «${name}» → «${newName}» — الملف هيتنقل عند الحفظ`
+      ? L(`🏷️ «${name}» → «${newName}» — الملف هيتنقل عند الحفظ`,
+          `🏷️ «${name}» → «${newName}» — the file moves on save`)
       : `🏷️ «${name}» → «${newName}»`, 'success');
     renderStep();
   };
@@ -2006,29 +2112,29 @@ function openDeleteDialog(name) {
   const e = envs[name];
   if (!e) return;
   if (envOrder.length <= 1) {
-    showToast('❌ لازم تفضل بيئة واحدة على الأقل — ماينفعش حذف آخر بيئة', 'error');
+    showToast(L('❌ لازم تفضل بيئة واحدة على الأقل — ماينفعش حذف آخر بيئة', '❌ At least one environment has to remain — the last one cannot be deleted'), 'error');
     return;
   }
   const isDefault = currentDefaultName() === name;
   const others = envOrder.filter(n => n !== name);
   const ov = openModal(`
-    <div class="modal-title">🗑️ حذف «${esc(name)}»</div>
+    <div class="modal-title">${L(`🗑️ حذف «${esc(name)}»`, `🗑️ Delete «${esc(name)}»`)}</div>
     ${e.existsOnDisk
-      ? `<div class="modal-body">عند الحفظ، الملف ده هيتحذف نهائيًا من القرص — مافيش تراجع بعد الحفظ. العملية بتتنفذ مرة واحدة بعد المراجعة، ومش هيتلمس أي ملف تاني.</div>
+      ? `<div class="modal-body">${L('عند الحفظ، الملف ده هيتحذف نهائيًا من القرص — مافيش تراجع بعد الحفظ. العملية بتتنفذ مرة واحدة بعد المراجعة، ومش هيتلمس أي ملف تاني.', 'On save, this file is deleted from disk for good — there is no undo afterwards. It happens once, after the review, and no other file is touched.')}</div>
          <div class="modal-fileop modal-danger">environments/${esc(e.diskName)}.json — DELETE</div>`
-      : `<div class="modal-body">البيئة دي جديدة في الجلسة ولسه ماتحفظتش — هتتشال من الجلسة بس، من غير أي عملية على القرص.</div>`}
+      : `<div class="modal-body">${L('البيئة دي جديدة في الجلسة ولسه ماتحفظتش — هتتشال من الجلسة بس، من غير أي عملية على القرص.', 'This environment is new in this session and has not been saved — it is dropped from the session only, with no operation on disk.')}</div>`}
     ${isDefault ? `
-      <div class="modal-body">⭐ دي البيئة الافتراضية — لازم تختار بيئة افتراضية جديدة قبل تأكيد الحذف، عشان <code>defaultEnvironment</code> مايشاورش على ملف مش موجود.</div>
+      <div class="modal-body">${L('⭐ دي البيئة الافتراضية — لازم تختار بيئة افتراضية جديدة قبل تأكيد الحذف، عشان <code>defaultEnvironment</code> مايشاورش على ملف مش موجود.', '⭐ This is the default environment — pick a new default before confirming the delete, so <code>defaultEnvironment</code> does not point at a file that is not there.')}</div>
       <div class="field">
-        <label class="field-label">البيئة الافتراضية الجديدة</label>
+        <label class="field-label">${L('البيئة الافتراضية الجديدة', 'The new default environment')}</label>
         <select id="del-new-default">
-          <option value="">— اختر —</option>
+          <option value="">${L('— اختر —', '— pick one —')}</option>
           ${others.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
         </select>
       </div>` : ''}
     <div class="modal-actions">
-      <button class="btn btn-danger" id="del-ok"${isDefault ? ' disabled' : ''}>تأكيد الحذف</button>
-      <button class="btn btn-outline" id="del-cancel">إلغاء</button>
+      <button class="btn btn-danger" id="del-ok"${isDefault ? ' disabled' : ''}>${L('تأكيد الحذف', 'Confirm the delete')}</button>
+      <button class="btn btn-outline" id="del-cancel">${L('إلغاء', 'Cancel')}</button>
     </div>`);
   if (isDefault) {
     ov.querySelector('#del-new-default').onchange = ev => {
@@ -2047,7 +2153,9 @@ function openDeleteDialog(name) {
     envOrder = envOrder.filter(n => n !== name);
     if (activeEnv === name) { activeEnv = null; restoreEnv(envOrder[0]); }
     closeModal();
-    showToast(e.existsOnDisk ? `🗑️ «${name}» هتتحذف عند الحفظ` : `🗑️ اتشالت «${name}» من الجلسة`, 'warn');
+    showToast(e.existsOnDisk
+      ? L(`🗑️ «${name}» هتتحذف عند الحفظ`, `🗑️ «${name}» will be deleted on save`)
+      : L(`🗑️ اتشالت «${name}» من الجلسة`, `🗑️ «${name}» was dropped from the session`), 'warn');
     renderStep();
   };
 }
@@ -2066,10 +2174,10 @@ function fieldEditorRowHTML(kind, f, i, n, state) {
   if (state.editing === key) {
     return `<div class="env-row" data-key="${esc(key)}">
       <input type="text" class="fe-edit-key" value="${esc(key)}" style="direction:ltr;font-family:var(--mono);flex:1;min-width:100px" />
-      <input type="text" class="fe-edit-label" value="${esc(f.label || '')}" placeholder="الاسم المعروض" style="flex:1;min-width:100px" />
+      <input type="text" class="fe-edit-label" value="${esc(f.label || '')}" placeholder="${L('الاسم المعروض', 'Display name')}" style="flex:1;min-width:100px" />
       <div class="env-row-actions">
-        <button class="btn-sm" data-act="edit-ok">حفظ</button>
-        <button class="btn-sm" data-act="edit-cancel">إلغاء</button>
+        <button class="btn-sm" data-act="edit-ok">${L('حفظ', 'Save')}</button>
+        <button class="btn-sm" data-act="edit-cancel">${L('إلغاء', 'Cancel')}</button>
       </div>
       <div class="field-hint fe-edit-err" style="width:100%"></div>
     </div>`;
@@ -2077,41 +2185,47 @@ function fieldEditorRowHTML(kind, f, i, n, state) {
   if (state.removing === key) {
     const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
     const msg = blast.length
-      ? `في قيم محفوظة تحت «${esc(key)}» في ${blast.length === 1 ? 'بيئة واحدة' : blast.length + ' بيئات'} (${blast.map(esc).join('، ')}) — هتتشال من الملفات عند الحفظ.`
-      : `مافيش قيم محفوظة تحت «${esc(key)}» في أي بيئة.`;
+      ? L(`في قيم محفوظة تحت «${esc(key)}» في ${blast.length === 1 ? 'بيئة واحدة' : blast.length + ' بيئات'} (${blast.map(esc).join('، ')}) — هتتشال من الملفات عند الحفظ.`,
+          `there are saved values under «${esc(key)}» in ${blast.length === 1 ? 'one environment' : blast.length + ' environments'} (${blast.map(esc).join(', ')}) — they are removed from those files on save.`)
+      : L(`مافيش قيم محفوظة تحت «${esc(key)}» في أي بيئة.`,
+          `no environment has a saved value under «${esc(key)}».`);
     return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(220,38,38,.35)">
-      <div class="modal-body" style="width:100%">🗑️ حذف حقل «${esc(f.label || key)}»؟ ${msg}</div>
+      <div class="modal-body" style="width:100%">${L(`🗑️ حذف حقل «${esc(loc(f, 'label') || key)}»؟`, `🗑️ Delete the «${esc(loc(f, 'label') || key)}» field?`)} ${msg}</div>
       <div class="env-row-actions">
-        <button class="btn-sm danger" data-act="remove-ok">تأكيد الحذف</button>
-        <button class="btn-sm" data-act="remove-cancel">إلغاء</button>
+        <button class="btn-sm danger" data-act="remove-ok">${L('تأكيد الحذف', 'Confirm the delete')}</button>
+        <button class="btn-sm" data-act="remove-cancel">${L('إلغاء', 'Cancel')}</button>
       </div>
     </div>`;
   }
   if (state.renonto && state.renonto.from === key) {
     const r = state.renonto;
     return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(217,119,6,.35)">
-      <div class="modal-body" style="width:100%">⚠️ في قيم يدوية محفوظة على القرص تحت «${esc(r.to)}» في ${r.envs.length === 1 ? 'بيئة واحدة' : r.envs.length + ' بيئات'} (${r.envs.map(esc).join('، ')}) مختلفة عن قيم الحقل — لو أكّدت، قيم الجلسة هتتكتب فوقها عند الحفظ، والخانة الفاضية هتتبنّى قيمة القرص زي ما هي. العملية هتظهر في قائمة عمليات المراجعة.</div>
+      <div class="modal-body" style="width:100%">${L(
+        `⚠️ في قيم يدوية محفوظة على القرص تحت «${esc(r.to)}» في ${r.envs.length === 1 ? 'بيئة واحدة' : r.envs.length + ' بيئات'} (${r.envs.map(esc).join('، ')}) مختلفة عن قيم الحقل — لو أكّدت، قيم الجلسة هتتكتب فوقها عند الحفظ، والخانة الفاضية هتتبنّى قيمة القرص زي ما هي. العملية هتظهر في قائمة عمليات المراجعة.`,
+        `⚠️ ${r.envs.length === 1 ? 'One environment' : r.envs.length + ' environments'} (${r.envs.map(esc).join(', ')}) hold hand-written values on disk under «${esc(r.to)}» that differ from this field\u2019s — if you confirm, the session values are written over them on save, and an empty box adopts the value on disk as-is. The operation is listed on the review step.`)}</div>
       <div class="env-row-actions">
-        <button class="btn-sm danger" data-act="renonto-ok">تأكيد الكتابة فوقها</button>
-        <button class="btn-sm" data-act="renonto-cancel">إلغاء</button>
+        <button class="btn-sm danger" data-act="renonto-ok">${L('تأكيد الكتابة فوقها', 'Confirm the overwrite')}</button>
+        <button class="btn-sm" data-act="renonto-cancel">${L('إلغاء', 'Cancel')}</button>
       </div>
     </div>`;
   }
   if (state.toggling === key) {
     const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
     return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(217,119,6,.35)">
-      <div class="modal-body" style="width:100%">🔒 التبديل بين نصي وسرّي بيمسح القيم المحفوظة تحت «${esc(key)}» في ${blast.length === 1 ? 'بيئة واحدة' : blast.length + ' بيئات'} — القيمة النصية عمرها ما بتتحول لاسم متغير بصمت. تأكيد؟</div>
+      <div class="modal-body" style="width:100%">${L(
+        `🔒 التبديل بين نصي وسرّي بيمسح القيم المحفوظة تحت «${esc(key)}» في ${blast.length === 1 ? 'بيئة واحدة' : blast.length + ' بيئات'} — القيمة النصية عمرها ما بتتحول لاسم متغير بصمت. تأكيد؟`,
+        `🔒 Flipping between text and secret clears the saved values under «${esc(key)}» in ${blast.length === 1 ? 'one environment' : blast.length + ' environments'} — a plain value is never silently turned into a variable name. Confirm?`)}</div>
       <div class="env-row-actions">
-        <button class="btn-sm" data-act="toggle-ok">تأكيد</button>
-        <button class="btn-sm" data-act="toggle-cancel">إلغاء</button>
+        <button class="btn-sm" data-act="toggle-ok">${L('تأكيد', 'Confirm')}</button>
+        <button class="btn-sm" data-act="toggle-cancel">${L('إلغاء', 'Cancel')}</button>
       </div>
     </div>`;
   }
   const badges = [];
-  if (f.secret) badges.push('<span class="env-badge">🔒 سرّي</span>');
+  if (f.secret) badges.push('<span class="env-badge">' + L('🔒 سرّي', '🔒 Secret') + '</span>');
   if (f.type && f.type !== 'text') badges.push(`<span class="env-badge">${esc(f.type)}</span>`);
   if (f._orig && f._orig !== f.key) badges.push(`<span class="env-badge edited">${esc(f._orig)} ← ${esc(f.key)}</span>`);
-  if (!f._orig) badges.push('<span class="env-badge new">جديد</span>');
+  if (!f._orig) badges.push('<span class="env-badge new">' + L('جديد', 'New') + '</span>');
   return `<div class="env-row" data-key="${esc(key)}">
     <span class="env-row-name">${esc(key)}</span>
     <span style="font-size:12px;color:var(--text-2)">${esc(f.label || '')}</span>
@@ -2119,8 +2233,8 @@ function fieldEditorRowHTML(kind, f, i, n, state) {
     <div class="env-row-actions">
       <button class="btn-sm" data-act="up"${i === 0 ? ' disabled' : ''}>⬆</button>
       <button class="btn-sm" data-act="down"${i === n - 1 ? ' disabled' : ''}>⬇</button>
-      <button class="btn-sm" data-act="edit">✏️ إعادة تسمية</button>
-      <button class="btn-sm" data-act="secret">${f.secret ? '🔓 إلغاء السرية' : '🔒 اجعله سرّيًا'}</button>
+      <button class="btn-sm" data-act="edit">${L('✏️ إعادة تسمية', '✏️ Rename')}</button>
+      <button class="btn-sm" data-act="secret">${f.secret ? L('🔓 إلغاء السرية', '🔓 Make it plain text') : L('🔒 اجعله سرّيًا', '🔒 Make it secret')}</button>
       <button class="btn-sm danger" data-act="remove">🗑️</button>
     </div>
   </div>`;
@@ -2128,18 +2242,23 @@ function fieldEditorRowHTML(kind, f, i, n, state) {
 
 function renderFieldEditor(kind, state) {
   const list = fieldList(kind);
-  const title = kind === 'user' ? '⚙️ حقول مستخدمي الاختبار' : '⚙️ حقول القيم الافتراضية';
+  const title = kind === 'user'
+    ? L('⚙️ حقول مستخدمي الاختبار', '⚙️ Test-user fields')
+    : L('⚙️ حقول القيم الافتراضية', '⚙️ Default-value fields');
   const rows = list.map((f, i) => fieldEditorRowHTML(kind, f, i, list.length, state)).join('') ||
-    '<div class="field-hint">مافيش حقول معرّفة — أضف أول حقل من الفورم اللي تحت.</div>';
+    '<div class="field-hint">' + L('مافيش حقول معرّفة — أضف أول حقل من الفورم اللي تحت.',
+      'No fields defined yet — add the first one in the form below.') + '</div>';
   const ov = openModal(`
     <div class="modal-title">${title}</div>
-    <div class="modal-body">الحقول دي معرّفة مرة واحدة في config/project.json ومشتركة بين كل البيئات — أي تعديل هنا بيتطبق على ${kind === 'user' ? 'كل مستخدم في كل بيئة' : 'كل البيئات'} عند الحفظ، وهيظهر في قائمة العمليات في خطوة المراجعة.${kind === 'user' ? ' حقل «المعرّف» (handle) ثابت — هو مفتاح المستخدم ومش بيتغير من هنا.' : ''}</div>
+    <div class="modal-body">${L(
+      `الحقول دي معرّفة مرة واحدة في config/project.json ومشتركة بين كل البيئات — أي تعديل هنا بيتطبق على ${kind === 'user' ? 'كل مستخدم في كل بيئة' : 'كل البيئات'} عند الحفظ، وهيظهر في قائمة العمليات في خطوة المراجعة.${kind === 'user' ? ' حقل «المعرّف» (handle) ثابت — هو مفتاح المستخدم ومش بيتغير من هنا.' : ''}`,
+      `These fields are defined once in config/project.json and shared by every environment — a change here applies to ${kind === 'user' ? 'every user in every environment' : 'every environment'} on save, and is listed among the operations on the review step.${kind === 'user' ? ' The «Handle» field is fixed — it is the user key and is not changed from here.' : ''}`)}</div>
     <div class="env-list" id="fe-rows">${rows}</div>
     <div class="field" style="border-top:1px solid var(--border);padding-top:12px">
-      <label class="field-label">➕ إضافة حقل جديد</label>
+      <label class="field-label">${L('➕ إضافة حقل جديد', '➕ Add a new field')}</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <input type="text" id="fe-add-key" placeholder="national_id" style="direction:ltr;font-family:var(--mono);flex:1;min-width:120px" />
-        <input type="text" id="fe-add-label" placeholder="الاسم المعروض" style="flex:1;min-width:120px" />
+        <input type="text" id="fe-add-label" placeholder="${L('الاسم المعروض', 'Display name')}" style="flex:1;min-width:120px" />
       </div>
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
         <select id="fe-add-type" style="width:auto">
@@ -2147,14 +2266,14 @@ function renderFieldEditor(kind, state) {
           <option value="number">number</option><option value="url">url</option>
         </select>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="fe-add-secret" style="width:auto;accent-color:var(--accent)" /> 🔒 سرّي (القيمة في ‎.env باسم متغير)
+          <input type="checkbox" id="fe-add-secret" style="width:auto;accent-color:var(--accent)" /> ${L('🔒 سرّي (القيمة في ‎.env باسم متغير)', '🔒 Secret (the value lives in ‎.env under a variable name)')}
         </label>
-        <button class="btn-sm" id="fe-add-ok">إضافة</button>
+        <button class="btn-sm" id="fe-add-ok">${L('إضافة', 'Add')}</button>
       </div>
       <div class="field-hint" id="fe-add-err"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" id="fe-done">تم</button>
+      <button class="btn btn-primary" id="fe-done">${L('تم', 'Done')}</button>
     </div>`);
   // Closing by clicking the overlay must still refresh the step behind it.
   ov.addEventListener('click', e => { if (e.target === ov) renderStep(); });
@@ -2185,15 +2304,17 @@ function renderFieldEditor(kind, state) {
       const adopted = renameFieldAdopting(kind, key, newKey, newLabel);
       if (newKey !== key) {
         showToast(adopted
-          ? `🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات، والقيم الموجودة على القرص تحت الاسم الجديد اتحمّلت في الخانات`
-          : `🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات عند الحفظ`, 'success');
+          ? L(`🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات، والقيم الموجودة على القرص تحت الاسم الجديد اتحمّلت في الخانات`,
+              `🏷️ «${key}» → «${newKey}» — the key moves in every environment, and the values already on disk under the new name were loaded into the boxes`)
+          : L(`🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات عند الحفظ`,
+              `🏷️ «${key}» → «${newKey}» — the key moves in every environment on save`), 'success');
       }
       renderFieldEditor(kind, {});
     });
     on('renonto-cancel', () => renderFieldEditor(kind, {}));
     on('renonto-ok', () => {
       renameFieldAdopting(kind, state.renonto.from, state.renonto.to, state.renonto.label);
-      showToast(`🏷️ «${state.renonto.from}» ← «${state.renonto.to}» — الكتابة فوق القيم اليدوية اتأكّدت وهتظهر في المراجعة`, 'warn');
+      showToast(L(`🏷️ «${state.renonto.from}» ← «${state.renonto.to}» — الكتابة فوق القيم اليدوية اتأكّدت وهتظهر في المراجعة`, `🏷️ «${state.renonto.from}» → «${state.renonto.to}» — overwriting the hand-written values is confirmed and is listed on the review step`), 'warn');
       renderFieldEditor(kind, {});
     });
     on('secret', () => {
@@ -2208,7 +2329,7 @@ function renderFieldEditor(kind, state) {
     on('remove-cancel', () => renderFieldEditor(kind, {}));
     on('remove-ok', () => {
       removeField(kind, key);
-      showToast(`🗑️ اتشال حقل «${key}» — هيختفي من كل البيئات عند الحفظ`, 'warn');
+      showToast(L(`🗑️ اتشال حقل «${key}» — هيختفي من كل البيئات عند الحفظ`, `🗑️ The «${key}» field was removed — it disappears from every environment on save`), 'warn');
       renderFieldEditor(kind, {});
     });
   });
@@ -2227,8 +2348,10 @@ function renderFieldEditor(kind, state) {
     if (secret) desc.secret = true;
     const adopted = addField(kind, desc);
     showToast(adopted
-      ? `📥 اتضاف حقل «${key}» — القيم الموجودة على القرص تحته اتحمّلت في الخانات، راجعها قبل الحفظ`
-      : `➕ اتضاف حقل «${key}» لكل ${kind === 'user' ? 'المستخدمين في كل البيئات' : 'البيئات'}`, 'success');
+      ? L(`📥 اتضاف حقل «${key}» — القيم الموجودة على القرص تحته اتحمّلت في الخانات، راجعها قبل الحفظ`,
+          `📥 The «${key}» field was added — the values already on disk under it were loaded into the boxes; review them before saving`)
+      : L(`➕ اتضاف حقل «${key}» لكل ${kind === 'user' ? 'المستخدمين في كل البيئات' : 'البيئات'}`,
+          `➕ The «${key}» field was added to ${kind === 'user' ? 'every user in every environment' : 'every environment'}`), 'success');
     renderFieldEditor(kind, {});
   };
   ov.querySelector('#fe-done').onclick = () => { closeModal(); renderStep(); };
@@ -2256,7 +2379,7 @@ async function runExtract() {
       const data = await r.json();
       if (!r.ok || data.error) {
         // e.g. a binary PDF/Word — refuse honestly, never fake a success preview.
-        showToast('❌ ' + (data.message || data.error || 'فشل الاستخلاص'), 'error');
+        showToast('❌ ' + (data.message || data.error || L('فشل الاستخلاص', 'Extraction failed')), 'error');
         return;
       }
       extractedData = data;
@@ -2266,8 +2389,8 @@ async function runExtract() {
     }
     document.getElementById('ep-code').textContent = JSON.stringify(extractedData, null, 2);
     document.getElementById('ep').classList.add('show');
-  } catch(e) { showToast('فشل الاستخلاص: ' + e.message, 'error'); }
-  finally { btn.innerHTML = '🤖 استخلاص البيانات'; btn.disabled = false; }
+  } catch(e) { showToast(L('فشل الاستخلاص: ', 'Extraction failed: ') + e.message, 'error'); }
+  finally { btn.innerHTML = L('🤖 استخلاص البيانات', '🤖 Extract the data'); btn.disabled = false; }
 }
 
 function resetFile() {
@@ -2369,10 +2492,10 @@ function renderReviewStep() {
 
   const copyBtn = document.createElement('button');
   copyBtn.className = 'btn-copy';
-  copyBtn.textContent = '📋 نسخ';
+  copyBtn.textContent = L('📋 نسخ', '📋 Copy');
   copyBtn.style.alignSelf = 'flex-start';
   copyBtn.onclick = () => navigator.clipboard.writeText(code.textContent)
-    .then(() => showToast('تم النسخ', 'success'), () => showToast('تعذر النسخ', 'error'));
+    .then(() => showToast(L('تم النسخ', 'Copied'), 'success'), () => showToast(L('تعذر النسخ', 'Could not copy'), 'error'));
 
   wrap.appendChild(tabBar);
   wrap.appendChild(code);
@@ -2384,36 +2507,36 @@ function renderReviewStep() {
   const ops = document.createElement('div');
   ops.className = 'ops-list';
   const lines = [];
-  for (const t of tabs) lines.push(`<div class="op-line">✍️ هيتكتب <code>${esc(t.label)}</code></div>`);
-  for (const r of renames) lines.push(`<div class="op-line">🏷️ إعادة تسمية مؤكّدة: <code>environments/${esc(r.from)}.json → environments/${esc(r.to)}.json</code></div>`);
-  for (const d of pendingDeletes) lines.push(`<div class="op-line">🗑️ حذف مؤكّد: <code>environments/${esc(d)}.json</code></div>`);
+  for (const t of tabs) lines.push(L(`<div class="op-line">✍️ هيتكتب <code>${esc(t.label)}</code></div>`, `<div class="op-line">✍️ writes <code>${esc(t.label)}</code></div>`));
+  for (const r of renames) lines.push(L(`<div class="op-line">🏷️ إعادة تسمية مؤكّدة: <code>environments/${esc(r.from)}.json → environments/${esc(r.to)}.json</code></div>`, `<div class="op-line">🏷️ confirmed rename: <code>environments/${esc(r.from)}.json → environments/${esc(r.to)}.json</code></div>`));
+  for (const d of pendingDeletes) lines.push(L(`<div class="op-line">🗑️ حذف مؤكّد: <code>environments/${esc(d)}.json</code></div>`, `<div class="op-line">🗑️ confirmed delete: <code>environments/${esc(d)}.json</code></div>`));
   // Field-schema ops (design #4): renames migrate the key in EVERY environment
   // file this save writes; removals drop the consented values — both listed
   // here before anything happens, like every other file operation.
   for (const r of deriveUserFieldRenames()) {
-    lines.push(`<div class="op-line">🔧 إعادة تسمية حقل مستخدم: <code>${esc(r.from)} → ${esc(r.to)}</code> — المفتاح بيتنقل في كل ملفات البيئات</div>`);
+    lines.push(L(`<div class="op-line">🔧 إعادة تسمية حقل مستخدم: <code>${esc(r.from)} → ${esc(r.to)}</code> — المفتاح بيتنقل في كل ملفات البيئات</div>`, `<div class="op-line">🔧 user-field rename: <code>${esc(r.from)} → ${esc(r.to)}</code> — the key moves in every environment file</div>`));
   }
   for (const r of deriveDefaultsFieldRenames()) {
-    lines.push(`<div class="op-line">🔧 إعادة تسمية حقل افتراضي: <code>defaults.${esc(r.from)} → defaults.${esc(r.to)}</code> — المفتاح بيتنقل في كل ملفات البيئات</div>`);
+    lines.push(L(`<div class="op-line">🔧 إعادة تسمية حقل افتراضي: <code>defaults.${esc(r.from)} → defaults.${esc(r.to)}</code> — المفتاح بيتنقل في كل ملفات البيئات</div>`, `<div class="op-line">🔧 defaults-field rename: <code>defaults.${esc(r.from)} → defaults.${esc(r.to)}</code> — the key moves in every environment file</div>`));
   }
   for (const x of removedUserFields) {
-    lines.push(`<div class="op-line">🗑️ حذف حقل مستخدم مؤكّد: <code>${esc(x.key)}</code>${x.envs.length ? ` — القيم اللي تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتشال من الملفات` : ' — مافيش قيم محفوظة تحته'}</div>`);
+    lines.push(L(`<div class="op-line">🗑️ حذف حقل مستخدم مؤكّد: <code>${esc(x.key)}</code>${x.envs.length ? ` — القيم اللي تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتشال من الملفات` : ' — مافيش قيم محفوظة تحته'}</div>`, `<div class="op-line">🗑️ confirmed user-field delete: <code>${esc(x.key)}</code>${x.envs.length ? ` — its values in ${x.envs.length === 1 ? 'one environment' : x.envs.length + ' environments'} are removed from those files` : ' — no environment has a value under it'}</div>`));
   }
   for (const x of removedDefaultsFields) {
-    lines.push(`<div class="op-line">🗑️ حذف حقل افتراضي مؤكّد: <code>defaults.${esc(x.key)}</code>${x.envs.length ? ` — القيم اللي تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتشال من الملفات` : ' — مافيش قيم محفوظة تحته'}</div>`);
+    lines.push(L(`<div class="op-line">🗑️ حذف حقل افتراضي مؤكّد: <code>defaults.${esc(x.key)}</code>${x.envs.length ? ` — القيم اللي تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتشال من الملفات` : ' — مافيش قيم محفوظة تحته'}</div>`, `<div class="op-line">🗑️ confirmed defaults-field delete: <code>defaults.${esc(x.key)}</code>${x.envs.length ? ` — its values in ${x.envs.length === 1 ? 'one environment' : x.envs.length + ' environments'} are removed from those files` : ' — no environment has a value under it'}</div>`));
   }
   for (const x of overwrittenUserKeys) {
-    lines.push(`<div class="op-line">✏️ كتابة مؤكّدة فوق قيم يدوية: <code>${esc(x.key)}</code> — قيم القرص تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتكتب فوقها قيم الجلسة</div>`);
+    lines.push(L(`<div class="op-line">✏️ كتابة مؤكّدة فوق قيم يدوية: <code>${esc(x.key)}</code> — قيم القرص تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتكتب فوقها قيم الجلسة</div>`, `<div class="op-line">✏️ confirmed overwrite of hand-written values: <code>${esc(x.key)}</code> — the disk values under it in ${x.envs.length === 1 ? 'one environment' : x.envs.length + ' environments'} are replaced by the session values</div>`));
   }
   for (const x of overwrittenDefaultsKeys) {
-    lines.push(`<div class="op-line">✏️ كتابة مؤكّدة فوق قيم يدوية: <code>defaults.${esc(x.key)}</code> — قيم القرص تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتكتب فوقها قيم الجلسة</div>`);
+    lines.push(L(`<div class="op-line">✏️ كتابة مؤكّدة فوق قيم يدوية: <code>defaults.${esc(x.key)}</code> — قيم القرص تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتكتب فوقها قيم الجلسة</div>`, `<div class="op-line">✏️ confirmed overwrite of hand-written values: <code>defaults.${esc(x.key)}</code> — the disk values under it in ${x.envs.length === 1 ? 'one environment' : x.envs.length + ' environments'} are replaced by the session values</div>`));
   }
   const untouched = envOrder.filter(n => envs[n].existsOnDisk && !envs[n].dirty && envs[n].diskName === n);
   if (untouched.length) {
-    lines.push(`<div class="op-line">🔒 من غير أي تغيير: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join('، ')}</div>`);
+    lines.push(L(`<div class="op-line">🔒 من غير أي تغيير: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join('، ')}</div>`, `<div class="op-line">🔒 left untouched: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join(', ')}</div>`));
   }
-  lines.push(`<div class="op-line">⭐ البيئة الافتراضية: <code>${esc(currentDefaultName() || '?')}</code></div>`);
-  ops.innerHTML = `<div class="ops-list-title">📋 العمليات اللي هتتنفذ عند الحفظ:</div>` + lines.join('');
+  lines.push(L(`<div class="op-line">⭐ البيئة الافتراضية: <code>${esc(currentDefaultName() || '?')}</code></div>`, `<div class="op-line">⭐ default environment: <code>${esc(currentDefaultName() || '?')}</code></div>`));
+  ops.innerHTML = `<div class="ops-list-title">${L('📋 العمليات اللي هتتنفذ عند الحفظ:', '📋 What this save will do:')}</div>` + lines.join('');
   wrap.appendChild(ops);
 
   // .env keys summary — names only, never values (invariant #5). The secret
@@ -2422,9 +2545,9 @@ function renderReviewStep() {
   const envSum = document.createElement('div');
   envSum.className = 'env-summary';
   envSum.innerHTML = secretKeys.length
-    ? `<div class="env-summary-title">🔐 ‎.env — المفاتيح اللي هتتكتب (الأسماء فقط، القيم عمرها ما بتتعرض):</div>
+    ? `<div class="env-summary-title">${L('🔐 ‎.env — المفاتيح اللي هتتكتب (الأسماء فقط، القيم عمرها ما بتتعرض):', '🔐 ‎.env — the keys to be written (names only; values are never shown):')}</div>
        <div class="env-keys">${secretKeys.map(k => `<span class="env-key">${esc(k)}</span>`).join('')}</div>`
-    : `<div class="env-summary-title">🔐 ‎.env — مافيش أسرار جديدة في الجلسة دي، الملف مش هيتغير.</div>`;
+    : `<div class="env-summary-title">${L('🔐 ‎.env — مافيش أسرار جديدة في الجلسة دي، الملف مش هيتغير.', '🔐 ‎.env — no new secrets this session, so the file is left as it is.')}</div>`;
   wrap.appendChild(envSum);
 
   // Reconciliation transparency: the save removes EVERY structurally-pristine
@@ -2433,12 +2556,14 @@ function renderReviewStep() {
   const claimed = new Set([...writes, ...renames.map(r => r.to), ...renames.map(r => r.from), ...pendingDeletes]);
   const toReconcile = pristineSamples.filter(n => !claimed.has(n));
   if (toReconcile.length) {
-    const files = toReconcile.map(n => `environments/${n}.json`).join('، ');
+    const files = toReconcile.map(n => `environments/${n}.json`).join(L('، ', ', '));
     const note = document.createElement('div');
     note.style.cssText = 'border:1px solid var(--warning);background:var(--warning-lt);color:var(--text-1);border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.7';
     note.textContent = toReconcile.length === 1
-      ? `⚠️ عند الحفظ هيتشال ملف البيئة النموذجي ${files} (نسخة السكافولد من غير أي تعديل) — بيئاتك الحقيقية بتحل محله.`
-      : `⚠️ عند الحفظ هتتشال ملفات البيئة النموذجية دي (نسخ السكافولد من غير أي تعديل): ${files} — بيئاتك الحقيقية بتحل محلها.`;
+      ? L(`⚠️ عند الحفظ هيتشال ملف البيئة النموذجي ${files} (نسخة السكافولد من غير أي تعديل) — بيئاتك الحقيقية بتحل محله.`,
+          `⚠️ On save, the sample environment file ${files} is removed (an untouched scaffold copy) — your real environments take its place.`)
+      : L(`⚠️ عند الحفظ هتتشال ملفات البيئة النموذجية دي (نسخ السكافولد من غير أي تعديل): ${files} — بيئاتك الحقيقية بتحل محلها.`,
+          `⚠️ On save, these sample environment files are removed (untouched scaffold copies): ${files} — your real environments take their place.`);
     wrap.appendChild(note);
   }
   return wrap;
@@ -2459,13 +2584,13 @@ function renderFooter(step) {
   if (!isFirst) {
     const back = document.createElement('button');
     back.className = 'btn btn-outline';
-    back.innerHTML = '→ السابق';
+    back.innerHTML = L('→ السابق', '← Back');
     back.onclick = prev;
     left.appendChild(back);
   } else {
     const home = document.createElement('button');
     home.className = 'btn-ghost';
-    home.innerHTML = '→ الرئيسية';
+    home.innerHTML = L('→ الرئيسية', '← Home');
     home.onclick = renderIntro;
     left.appendChild(home);
   }
@@ -2475,7 +2600,7 @@ function renderFooter(step) {
   if (step.optional && !isLast) {
     const skip = document.createElement('button');
     skip.className = 'btn-text';
-    skip.textContent = 'تخطي';
+    skip.textContent = L('تخطي', 'Skip');
     skip.onclick = () => goTo(current + 1);
     foot.appendChild(skip);
   }
@@ -2483,7 +2608,7 @@ function renderFooter(step) {
   // Next / Save
   const nextBtn = document.createElement('button');
   nextBtn.className = isLast ? 'btn btn-success' : 'btn btn-primary';
-  nextBtn.innerHTML = isLast ? '💾 حفظ' : 'التالي ←';
+  nextBtn.innerHTML = isLast ? L('💾 حفظ', '💾 Save') : L('التالي ←', 'Next →');
   nextBtn.onclick = isLast ? saveAndClose : next;
   foot.appendChild(nextBtn);
 
@@ -2498,56 +2623,56 @@ function validateStep() {
   const errs = [];
   for (const f of (step.fields || [])) {
     const v = String(answers[f.key] ?? '').trim();
-    if (f.required && !v) { errs.push(`«${f.label || f.key}» مطلوب`); continue; }
+    if (f.required && !v) { errs.push(L(`«${loc(f, 'label') || f.key}» مطلوب`, `«${loc(f, 'label') || f.key}» is required`)); continue; }
     if (!v) continue;
     if (f.type === 'url') {
       let ok = false;
       try { const u = new URL(v); ok = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
-      if (!ok) errs.push(`«${f.label || f.key}» يجب أن يكون رابط http(s) صحيحاً`);
+      if (!ok) errs.push(L(`«${loc(f, 'label') || f.key}» يجب أن يكون رابط http(s) صحيحاً`, `«${loc(f, 'label') || f.key}» has to be a valid http(s) URL`));
     }
     if (f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
-      errs.push(`«${f.label || f.key}» بريد إلكتروني غير صحيح`);
+      errs.push(L(`«${loc(f, 'label') || f.key}» بريد إلكتروني غير صحيح`, `«${loc(f, 'label') || f.key}» is not a valid email address`));
     }
     if (f.pattern && !new RegExp(f.pattern).test(v)) {
-      errs.push(`«${f.label || f.key}»: ${f.patternMsg || 'قيمة غير صالحة'}`);
+      errs.push(`«${loc(f, 'label') || f.key}»: ${loc(f, 'patternMsg') || L('قيمة غير صالحة', 'invalid value')}`);
     }
   }
   if (step.type === 'dynamic-list') {
     for (const u of users) {
       const hasData = userFieldsSession.some(f => u[f.key] || (u._secrets && u._secrets[f.key]));
-      if (hasData && !String(u.handle || '').trim()) { errs.push('كل مستخدم يحتاج «معرّف» قبل المتابعة'); break; }
+      if (hasData && !String(u.handle || '').trim()) { errs.push(L('كل مستخدم يحتاج «معرّف» قبل المتابعة', 'Every user needs a handle before you continue')); break; }
     }
     const withHandle = users.filter(u => String(u.handle || '').trim()).length;
     if (withHandle < (step.minItems || 1)) {
-      errs.push('أضف مستخدم اختبار واحداً على الأقل (بمعرّف)');
+      errs.push(L('أضف مستخدم اختبار واحداً على الأقل (بمعرّف)', 'Add at least one test user (with a handle)'));
     }
     // Schema-driven per-user checks: required fields, secret env-var names.
     for (const f of userFieldsSession) {
       if (f.required && users.some(u => String(u.handle || '').trim() &&
           !(f.secret ? ((u._secrets && u._secrets[f.key]) || u[f.key]) : u[f.key]))) {
-        errs.push(`«${f.label || f.key}» مطلوب لكل مستخدم`);
+        errs.push(L(`«${loc(f, 'label') || f.key}» مطلوب لكل مستخدم`, `«${loc(f, 'label') || f.key}» is required for every user`));
       }
       if (f.secret && users.some(u => u[f.key] && !ENV_VAR_RE_UI.test(String(u[f.key]).trim()))) {
-        errs.push(`«${f.label || f.key}»: اسم متغير بيئة صالح فقط — حروف إنجليزية وأرقام و _ بدون مسافات`);
+        errs.push(L(`«${loc(f, 'label') || f.key}»: اسم متغير بيئة صالح فقط — حروف إنجليزية وأرقام و _ بدون مسافات`, `«${loc(f, 'label') || f.key}»: an environment-variable name only — letters, digits and _ , no spaces`));
       }
     }
   }
   if (step.defaultsSection) {
     for (const f of defaultsFieldsSession) {
-      const label = f.label || f.key;
+      const label = loc(f, 'label') || f.key;
       if (f.secret) {
         const n = String(answers[`defaults.${f.key}EnvVar`] || '').trim();
-        if (n && !ENV_VAR_RE_UI.test(n)) errs.push(`«${label}»: اسم متغير بيئة صالح فقط — حروف إنجليزية وأرقام و _ بدون مسافات`);
-        if (f.required && !n) errs.push(`«${label}» مطلوب`);
+        if (n && !ENV_VAR_RE_UI.test(n)) errs.push(L(`«${label}»: اسم متغير بيئة صالح فقط — حروف إنجليزية وأرقام و _ بدون مسافات`, `«${label}»: an environment-variable name only — letters, digits and _ , no spaces`));
+        if (f.required && !n) errs.push(L(`«${label}» مطلوب`, `«${label}» is required`));
         continue;
       }
       const v = String(answers[`defaults.${f.key}`] || '').trim();
-      if (f.required && !v && !f.default) errs.push(`«${label}» مطلوب`);
-      if (v && f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) errs.push(`«${label}» بريد إلكتروني غير صحيح`);
+      if (f.required && !v && !f.default) errs.push(L(`«${label}» مطلوب`, `«${label}» is required`));
+      if (v && f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) errs.push(L(`«${label}» بريد إلكتروني غير صحيح`, `«${label}» is not a valid email address`));
       if (v && f.type === 'url') {
         let ok = false;
         try { const u = new URL(v); ok = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
-        if (!ok) errs.push(`«${label}» يجب أن يكون رابط http(s) صحيحًا`);
+        if (!ok) errs.push(L(`«${label}» يجب أن يكون رابط http(s) صحيحًا`, `«${label}» has to be a valid http(s) URL`));
       }
     }
   }
@@ -2765,11 +2890,11 @@ async function saveAndClose() {
     let urlOk = false;
     try { const u = new URL(a['portalUrl'] || ''); urlOk = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
     if (!urlOk) {
-      showToast(`❌ بيئة «${n}»: رابط التطبيق ناقص أو غير صحيح — افتحها من صفحة إدارة البيئات وكمّلها`, 'error');
+      showToast(L(`❌ بيئة «${n}»: رابط التطبيق ناقص أو غير صحيح — افتحها من صفحة إدارة البيئات وكمّلها`, `❌ Environment «${n}»: the application URL is missing or invalid — open it from the environments page and fill it in`), 'error');
       return;
     }
     if (!envs[n].users.some(u => String(u.handle || '').trim())) {
-      showToast(`❌ بيئة «${n}»: محتاجة مستخدم اختبار واحداً على الأقل — افتحها من صفحة إدارة البيئات`, 'error');
+      showToast(L(`❌ بيئة «${n}»: محتاجة مستخدم اختبار واحداً على الأقل — افتحها من صفحة إدارة البيئات`, `❌ Environment «${n}»: it needs at least one test user — open it from the environments page`), 'error');
       return;
     }
   }
@@ -2797,7 +2922,7 @@ async function saveAndClose() {
       if (res.ok) {
         finishWizard();
         setTimeout(() => apiFetch('/api/done').catch(() => {}), 1500);
-      } else { showToast('❌ ' + (res.error || 'خطأ'), 'error'); }
+      } else { showToast('❌ ' + (res.error || L('خطأ', 'error')), 'error'); }
     } catch(e) { showToast('❌ ' + e.message, 'error'); }
   } else {
     // Web mode: no server — download every file
@@ -2805,7 +2930,7 @@ async function saveAndClose() {
     Object.keys(environments).forEach((n, i) => {
       setTimeout(() => dlJSON(environments[n], `${n}.json`), 300 * (i + 1));
     });
-    showToast('✅ تم تحميل الملفات!');
+    showToast(L('✅ تم تحميل الملفات!', '✅ Files downloaded.'));
   }
 }
 
@@ -2817,16 +2942,23 @@ async function saveAndClose() {
  */
 function finishWizard() {
   finished = true;
+  screen = 'done';
+  renderFinished();
+  showToast(L('تم الحفظ بنجاح!', 'Saved.'), 'success');
+  window.scrollTo({ top: 0 });
+}
+
+function renderFinished() {
   document.getElementById('steps-scroll').classList.remove('show');
   document.getElementById('hdr-pill').classList.remove('show');
   document.getElementById('prog-fill').style.width = '100%';
   document.getElementById('card').innerHTML =
-    '<div class="paste-mode"><h2>✅ تم الإعداد بنجاح</h2>' +
-    '<p>تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — أغلق هذا التبويب وارجع إلى التيرمنال.</p>' +
-    '<p style="font-size:13px;color:var(--text-3)">لأي تعديل لاحق (إضافة مستخدمين مثلاً) شغّل المعالج من جديد — سيحمّل الإعدادات المحفوظة ويكمل من حيث وقفت.</p>' +
+    '<div class="paste-mode"><h2>' + L('✅ تم الإعداد بنجاح', '✅ Setup complete') + '</h2>' +
+    '<p>' + L('تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — أغلق هذا التبويب وارجع إلى التيرمنال.',
+      'The files are saved and the wizard server has shut itself down — close this tab and go back to the terminal.') + '</p>' +
+    '<p style="font-size:13px;color:var(--text-3)">' + L('لأي تعديل لاحق (إضافة مستخدمين مثلاً) شغّل المعالج من جديد — سيحمّل الإعدادات المحفوظة ويكمل من حيث وقفت.',
+      'To change anything later (adding users, say) run the wizard again — it loads what you saved and picks up from there.') + '</p>' +
     '</div>';
-  showToast('تم الحفظ بنجاح!', 'success');
-  window.scrollTo({ top: 0 });
 }
 
 function dlJSON(data, name) {
@@ -2853,6 +2985,7 @@ function showToast(msg, type='') {
 }
 
 /* ── Boot ─────────────────────────────────────────────────────────────────── */
+applyLangChrome();
 init();
 </script>
 </body>

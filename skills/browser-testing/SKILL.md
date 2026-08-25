@@ -35,6 +35,16 @@ Naming an environment that has no file is an **error**: stop and list the files 
 `environments/`. Never silently fall back to another environment. Record the active
 environment name in `report.md`.
 
+**Login mode** — `login.mode` in `config/project.json` says how a run gets in:
+`"session"` reuses the login the **optimize-login** skill saved
+(`test/.auth/<app>-<ENVIRONMENT>-state.json`), `"fresh"` drives the login UI every run.
+Missing, unreadable, or any other value resolves to **`fresh`** — there is nothing to reuse,
+and a run must never create a saved session the tester did not ask for. (A project scaffolded
+by an older wizard spells fresh `"per-test"`; it means the same thing and is accepted as is —
+never rewrite the tester's config to change the spelling.) The mode is the run's, not the
+scenario's: resolve it once here, pass it to every executor as `LOGIN_MODE`, and follow it
+yourself in sequential mode.
+
 ## Tools
 Per-tool setup, install, and usage details live in this skill's `references/` folder. **Read the
 relevant file BEFORE the first use of that tool in a session**, and again whenever one of its
@@ -118,7 +128,9 @@ Follow this loop and STOP for approval at each checkpoint. Do not skip ahead.
    to create `executions/execu_<timestamp>/` and get this run's unique session name; prefix
    EVERY `playwright-cli` command with `-s=<that name>` (never run a bare, default-session
    command). Run scenarios one at a time. After each scenario, report PASS/FAIL with evidence
-   (screenshot + observed vs. expected).
+   (screenshot + observed vs. expected). A failed scenario follows the **Flake doctrine**
+   below: retry only an infrastructure failure, only once, and a scenario that passed only on
+   that retry is reported as FLAKY — never as a pass.
    → Checkpoint: pause after each scenario before moving to the next.
 4. **REPORT** — Save screenshots/logs under `browser-sessions/<session>/` in the run folder,
    then write `report.md` + `bugs/` there, and close your session (`-s=<session> close` —
@@ -132,7 +144,9 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
 1. **SETUP** — Run `init_run.js --sessions <one label per test file>` to create
    `executions/execu_<timestamp>/` with `browser-sessions/` and `bugs/` subfolders (see
    Execution output layout above); the JSON's `sessions` keys are the unique session names
-   to inject as each subagent's `SESSION`.
+   to inject as each subagent's `SESSION`. Each carries the `label` it came from — use that,
+   not the ASCII session name, when the report names the spec (a spec titled in a non-Latin
+   script has no ASCII to keep, so its session name is `spec<n>-<digest>`).
 2. **LOAD** — Read the planned test files (one bucket per file). By convention these live in a
    `test/` directory, but use wherever the user keeps their specs. Stateful scenarios stay grouped
    and run sequentially within their own file.
@@ -141,10 +155,12 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
      and tell the user to adapt them to their app before a real regression.
 3. **DISPATCH** — Spawn one **`qa-executor`** subagent per test file, injecting its `SESSION`,
    `SESSION_DIR` (`…/browser-sessions/<session>`), `WORKING_DIR`, `TARGET_URL`, `ENVIRONMENT`,
-   `TEST_DATA`, and `TEST_SPEC`. `ENVIRONMENT` is the resolved environment name (empty for
-   legacy projects); `TEST_DATA` is the environment's `defaults` + `users` JSON (secrets left
-   as `{ envSecret }` refs — the executor resolves them only at use time and never prints
-   them). Each uses its own `-s=<session>`. Launch them in a single batch so they run
+   `TEST_DATA`, `LOGIN_MODE`, and `TEST_SPEC`. `ENVIRONMENT` is the resolved environment name
+   (empty for legacy projects); `TEST_DATA` is the environment's `defaults` + `users` JSON
+   (secrets left as `{ envSecret }` refs — the executor resolves them only at use time and
+   never prints them); `LOGIN_MODE` is the resolved login mode (see Target & environment
+   resolution above) — inject it even when it resolved to the default, so no executor has to
+   guess. Each uses its own `-s=<session>`. Launch them in a single batch so they run
    concurrently. Expect ~6–8 browser sessions to run at once; the rest queue automatically.
 4. **MERGE** — Collect each subagent's report. **Resolve deferred ui-check questions first:**
    executors cannot ask the user mid-run, so a `ui-check:` step needing a confirmation
@@ -152,19 +168,51 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
    comes back as a **NEEDS-USER** item. Surface every NEEDS-USER item to the user now — the
    precise question plus both image paths (baseline + actual) — collect the answers, and
    finalize those verdicts per the ui-check skill's rules. NEEDS-USER is never degraded to
-   BLOCKED and never appears in a final report. Only then write the final `report.md` and
+   BLOCKED and never appears in a final report. **Then carry every FLAKY scenario through:**
+   each executor may report scenarios that only passed on their one retry — collect them into
+   the report's **Unstable results** section with the attempt-1 symptom and both attempts'
+   evidence, keep them out of the pass/fail tally and out of `bugs/bug-list.md`, and never
+   re-dispatch the executor to obtain a cleaner report (see Flake doctrine). Only then write
+   the final `report.md` and
    build `bugs/` (`bug-list.md` + copy the bug-evidence screenshots each subagent flagged,
    including any ui-check FAILs finalized here) inside the execution folder. Use the defect
    format below. Optionally generate an interactive `extent-report.html` next to `report.md`
    via the **extent-report** skill.
 5. **PRESENT** — Show the merged summary.
 
-Autonomy boundary (applies in parallel mode): still never modify app source, never create real
-accounts or complete checkout, never print secrets, never use real personal data (use disposable
-values like `qa.tester@example.com`). If the overall scope is ambiguous, ask once before
+Autonomy boundary (applies in parallel mode): still never modify app source, never CREATE an
+account, never complete a payment or any other irreversible transaction, never print secrets,
+never use real personal data (use disposable values like `qa.tester@example.com`). Logging in
+with a test user from the active environment is not on that list — it is the job. If the overall scope is ambiguous, ask once before
 dispatching; otherwise proceed without pausing. MERGE-time resolution of deferred ui-check
 NEEDS-USER questions is the one sanctioned mid-flow user interaction — it happens after all
 executors finish and before the final report is written.
+
+## Flake doctrine
+A run that hides instability is worse than a run that reports it. A silent retry turns an
+intermittent defect into a green tick, and a defect report built on a network blip sends the
+tester hunting a bug that was never there. So instability is **reported, never resolved**.
+
+- **One attempt per scenario.** A scenario that passed is never re-run for reassurance.
+- **Only an infrastructure failure earns a retry** — one retry, that scenario only, from a
+  clean state. Infrastructure means the app never got to answer: the session or browser died,
+  navigation never completed, `net::ERR_*`, the CLI errored instead of returning a page, a
+  timeout with no page rendered. `references/playwright-cli.md` carries the symptom list.
+- **A wrong answer is never retried.** Missing element, wrong text, wrong status, wrong DB row,
+  a 4xx/5xx from the app under test, a console error — that is a defect, and a retry buries it.
+- **Verdicts:** infra-fail then pass = **FLAKY** (never a pass); the same app failure twice =
+  **FAIL**, reported as reproduced on 2 of 2 attempts; the same infra symptom twice =
+  **BLOCKED**, symptom verbatim.
+- **FLAKY is a finding, not a footnote.** It stays out of the pass/fail tally, is named in the
+  tally line, and gets its own **Unstable results** section in `report.md` — the attempt-1
+  symptom verbatim, both attempts' evidence, and what would settle it (re-run that spec; if it
+  flakes again, the environment or the app is genuinely unstable). It does NOT go into
+  `bugs/bug-list.md`: nothing is proven yet, and a bug list padded with maybes is a bug list
+  nobody trusts.
+- **Never re-dispatch an executor to get a clean run.** Re-running a whole spec because its
+  report contained a FLAKY is the same silent retry, one level up.
+- In `extent-report.html`, FLAKY is the first-class `flaky` status with its own color and stat
+  card — never folded into `passed` or `blocked`.
 
 ## Defect reporting format
 - **Title** — concise, action-oriented
@@ -185,5 +233,7 @@ executors finish and before the final report is written.
   boundary above.
 - `config/project.json`, `environments/<env>.json`, and `.env` may be read to resolve config;
   never print, log, or pass secret values (tokens, credentials, envSecret targets) anywhere.
+- Never retry a scenario to make a failure go away, and never report a scenario that only
+  passed on a retry as a pass — see **Flake doctrine**.
 - Never modify application source code. You may write test notes/artifacts only.
 - If a step is ambiguous, ask — do not guess.
