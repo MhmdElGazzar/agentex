@@ -47,28 +47,81 @@ function hasEnvFiles(projectRoot) {
   return fs.readdirSync(dir).some(f => f.endsWith('.json'));
 }
 
-// ── .gitignore: the .env entry ───────────────────────────────────────────────
-function gitignoreHasEnvEntry(projectRoot) {
+// ── .gitignore: the entries a QA project must never commit ───────────────────
+// Three run artifacts carry live credentials, not just the .env:
+//
+//   test/.auth/      the sessions optimize-login saves. A Playwright storage-state
+//                    file IS the session — bearer token and auth cookies in plain
+//                    JSON. The docs have always called this directory "gitignored
+//                    by convention", but nothing ever wrote the entry, so the
+//                    convention was the tester's to remember and a `git add -A`
+//                    after an optimize-login run committed a working token.
+//   .playwright-cli/ the CLI's scratch profile — the same cookies, on disk.
+//
+// One entry is not a credential at all: test/.ui-baselines/ is the ui-check fallback
+// baseline cache — design PNGs the runner re-fetches on demand. It is ignored to keep
+// binaries out of a QA repo, and it carries its own comment so the block does not
+// claim a cache holds a session.
+//
+// Append-only and per-entry: a project that already ignores one of them (under
+// any of the spellings below) keeps its own line; only what is genuinely missing
+// is added.
+const GITIGNORE_ENTRIES = [
+  { entry: '.env', covers: ['.env', '/.env', '*.env'] },
+  {
+    entry: 'test/.auth/',
+    covers: ['test/.auth/', 'test/.auth', '/test/.auth/', '/test/.auth', '.auth/', '.auth', '**/.auth/'],
+  },
+  {
+    entry: '.playwright-cli/',
+    covers: ['.playwright-cli/', '.playwright-cli', '/.playwright-cli/', '/.playwright-cli'],
+  },
+  {
+    entry: 'test/.ui-baselines/',
+    comment: '# and this one is only a cache — ui-check re-fetches these design baselines',
+    covers: ['test/.ui-baselines/', 'test/.ui-baselines', '/test/.ui-baselines/',
+      '/test/.ui-baselines', '.ui-baselines/', '.ui-baselines'],
+  },
+];
+
+const GITIGNORE_HEADER = '# AgenTeX — never commit these: they hold live credentials';
+
+// Which required entries does this project's .gitignore not cover yet?
+function gitignoreMissing(projectRoot) {
   const gitignore = path.join(projectRoot, '.gitignore');
-  if (!fs.existsSync(gitignore)) return false;
-  const lines = fs.readFileSync(gitignore, 'utf8').split(/\r?\n/).map(l => l.trim());
-  return ['.env', '/.env', '*.env'].some(p => lines.includes(p));
+  const lines = fs.existsSync(gitignore)
+    ? fs.readFileSync(gitignore, 'utf8').split(/\r?\n/).map(l => l.trim())
+    : [];
+  return GITIGNORE_ENTRIES.filter(e => !e.covers.some(p => lines.includes(p)));
 }
 
-function ensureGitignoreEnv(projectRoot, { dryRun = false } = {}) {
+function ensureGitignore(projectRoot, { dryRun = false } = {}) {
   const gitignore = path.join(projectRoot, '.gitignore');
-  if (gitignoreHasEnvEntry(projectRoot)) {
-    return { kind: 'skipped', path: rel(projectRoot, gitignore), note: '.env already gitignored' };
+  const missing = gitignoreMissing(projectRoot);
+  const existed = fs.existsSync(gitignore);
+  if (!missing.length) {
+    return {
+      kind: 'skipped',
+      path: rel(projectRoot, gitignore),
+      note: 'secrets, saved sessions and the baseline cache already gitignored',
+    };
   }
-  if (fs.existsSync(gitignore)) {
-    if (!dryRun) {
-      const content = fs.readFileSync(gitignore, 'utf8');
-      fs.appendFileSync(gitignore, `${content.endsWith('\n') || content === '' ? '' : '\n'}.env\n`);
-    }
-    return { kind: 'created', path: rel(projectRoot, gitignore), note: '.env line appended' };
+  const current = existed ? fs.readFileSync(gitignore, 'utf8') : '';
+  // Match the file's own line ending rather than mixing them.
+  const eol = /\r\n/.test(current) ? '\r\n' : '\n';
+  const header = current.includes(GITIGNORE_HEADER) ? [] : [GITIGNORE_HEADER];
+  const block = [...header, ...missing.flatMap(e => (e.comment ? [e.comment, e.entry] : [e.entry])), '']
+    .join(eol);
+  if (!dryRun) {
+    const lead = current === '' || /\n$/.test(current) ? '' : eol;
+    fs.writeFileSync(gitignore, current + lead + block, 'utf8');
   }
-  if (!dryRun) fs.writeFileSync(gitignore, '.env\n', 'utf8');
-  return { kind: 'created', path: rel(projectRoot, gitignore), note: 'created with .env entry' };
+  const names = missing.map(e => e.entry).join(', ');
+  return {
+    kind: 'created',
+    path: rel(projectRoot, gitignore),
+    note: existed ? `${names} appended` : `created with ${names}`,
+  };
 }
 
 // ── CLAUDE.md: the executions/ guidance bullet (append-only) ─────────────────
@@ -146,7 +199,7 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
     }
     push('created', envFile, 'keys only, fill in the values yourself');
   }
-  actions.push(ensureGitignoreEnv(projectRoot, { dryRun }));
+  actions.push(ensureGitignore(projectRoot, { dryRun }));
 
   // 4. Integration catalog
   const integrationDir = path.join(projectRoot, 'integration');
@@ -279,7 +332,7 @@ module.exports = {
   CLAUDE_MD_BULLET, STAMP_REL,
   hasSpecFiles, hasEnvFiles, scaffoldProject, hasLegacySignals,
   sampleEnvShapes, isPristineSampleEnv,
-  gitignoreHasEnvEntry, ensureGitignoreEnv,
+  gitignoreMissing, ensureGitignore,
   claudeMdHasBullet, ensureClaudeMdBullet,
   stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,
 };

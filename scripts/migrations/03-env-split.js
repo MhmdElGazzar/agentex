@@ -13,7 +13,11 @@
 //     commits the partial state — the clean-tree guard is absolute): detect still
 //     sees the legacy keys, the JSON fields are now set, the rewrite completes;
 //   - the .env rewrite drops ONLY known, successfully-carried non-secret keys —
-//     secret keys and every unrecognized key survive byte-identical.
+//     secret keys and every unrecognized key survive byte-identical;
+//   - aliases that disagree are never resolved by guessing: when two legacy names
+//     for the same field hold different values and the JSON field is unset, the
+//     group is left untouched (nothing written, nothing removed from .env) and
+//     raised as a [manual] item — the stamp is withheld until the user picks.
 const fs = require('fs');
 const path = require('path');
 const { ENV_KEY_MAP } = require('../lib/env_key_map.js');
@@ -124,26 +128,56 @@ module.exports = {
     };
 
     // 2. Carry values into their new homes; JSON wins where already filled.
+    //
+    // Grouped by target first, because several legacy names alias to one field:
+    // QA_TARGET_URL / QA_URL / PORTAL_URL / APP_URL / TARGET_URL / UAT_URL are all
+    // portalUrl, DB_NAME and DB_DATABASE are both db.name, and so on. Taken one
+    // entry at a time, two aliases holding DIFFERENT values raced: whichever line
+    // came first in the file was carried, the second was reported as "JSON wins
+    // over .env <KEY>" — about a JSON value that had just been written from the
+    // .env in this same run, not one the project already had — and its .env line
+    // was then deleted. That silently discarded a value the tester had set, on a
+    // rule (file order) they had no way to see. Such a group is now left entirely
+    // alone and raised as a [manual] item, which also withholds the stamp until
+    // the user picks a winner.
     const carried = { project: [], env: [] };
     const removable = new Set();
-    for (const { key, value } of entries) {
-      const [home, keys] = TARGETS[ENV_KEY_MAP[key]];
+    const groups = new Map(); // answer key → its .env entries, in file order
+    for (const e of entries) {
+      const target = ENV_KEY_MAP[e.key];
+      if (!groups.has(target)) groups.set(target, []);
+      groups.get(target).push(e);
+    }
+    for (const [answerKey, group] of groups) {
+      const [home, keys] = TARGETS[answerKey];
       const { json, rel, template } = files[home];
       ensureBlock(json, template, keys);
       const cur = getPath(json, keys);
-      const wanted = coerce(ENV_KEY_MAP[key], value);
       const dotted = keys.join('.');
-      if (isUnset(cur, getPath(template, keys))) {
+      const unset = isUnset(cur, getPath(template, keys));
+      const names = group.map(e => e.key);
+      // Distinct after the same normalization the carry would apply.
+      const distinct = new Set(group.map(e => String(coerce(answerKey, e.value))));
+      if (unset && distinct.size > 1) {
+        ctx.report.manual(
+          `${names.join(' and ')} in .env are different names for ${dotted} but hold ` +
+          `${distinct.size} different values, and ${rel} has none — only you can say which is ` +
+          `current. Set ${dotted} in ${rel} yourself, or delete the .env line(s) you do not ` +
+          `want, then re-run /update-agentex. Nothing was written for ${dotted} and none of ` +
+          `those .env lines were removed.`
+        );
+        continue;
+      }
+      const wanted = coerce(answerKey, group[0].value);
+      if (unset) {
         setPath(json, keys, wanted);
         if (!carried[home].includes(dotted)) carried[home].push(dotted);
-        removable.add(key);
-      } else if (String(cur) === String(wanted)) {
-        ctx.report.ok(`kept existing ${dotted} in ${rel} — .env ${key} already carried`);
-        removable.add(key);
+      } else if (distinct.size === 1 && String(cur) === String(wanted)) {
+        ctx.report.ok(`kept existing ${dotted} in ${rel} — .env ${names.join(', ')} already carried`);
       } else {
-        ctx.report.ok(`kept existing ${dotted} in ${rel} — JSON wins over .env ${key}`);
-        removable.add(key);
+        ctx.report.ok(`kept existing ${dotted} in ${rel} — JSON wins over .env ${names.join(', ')}`);
       }
+      for (const key of names) removable.add(key);
     }
 
     // 3. Write BOTH JSON homes before touching .env (loss-proof ordering).

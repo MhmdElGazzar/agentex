@@ -429,6 +429,71 @@ test('m03: a filled JSON field wins over a different .env value ([ok] kept exist
   assert.match(envFile, new RegExp(`^AZURE_PAT=${SENTINELS.pat}$`, 'm'));
 });
 
+// ── alias collisions: two legacy names for one field ──────────────────────────
+// QA_TARGET_URL / APP_URL / UAT_URL are all portalUrl. When they disagree and the
+// JSON field is unset there is no correct guess, and the old per-entry loop made
+// one anyway: first line in the file won, the second was reported as "JSON wins"
+// and deleted from .env.
+function aliasFixture(envLines) {
+  return repo({
+    'config/project.json': {
+      name: 'p', defaultEnvironment: 'qa',
+      azure: { org: '', project: '', team: '', assignee: '' },
+      login: { mode: 'session' },
+    },
+    'environments/qa.json': { portalUrl: '', defaults: { otp: '', password: 'Pw' }, users: { u1: { phone: '1' } } },
+    'test/suite1/a.md': SPEC_02,
+    '.gitignore': '.env\ntest/.auth/\n.playwright-cli/\n',
+    '.env': envLines,
+  });
+}
+
+test('m03: two legacy names disagreeing about one field is a [manual] item, not a coin flip', () => {
+  const dir = aliasFixture(
+    `QA_TARGET_URL=https://first.example.test\nAPP_URL=https://second.example.test\nAZURE_PAT=${SENTINELS.pat}\n`);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[manual\].*QA_TARGET_URL and APP_URL/);
+  assert.match(r.out, /\[stamp\] withheld/, 'an unresolved ambiguity must not be stamped as current');
+  assert.strictEqual(readJson(dir, 'environments/qa.json').portalUrl, '', 'no value guessed');
+  const envFile = readText(dir, '.env');
+  assert.match(envFile, /^QA_TARGET_URL=https:\/\/first\.example\.test$/m, 'nothing deleted');
+  assert.match(envFile, /^APP_URL=https:\/\/second\.example\.test$/m);
+  // Report convention: key names, never values.
+  assert.ok(!r.out.includes('first.example.test'), 'the report names keys, not values');
+});
+
+test('m03: aliases agreeing on one value are carried once and both lines removed', () => {
+  const dir = aliasFixture(`DB_NAME=Shop\nDB_DATABASE=Shop\nQA_TARGET_URL=https://one.example.test\n`);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!/\[manual\]/.test(r.out), 'agreement is not an ambiguity');
+  assert.strictEqual(readJson(dir, 'environments/qa.json').db.name, 'Shop');
+  assert.strictEqual(readJson(dir, 'environments/qa.json').portalUrl, 'https://one.example.test');
+  const envFile = readText(dir, '.env');
+  assert.ok(!/^DB_NAME=/m.test(envFile) && !/^DB_DATABASE=/m.test(envFile), 'both aliases removed');
+});
+
+test('m03: once the user resolves the ambiguity, the re-run finishes and stamps', () => {
+  const dir = aliasFixture(
+    `QA_TARGET_URL=https://first.example.test\nAPP_URL=https://second.example.test\nAZURE_PAT=${SENTINELS.pat}\n`);
+  assert.strictEqual(run(dir).code, 0);
+  // The user picks: sets the field themselves, exactly as the [manual] item says.
+  const env = readJson(dir, 'environments/qa.json');
+  env.portalUrl = 'https://second.example.test';
+  addFiles(dir, { 'environments/qa.json': env });
+  commitAll(dir);
+  const r2 = run(dir);
+  assert.strictEqual(r2.code, 0, r2.out);
+  assert.match(r2.out, /\[ok\].*JSON wins over \.env QA_TARGET_URL, APP_URL/);
+  assert.ok(!/\[manual\]/.test(r2.out), 'resolved');
+  assert.match(r2.out, /\[stamp\] \.agentex/);
+  const envFile = readText(dir, '.env');
+  assert.ok(!/^QA_TARGET_URL=/m.test(envFile) && !/^APP_URL=/m.test(envFile), 'both now carried by precedence');
+  assert.strictEqual(readJson(dir, 'environments/qa.json').portalUrl, 'https://second.example.test');
+  assert.match(envFile, new RegExp(`^AZURE_PAT=${SENTINELS.pat}$`, 'm'), 'the secret is untouched');
+});
+
 // ── idempotence / resumability ────────────────────────────────────────────────
 test('double run: second invocation is a zero-write "already up to date" no-op', () => {
   const dir = fixture010();
@@ -734,6 +799,78 @@ test('m11 + init: fresh scaffold carries the field arrays from the template', ()
   const projCfg = readJson(dir, 'config/project.json');
   assert.deepStrictEqual(projCfg.userFields, TPL_PROJECT.userFields);
   assert.deepStrictEqual(projCfg.defaultsFields, TPL_PROJECT.defaultsFields);
+});
+
+// ── m05 gitignore-secrets ─────────────────────────────────────────────────────
+// A saved optimize-login session (test/.auth/<app>-<env>-state.json) and the
+// playwright-cli scratch profile both hold a live session, and the docs called
+// test/.auth/ "gitignored by convention" while nothing ever wrote the entry.
+const AUTH_STATE = 'test/.auth/demo-qc-state.json';
+
+test('m05: a project ignoring only .env gains the session and scratch entries', () => {
+  const dir = repo({
+    'test/suite1/smoke.md': SPEC_02,
+    '.gitignore': 'node_modules/\n.env\n',
+    '.env': `AZURE_PAT=${SENTINELS.pat}\n`,
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] gitignore-secrets/);
+  const gi = readText(dir, '.gitignore');
+  assert.match(gi, /^test\/\.auth\/$/m, 'saved sessions ignored');
+  assert.match(gi, /^\.playwright-cli\/$/m, 'browser scratch ignored');
+  assert.match(gi, /^node_modules\/$/m, 'the project\'s own entries are kept');
+  assert.strictEqual(gi.match(/^\.env$/gm).length, 1, '.env not duplicated');
+});
+
+test('m05: a project with no .gitignore gets one covering all three', () => {
+  const dir = repo({ 'test/suite1/smoke.md': SPEC_02, '.env': 'AZURE_PAT=\n' });
+  assert.ok(!exists(dir, '.gitignore'));
+  assert.strictEqual(run(dir).code, 0);
+  const gi = readText(dir, '.gitignore');
+  for (const line of ['.env', 'test/.auth/', '.playwright-cli/', 'test/.ui-baselines/']) {
+    assert.match(gi, new RegExp(`^${line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+  }
+  assert.match(gi, /^# AgenTeX/m, 'the block says why these lines are there');
+  assert.match(gi, /^# and this one is only a cache/m, 'the cache line is not filed under credentials');
+});
+
+test('m05: entries already covered under another spelling are not rewritten', () => {
+  const dir = repo({
+    'test/suite1/smoke.md': SPEC_02,
+    '.gitignore': '*.env\n.auth/\n.playwright-cli\n.ui-baselines/\n',
+    '.env': 'AZURE_PAT=\n',
+  });
+  const before = readText(dir, '.gitignore');
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!/\[migrated\] gitignore-secrets/.test(r.out), 'nothing to migrate');
+  assert.strictEqual(readText(dir, '.gitignore'), before, 'byte-identical');
+});
+
+test('m05: re-running adds nothing — and an ignored session file stays untracked', () => {
+  const dir = repo({
+    'test/suite1/smoke.md': SPEC_02,
+    '.gitignore': '.env\n',
+    '.env': 'AZURE_PAT=\n',
+  });
+  assert.strictEqual(run(dir).code, 0);
+  commitAll(dir);
+  const once = readText(dir, '.gitignore');
+  assert.strictEqual(run(dir).code, 0);
+  assert.strictEqual(readText(dir, '.gitignore'), once, 'idempotent — no duplicate entries');
+  // The point of the entry: git must not see a saved session as a file to commit.
+  addFiles(dir, { [AUTH_STATE]: '{"cookies":[{"name":"auth","value":"live-token"}]}\n' });
+  assert.strictEqual(git(dir, 'status', '--porcelain').trim(), '', 'saved session is ignored by git');
+});
+
+test('m05 + init: fresh scaffold gitignores sessions and scratch, not just .env', () => {
+  const dir = proj();
+  runInit(dir);
+  const gi = readText(dir, '.gitignore');
+  assert.match(gi, /^\.env$/m);
+  assert.match(gi, /^test\/\.auth\/$/m);
+  assert.match(gi, /^\.playwright-cli\/$/m);
 });
 
 // ── secrecy ───────────────────────────────────────────────────────────────────
