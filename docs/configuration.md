@@ -42,7 +42,7 @@ Fill them in:
 | `kb.baseUrl` / `.project` / `.org` | KB Ask settings (see [ask-kb.md](./ask-kb.md)). |
 | `figma.fileKey` / `.token` | Figma design source for `ui-check:` steps (see [ui-check.md](./ui-check.md)) — the file key from your Figma URL, plus the token as `{ "envSecret": "FIGMA_TOKEN" }`. Environment-independent: the design is the same truth for qa/uat/live. |
 | `viewports` | Optional named-viewport overrides for `ui-check:` steps, e.g. `{ "mobile": "414x896" }` (plugin defaults: desktop `1440x900`, tablet `768x1024`, mobile `390x844`). Read if present — no scaffold needed. |
-| `login.mode` | `"session"` = reuse saved optimize-login sessions; `"fresh"` = log in every run. |
+| `login.mode` | How a run gets in: `"session"` = reuse the login `/optimize-login` saved (`test/.auth/<app>-<env>-state.json`); `"fresh"` = drive the login UI every run. Absent or unreadable → `fresh` (nothing to reuse, and a run never creates a saved session you did not ask for). Projects scaffolded by an older wizard say `"per-test"` — the same as `"fresh"`, and nothing rewrites it. |
 
 ## `environments/<env>.json`
 
@@ -100,9 +100,21 @@ to the installed version's conventions. Refactor/merge, not re-scaffold: your va
 
 Plugin manifests can't ship permission rules. Copy the `permissions` block from
 [`settings.example.json`](../settings.example.json) into your project's
-`.claude/settings.json` (merge with anything already there). This pre-approves the
-safe `playwright-cli` (and `az` / `curl` / `sqlcmd`) commands and denies secret
-reads / destructive actions.
+`.claude/settings.json` (merge with anything already there). This pre-approves what a
+run actually issues — `playwright-cli`, the plugin's bundled `node` scripts, and the
+read-only `az` commands — puts `curl` / `sqlcmd` and the destructive `az` operations
+behind a prompt, and denies reads of `.env`/key material plus edits to your
+application's source.
+
+Two of those entries need your attention rather than a blind copy, and the file's
+`//notes` say so as well:
+
+- **`Bash(node:*)`** is what stops a run halting at a prompt for every bundled script.
+  It also permits any other node command. To narrow it, swap it for
+  `Bash(node <installed plugin path>/skills:*)` — `/plugin` prints that path.
+- **`Edit`/`Write`/`MultiEdit(./src/**)`** protect your application source only if it
+  really lives in `./src`. Repoint them at your actual source folder; the agent never
+  needs to write there (it writes under `test/` and `executions/`).
 
 ## Secret-handling rules
 
