@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.19.0] — 2026-08-26
 ### Added
 - **A provider-neutral tracker layer** (`scripts/lib/tracker/`) — resolution
   (`resolveTracker`, fail-closed on no/many/unsupported providers), a `WritePlan` ledger
