@@ -29,7 +29,9 @@ Note: executor reports only emit PASS/FAIL per scenario. Blocked, N/A-De-scoped,
 come from the orchestrator's own plan — scenarios that couldn't be attempted (environment/
 prerequisite), were intentionally excluded from scope, or were planned but never reached.
 Warning and View Mismatch come from `ui-check:` step verdicts (see the ui-check skill) —
-they are first-class statuses, never disguised as `passed`/`blocked`.
+they are first-class statuses, never disguised as `passed`/`blocked`. Flaky comes from the
+browser-testing **Flake doctrine**: a scenario that failed on infrastructure and passed only
+on its one retry. It is an unstable result, not a pass — never fold it into `passed`.
 
 ## Tool
 The generator script lives in this skill's `scripts/` folder:
@@ -39,7 +41,8 @@ The generator script lives in this skill's `scripts/` folder:
 
 ## Steps
 1. Tally results from every session's defect report: count of Passed, Failed, Blocked,
-   N/A-De-scoped, Not-Run scenarios, and the Total # of TC (their sum).
+   N/A-De-scoped, Not-Run scenarios (plus Warning / View Mismatch / Flaky where the run
+   produced them), and the Total # of TC (their sum).
 2. Pick a descriptive report title — not just "Testing Execution Status" alone. Name the
    run/suite and the date, e.g. "Suite2 Regression — 2026-07-08" or "Login Sample — 2026-07-08".
 3. Build a temporary JSON file describing the run (shape below), then generate the report:
@@ -54,16 +57,17 @@ The generator script lives in this skill's `scripts/` folder:
 
 ### Input JSON shape
 One object per test case, one object per step. Status vocabulary: `passed`/`failed`/`blocked`/
-`na`/`notrun` plus the ui-check statuses `warning`/`viewMismatch` for steps and test cases;
-`passed`/`failed`/`blocked`/`naDescoped`/`notRun` plus `warnings`/`viewMismatch` counts for the
-top-level summary (the two ui-check keys are optional — omit them for runs without `ui-check:`
-steps and the report renders exactly as before).
+`na`/`notrun` plus the ui-check statuses `warning`/`viewMismatch` and the execution status
+`flaky` for steps and test cases; `passed`/`failed`/`blocked`/`naDescoped`/`notRun` plus
+`warnings`/`viewMismatch`/`flaky` counts for the top-level summary (those last three keys are
+optional — omit them for a run without `ui-check:` steps or flakes and the report renders
+exactly as before).
 
 ```json
 {
   "title": "<descriptive run name>",
   "date": "<date>",
-  "summary": {"total":14,"passed":9,"failed":2,"blocked":2,"warnings":1,"viewMismatch":0,"naDescoped":0,"notRun":0},
+  "summary": {"total":14,"passed":9,"failed":2,"blocked":2,"warnings":1,"viewMismatch":0,"flaky":1,"naDescoped":0,"notRun":0},
   "testCases": [
     {
       "name": "suite1-product-search",
@@ -80,7 +84,8 @@ steps and the report renders exactly as before).
 ```
 
 A test case's top-level `status` is the rollup (worst status among its steps: failed > blocked >
-viewMismatch > warning > na > notrun > passed).
+flaky > viewMismatch > warning > na > notrun > passed). A test case with one flaky step is a
+flaky test case, however many of its other steps passed.
 
 ## Output placement
 `extent-report.html` lives at the run folder root next to `report.md` (see the browser-testing
