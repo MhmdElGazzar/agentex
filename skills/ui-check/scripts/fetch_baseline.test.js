@@ -92,12 +92,22 @@ function run(cwd, args, extraEnv = {}) {
   });
 }
 // Mock Figma API: /v1/files/<key>/nodes, /v1/images/<key>, and /render/* PNG hosting.
-function figmaServer({ nodes, renderPng, imagesErr } = {}) {
+// fail: { status, times, retryAfter } answers the first `times` API calls (default all)
+// with that status — how a rate limit or a bad token is simulated.
+function figmaServer({ nodes, renderPng, imagesErr, fail } = {}) {
   const calls = [];
+  let failsLeft = fail ? (fail.times === undefined ? Infinity : fail.times) : 0;
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
       calls.push({ url: req.url, token: req.headers['x-figma-token'] || null });
       const u = new URL(req.url, 'http://x');
+      if (u.pathname.startsWith('/v1/') && failsLeft > 0) {
+        failsLeft--;
+        if (fail.retryAfter !== undefined) res.setHeader('retry-after', String(fail.retryAfter));
+        res.statusCode = fail.status || 429;
+        res.end('{}');
+        return;
+      }
       if (u.pathname.startsWith('/v1/files/')) {
         res.setHeader('content-type', 'application/json');
         res.end(JSON.stringify({ nodes: nodes || {} }));
@@ -315,6 +325,126 @@ const FRAME_NODE = (id, name, w, h, type = 'FRAME', children) => ({
     assert.strictEqual(out.result, 'BLOCKED');
     assert.match(out.reason, /invalid JSON/i);
     assert.match(out.reason, /project\.json/);
+  });
+
+  // ── rate limits and the fallback cache ───────────────────────────────────────
+  // Shared setup: one good fetch to warm the cache, then a server that only 429s.
+  const CACHED_PNG = () => path.join('test', '.ui-baselines', 'FILEKEY123-1-2-s1.png');
+  const CACHED_JSON = () => path.join('test', '.ui-baselines', 'FILEKEY123-1-2-s1.json');
+  async function warmCache(dir, extraArgs = []) {
+    const { srv, port } = await figmaServer({
+      nodes: FRAME_NODE('1:2', 'Checkout / Desktop', 1440, 900),
+      renderPng: makePng(1440, 900),
+    });
+    const r = await run(dir, ['--source', 'figma', '--id', '1:2', '--out',
+      path.join(dir, 'ev', 'warm.png'), '--log', path.join(dir, 'ev', 'warm.log'), ...extraArgs],
+      { FIGMA_API_BASE: `http://127.0.0.1:${port}` });
+    srv.close();
+    return r;
+  }
+
+  await test('figma: HTTP 429 is retried, not blocked', async () => {
+    const { srv, port, calls } = await figmaServer({
+      nodes: FRAME_NODE('1:2', 'Checkout', 1440, 900),
+      renderPng: makePng(1440, 900),
+      fail: { status: 429, times: 1, retryAfter: 0 },   // retry-after: 0 keeps the test instant
+    });
+    const dir = proj({ 'config/project.json': FIGMA_CONFIG, '.env': 'FIGMA_TOKEN=t\n' });
+    const logFile = path.join(dir, 'ev', 'check.log');
+    const { code, out } = await run(dir, ['--source', 'figma', '--id', '1:2',
+      '--out', path.join(dir, 'ev', 'b.png'), '--log', logFile],
+      { FIGMA_API_BASE: `http://127.0.0.1:${port}` });
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.result, 'OK');
+    assert.strictEqual(out.cached, false, 'a retried live fetch is not a cache hit');
+    assert.strictEqual(out.width, 1440);
+    assert.strictEqual(calls.filter(c => c.url.startsWith('/v1/files/')).length, 2, 'the files call was retried once');
+    assert.match(fs.readFileSync(logFile, 'utf8'), /RETRY in \d+ms \(HTTP 429\)/);
+  });
+
+  await test('figma: 429 that never clears, with nothing cached -> BLOCKED naming both', async () => {
+    const { srv, port, calls } = await figmaServer({ fail: { status: 429, retryAfter: 0 } });
+    const dir = proj({ 'config/project.json': FIGMA_CONFIG, '.env': 'FIGMA_TOKEN=t\n' });
+    const { code, out } = await run(dir, ['--source', 'figma', '--id', '1:2',
+      '--out', path.join(dir, 'ev', 'b.png'), '--log', path.join(dir, 'ev', 'c.log')],
+      { FIGMA_API_BASE: `http://127.0.0.1:${port}` });
+    srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.result, 'BLOCKED');
+    assert.strictEqual(out.cached, false);
+    assert.match(out.reason, /rate-limited/i);
+    assert.match(out.reason, /3 attempt/);
+    assert.match(out.reason, /no baseline for this frame has been cached yet/);
+    assert.strictEqual(calls.filter(c => c.url.startsWith('/v1/files/')).length, 3, '3 attempts, then it stops');
+  });
+
+  await test('figma: a warm cache answers a rate limit — labelled cached, never as a live PASS', async () => {
+    const dir = proj({ 'config/project.json': FIGMA_CONFIG, '.env': 'FIGMA_TOKEN=t\n' });
+    const warm = await warmCache(dir);
+    assert.strictEqual(warm.out.result, 'OK', 'setup fetch');
+    assert.ok(fs.existsSync(path.join(dir, CACHED_PNG())), 'baseline cached, keyed on file+node+scale');
+    const { srv, port } = await figmaServer({ fail: { status: 429, retryAfter: 0 } });
+    const outFile = path.join(dir, 'ev', 'fallback.png');
+    const { code, out } = await run(dir, ['--source', 'figma', '--id', '1:2',
+      '--out', outFile, '--log', path.join(dir, 'ev', 'f.log')],
+      { FIGMA_API_BASE: `http://127.0.0.1:${port}` });
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.result, 'OK');
+    assert.strictEqual(out.cached, true, 'the fallback is declared, not silent');
+    assert.ok(Number.isFinite(Date.parse(out.cachedAt)), 'cachedAt is a real timestamp');
+    assert.match(out.reason, /NOT the live design/);
+    assert.match(out.reason, /rate-limited/i);
+    assert.strictEqual(out.width, 1440, 'dimensions come from the sidecar');
+    assert.strictEqual(out.node.name, 'Checkout / Desktop', 'node identity survives the fallback');
+    assert.ok(fs.existsSync(outFile), 'the cached baseline was written to --out');
+  });
+
+  await test('figma: a stale cached baseline is refused, not compared', async () => {
+    const dir = proj({ 'config/project.json': FIGMA_CONFIG, '.env': 'FIGMA_TOKEN=t\n' });
+    await warmCache(dir);
+    const side = path.join(dir, CACHED_JSON());
+    const meta = JSON.parse(fs.readFileSync(side, 'utf8'));
+    meta.fetchedAt = new Date(Date.now() - 30 * 86400000).toISOString();   // a month old
+    fs.writeFileSync(side, JSON.stringify(meta));
+    const { srv, port } = await figmaServer({ fail: { status: 429, retryAfter: 0 } });
+    const { code, out } = await run(dir, ['--source', 'figma', '--id', '1:2',
+      '--out', path.join(dir, 'ev', 'b.png'), '--log', path.join(dir, 'ev', 'c.log')],
+      { FIGMA_API_BASE: `http://127.0.0.1:${port}` });
+    srv.close();
+    assert.notStrictEqual(out.result, 'OK', 'a month-old design must never stand in for the live one');
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.match(out.reason, /30d old, past the 7-day ceiling/);
+    assert.match(out.reason, /an old design is not a baseline/);
+  });
+
+  await test('figma: --no-cache never falls back', async () => {
+    const dir = proj({ 'config/project.json': FIGMA_CONFIG, '.env': 'FIGMA_TOKEN=t\n' });
+    await warmCache(dir);
+    const { srv, port } = await figmaServer({ fail: { status: 429, retryAfter: 0 } });
+    const { code, out } = await run(dir, ['--source', 'figma', '--id', '1:2', '--no-cache',
+      '--out', path.join(dir, 'ev', 'b.png'), '--log', path.join(dir, 'ev', 'c.log')],
+      { FIGMA_API_BASE: `http://127.0.0.1:${port}` });
+    srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.result, 'BLOCKED');
+    assert.match(out.reason, /--no-cache/);
+  });
+
+  await test('figma: HTTP 403 is not retried and never falls back — broken config stays visible', async () => {
+    const dir = proj({ 'config/project.json': FIGMA_CONFIG, '.env': 'FIGMA_TOKEN=t\n' });
+    await warmCache(dir);
+    const { srv, port, calls } = await figmaServer({ fail: { status: 403 } });
+    const { code, out } = await run(dir, ['--source', 'figma', '--id', '1:2',
+      '--out', path.join(dir, 'ev', 'b.png'), '--log', path.join(dir, 'ev', 'c.log')],
+      { FIGMA_API_BASE: `http://127.0.0.1:${port}` });
+    srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.result, 'BLOCKED');
+    assert.strictEqual(out.cached, false, 'a warm cache must not paper over a rejected token');
+    assert.match(out.reason, /HTTP 403/);
+    assert.strictEqual(calls.filter(c => c.url.startsWith('/v1/files/')).length, 1, '403 is an answer, not a retry');
   });
 
   await test('usage: missing required args -> BLOCKED, exit 2', async () => {
