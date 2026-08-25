@@ -828,7 +828,7 @@ test('m05: a project with no .gitignore gets one covering all three', () => {
   assert.ok(!exists(dir, '.gitignore'));
   assert.strictEqual(run(dir).code, 0);
   const gi = readText(dir, '.gitignore');
-  for (const line of ['.env', 'test/.auth/', '.playwright-cli/', 'test/.ui-baselines/']) {
+  for (const line of ['.env', 'test/.auth/', '.playwright-cli/', 'test/.ui-baselines/', '.agentex/cache/']) {
     assert.match(gi, new RegExp(`^${line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
   }
   assert.match(gi, /^# AgenTeX/m, 'the block says why these lines are there');
@@ -838,7 +838,7 @@ test('m05: a project with no .gitignore gets one covering all three', () => {
 test('m05: entries already covered under another spelling are not rewritten', () => {
   const dir = repo({
     'test/suite1/smoke.md': SPEC_02,
-    '.gitignore': '*.env\n.auth/\n.playwright-cli\n.ui-baselines/\n',
+    '.gitignore': '*.env\n.auth/\n.playwright-cli\n.ui-baselines/\n.agentex/\n',
     '.env': 'AZURE_PAT=\n',
   });
   const before = readText(dir, '.gitignore');
@@ -846,6 +846,19 @@ test('m05: entries already covered under another spelling are not rewritten', ()
   assert.strictEqual(r.code, 0, r.out);
   assert.ok(!/\[migrated\] gitignore-secrets/.test(r.out), 'nothing to migrate');
   assert.strictEqual(readText(dir, '.gitignore'), before, 'byte-identical');
+});
+
+test('m05: the documented commit opt-in (!.agentex/cache/) is never re-ignored over', () => {
+  const dir = repo({
+    'test/suite1/smoke.md': SPEC_02,
+    '.gitignore': '.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n!.agentex/cache/\n',
+    '.env': 'AZURE_PAT=\n',
+  });
+  const before = readText(dir, '.gitignore');
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!/\[migrated\] gitignore-secrets/.test(r.out), 'the opt-in counts as covered');
+  assert.strictEqual(readText(dir, '.gitignore'), before, 'the user\'s opt-in line survives untouched');
 });
 
 test('m05: re-running adds nothing — and an ignored session file stays untracked', () => {
