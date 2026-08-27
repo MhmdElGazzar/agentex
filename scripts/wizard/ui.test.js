@@ -74,6 +74,7 @@ const ui = new Function(script + `
   createEnv, switchEnv, renameSessionEnv, currentDefaultName, deriveRenames,
   buildEnvConfig, buildUsersObj, buildSecretsPayload, snapshotActiveEnv, envNameProblem,
   markActiveEnvDirty, dirtyEnvNames, envVarSuffix, buildProjectConfig,
+  buildField, buildDefaultsSecretField,
   addField, renameField, removeField, toggleFieldSecret, fieldKeyProblem,
   deriveUserFieldRenames, deriveDefaultsFieldRenames, userFieldDropKeys, defaultsFieldDropKeys,
   userFieldBlastRadius, defaultsFieldBlastRadius, envScopedKeys,
@@ -420,6 +421,31 @@ setTimeout(() => {
     assert.deepStrictEqual(ui.builtinUserFields, engine.BUILTIN_USER_FIELDS,
       'key-list equality is not enough — labels/hints/placeholders must not drift');
     assert.deepStrictEqual(ui.builtinDefaultsFields, engine.BUILTIN_DEFAULTS_FIELDS);
+  });
+
+  // ── Hint escaping (release-gate defect W1) ────────────────────────────────
+  // Hints were interpolated into innerHTML raw, so the Figma hint's literal
+  // "<FILE KEY>" was parsed as an HTML tag and vanished from the page.
+  test('a hint with an angle-bracket placeholder renders literally, never as a swallowed tag', () => {
+    const schema = require('./schema.json');
+    const fileKeyField = schema.steps.find(s => s.id === 'figma').fields.find(f => f.key === 'figma.fileKey');
+    assert.ok(/<FILE KEY>/.test(fileKeyField.hint), 'the real schema hint carries the placeholder this test pins');
+    const div = ui.buildField(fileKeyField);
+    assert.ok(!div.innerHTML.includes('<FILE KEY'), 'unescaped, the browser parses <FILE KEY> as a tag and the text disappears');
+    assert.ok(div.innerHTML.includes('&lt;FILE KEY'), 'the placeholder survives, escaped');
+  });
+
+  test('the readonly-envName and secret-defaults hint injection points escape too', () => {
+    const ro = { key: 'envName', readonly: true, label: 'اسم', labelEn: 'Name',
+                 hint: 'اسم <NAME> هنا', hintEn: 'the <NAME> here' };
+    const roDiv = ui.buildField(ro);
+    assert.ok(!roDiv.innerHTML.includes('<NAME') && roDiv.innerHTML.includes('&lt;NAME'),
+      'readonly branch renders the placeholder literally');
+    const sec = { key: 'apiPin', label: 'PIN', secret: true,
+                  hint: 'قيمة <PIN VAR>', hintEn: 'the <PIN VAR> value' };
+    const secDiv = ui.buildDefaultsSecretField(sec);
+    assert.ok(!secDiv.innerHTML.includes('<PIN VAR') && secDiv.innerHTML.includes('&lt;PIN VAR'),
+      'secret-defaults branch renders the placeholder literally');
   });
 
   // ── Static copy checks ────────────────────────────────────────────────────

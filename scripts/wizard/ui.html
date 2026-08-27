@@ -1670,7 +1670,7 @@ function buildField(field) {
     answers['envName'] = activeEnv;
     div.innerHTML = `
       <label class="field-label">${loc(field, 'label')}</label>
-      ${field.hint || field.hintEn ? `<div class="field-hint">${loc(field, 'hint')}</div>` : ''}
+      ${field.hint || field.hintEn ? `<div class="field-hint">${esc(loc(field, 'hint'))}</div>` : ''}
       <div style="display:flex;gap:8px;align-items:center">
         <input type="text" value="${esc(activeEnv || '')}" readonly
           style="background:var(--bg-muted);cursor:default;direction:ltr" />
@@ -1698,7 +1698,7 @@ function buildField(field) {
       ${loc(field, 'label')}
       ${field.required ? '<span class="req">*</span>' : ''}
     </label>
-    ${field.hint || field.hintEn ? `<div class="field-hint">${loc(field, 'hint')}</div>` : ''}
+    ${field.hint || field.hintEn ? `<div class="field-hint">${esc(loc(field, 'hint'))}</div>` : ''}
     ${buildInput(field, savedVal)}
     ${field.secret ? `<div class="field-secret-note">${L('محفوظ بشكل آمن', 'Stored safely')}</div>` : ''}`;
 
@@ -1776,7 +1776,7 @@ function buildDefaultsSecretField(f) {
   const secVal = (envs[activeEnv] && envs[activeEnv].secrets[`defaults.${f.key}`]) || '';
   div.innerHTML = `
     <label class="field-label">${esc(loc(f, 'label') || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
-    ${f.hint || f.hintEn ? `<div class="field-hint">${loc(f, 'hint')}</div>` : ''}
+    ${f.hint || f.hintEn ? `<div class="field-hint">${esc(loc(f, 'hint'))}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input type="text" class="df-name" value="${esc(nameVal)}" placeholder="${esc(suggestion)}"
         style="direction:ltr;font-family:var(--mono);flex:1;min-width:150px" />
