@@ -123,6 +123,33 @@ function fakeAdapter({ failIds = [] } = {}) {
     assert.deepStrictEqual(r.check.undeletableStandard.map((e) => e.step), ['case-1']);
   });
 
+  await test('live: several Test Cases sharing one step (distinct ids) each reach undeletable-standard → exit 3, all ids surfaced', async () => {
+    const { dir } = throwaway('live', [
+      { step: 'story', describe: 'd', type: 'User Story', id: 1 },
+      { step: 'design-test-cases', describe: 'TC 1', type: 'Test Case', id: 31 },
+      { step: 'design-test-cases', describe: 'TC 2', type: 'Test Case', id: 32 },
+    ]);
+    const adapter = fakeAdapter();
+    const r = await runTeardown({ dir, adapter, runsDir: path.join(tmp(), 'runs'), envFromDir: envSource() });
+    assert.strictEqual(r.exitCode, 3, JSON.stringify(r.check));
+    assert.deepStrictEqual(adapter.calls, [{ id: 1, execute: true }], 'no Test Case id is ever delete-attempted');
+    assert.deepStrictEqual(r.check.undeletableStandard.map((e) => e.id), [31, 32], 'each duplicate-step Test Case is surfaced');
+    const surviving = JSON.parse(fs.readFileSync(path.join(r.survivingDir, 'ledger.json'), 'utf8'));
+    assert.deepStrictEqual(surviving.entries.map((e) => e.disposition), ['deleted', 'undeletable-standard', 'undeletable-standard']);
+  });
+
+  await test('live: deletable entries sharing one step (distinct ids) are each deleted → exit 0', async () => {
+    const { dir } = throwaway('live', [
+      { step: 'file-bugs', describe: 'bug 1', type: 'Bug', id: 41 },
+      { step: 'file-bugs', describe: 'bug 2', type: 'Bug', id: 42 },
+    ]);
+    const adapter = fakeAdapter();
+    const r = await runTeardown({ dir, adapter, runsDir: path.join(tmp(), 'runs'), envFromDir: envSource() });
+    assert.strictEqual(r.exitCode, 0, JSON.stringify(r.check));
+    assert.deepStrictEqual(adapter.calls, [{ id: 41, execute: true }, { id: 42, execute: true }]);
+    assert.strictEqual(r.check.deleted, 2, 'both duplicate-step ids carry their own deleted disposition');
+  });
+
   await test('a secret in a surviving artifact fails the teardown (exit 1) and the folder is kept', async () => {
     const { dir, ledgerFile } = throwaway('sentinel', [
       { step: 'story', describe: 'd', type: 'User Story' },

@@ -71,17 +71,44 @@ const CLI = path.join(__dirname, 'gate-ledger.js');
     assert.deepStrictEqual(sanitizeEntry({ a: { URL: 'x' }, url: 'y', b: 2 }), { a: {}, b: 2 });
   });
 
-  await test('disposition marks an entry terminal by id or step, with a reason', async () => {
+  await test('disposition marks an entry terminal by id, with a reason', async () => {
     const file = ledgerIn(tmp(), 'live');
     recordEntry(file, { step: 'story', describe: 'd', type: 'User Story', id: 1 });
     recordEntry(file, { step: 'case-1', describe: 'd', type: 'Test Case', id: 2 });
     setDisposition(file, { id: 1, disposition: 'deleted' });
-    setDisposition(file, { step: 'case-1', disposition: 'undeletable-standard', reason: 'ADO has no standard delete for test artifacts' });
+    setDisposition(file, { id: 2, disposition: 'undeletable-standard', reason: 'ADO has no standard delete for test artifacts' });
     const [a, b] = readLedger(file).entries;
     assert.strictEqual(a.disposition, 'deleted');
     assert.strictEqual(b.disposition, 'undeletable-standard');
     assert.match(b.reason, /standard delete/);
     assert.throws(() => setDisposition(file, { id: 99, disposition: 'deleted' }), /no ledger entry/i);
+  });
+
+  await test('disposition by step only addresses id-less entries — an id-bearing entry needs its id', async () => {
+    const file = ledgerIn(tmp(), 'live');
+    recordEntry(file, { step: 'design-test-cases', describe: 'TC with id', type: 'Test Case', id: 101 });
+    recordEntry(file, { step: 'design-test-cases', describe: 'descriptor-only TC', type: 'Test Case' });
+    setDisposition(file, { step: 'design-test-cases', disposition: 'undeletable-standard', reason: 'r' });
+    const [withId, idless] = readLedger(file).entries;
+    assert.strictEqual(idless.disposition, 'undeletable-standard', 'step fallback lands on the id-less entry');
+    assert.strictEqual(withId.disposition, 'pending', 'the id-bearing entry is untouched by step addressing');
+    recordEntry(file, { step: 'solo', describe: 'd', type: 'Bug', id: 7 });
+    assert.throws(() => setDisposition(file, { step: 'solo', disposition: 'deleted' }), /no ledger entry/i,
+      'an entry that carries an id is never matched by step (first-match-wins bug gone)');
+  });
+
+  await test('duplicate step names with distinct ids each get their own disposition (several Test Cases from one /design-test)', async () => {
+    const file = ledgerIn(tmp(), 'live');
+    recordEntry(file, { step: 'design-test-cases', describe: 'TC 1', type: 'Test Case', id: 101 });
+    recordEntry(file, { step: 'design-test-cases', describe: 'TC 2', type: 'Test Case', id: 102 });
+    setDisposition(file, { id: 101, disposition: 'undeletable-standard', reason: 'r' });
+    setDisposition(file, { id: 102, disposition: 'undeletable-standard', reason: 'r' });
+    const [a, b] = readLedger(file).entries;
+    assert.strictEqual(a.disposition, 'undeletable-standard');
+    assert.strictEqual(b.disposition, 'undeletable-standard');
+    const r = checkLedger(file);
+    assert.strictEqual(r.exitCode, 3);
+    assert.deepStrictEqual(r.undeletableStandard.map((e) => e.id), [101, 102]);
   });
 
   await test('check: every created id deleted → ok, exit 0', async () => {

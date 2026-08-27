@@ -48,17 +48,21 @@ async function runTeardown({ dir, adapter, runsDir, envFromDir } = {}) {
 
   for (const entry of ledger.entries.filter((e) => e.kind === 'created')) {
     if (entry.disposition === 'deleted' || entry.disposition === 'undeletable-standard') continue;
+    // Disposition updates are keyed by id when the entry has one — duplicate
+    // step names with distinct ids each get their own disposition; step is
+    // the fallback only for id-less entries (sentinel descriptor-only rows).
+    const addr = entry.id !== undefined && entry.id !== null ? { id: entry.id } : { step: entry.step };
     if (entry.type === 'Test Case') {
-      gl.setDisposition(ledgerFile, { step: entry.step, disposition: 'undeletable-standard', reason: TEST_CASE_REASON });
+      gl.setDisposition(ledgerFile, { ...addr, disposition: 'undeletable-standard', reason: TEST_CASE_REASON });
       continue;
     }
     if (mode === 'live') {
       if (entry.status === 'done' && entry.id !== undefined && entry.id !== null) {
         try {
           await a.deleteWorkItem(entry.id, { execute: true });
-          gl.setDisposition(ledgerFile, { step: entry.step, disposition: 'deleted' });
+          gl.setDisposition(ledgerFile, { id: entry.id, disposition: 'deleted' });
         } catch (e) {
-          gl.setDisposition(ledgerFile, { step: entry.step, disposition: 'pending', reason: `delete failed: ${e.message}` });
+          gl.setDisposition(ledgerFile, { id: entry.id, disposition: 'pending', reason: `delete failed: ${e.message}` });
         }
       }
       // status 'failed' with no id: nothing reached the board — terminal per the check.

@@ -82,14 +82,20 @@ function recordEntry(file, entry) {
   return ordered;
 }
 
-// Set the (usually terminal) disposition of one entry, addressed by id or step.
+// Set the (usually terminal) disposition of one entry. An entry that carries
+// an id MUST be addressed by that id — duplicate step names with distinct ids
+// (several Test Cases from one /design-test) each get their own disposition.
+// step is the fallback ONLY for id-less entries (e.g. sentinel descriptor-only
+// rows), so step addressing can never silently land on the wrong board item.
 function setDisposition(file, { id, step, disposition, reason }) {
   const allowed = ['deleted', 'undeletable-standard', 'pending', 'not-attempted'];
   if (!allowed.includes(disposition)) throw usageError(`disposition must be one of ${allowed.join('|')}`);
   const ledger = readLedger(file);
-  const entry = ledger.entries.find((e) =>
-    (id !== undefined && id !== null && e.id === Number(id)) || (step !== undefined && e.step === step));
-  if (!entry) throw usageError(`no ledger entry matches ${id !== undefined && id !== null ? `id ${id}` : `step ${step}`}`);
+  const byId = id !== undefined && id !== null;
+  const entry = byId
+    ? ledger.entries.find((e) => e.id === Number(id))
+    : ledger.entries.find((e) => (e.id === undefined || e.id === null) && e.step === step);
+  if (!entry) throw usageError(`no ledger entry matches ${byId ? `id ${id}` : `id-less step ${step}`}`);
   entry.disposition = disposition;
   if (reason !== undefined) entry.reason = reason;
   writeLedger(file, ledger);
