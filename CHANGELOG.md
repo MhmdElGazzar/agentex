@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.20.0] — 2026-08-27
 ### Added
 - **A behavior-changing release must now prove itself as a consumer before it ships.** New
   maintainer-facing harness `scripts/release-gate/` — the mechanics under the release
