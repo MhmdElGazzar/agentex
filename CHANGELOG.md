@@ -2,6 +2,36 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **A behavior-changing release must now prove itself as a consumer before it ships.** New
+  maintainer-facing harness `scripts/release-gate/` — the mechanics under the release
+  checklist's new Precondition 5 (E2E gate): `prepare.js` creates a throwaway consumer
+  project in the system temp dir and copies the tracker env values into its `.env` (values
+  never printed; sentinel-vs-live mode auto-detected from the `EVAL_SENTINEL_PAT_` prefix),
+  `verify-wizard.js` asserts every wizard answer landed in its documented home with secrets
+  ONLY in `.env` — schema-driven from `scripts/wizard/schema.json`, so it cannot drift from
+  the wizard, `verify-reports.js` requires `report.md` + `extent-report.html` to exist and
+  reflect the run, `gate-ledger.js` keeps the teardown ledger (WritePlan-compatible entries
+  plus `kind`/`type`/`disposition`, every `url` field stripped — ADO URLs embed the org),
+  `teardown.js` settles every created id into a terminal disposition and finalizes a
+  surviving ledger copy under `.claude/release-gate/runs/<ts>/` before the folder is
+  removed, and `scan-secrets.js` greps every surviving artifact for the PAT (plus its
+  base64 auth form) and the org/project values — compared in memory, never echoed. Exit
+  codes carry the failure posture: 0 clean, 3 waivable (`undeletable-standard` Test Cases —
+  ADO has no standard delete for test artifacts; always surfaced, never destroyed, never a
+  destroy API call), 1 `FAIL` (any created id without a terminal disposition, or a secret
+  in an artifact — the folder is then kept as evidence). The doctrine: every check that
+  could produce a confident wrong `PASS` lives in deterministic, tested code, not in per-run
+  agent reasoning — each script carries a sibling offline `*.test.js` (49 cases together).
+- **The tracker adapter can now delete a work item — and only into the Recycle Bin.**
+  `adapters/ado.js` gains `deleteWorkItem(id, {execute})`, backing the existing
+  `deleteWorkItem: 'partial'` capability flag: `execute:false` returns the redacted DELETE
+  descriptor and sends nothing, `execute:true` performs the standard (recoverable) delete.
+  Permanent destroy is structurally impossible — no `destroy` option exists in the
+  signature, and the id is validated to a positive integer before the URL is composed, so
+  no input can put `destroy=true` on the route; the adapter tests assert exactly that.
+
 ## [0.19.0] — 2026-08-26
 ### Added
 - **A provider-neutral tracker layer** (`scripts/lib/tracker/`) — resolution
