@@ -14,9 +14,10 @@
 //   node read-workitem.js find --type <workItemType> --title "<exact title>"
 //
 // Output: ONE JSON line; exit 0 = ok, 1 = tracker/read failure, 2 = bad
-// usage/config (repo convention D2 / invariant 9). Config comes from the
-// consumer's config/project.json azure block (legacy AZURE_* fallback); the PAT
-// is read from .env by the adapter and sent only in the Authorization header.
+// usage/config (repo convention D2 / invariant 9). Provider-neutral: the
+// configured tracker resolves via scripts/lib/tracker (azure block or jira
+// block in config/project.json); credentials are read from .env by the adapter
+// and sent only in the Authorization header.
 'use strict';
 
 const path = require('node:path');
@@ -57,6 +58,35 @@ function trackerErrorOut(e) {
 
 // The whole script as a callable: returns { code, out } and prints nothing —
 // the CLI tail below owns the one JSON line. opts.fetch is the offline-test seam.
+
+// Provider-neutral summary — one output shape whichever tracker is configured.
+// Jira rich text arrives as server-rendered HTML under renderedFields (the
+// adapter always requests it), the same shape agents already parse on ADO.
+function summarizeWorkItem(adapter, wi) {
+  const f = (wi && wi.fields) || {};
+  if (adapter.name === 'jira') {
+    const key = wi.key || wi.id;
+    return {
+      id: key,
+      type: (f.issuetype && f.issuetype.name) || null,
+      title: f.summary || null,
+      state: (f.status && f.status.name) || null,
+      url: adapter.webUrl(key),
+      fields: f,
+      ...(wi.renderedFields ? { renderedFields: wi.renderedFields } : {}),
+    };
+  }
+  return {
+    id: wi.id,
+    type: f['System.WorkItemType'] || null,
+    title: f['System.Title'] || null,
+    state: f['System.State'] || null,
+    url: adapter.webUrl(wi.id),
+    fields: f,
+    ...(wi.relations ? { relations: wi.relations } : {}),
+  };
+}
+
 async function run(argv, { cwd = process.cwd(), fetch } = {}) {
   const args = parseArgs(argv);
   const cmd = args._[0];
@@ -65,22 +95,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       if (!args.id) return { code: 2, out: { ok: false, error: { message: `--id is required. ${USAGE}` } } };
       const adapter = resolveTracker(cwd, { fetch });
       const wi = await adapter.getWorkItem(args.id, args.expand ? { expand: args.expand } : {});
-      const f = (wi && wi.fields) || {};
-      return {
-        code: 0,
-        out: {
-          ok: true,
-          workItem: {
-            id: wi.id,
-            type: f['System.WorkItemType'] || null,
-            title: f['System.Title'] || null,
-            state: f['System.State'] || null,
-            url: `${adapter.config.base}/${encodeURIComponent(adapter.config.project)}/_workitems/edit/${wi.id}`,
-            fields: f,
-            ...(wi.relations ? { relations: wi.relations } : {}),
-          },
-        },
-      };
+      return { code: 0, out: { ok: true, workItem: summarizeWorkItem(adapter, wi) } };
     }
     if (cmd === 'find') {
       if (!args.type || !args.title) {
