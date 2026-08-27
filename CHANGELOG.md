@@ -19,7 +19,7 @@ All notable changes to AgenTeX are documented here.
     validates a case spec fail-closed (duplicate-title check against the board that fails
     CLOSED when it cannot complete, in-spec title uniqueness, structured
     `{type, text, expected}` steps) and builds the `Microsoft.VSTS.TCM.Steps` XML itself
-    (IDs from 2 stepping by 2, escaping, the empty second `parameterizedString` — the
+    (IDs from 2 incrementing by 1, escaping, the empty second `parameterizedString` — the
     quoting/8191-char command-line failure classes die in tested code); `--execute`
     creates one atomic Test Case per case with the `Microsoft.VSTS.Common.TestedBy-Reverse`
     link inline, so an unlinked or wrongly-linked case cannot exist. Same ledger.

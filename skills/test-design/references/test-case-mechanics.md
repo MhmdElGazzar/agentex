@@ -60,7 +60,7 @@ node …/create-cases.js --spec "$TMP/cases.json" --execute
     <parameterizedString isformatted="true">Action text</parameterizedString>
     <parameterizedString isformatted="true"/>
   </step>
-  <step id="4" type="ValidateStep">
+  <step id="3" type="ValidateStep">
     <parameterizedString isformatted="true">What the user does</parameterizedString>
     <parameterizedString isformatted="true">Expected result</parameterizedString>
   </step>
@@ -69,7 +69,8 @@ node …/create-cases.js --spec "$TMP/cases.json" --execute
 
 Rules the script owns (so they can no longer be gotten wrong):
 
-- Step IDs start at 2 and step by 2 (`id="0"` is the container, `id="1"` is reserved).
+- Step IDs start at 2 and increment by 1 (`id="0"` is the container, `id="1"` is reserved) —
+  the scheme portal-authored Test Cases use.
 - **ActionStep**: second `<parameterizedString>` is always empty.
 - **ValidateStep**: first string = action/check, second string = expected result.
 - `last` attribute = the highest step ID used.

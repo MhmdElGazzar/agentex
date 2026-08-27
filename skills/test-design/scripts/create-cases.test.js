@@ -8,7 +8,7 @@
 //
 // Coverage per the Phase-2 design's assertion table:
 //   story          : happy / not-found / wrong-type; read-only
-//   XML builder    : PINNED ID scheme (2,4,6… + last attr), ActionStep's second
+//   XML builder    : PINNED ID scheme (2,3,4… + last attr), ActionStep's second
 //                    parameterizedString empty, ValidateStep text+expected,
 //                    &<> escaped; the XML travels inside the JSON body
 //   dry run        : dup-title blocks without --allow-duplicate; dup check
@@ -146,17 +146,17 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     assert.strictEqual(TESTED_BY_LINK, 'Microsoft.VSTS.Common.TestedBy-Reverse');
   });
 
-  await test('PINNED: Steps XML — container id 0, step IDs 2,4,6…, last = highest ID', async () => {
+  await test('PINNED: Steps XML — container id 0, step IDs 2,3,4…, last = highest ID', async () => {
     const xml = buildStepsXml([
       { type: 'action', text: 'Open the page' },
       { type: 'validate', text: 'check the title', expected: 'title shown' },
       { type: 'validate', text: 'check the footer', expected: 'footer shown' },
     ]);
     assert.strictEqual(xml,
-      '<steps id="0" last="6">' +
+      '<steps id="0" last="4">' +
       '<step id="2" type="ActionStep"><parameterizedString isformatted="true">Open the page</parameterizedString><parameterizedString isformatted="true"/></step>' +
-      '<step id="4" type="ValidateStep"><parameterizedString isformatted="true">check the title</parameterizedString><parameterizedString isformatted="true">title shown</parameterizedString></step>' +
-      '<step id="6" type="ValidateStep"><parameterizedString isformatted="true">check the footer</parameterizedString><parameterizedString isformatted="true">footer shown</parameterizedString></step>' +
+      '<step id="3" type="ValidateStep"><parameterizedString isformatted="true">check the title</parameterizedString><parameterizedString isformatted="true">title shown</parameterizedString></step>' +
+      '<step id="4" type="ValidateStep"><parameterizedString isformatted="true">check the footer</parameterizedString><parameterizedString isformatted="true">footer shown</parameterizedString></step>' +
       '</steps>');
   });
 
@@ -223,7 +223,7 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     const body = out.plan[0].request.body;
     const stepsOp = body.find((op) => op.path === '/fields/Microsoft.VSTS.TCM.Steps');
     assert.ok(stepsOp, JSON.stringify(body));
-    assert.match(String(stepsOp.value), /^<steps id="0" last="6">/);
+    assert.match(String(stepsOp.value), /^<steps id="0" last="4">/);
   });
 
   await test('duplicate board title blocks without --allow-duplicate and passes with it', async () => {

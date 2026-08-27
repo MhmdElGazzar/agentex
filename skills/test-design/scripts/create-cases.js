@@ -25,7 +25,7 @@
 //     (findByTitle) blocks on a hit without --allow-duplicate, and a dup check
 //     that cannot complete blocks too (fails CLOSED). Steps are structured
 //     JSON — {type: action|validate, text, expected} — and THIS SCRIPT builds
-//     the Steps XML (IDs from 2 stepping by 2, `last` = highest ID,
+//     the Steps XML (IDs from 2 incrementing by 1, `last` = highest ID,
 //     ActionStep's second parameterizedString empty, & < > escaped); the XML
 //     travels as a JSON request-body value, so the old file+$STEPS quoting
 //     trick and the 8191-char command-line limit are gone. Field existence is
@@ -70,11 +70,13 @@ const TESTED_BY_LINK = 'Microsoft.VSTS.Common.TestedBy-Reverse';
 const STEPS_FIELD = 'Microsoft.VSTS.TCM.Steps';
 
 // PINNED: the Steps-XML ID scheme — container id="0", step IDs starting at 2
-// and stepping by 2 (id="1" is reserved), `last` = the highest ID used. The
-// sibling test pins the exact output; a live round-trip correction later is a
+// and incrementing by 1 (id="1" is reserved), `last` = the highest ID used.
+// Live-verified against portal-authored Steps XML on the maintainer's private
+// ADO project (2026-08-28, read-only): <steps id="0" last="N"> with step ids
+// 2,3,4,… The sibling test pins the exact output; any later correction is a
 // one-line change here.
 const STEP_ID_START = 2;
-const STEP_ID_STEP = 2;
+const STEP_ID_STEP = 1;
 
 const escXml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
