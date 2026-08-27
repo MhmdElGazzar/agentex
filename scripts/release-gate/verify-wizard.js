@@ -112,6 +112,13 @@ function verifyWizard({ dir, answersFile, schemaPath } = {}) {
     }
 
     const hit = fieldIndex.get(key);
+    if (hit && hit.field.persisted === false) {
+      // A wizard-time control the schema declares non-persisted (e.g. the Q12
+      // tracker select: the single provider block IS the selection, so its
+      // effect is verified through the provider answers, never as its own key).
+      checked++;
+      continue;
+    }
     if (hit && hit.field.secret) {
       // A secret VALUE: only ever in .env, under its documented env-var name.
       checked++;

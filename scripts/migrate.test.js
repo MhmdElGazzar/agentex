@@ -237,9 +237,15 @@ test('0.10 era: structure and schemas match a fresh init.js scaffold', () => {
   }
   assert.ok(fs.statSync(path.join(dir, 'executions')).isDirectory());
   assert.ok(fs.statSync(path.join(dir, 'integration')).isDirectory());
-  assert.deepStrictEqual(
-    Object.keys(readJson(dir, 'config/project.json')).sort(),
-    Object.keys(readJson(fresh, 'config/project.json')).sort(), 'project.json schema');
+  const migratedKeys = Object.keys(readJson(dir, 'config/project.json')).sort();
+  const freshKeys = Object.keys(readJson(fresh, 'config/project.json')).sort();
+  // A fresh scaffold no longer pre-seeds a provider block (Q12: an unconditional
+  // ADO placeholder is a silent default — the wizard writes the CHOSEN
+  // provider's block). The MIGRATED legacy project keeps its azure block,
+  // carried from its own .env AZURE_* lines by m02/m03 — the template change
+  // must never strand it.
+  assert.deepStrictEqual(migratedKeys.filter(k => k !== 'azure'), freshKeys, 'project.json schema');
+  assert.ok(migratedKeys.includes('azure'), 'the legacy AZURE_* carry survives the template change');
   assert.deepStrictEqual(
     Object.keys(readJson(dir, 'environments/qc.json')).sort(),
     Object.keys(readJson(fresh, 'environments/qc.json')).sort(), 'environment schema');
