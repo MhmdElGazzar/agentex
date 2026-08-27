@@ -72,9 +72,10 @@ const wiqlEsc = (s) => String(s).replace(/'/g, "''");
 
 // PINNED: the current-sprint WIQL uses the @CurrentIteration macro WITH the
 // team argument — '[<project>]\<team>' — on the project-scoped wiql route (the
-// same server-side WIQL engine `az boards query` used; live verification of the
-// macro-with-argument form is deferred to the release smoke). This function is
-// the one place the macro lives; the sibling test pins its exact shape.
+// same server-side WIQL engine the old CLI-driven flow queried; live
+// verification of the macro-with-argument form is deferred to the release
+// smoke). This function is the one place the macro lives; the sibling test
+// pins its exact shape.
 function currentIterationWiql(project, team) {
   return (
     'SELECT [System.Id] FROM workitems' +

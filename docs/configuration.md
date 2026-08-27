@@ -63,7 +63,7 @@ fallback.
 
 | Variable | Purpose |
 |----------|---------|
-| `AZURE_PAT` | Azure DevOps PAT — read from `.env` by the bundled tracker scripts (bug filing, test-plan updates) and sent only in the Authorization header. For the still-`az`-driven `/estimate-story` and `/design-test`, also export it as `AZURE_DEVOPS_EXT_PAT` in your shell. Never printed or passed. |
+| `AZURE_PAT` | Azure DevOps PAT — read from `.env` by the bundled tracker scripts (bug filing, estimation, test design, test-plan updates) and sent only in the Authorization header. Never printed or passed. |
 | `SQLCMDPASSWORD` | DB password — read natively by `sqlcmd` from the env; never on a command line. |
 | `API_TOKEN` | Bearer token for cataloged `api:` requests. |
 | `KB_ASK_API_KEY` | KB Ask shared secret (`x-api-key`). |
@@ -101,9 +101,9 @@ to the installed version's conventions. Refactor/merge, not re-scaffold: your va
 Plugin manifests can't ship permission rules. Copy the `permissions` block from
 [`settings.example.json`](../settings.example.json) into your project's
 `.claude/settings.json` (merge with anything already there). This pre-approves what a
-run actually issues — `playwright-cli`, the plugin's bundled `node` scripts (which now
-include all bug-filing tracker calls — no `az` prompt can occur there), and the
-read-only `az` commands for estimation/test-design — puts `curl` / `sqlcmd` and the destructive `az` operations
+run actually issues — `playwright-cli` and the plugin's bundled `node` scripts (which now
+carry every tracker flow: bug filing, estimation, test design, test-plan updates — no `az`
+prompt can occur there) — puts `curl` / `sqlcmd` and the destructive `az` operations
 behind a prompt, and denies reads of `.env`/key material plus edits to your
 application's source.
 
@@ -122,5 +122,5 @@ Two of those entries need your attention rather than a blind copy, and the file'
 - JSON config files and catalog files hold env-var **names**, never secret values.
 - Claude may read config keys but must never print or pass secrets.
 - DB and PAT secrets are read from the environment or `.env` by the tools themselves
-  (`SQLCMDPASSWORD` by sqlcmd, `AZURE_PAT` by the bundled tracker scripts,
-  `AZURE_DEVOPS_EXT_PAT` by `az` for estimation/test-design), never placed on a command line.
+  (`SQLCMDPASSWORD` by sqlcmd, `AZURE_PAT` by the bundled tracker scripts), never placed
+  on a command line.

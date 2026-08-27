@@ -2,6 +2,64 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **Two flow scripts on the tracker layer** — estimation and test design get the same
+  bundled-script mechanics bug filing got in 0.19.0, with zero new adapter surface:
+  - `skills/task-estimation/scripts/create-tasks.js` — reads the current sprint's User
+    Stories (WIQL `@CurrentIteration('[<project>]\<team>')`, `--team` as a run-only
+    override) or named IDs, scans for existing `[Testing]` children, then validates a task
+    spec fail-closed (story really is a User Story, iteration/area inherited fresh from
+    the story — never trusted from the spec, `[Testing] ` title prefix, finite positive
+    estimates, assignee never invented, `Activity=Testing` checked against the project's
+    real field cache, one server-side `validateOnly` probe) and — only behind `--execute`
+    — creates the tasks, one atomic create per task with the parent link inline (an
+    unparented `[Testing]` task cannot exist), behind an exact per-write ledger.
+  - `skills/test-design/scripts/create-cases.js` — reads a story for AC analysis, then
+    validates a case spec fail-closed (duplicate-title check against the board that fails
+    CLOSED when it cannot complete, in-spec title uniqueness, structured
+    `{type, text, expected}` steps) and builds the `Microsoft.VSTS.TCM.Steps` XML itself
+    (IDs from 2 stepping by 2, escaping, the empty second `parameterizedString` — the
+    quoting/8191-char command-line failure classes die in tested code); `--execute`
+    creates one atomic Test Case per case with the `Microsoft.VSTS.Common.TestedBy-Reverse`
+    link inline, so an unlinked or wrongly-linked case cannot exist. Same ledger.
+  - Both: one JSON line, exit 0/1/2, dry-run default, offline sibling tests via the
+    injected-fetch seam, PAT from `.env` into the Authorization header only.
+- `references/tracker/ado-boards.md` — REST-flavored shared boards knowledge (field
+  reference names, WIQL + the `@CurrentIteration` team-name gotcha, relation directions,
+  the Test-Case no-delete constraint), replacing the az-flavored reference.
+- **Two discipline evals** — `discipline-estimation-one-gate`,
+  `discipline-test-design-one-gate` — one per flow's new consolidated-approval rule;
+  recorded as authored, pending the release run on the installed build.
+
+### Changed
+- **`/estimate-story` and `/design-test` are one gate, fail-closed, and ledger-accounted —
+  and no longer need the Azure CLI at all.** Estimation's per-story confirmations and
+  test-design's free-standing condition-table round consolidate into ONE screen per flow:
+  all reads and validation first with zero board writes, at most one bundled question
+  round for genuinely unresolvable inputs, then the validated content plus the exact
+  write plan on a single screen and ONE approval before `--execute`. The per-story
+  analysis (factor counts → complexity bucket → the 5-task hours) and every documented
+  outcome — 5 `[Testing]` tasks per story with iteration/area/Activity/estimates and the
+  parent link, titled test cases with Steps XML and Tested By links, the coverage table —
+  are unchanged; the coverage table's facts now come from the ledger plus a fresh story
+  read instead of agent memory. The manual `AZURE_DEVOPS_EXT_PAT` shell export dies with
+  the transport (the legacy name still resolves from `.env` for users who kept it).
+- `skills/test-design/references/test-case-mechanics.md` rewritten for the script surface:
+  spec shape, Steps-XML doctrine as the script builds it, link-direction facts; all az
+  command blocks and the file+`$STEPS` trick removed.
+- **Recommended permissions trimmed** (`settings.example.json`): the `Bash(az boards:*)`,
+  `Bash(az devops:*)`, `Bash(az extension:*)` allows and the `Bash(az boards work-item
+  delete:*)` ask are gone — no tracker flow issues `az` anymore, so the remaining az rules
+  serve only the azure-integration skill (the Azure resource plane, unchanged by this
+  release). Docs (`docs/azure-devops.md`, `docs/configuration.md`, `README.md`, the
+  scaffolded consumer README template) updated to match.
+
+### Removed
+- `references/tracker/ado-boards-cli.md` (az-flavored; kept in 0.19.0 explicitly "retired
+  by Phase 2") — superseded by `references/tracker/ado-boards.md`. No `az` invocation
+  remains anywhere in the task-estimation or test-design surface.
+
 ## [0.19.0] — 2026-08-26
 ### Added
 - **A provider-neutral tracker layer** (`scripts/lib/tracker/`) — resolution
