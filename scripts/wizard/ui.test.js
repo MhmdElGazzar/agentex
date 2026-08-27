@@ -74,6 +74,7 @@ const ui = new Function(script + `
   createEnv, switchEnv, renameSessionEnv, currentDefaultName, deriveRenames,
   buildEnvConfig, buildUsersObj, buildSecretsPayload, snapshotActiveEnv, envNameProblem,
   markActiveEnvDirty, dirtyEnvNames, envVarSuffix, buildProjectConfig,
+  buildField, buildDefaultsSecretField,
   addField, renameField, removeField, toggleFieldSecret, fieldKeyProblem,
   deriveUserFieldRenames, deriveDefaultsFieldRenames, userFieldDropKeys, defaultsFieldDropKeys,
   userFieldBlastRadius, defaultsFieldBlastRadius, envScopedKeys,
@@ -286,6 +287,40 @@ setTimeout(() => {
     assert.ok(proj.userFields.every(f => !('_orig' in f)), 'session bookkeeping never reaches the file');
   });
 
+  // ── Figma block (release-gate defect W2) ──────────────────────────────────
+  // The wizard collects figma.fileKey / figma.tokenEnvVar but the save path
+  // managed only azure/kb — typed values silently never reached
+  // config/project.json (it kept the template's ""). The documented home
+  // (templates/config/project.json, docs/ui-check.md) is
+  // { fileKey, token: { envSecret: NAME } }.
+  test('typed figma answers land in config/project.json in the documented shape', () => {
+    ui.answers['figma.fileKey'] = 'SampleFileKey123';
+    ui.answers['figma.tokenEnvVar'] = 'FIGMA_DESIGN_TOKEN';
+    const proj = ui.buildProjectConfig();
+    assert.deepStrictEqual(proj.figma,
+      { fileKey: 'SampleFileKey123', token: { envSecret: 'FIGMA_DESIGN_TOKEN' } });
+    ui.answers['figma.tokenEnvVar'] = '';
+    assert.deepStrictEqual(ui.buildProjectConfig().figma,
+      { fileKey: 'SampleFileKey123', token: { envSecret: 'FIGMA_TOKEN' } },
+      'a file key with an empty name field falls back to the schema default, like db/api');
+  });
+
+  test('figma mirrors the screen: cleared keys unset, hand-added keys survive, an empty block leaves', () => {
+    ui.existingProjectV = { name: 'p', defaultEnvironment: 'qc',
+      figma: { fileKey: 'OldKey', token: { envSecret: 'OLD_VAR' }, note: 'hand-added' } };
+    ui.answers['figma.fileKey'] = '';
+    ui.answers['figma.tokenEnvVar'] = '';
+    assert.deepStrictEqual(ui.buildProjectConfig().figma, { note: 'hand-added' },
+      'clearing the screen unsets the managed keys but never the hand-added ones');
+    ui.existingProjectV = { name: 'p', defaultEnvironment: 'qc',
+      figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } } };
+    assert.strictEqual(ui.buildProjectConfig().figma, undefined,
+      'nothing typed over a template-empty block: the block disappears, same as azure/kb');
+    ui.existingProjectV = { name: 'p', defaultEnvironment: 'qc' };   // restore
+    delete ui.answers['figma.fileKey'];
+    delete ui.answers['figma.tokenEnvVar'];
+  });
+
   test('envScopedKeys follows the defaults schema (a custom key is snapshot/restore-scoped)', () => {
     assert.ok(ui.envScopedKeys().includes('defaults.pin'));
     assert.ok(!ui.envScopedKeys().includes('defaults.otp'), 'the renamed-away key is no longer scoped');
@@ -386,6 +421,31 @@ setTimeout(() => {
     assert.deepStrictEqual(ui.builtinUserFields, engine.BUILTIN_USER_FIELDS,
       'key-list equality is not enough — labels/hints/placeholders must not drift');
     assert.deepStrictEqual(ui.builtinDefaultsFields, engine.BUILTIN_DEFAULTS_FIELDS);
+  });
+
+  // ── Hint escaping (release-gate defect W1) ────────────────────────────────
+  // Hints were interpolated into innerHTML raw, so the Figma hint's literal
+  // "<FILE KEY>" was parsed as an HTML tag and vanished from the page.
+  test('a hint with an angle-bracket placeholder renders literally, never as a swallowed tag', () => {
+    const schema = require('./schema.json');
+    const fileKeyField = schema.steps.find(s => s.id === 'figma').fields.find(f => f.key === 'figma.fileKey');
+    assert.ok(/<FILE KEY>/.test(fileKeyField.hint), 'the real schema hint carries the placeholder this test pins');
+    const div = ui.buildField(fileKeyField);
+    assert.ok(!div.innerHTML.includes('<FILE KEY'), 'unescaped, the browser parses <FILE KEY> as a tag and the text disappears');
+    assert.ok(div.innerHTML.includes('&lt;FILE KEY'), 'the placeholder survives, escaped');
+  });
+
+  test('the readonly-envName and secret-defaults hint injection points escape too', () => {
+    const ro = { key: 'envName', readonly: true, label: 'اسم', labelEn: 'Name',
+                 hint: 'اسم <NAME> هنا', hintEn: 'the <NAME> here' };
+    const roDiv = ui.buildField(ro);
+    assert.ok(!roDiv.innerHTML.includes('<NAME') && roDiv.innerHTML.includes('&lt;NAME'),
+      'readonly branch renders the placeholder literally');
+    const sec = { key: 'apiPin', label: 'PIN', secret: true,
+                  hint: 'قيمة <PIN VAR>', hintEn: 'the <PIN VAR> value' };
+    const secDiv = ui.buildDefaultsSecretField(sec);
+    assert.ok(!secDiv.innerHTML.includes('<PIN VAR') && secDiv.innerHTML.includes('&lt;PIN VAR'),
+      'secret-defaults branch renders the placeholder literally');
   });
 
   // ── Static copy checks ────────────────────────────────────────────────────

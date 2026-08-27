@@ -1670,7 +1670,7 @@ function buildField(field) {
     answers['envName'] = activeEnv;
     div.innerHTML = `
       <label class="field-label">${loc(field, 'label')}</label>
-      ${field.hint || field.hintEn ? `<div class="field-hint">${loc(field, 'hint')}</div>` : ''}
+      ${field.hint || field.hintEn ? `<div class="field-hint">${esc(loc(field, 'hint'))}</div>` : ''}
       <div style="display:flex;gap:8px;align-items:center">
         <input type="text" value="${esc(activeEnv || '')}" readonly
           style="background:var(--bg-muted);cursor:default;direction:ltr" />
@@ -1698,7 +1698,7 @@ function buildField(field) {
       ${loc(field, 'label')}
       ${field.required ? '<span class="req">*</span>' : ''}
     </label>
-    ${field.hint || field.hintEn ? `<div class="field-hint">${loc(field, 'hint')}</div>` : ''}
+    ${field.hint || field.hintEn ? `<div class="field-hint">${esc(loc(field, 'hint'))}</div>` : ''}
     ${buildInput(field, savedVal)}
     ${field.secret ? `<div class="field-secret-note">${L('محفوظ بشكل آمن', 'Stored safely')}</div>` : ''}`;
 
@@ -1776,7 +1776,7 @@ function buildDefaultsSecretField(f) {
   const secVal = (envs[activeEnv] && envs[activeEnv].secrets[`defaults.${f.key}`]) || '';
   div.innerHTML = `
     <label class="field-label">${esc(loc(f, 'label') || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
-    ${f.hint || f.hintEn ? `<div class="field-hint">${loc(f, 'hint')}</div>` : ''}
+    ${f.hint || f.hintEn ? `<div class="field-hint">${esc(loc(f, 'hint'))}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input type="text" class="df-name" value="${esc(nameVal)}" placeholder="${esc(suggestion)}"
         style="direction:ltr;font-family:var(--mono);flex:1;min-width:150px" />
@@ -2783,6 +2783,20 @@ function buildProjectConfig() {
   // left in it.
   setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
   setManagedBlock(proj, 'kb', ['baseUrl', 'project']);
+  // figma follows the same mirror rule but not the flat shape: fileKey is a
+  // plain managed key, while the tokenEnvVar answer lands as
+  // { token: { envSecret: NAME } } — the documented home (docs/ui-check.md,
+  // the scaffold template) that ui-check's fetch_baseline.js reads. The token
+  // VALUE itself goes to .env via buildSecretsPayload, never here. A typed
+  // fileKey with an empty name field falls back to the schema default, exactly
+  // like db/api in buildEnvConfig.
+  const figma = Object.assign({}, existingProject && existingProject.figma);
+  const figmaFileKey = String(answers['figma.fileKey'] || '').trim();
+  if (figmaFileKey) figma.fileKey = figmaFileKey; else delete figma.fileKey;
+  const figmaTokenVar = String(answers['figma.tokenEnvVar'] || '').trim();
+  if (figmaTokenVar || figmaFileKey) figma.token = { envSecret: figmaTokenVar || 'FIGMA_TOKEN' };
+  else delete figma.token;
+  if (Object.keys(figma).length) proj.figma = figma; else delete proj.figma;
   return proj;
 }
 

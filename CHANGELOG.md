@@ -16,7 +16,15 @@ All notable changes to AgenTeX are documented here.
   `verify-wizard.js` asserts every wizard answer landed in its documented home with secrets
   ONLY in `.env` — schema-driven from `scripts/wizard/schema.json`, so it cannot drift from
   the wizard, `verify-reports.js` requires `report.md` + `extent-report.html` to exist and
-  reflect the run, `gate-ledger.js` keeps the teardown ledger (WritePlan-compatible entries
+  reflect the run — every expected scenario's verdict adjacent to its name in each
+  artifact's own vocabulary (caps `PASS`/`FAIL`/`BLOCKED` in report.md, the generator's
+  `Passed`/`Failed`/`Blocked` pills in extent-report.html), fail-closed on any verdict
+  outside that map, scenario names matched longest-first with word boundaries so a name
+  that is a proper prefix of another can never borrow the longer card's verdict; the
+  first live gate run caught its original single-vocabulary matcher failing all 8
+  scenarios of a healthy extent-report.html, so its HTML tests now exercise the real
+  `make_html_report.js` output instead of synthetic fixtures,
+  `gate-ledger.js` keeps the teardown ledger (WritePlan-compatible entries
   plus `kind`/`type`/`disposition`, every `url` field stripped — ADO URLs embed the org),
   `teardown.js` settles every created id into a terminal disposition and finalizes a
   surviving ledger copy under `.claude/release-gate/runs/<ts>/` before the folder is
@@ -27,7 +35,7 @@ All notable changes to AgenTeX are documented here.
   destroy API call), 1 `FAIL` (any created id without a terminal disposition, or a secret
   in an artifact — the folder is then kept as evidence). The doctrine: every check that
   could produce a confident wrong `PASS` lives in deterministic, tested code, not in per-run
-  agent reasoning — each script carries a sibling offline `*.test.js` (64 cases together).
+  agent reasoning — each script carries a sibling offline `*.test.js` (66 cases together).
 - **The tracker adapter can now delete a work item — and only into the Recycle Bin.**
   `adapters/ado.js` gains `deleteWorkItem(id, {execute})`, backing the existing
   `deleteWorkItem: 'partial'` capability flag: `execute:false` returns the redacted DELETE
@@ -35,6 +43,26 @@ All notable changes to AgenTeX are documented here.
   Permanent destroy is structurally impossible — no `destroy` option exists in the
   signature, and the id is validated to a positive integer before the URL is composed, so
   no input can put `destroy=true` on the route; the adapter tests assert exactly that.
+
+### Fixed
+- **The setup wizard now saves what its Figma step collected.** Typing a Figma File Key
+  through the wizard and saving left `config/project.json` with the template's empty
+  `fileKey` — the next `ui-check:` step then had no file to fetch its baseline from. The
+  save path managed only the `azure` and `kb` blocks; the Figma answers were prefilled on
+  a re-run and then silently dropped on every save (only the token *value*'s path to
+  `.env` worked). The block is now written like the others — mirror-the-screen, in the
+  documented `{ "fileKey": ..., "token": { "envSecret": ... } }` shape, with the
+  `FIGMA_TOKEN` fallback db/api already had. Caught deterministically by the first live
+  release-gate run (`verify-wizard.js`, defect W2); the other three optional groups were
+  audited for the same gap — Azure DevOps and Knowledge Base ride the managed-block
+  writer, DB and API ride the environment-file writer — Figma was the only orphan.
+- **Angle-bracket text in a field hint renders instead of vanishing.** Hint text was
+  interpolated raw into `innerHTML`, so the browser parsed the Figma hint's literal
+  placeholder — `figma.com/design/<FILE KEY>/...` — as an HTML tag and swallowed it,
+  hiding the one token the hint exists to explain (first live gate run, defect W1). All
+  three hint injection points (standard fields, the read-only environment name, secret
+  defaults fields) now escape, and the ui tests pin an angle-bracket placeholder
+  rendering literally at each of them.
 
 ## [0.19.0] — 2026-08-26
 ### Added
