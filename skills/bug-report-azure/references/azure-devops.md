@@ -111,5 +111,6 @@ user's call.
 
 ## Related references
 
-- Estimation / test-design flows (still `az`-driven until their migration):
-  `${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards-cli.md` — not used by bug filing.
+- Estimation / test-design flows (same tracker layer, their own scripts):
+  `${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards.md` — shared boards knowledge, not
+  needed by bug filing.
