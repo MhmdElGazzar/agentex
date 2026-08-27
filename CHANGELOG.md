@@ -27,7 +27,7 @@ All notable changes to AgenTeX are documented here.
   destroy API call), 1 `FAIL` (any created id without a terminal disposition, or a secret
   in an artifact — the folder is then kept as evidence). The doctrine: every check that
   could produce a confident wrong `PASS` lives in deterministic, tested code, not in per-run
-  agent reasoning — each script carries a sibling offline `*.test.js` (49 cases together).
+  agent reasoning — each script carries a sibling offline `*.test.js` (64 cases together).
 - **The tracker adapter can now delete a work item — and only into the Recycle Bin.**
   `adapters/ado.js` gains `deleteWorkItem(id, {execute})`, backing the existing
   `deleteWorkItem: 'partial'` capability flag: `execute:false` returns the redacted DELETE
