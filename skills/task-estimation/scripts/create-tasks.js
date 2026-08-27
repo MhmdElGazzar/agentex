@@ -59,6 +59,7 @@ const LIB = path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'tracker');
 const { resolveTracker, TrackerError } = require(path.join(LIB, 'index.js'));
 const fieldCache = require(path.join(LIB, 'cache.js'));
 const { WritePlan } = require(path.join(LIB, 'ledger.js'));
+const { jqlQuote } = require(path.join(LIB, 'adapters', 'jira.js'));
 
 // The ONLY link this script creates: Parent, expressed on the child task.
 const PARENT_LINK = 'System.LinkTypes.Hierarchy-Reverse';
@@ -84,6 +85,15 @@ function currentIterationWiql(project, team) {
     ` AND [System.IterationPath] = @CurrentIteration('[${wiqlEsc(project)}]\\${wiqlEsc(team)}')` +
     ' ORDER BY [System.Id]'
   );
+}
+
+// PINNED: the Jira twin of currentIterationWiql — the ONE place the
+// current-sprint JQL lives (escaping is adapter-owned via jqlQuote, §5.4).
+// `sprint in openSprints()` may span several sprints on multi-board projects;
+// the stories command detects that and blocks with the real sprint names so
+// the choice joins the ONE bundle round (O3) — never a silent pick.
+function currentSprintJql(projectKey, storyType) {
+  return `project = ${jqlQuote(projectKey)} AND issuetype = ${jqlQuote(storyType)} AND sprint in openSprints() ORDER BY key`;
 }
 
 // ---- CLI arg parser: --key value / --key=value / --flag ----------------------
@@ -194,6 +204,332 @@ async function storiesCmd(args, adapter) {
     }
   }
   return { code: 0, out: { ok: true, mode: 'stories', count: stories.length, stories } };
+}
+
+/* ════ Jira strategy (design §5.6) — the ADO path above is untouched ════════
+ * Verbatim template parity: the same five [Testing] titles, one atomic
+ * sub-task create per task (fields.parent inline via the relations seam),
+ * hours mapped to Jira time tracking, Activity=Testing mapped to the label
+ * 'testing' (PR #4 harvest). Iteration/area have no Jira analog — sub-tasks
+ * ride their parent story's sprint, and the plan says so explicitly.
+ */
+
+const JIRA_SUBTASK_LABELS = ['testing'];
+
+// [Testing]-titled children straight from fields.subtasks (summaries come
+// inline — cheaper than ADO's per-child reads). Returns null when the read
+// carried no subtasks list: the caller must FAIL CLOSED, same as ADO.
+function jiraTestingChildren(fields) {
+  if (!Array.isArray(fields.subtasks)) return null;
+  return fields.subtasks
+    .filter((s) => String(((s || {}).fields || {}).summary || '').startsWith('[Testing]'))
+    .map((s) => ({ id: s.key, title: s.fields.summary, state: (s.fields.status || {}).name || null }));
+}
+
+// Story Points / Sprint field discovery by display name (listAllFields), with
+// jira.storyPointsField as the confirmed-once override — never guessed.
+async function jiraDiscoverFields(adapter) {
+  const cfg = adapter.config;
+  const out = { storyPointsFieldId: null, sprintFieldId: null, storyPointsNote: null };
+  let all;
+  try { all = await adapter.listAllFields(); }
+  catch (e) {
+    out.storyPointsNote = `field discovery failed (${e.message}) — storyPoints is null, never guessed`;
+    return out;
+  }
+  if (cfg.storyPointsField) {
+    const hit = all.find((f) => f.id === cfg.storyPointsField || f.name === cfg.storyPointsField);
+    out.storyPointsFieldId = hit ? hit.id : cfg.storyPointsField; // an explicit id is trusted as-is
+  } else {
+    const hits = all.filter((f) => f.name === 'Story Points' || f.name === 'Story point estimate');
+    if (hits.length === 1) out.storyPointsFieldId = hits[0].id;
+    else {
+      out.storyPointsNote = hits.length === 0
+        ? 'no Story Points field resolved by name — storyPoints is null; set jira.storyPointsField in config/project.json to the field id (never guessed)'
+        : `more than one Story Points-like field (${hits.map((h) => h.id).join(', ')}) — storyPoints is null; pin jira.storyPointsField in config/project.json`;
+    }
+  }
+  const sprint = all.find((f) => f.name === 'Sprint');
+  out.sprintFieldId = sprint ? sprint.id : null;
+  return out;
+}
+
+async function jiraStoriesCmd(args, adapter) {
+  const cfg = adapter.config;
+  const disc = await jiraDiscoverFields(adapter);
+  const sprintsOf = (issue) => {
+    const v = disc.sprintFieldId ? ((issue.fields || {})[disc.sprintFieldId]) : null;
+    return (Array.isArray(v) ? v : []).filter((s) => s && (s.state === undefined || s.state === 'active'));
+  };
+
+  let keys;
+  if (args.ids) {
+    keys = String(args.ids).split(',').map((s) => s.trim()).filter(Boolean);
+  } else if (args['current-sprint']) {
+    const jql = currentSprintJql(cfg.project, cfg.storyType);
+    const res = await adapter.query(jql, { fields: ['summary', ...(disc.sprintFieldId ? [disc.sprintFieldId] : [])] });
+    let issues = res.issues || [];
+    const names = new Set();
+    for (const iss of issues) for (const s of sprintsOf(iss)) names.add(s.name);
+    const wanted = typeof args.sprint === 'string' && args.sprint.trim() ? args.sprint.trim() : null;
+    if (wanted) {
+      // The run-only answer to the bundled which-sprint ask — never persisted.
+      issues = issues.filter((iss) => sprintsOf(iss).some((s) => String(s.name) === wanted || String(s.id) === wanted));
+    } else if (names.size > 1) {
+      if (cfg.board) {
+        // O3: a configured board steers via the agile API.
+        const boards = await adapter.listBoards();
+        const board = boards.find((b) => String(b.id) === cfg.board) || boards.find((b) => b.name === cfg.board);
+        if (!board) {
+          return { code: 2, out: { ok: false, mode: 'stories', blocked: [{
+            reason: 'board-not-found', options: boards.map((b) => `${b.name} (id ${b.id})`),
+            message: `jira.board "${cfg.board}" matches no board of project ${cfg.project} — real boards: ${boards.map((b) => `${b.name} (id ${b.id})`).join(', ') || 'none'}`,
+          }] } };
+        }
+        const active = await adapter.listSprints(board.id, { state: 'active' });
+        if (active.length !== 1) {
+          return { code: 2, out: { ok: false, mode: 'stories', blocked: [{
+            reason: 'multiple-open-sprints', options: active.map((s) => s.name),
+            message: `board "${cfg.board}" has ${active.length} active sprints — ask the user which one (the ONE bundled round) and re-run with --sprint "<name>"`,
+          }] } };
+        }
+        issues = issues.filter((iss) => sprintsOf(iss).some((s) => String(s.id) === String(active[0].id) || s.name === active[0].name));
+      } else {
+        return { code: 2, out: { ok: false, mode: 'stories', blocked: [{
+          reason: 'multiple-open-sprints', options: [...names].sort(),
+          message: `the open-sprint read spans ${names.size} sprints (${[...names].sort().join(', ')}) — ` +
+            'ask the user which sprint (the ONE bundled round) and re-run with --sprint "<name>", ' +
+            'or set jira.board in config/project.json to steer discovery',
+        }] } };
+      }
+    }
+    keys = issues.map((i) => i.key);
+  } else {
+    return { code: 2, out: { ok: false, error: { message: USAGE } } };
+  }
+
+  const stories = [];
+  for (const key of keys) {
+    try {
+      const wi = await adapter.getWorkItem(key);
+      const f = (wi && wi.fields) || {};
+      const s = {
+        id: wi.key || key,
+        type: (f.issuetype || {}).name || null,
+        title: f.summary || null,
+        state: (f.status || {}).name || null,
+        storyPoints: disc.storyPointsFieldId ? (f[disc.storyPointsFieldId] ?? null) : null,
+        ...(disc.storyPointsNote ? { storyPointsNote: disc.storyPointsNote } : {}),
+        url: adapter.webUrl(wi.key || key),
+      };
+      if (s.type !== cfg.storyType) {
+        s.warning = `${key} is a "${s.type || '?'}", not a "${cfg.storyType}" — the dry run will refuse to create sub-tasks under it`;
+      }
+      s.existingTestingTasks = jiraTestingChildren(f);
+      if (s.existingTestingTasks === null) {
+        s.warning = 'existing-children scan could not complete (no subtasks list on the read) — the dry run will block on this story (fails closed)';
+      }
+      if (args.full) {
+        const rf = wi.renderedFields || {};
+        s.description = rf.description || null;
+        if (cfg.acceptanceCriteriaField) {
+          s.acceptanceCriteria = rf[cfg.acceptanceCriteriaField] ?? null;
+        } else {
+          s.acceptanceCriteria = null;
+          s.acceptanceCriteriaNote = 'no jira.acceptanceCriteriaField configured — read the ACs from the description';
+        }
+      }
+      stories.push(s);
+    } catch (e) {
+      stories.push({ id: key, warning: `could not be read: ${e.message}` });
+    }
+  }
+  return { code: 0, out: { ok: true, mode: 'stories', count: stories.length, stories } };
+}
+
+// Jira validation phase — reads + local checks only, every finding at once.
+// No validateOnly probe exists on Jira (capabilities.validateOnly: false): the
+// createmeta cache + required-field checks carry pre-gate validation alone,
+// and the JSON says so (validateOnly: 'unsupported-on-jira').
+async function validateJira(adapter, spec, args, cwd) {
+  const cfg = adapter.config;
+  const blocked = [];
+  const validation = {};
+
+  // 1) assignee: spec -> a single configured jira.assignee — never invented —
+  //    then email -> accountId via ONE user-search read (O5), fail closed.
+  const configured = cfg.assignees || [];
+  const assignee = (spec.assignee && String(spec.assignee).trim()) ||
+    (configured.length === 1 ? configured[0] : null);
+  if (!assignee) {
+    blocked.push({
+      reason: 'missing-assignee',
+      ...(configured.length > 1 ? { options: configured } : {}),
+      message: configured.length > 1
+        ? `spec.assignee is empty and jira.assignee lists ${configured.length} options (${configured.join(', ')}) — ask the user which one, never pick silently`
+        : 'no assignee — set spec.assignee (ask the user) or jira.assignee in config/project.json',
+    });
+  }
+  validation.assignee = assignee;
+  let accountId = null;
+  if (assignee) {
+    try {
+      const users = await adapter.findUser(assignee);
+      const exact = users.filter((u) => String(u.emailAddress || '').toLowerCase() === assignee.toLowerCase());
+      const pool = exact.length ? exact : users; // sites may hide emails — the search result is then the pool
+      if (pool.length === 1) accountId = pool[0].accountId;
+      else {
+        blocked.push({
+          reason: pool.length === 0 ? 'assignee-not-found' : 'assignee-ambiguous',
+          ...(pool.length ? { options: pool.map((u) => ({ accountId: u.accountId, displayName: u.displayName })) } : {}),
+          message: pool.length === 0
+            ? `no Jira user matches "${assignee}" — Jira assigns by accountId, so an unresolvable email blocks (fails closed)`
+            : `${pool.length} Jira users match "${assignee}" — ask the user which accountId, never pick silently`,
+        });
+      }
+    } catch (e) {
+      blocked.push({ reason: 'assignee-resolution-failed', message: `the email→accountId read failed — refusing to assign blind (fails closed): ${e.message}` });
+    }
+  }
+  validation.assigneeAccountId = accountId;
+
+  // 2) structural: title prefix + finite positive estimate (the shared spine's rules).
+  for (const st of spec.stories) {
+    for (const task of st.tasks) {
+      const title = task && task.title;
+      if (typeof title !== 'string' || !title.startsWith(TITLE_PREFIX)) {
+        blocked.push({
+          reason: 'bad-task-title', story: st.id, title: title ?? null,
+          message: `story ${st.id}: task title ${JSON.stringify(title ?? null)} must start with "${TITLE_PREFIX}"`,
+        });
+      }
+      const est = Number(task && task.estimate);
+      if (!Number.isFinite(est) || est <= 0) {
+        blocked.push({
+          reason: 'bad-estimate', story: st.id, title: title ?? null, estimate: (task && task.estimate) ?? null,
+          message: `story ${st.id}: "${title}" needs a finite estimate > 0 (got ${JSON.stringify((task && task.estimate) ?? null)})`,
+        });
+      }
+    }
+  }
+
+  // 3) sub-task type: jira.subtaskType pins it; else createmeta discovery —
+  //    exactly one subtask:true type is used, several join the bundle round.
+  let issueTypes = [];
+  try { issueTypes = await adapter.listIssueTypes(); }
+  catch (e) { blocked.push({ reason: 'issue-types-unavailable', message: `the project's issue types could not be read: ${e.message}` }); }
+  const subtaskTypes = issueTypes.filter((t) => t.subtask);
+  let subtaskType = null;
+  if (cfg.subtaskType) {
+    const hit = subtaskTypes.find((t) => t.name === cfg.subtaskType) ||
+      subtaskTypes.find((t) => t.name.toLowerCase() === String(cfg.subtaskType).toLowerCase());
+    if (hit) subtaskType = hit.name;
+    else {
+      blocked.push({
+        reason: 'subtask-type-not-found', options: subtaskTypes.map((t) => t.name),
+        message: `jira.subtaskType "${cfg.subtaskType}" is not one of the project's sub-task types (${subtaskTypes.map((t) => t.name).join(', ') || 'none'}) — correct it for this run`,
+      });
+    }
+  } else if (subtaskTypes.length === 1) {
+    subtaskType = subtaskTypes[0].name;
+  } else if (issueTypes.length) {
+    blocked.push({
+      reason: subtaskTypes.length === 0 ? 'no-subtask-type' : 'subtask-type-ambiguous',
+      ...(subtaskTypes.length ? { options: subtaskTypes.map((t) => t.name) } : {}),
+      message: subtaskTypes.length === 0
+        ? '[Testing] tasks are created as Jira sub-tasks and this project has no sub-task issue type — enable one in Jira first'
+        : `this project has ${subtaskTypes.length} sub-task types (${subtaskTypes.map((t) => t.name).join(', ')}) — ask the user which one (the ONE bundled round); jira.subtaskType in config/project.json pins it thereafter (confirm once, never guess)`,
+    });
+  }
+  validation.subtaskType = subtaskType;
+
+  // 4) per story: exists, IS the configured storyType (mismatch blocks with the
+  //    REAL type list), existing [Testing] children from inline subtasks
+  //    (FAILS CLOSED when the list is missing).
+  const perStory = [];
+  for (const st of spec.stories) {
+    const entry = { id: st.id, ...(st.complexity ? { complexity: st.complexity } : {}), tasks: (st.tasks || []).length };
+    try {
+      const wi = await adapter.getWorkItem(st.id);
+      const f = (wi && wi.fields) || {};
+      entry.type = (f.issuetype || {}).name || null;
+      entry.title = f.summary || null;
+      entry.state = (f.status || {}).name || null;
+      entry.url = adapter.webUrl(wi.key || st.id);
+      if (entry.type !== cfg.storyType) {
+        blocked.push({
+          reason: 'story-not-a-story', story: st.id,
+          message: `${st.id} is a "${entry.type || '?'}", not a "${cfg.storyType}" — [Testing] sub-tasks hang only off ${cfg.storyType} issues; this project's real types: ${issueTypes.map((t) => t.name).join(', ') || 'unknown'}`,
+        });
+      }
+      entry.existingTestingTasks = jiraTestingChildren(f);
+      if (entry.existingTestingTasks === null) {
+        blocked.push({
+          reason: 'children-check-failed', story: st.id,
+          message: `the existing-children check on ${st.id} could not complete (no subtasks list on the read) — refusing to create blind (fails closed)`,
+        });
+      } else if (entry.existingTestingTasks.length && !args['allow-existing']) {
+        blocked.push({
+          reason: 'existing-testing-tasks', story: st.id,
+          ids: entry.existingTestingTasks.map((t) => t.id),
+          message: `story ${st.id} already has ${entry.existingTestingTasks.length} [Testing] sub-task(s) ` +
+            `(${entry.existingTestingTasks.map((t) => t.id).join(', ')}) — ask the user: skip = drop the story from the spec; add anyway = pass --allow-existing`,
+        });
+      }
+    } catch (e) {
+      blocked.push({ reason: 'story-not-found', story: st.id, message: `story ${st.id} could not be read: ${e.message}` });
+    }
+    perStory.push(entry);
+  }
+  validation.perStory = perStory;
+
+  // 5) createmeta cache for the sub-task type: field-not-on-screen detection
+  //    BEFORE any write (e.g. timetracking disabled site-wide → a doc-pointed
+  //    block instead of a server 400).
+  let cacheInfo = null;
+  if (subtaskType) {
+    try {
+      cacheInfo = await fieldCache.ensure(cwd, adapter, { types: [subtaskType], refresh: Boolean(args['refresh-fields']) });
+      const fieldMap = (cacheInfo.cache.types[subtaskType] && cacheInfo.cache.types[subtaskType].fields) || {};
+      const needed = [
+        ['timetracking', 'time tracking is disabled site-wide or not on this create screen — hours cannot be written blind (see docs/jira.md, Known limitations)'],
+        ['labels', 'the Labels field is not on this create screen'],
+        ['assignee', 'the Assignee field is not on this create screen'],
+        ['parent', 'the Parent field is not on this create screen — a sub-task cannot be created without it'],
+      ];
+      validation.fields = needed.map(([name]) => ({ field: name, ok: Boolean(fieldMap[name]) }));
+      for (const [name, why] of needed) {
+        if (!fieldMap[name]) {
+          blocked.push({
+            reason: 'field-not-on-type', field: name,
+            message: `field ${name} does not exist on this project's "${subtaskType}" create screen — ${why}`,
+          });
+        }
+      }
+    } catch (e) {
+      blocked.push({ reason: 'field-cache-failed', message: `field metadata could not be read: ${e.message}` });
+    }
+  }
+
+  validation.validateOnly = 'unsupported-on-jira';
+  validation.notes = ["iteration/area have no Jira analog — sub-tasks ride their parent story's sprint"];
+
+  // The fields each create sends (adapter adds project/issuetype; the parent
+  // folds in via the relations seam): verbatim titles, hours → timetracking,
+  // Activity=Testing → label 'testing', assignee by accountId.
+  const fieldsFor = (entry, task) => ({
+    summary: task.title,
+    timetracking: { originalEstimate: `${Number(task.estimate)}h`, remainingEstimate: `${Number(task.estimate)}h` },
+    labels: [...JIRA_SUBTASK_LABELS],
+    ...(accountId ? { assignee: { accountId } } : {}),
+  });
+
+  return {
+    blocked, validation, fieldsFor, cacheInfo, cacheStale: false,
+    createType: subtaskType || 'Sub-task',
+    parentRel: 'parent',
+    describeCreate: (task, storyId) => `create "${task.title}" under story ${storyId} (POST /rest/api/3/issue — sub-task, fields.parent inline)`,
+  };
 }
 
 // ---- spec structural checks (before any read) ---------------------------------
@@ -390,7 +726,10 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
   const mode = args.execute ? 'executed' : 'plan';
   try {
     if (cmd === 'stories') {
-      return await storiesCmd(args, resolveTracker(cwd, { fetch }));
+      const adapter = resolveTracker(cwd, { fetch });
+      return adapter.name === 'jira'
+        ? await jiraStoriesCmd(args, adapter)
+        : await storiesCmd(args, adapter);
     }
 
     if (!args.spec) return { code: 2, out: { ok: false, mode, error: { message: `--spec <file.json> is required. ${USAGE}` } } };
@@ -402,7 +741,16 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
     if (shapeErrors.length) return { code: 2, out: { ok: false, mode, blocked: shapeErrors } };
 
     const adapter = resolveTracker(cwd, { fetch });
-    const { blocked, validation, fieldsFor, cacheInfo, cacheStale } = await validate(adapter, spec, args, cwd);
+    // Provider strategy (O10): the validation/gate/ledger spine is shared; the
+    // strategy supplies field composition, type/relation names and describe text.
+    const v = adapter.name === 'jira'
+      ? await validateJira(adapter, spec, args, cwd)
+      : await validate(adapter, spec, args, cwd);
+    const { blocked, validation, fieldsFor, cacheInfo, cacheStale } = v;
+    const createType = v.createType || 'Task';
+    const parentRel = v.parentRel || PARENT_LINK;
+    const describeCreate = v.describeCreate ||
+      ((task, storyId) => `create "${task.title}" under story #${storyId} (POST _apis/wit/workitems/$Task, parent link inline)`);
     const cacheOut = cacheInfo
       ? { file: cacheInfo.file, rebuilt: cacheInfo.rebuilt, builtAt: cacheInfo.cache.builtAt, ...(cacheInfo.reason ? { reason: cacheInfo.reason } : {}) }
       : null;
@@ -423,13 +771,13 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       // rendered by the agent on the consolidated screen. Nothing has been written.
       const plan = [];
       for (const { storyId, entry, task } of flat) {
-        const d = await adapter.createWorkItem('Task', {
+        const d = await adapter.createWorkItem(createType, {
           fields: fieldsFor(entry, task),
-          relations: [{ rel: PARENT_LINK, targetId: storyId }],
+          relations: [{ rel: parentRel, targetId: storyId }],
         }, { execute: false });
         plan.push({
           step: 'create-task', story: storyId, title: task.title,
-          describe: `${d.method} ${d.url} (${PARENT_LINK} -> #${storyId} inline — atomic)`,
+          describe: `${d.method} ${d.url} (${parentRel} -> ${typeof storyId === 'number' ? `#${storyId}` : storyId} inline — atomic)`,
           request: d,
         });
       }
@@ -440,11 +788,11 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
     const createdTasks = [];
     const intents = flat.map(({ storyId, entry, task }) => ({
       step: 'create-task',
-      describe: `create "${task.title}" under story #${storyId} (POST _apis/wit/workitems/$Task, parent link inline)`,
+      describe: describeCreate(task, storyId),
       run: async () => {
-        const r = await adapter.createWorkItem('Task', {
+        const r = await adapter.createWorkItem(createType, {
           fields: fieldsFor(entry, task),
-          relations: [{ rel: PARENT_LINK, targetId: storyId }],
+          relations: [{ rel: parentRel, targetId: storyId }],
         }, { execute: true });
         createdTasks.push({ id: r.id, url: r.url, storyId, title: task.title });
         return { id: r.id, url: r.url };
@@ -472,7 +820,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
   }
 }
 
-module.exports = { run, currentIterationWiql, PARENT_LINK };
+module.exports = { run, currentIterationWiql, currentSprintJql, PARENT_LINK };
 
 if (require.main === module) {
   run(process.argv.slice(2)).then(({ code, out }) => {
