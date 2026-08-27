@@ -346,6 +346,23 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const res = await request('updateRun', 'PATCH', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: (res && res.id) ?? runId, state: res && res.state };
     },
+
+    // Standard work-item delete → the Recycle Bin (recoverable). Permanent
+    // destroy is STRUCTURALLY impossible here: no destroy option exists in the
+    // signature, none is ever emitted, and the id is validated to a positive
+    // integer before the URL is composed — nothing can smuggle a query string
+    // through it. Backs the capability flag deleteWorkItem: 'partial' (ADO has
+    // no standard delete for test artifacts such as Test Cases).
+    async deleteWorkItem(id, { execute = false } = {}) {
+      const n = Number(id);
+      if (!Number.isInteger(n) || n <= 0) {
+        throw configError(`deleteWorkItem needs a positive integer work-item id (got ${JSON.stringify(id)})`);
+      }
+      const u = url(`wit/workitems/${n}`);
+      if (!execute) return descriptor('deleteWorkItem', 'DELETE', u);
+      const res = await request('deleteWorkItem', 'DELETE', u);
+      return { id: (res && res.id) ?? n };
+    },
   };
 }
 
