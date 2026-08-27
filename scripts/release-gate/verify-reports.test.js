@@ -87,6 +87,40 @@ function scenariosFile(dir) {
     assert.strictEqual(overridden.ok, true);
   });
 
+  await test('mixed verdicts: a swapped expectation fails — each verdict must sit with its own scenario', async () => {
+    const dir = project(); // reports carry A=PASS, B=FAIL — the expectation below swaps them
+    const swapped = [
+      { name: 'Search returns matching products', verdict: 'FAIL' },
+      { name: 'Checkout rejects an expired card', verdict: 'PASS' },
+    ];
+    const r = verifyReports({ dir, scenarios: swapped });
+    assert.strictEqual(r.ok, false, 'both verdict words exist in the files, but on the wrong scenarios');
+    assert.ok(r.findings.some((f) => f.includes('FAIL') && f.includes('Search returns matching products') && f.includes('report.md')), JSON.stringify(r.findings));
+    assert.ok(r.findings.some((f) => f.includes('PASS') && f.includes('Checkout rejects an expired card') && f.includes('extent-report.html')), JSON.stringify(r.findings));
+  });
+
+  await test('a verdict word in unrelated prose never satisfies a scenario', async () => {
+    const md = '# Report\n\nNo lane may FAIL silently.\n\n| scenario | verdict |\n|---|---|\n' +
+      '| Search returns matching products | PASS |\n| Checkout rejects an expired card | BLOCKED |\n';
+    const html = '<html><body><p>zero FAIL tolerance</p>' +
+      '<div class="card">Search returns matching products <span>PASS</span></div>' +
+      '<div class="card">Checkout rejects an expired card <span>BLOCKED</span></div></body></html>';
+    const r = verifyReports({ dir: project({ md, html }), scenarios: SCENARIOS });
+    assert.strictEqual(r.ok, false, 'FAIL only appears in prose, never beside its scenario');
+    assert.ok(r.findings.some((f) => f.includes('FAIL') && f.includes('Checkout rejects an expired card') && f.includes('report.md')), JSON.stringify(r.findings));
+    assert.ok(r.findings.some((f) => f.includes('FAIL') && f.includes('Checkout rejects an expired card') && f.includes('extent-report.html')), JSON.stringify(r.findings));
+  });
+
+  await test('a scenario named twice still passes when the verdict sits with either occurrence', async () => {
+    const md = '# Report\n\n## Scenarios\n- Search returns matching products\n\n| scenario | verdict |\n|---|---|\n' +
+      '| Search returns matching products | PASS |\n';
+    const html = '<html><body><nav>Search returns matching products</nav>' +
+      '<div class="card">Search returns matching products <span>PASS</span></div></body></html>';
+    const r = verifyReports({ dir: project({ md, html }), scenarios: [SCENARIOS[0]] });
+    assert.deepStrictEqual(r.findings, []);
+    assert.strictEqual(r.ok, true);
+  });
+
   await test('CLI: --scenarios file, one JSON line, exit 0/1', async () => {
     const dir = project();
     let r = spawnSync(process.execPath, [CLI, dir, '--scenarios', scenariosFile(dir)], { encoding: 'utf8' });

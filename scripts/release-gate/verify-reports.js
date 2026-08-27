@@ -3,7 +3,9 @@
 //
 // Asserts the run's executions/execu_<ts>/ directory carries BOTH report
 // artifacts — report.md and extent-report.html — and that each reflects the
-// run: every expected scenario name and its verdict appear in both files.
+// run: every expected scenario name appears in both files, with its verdict
+// ADJACENT to it (same row/card — a bounded window after the name), never
+// merely somewhere in the file.
 //
 // Usage: node verify-reports.js <throwaway-dir> --scenarios <file.json> [--exec <execu_dir_name>]
 //   scenarios file: [{ "name": "...", "verdict": "PASS|FAIL|BLOCKED" }, ...]
@@ -31,6 +33,34 @@ function newestExecution(executionsDir) {
   return best && best.full;
 }
 
+// A verdict only counts when it sits with its OWN scenario (wrong-PASS vector:
+// "PASS" appearing anywhere — another scenario's verdict, prose — must never
+// satisfy scenario A). The verdict must appear as a whole word inside a bounded
+// window AFTER an occurrence of the scenario's name, cut short at the next
+// occurrence of any expected scenario name (so a table row / report card only
+// vouches for its own scenario). Any occurrence of the name may carry it.
+const VERDICT_WINDOW = 240;
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function verdictAdjacentToName(text, name, verdict, allNames) {
+  const verdictRe = new RegExp(`\\b${escapeRegExp(verdict)}\\b`);
+  let at = text.indexOf(name);
+  while (at !== -1) {
+    const start = at + name.length;
+    let end = Math.min(text.length, start + VERDICT_WINDOW);
+    for (const other of allNames) {
+      const next = text.indexOf(other, start);
+      if (next !== -1 && next < end) end = next;
+    }
+    if (verdictRe.test(text.slice(start, end))) return true;
+    at = text.indexOf(name, start);
+  }
+  return false;
+}
+
 function verifyReports({ dir, scenarios, exec } = {}) {
   if (!dir) throw usageError('a throwaway project dir is required');
   if (!Array.isArray(scenarios) || scenarios.length === 0) {
@@ -53,11 +83,14 @@ function verifyReports({ dir, scenarios, exec } = {}) {
     texts[name] = fs.readFileSync(file, 'utf8');
   }
 
+  const expectedNames = scenarios.map((s) => s && s.name).filter(Boolean);
   for (const [name, text] of Object.entries(texts)) {
     for (const s of scenarios) {
       if (!s || !s.name || !s.verdict) throw usageError('every scenario needs {name, verdict}');
-      if (!text.includes(s.name)) findings.push(`scenario "${s.name}" not reflected in ${name}`);
-      if (!text.includes(s.verdict)) findings.push(`verdict ${s.verdict} (scenario "${s.name}") not reflected in ${name}`);
+      if (!text.includes(s.name)) { findings.push(`scenario "${s.name}" not reflected in ${name}`); continue; }
+      if (!verdictAdjacentToName(text, s.name, s.verdict, expectedNames)) {
+        findings.push(`verdict ${s.verdict} (scenario "${s.name}") not adjacent to its scenario in ${name}`);
+      }
     }
   }
 
