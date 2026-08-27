@@ -113,6 +113,17 @@ test('TrackerError is re-exported for consumers', () => {
   assert.strictEqual(typeof TrackerError, 'function');
 });
 
+test('TrackerError has ONE home (errors.js) — every adapter throws the same class (O1)', () => {
+  const errors = require('./errors.js');
+  const ado = require('./adapters/ado.js');
+  assert.strictEqual(typeof errors.TrackerError, 'function');
+  assert.strictEqual(errors.TrackerError, TrackerError, 'index.js re-exports the shared class');
+  assert.strictEqual(errors.TrackerError, ado.TrackerError, 'ado.js re-exports the shared class unchanged');
+  // instanceof across the seam keeps working for shared consumers.
+  const e = new ado.TrackerError({ op: 'x', url: 'u' });
+  assert.ok(e instanceof errors.TrackerError);
+});
+
 flush().then(() => {
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;

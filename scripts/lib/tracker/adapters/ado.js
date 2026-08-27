@@ -26,26 +26,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const pc = require(path.join(__dirname, '..', '..', 'project_config.js'));
+// The shared error class lives in ../errors.js (one home, O1); re-exported
+// below unchanged so existing `require('./ado.js').TrackerError` keeps working.
+const { TrackerError } = require('../errors.js');
 
 const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
 const REDACTED_AUTH = '<Basic ***, not printed>';
-
-// What every adapter method throws on failure — never a raw fetch error, never
-// anything containing the PAT. 401/403 add credentialHint (env-var NAMES only).
-class TrackerError extends Error {
-  constructor({ op, status, url, serverMessage, body, credentialHint }) {
-    const head = status ? `HTTP ${status}` : 'request failed';
-    super(`${op} failed: ${head}${serverMessage ? ` — ${serverMessage}` : ''} (${url})`);
-    this.name = 'TrackerError';
-    this.op = op;
-    this.status = status ?? null;
-    this.url = url;
-    this.serverMessage = serverMessage || null;
-    this.body = body || '';
-    if (credentialHint) this.credentialHint = credentialHint;
-  }
-}
 
 function configError(message) {
   const e = new Error(message);
