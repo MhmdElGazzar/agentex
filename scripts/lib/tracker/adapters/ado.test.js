@@ -241,6 +241,42 @@ const PROJ = 'Sample%20Project';
     assert.deepStrictEqual(JSON.parse(f.calls[1].body), [{ id: 100000, outcome: 'Failed' }]);
   });
 
+  // ── deleteWorkItem: Recycle Bin only, destroy structurally impossible ──────
+  await test('deleteWorkItem execute:false returns a DELETE descriptor (recycle-bin route), sends nothing', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj({ envLines: '' }), fetch: f }); // dry run needs no PAT
+    const d = await a.deleteWorkItem(77, { execute: false });
+    assert.strictEqual(f.calls.length, 0, 'zero requests sent');
+    assert.strictEqual(d.method, 'DELETE');
+    assert.ok(d.url.startsWith(`${BASE}/${PROJ}/_apis/wit/workitems/77?`), d.url);
+    assert.strictEqual(d.headers.authorization, '<Basic ***, not printed>');
+    assert.ok(!d.url.includes('destroy'), 'no destroy param, ever');
+  });
+
+  await test('deleteWorkItem execute:true DELETEs the work item (→ Recycle Bin) and returns the id', async () => {
+    const f = fakeFetch([{ method: 'DELETE', match: '/workitems/77', json: { id: 77, deletedDate: '2026-08-27T00:00:00Z' } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const r = await a.deleteWorkItem(77, { execute: true });
+    assert.strictEqual(r.id, 77);
+    assert.strictEqual(f.calls[0].method, 'DELETE');
+    assert.ok(f.calls[0].url.startsWith(`${BASE}/${PROJ}/_apis/wit/workitems/77?`), f.calls[0].url);
+    assert.ok(!f.calls[0].url.includes('destroy'), 'no destroy param, ever');
+  });
+
+  await test('deleteWorkItem is structurally incapable of permanent destroy under any input', async () => {
+    const f = fakeFetch([{ method: 'DELETE', match: '/workitems/', json: { id: 1 } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    // A destroy option is not part of the signature: passing one changes nothing.
+    const d = await a.deleteWorkItem(41, { execute: false, destroy: true });
+    assert.ok(!d.url.includes('destroy'), d.url);
+    await a.deleteWorkItem('42', { execute: true, destroy: true }); // numeric string ok
+    // Injection through the id itself is rejected before any URL is composed.
+    for (const bad of ['77?destroy=true', '77&destroy=true', 'abc', '', null, undefined, 1.5, -3, 0]) {
+      await assert.rejects(() => a.deleteWorkItem(bad, { execute: false }), /work-item id/i, String(bad));
+    }
+    for (const c of f.calls) assert.ok(!c.url.includes('destroy'), c.url);
+  });
+
   // ── dry run: execute:false sends NOTHING and returns the descriptor ────────
   await test('every write with execute:false sends nothing and returns a redacted descriptor', async () => {
     const dir = proj({ envLines: '' }); // no PAT on purpose: a dry run must not even need one
@@ -257,6 +293,7 @@ const PROJ = 'Sample%20Project';
       await a.createRun({ name: 'r' }, { execute: false }),
       await a.updateRunResults(88, [], { execute: false }),
       await a.updateRun(88, { state: 'Completed' }, { execute: false }),
+      await a.deleteWorkItem(7, { execute: false }),
     ];
     assert.strictEqual(f.calls.length, 0, 'zero requests sent');
     for (const d of descriptors) {
