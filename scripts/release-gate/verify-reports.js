@@ -34,29 +34,67 @@ function newestExecution(executionsDir) {
 }
 
 // A verdict only counts when it sits with its OWN scenario (wrong-PASS vector:
-// "PASS" appearing anywhere — another scenario's verdict, prose — must never
-// satisfy scenario A). The verdict must appear as a whole word inside a bounded
-// window AFTER an occurrence of the scenario's name, cut short at the next
-// occurrence of any expected scenario name (so a table row / report card only
-// vouches for its own scenario). Any occurrence of the name may carry it.
-const VERDICT_WINDOW = 240;
+// a verdict token appearing anywhere — another scenario's verdict, prose —
+// must never satisfy scenario A). The verdict must appear as a whole word
+// inside a bounded window AFTER an occurrence of the scenario's name, cut
+// short at the next occurrence of any expected scenario name (so a table row /
+// report card only vouches for its own scenario).
+//
+// Verdict vocabulary is EXPLICIT and per artifact (release gate defect R1):
+// report.md is the agent-written summary — caps PASS/FAIL/BLOCKED; the
+// extent-report.html dashboard renders pill labels Passed/Failed/Blocked
+// (skills/extent-report/scripts/make_html_report.js LABELS). Fail closed: an
+// expected verdict outside this map is a usage error, never matched loosely.
+const VERDICT_TOKENS = {
+  'report.md':          { PASS: 'PASS',   FAIL: 'FAIL',   BLOCKED: 'BLOCKED' },
+  'extent-report.html': { PASS: 'Passed', FAIL: 'Failed', BLOCKED: 'Blocked' },
+};
+// The HTML window is wider because the generator puts ~170 chars of markup
+// (the spec cell + the pill's inline styling) between a card's name and its
+// verdict pill — still far short of the card's own steps table, let alone the
+// next card.
+const VERDICT_WINDOW = { 'report.md': 240, 'extent-report.html': 320 };
 
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function verdictAdjacentToName(text, name, verdict, allNames) {
-  const verdictRe = new RegExp(`\\b${escapeRegExp(verdict)}\\b`);
+const isWordChar = (c) => /[A-Za-z0-9_]/.test(c || '');
+
+// Scenario-name occurrences, longest-first with word boundaries: an occurrence
+// that really belongs to a LONGER expected name never counts for a shorter one
+// (a name that is a proper prefix of another must not borrow the longer card's
+// verdict), and an occurrence glued mid-word to surrounding text never counts.
+function nameOccurrences(text, name, allNames) {
+  const longerSpans = [];
+  for (const other of allNames) {
+    if (other === name || other.length <= name.length || !other.includes(name)) continue;
+    let at = text.indexOf(other);
+    while (at !== -1) { longerSpans.push([at, at + other.length]); at = text.indexOf(other, at + 1); }
+  }
+  const out = [];
   let at = text.indexOf(name);
   while (at !== -1) {
+    const end = at + name.length;
+    const insideLonger = longerSpans.some(([s, e]) => at >= s && end <= e);
+    const boundaryOk = !(isWordChar(name[0]) && isWordChar(text[at - 1])) &&
+                       !(isWordChar(name[name.length - 1]) && isWordChar(text[end]));
+    if (!insideLonger && boundaryOk) out.push(at);
+    at = text.indexOf(name, at + 1);
+  }
+  return out;
+}
+
+function verdictAdjacentToName(text, name, token, allNames, window) {
+  const tokenRe = new RegExp(`\\b${escapeRegExp(token)}\\b`);
+  for (const at of nameOccurrences(text, name, allNames)) {
     const start = at + name.length;
-    let end = Math.min(text.length, start + VERDICT_WINDOW);
+    let end = Math.min(text.length, start + window);
     for (const other of allNames) {
       const next = text.indexOf(other, start);
       if (next !== -1 && next < end) end = next;
     }
-    if (verdictRe.test(text.slice(start, end))) return true;
-    at = text.indexOf(name, start);
+    if (tokenRe.test(text.slice(start, end))) return true;
   }
   return false;
 }
@@ -65,6 +103,12 @@ function verifyReports({ dir, scenarios, exec } = {}) {
   if (!dir) throw usageError('a throwaway project dir is required');
   if (!Array.isArray(scenarios) || scenarios.length === 0) {
     throw usageError('at least one expected {name, verdict} scenario is required — an empty expectation could only produce a wrong PASS');
+  }
+  for (const s of scenarios) {
+    if (!s || !s.name || !s.verdict) throw usageError('every scenario needs {name, verdict}');
+    if (!(s.verdict in VERDICT_TOKENS['report.md'])) {
+      throw usageError(`unknown verdict "${s.verdict}" (scenario "${s.name}") — the expectation vocabulary is PASS, FAIL or BLOCKED`);
+    }
   }
   const findings = [];
   const executionsDir = path.join(dir, 'executions');
@@ -83,13 +127,16 @@ function verifyReports({ dir, scenarios, exec } = {}) {
     texts[name] = fs.readFileSync(file, 'utf8');
   }
 
-  const expectedNames = scenarios.map((s) => s && s.name).filter(Boolean);
+  const expectedNames = scenarios.map((s) => s.name);
   for (const [name, text] of Object.entries(texts)) {
     for (const s of scenarios) {
-      if (!s || !s.name || !s.verdict) throw usageError('every scenario needs {name, verdict}');
-      if (!text.includes(s.name)) { findings.push(`scenario "${s.name}" not reflected in ${name}`); continue; }
-      if (!verdictAdjacentToName(text, s.name, s.verdict, expectedNames)) {
-        findings.push(`verdict ${s.verdict} (scenario "${s.name}") not adjacent to its scenario in ${name}`);
+      if (nameOccurrences(text, s.name, expectedNames).length === 0) {
+        findings.push(`scenario "${s.name}" not reflected in ${name}`);
+        continue;
+      }
+      const token = VERDICT_TOKENS[name][s.verdict];
+      if (!verdictAdjacentToName(text, s.name, token, expectedNames, VERDICT_WINDOW[name])) {
+        findings.push(`verdict ${s.verdict} (rendered "${token}", scenario "${s.name}") not adjacent to its scenario in ${name}`);
       }
     }
   }
