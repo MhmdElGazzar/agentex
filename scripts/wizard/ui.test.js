@@ -286,6 +286,40 @@ setTimeout(() => {
     assert.ok(proj.userFields.every(f => !('_orig' in f)), 'session bookkeeping never reaches the file');
   });
 
+  // ── Figma block (release-gate defect W2) ──────────────────────────────────
+  // The wizard collects figma.fileKey / figma.tokenEnvVar but the save path
+  // managed only azure/kb — typed values silently never reached
+  // config/project.json (it kept the template's ""). The documented home
+  // (templates/config/project.json, docs/ui-check.md) is
+  // { fileKey, token: { envSecret: NAME } }.
+  test('typed figma answers land in config/project.json in the documented shape', () => {
+    ui.answers['figma.fileKey'] = 'SampleFileKey123';
+    ui.answers['figma.tokenEnvVar'] = 'FIGMA_DESIGN_TOKEN';
+    const proj = ui.buildProjectConfig();
+    assert.deepStrictEqual(proj.figma,
+      { fileKey: 'SampleFileKey123', token: { envSecret: 'FIGMA_DESIGN_TOKEN' } });
+    ui.answers['figma.tokenEnvVar'] = '';
+    assert.deepStrictEqual(ui.buildProjectConfig().figma,
+      { fileKey: 'SampleFileKey123', token: { envSecret: 'FIGMA_TOKEN' } },
+      'a file key with an empty name field falls back to the schema default, like db/api');
+  });
+
+  test('figma mirrors the screen: cleared keys unset, hand-added keys survive, an empty block leaves', () => {
+    ui.existingProjectV = { name: 'p', defaultEnvironment: 'qc',
+      figma: { fileKey: 'OldKey', token: { envSecret: 'OLD_VAR' }, note: 'hand-added' } };
+    ui.answers['figma.fileKey'] = '';
+    ui.answers['figma.tokenEnvVar'] = '';
+    assert.deepStrictEqual(ui.buildProjectConfig().figma, { note: 'hand-added' },
+      'clearing the screen unsets the managed keys but never the hand-added ones');
+    ui.existingProjectV = { name: 'p', defaultEnvironment: 'qc',
+      figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } } };
+    assert.strictEqual(ui.buildProjectConfig().figma, undefined,
+      'nothing typed over a template-empty block: the block disappears, same as azure/kb');
+    ui.existingProjectV = { name: 'p', defaultEnvironment: 'qc' };   // restore
+    delete ui.answers['figma.fileKey'];
+    delete ui.answers['figma.tokenEnvVar'];
+  });
+
   test('envScopedKeys follows the defaults schema (a custom key is snapshot/restore-scoped)', () => {
     assert.ok(ui.envScopedKeys().includes('defaults.pin'));
     assert.ok(!ui.envScopedKeys().includes('defaults.otp'), 'the renamed-away key is no longer scoped');

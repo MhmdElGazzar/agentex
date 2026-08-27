@@ -2783,6 +2783,20 @@ function buildProjectConfig() {
   // left in it.
   setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
   setManagedBlock(proj, 'kb', ['baseUrl', 'project']);
+  // figma follows the same mirror rule but not the flat shape: fileKey is a
+  // plain managed key, while the tokenEnvVar answer lands as
+  // { token: { envSecret: NAME } } — the documented home (docs/ui-check.md,
+  // the scaffold template) that ui-check's fetch_baseline.js reads. The token
+  // VALUE itself goes to .env via buildSecretsPayload, never here. A typed
+  // fileKey with an empty name field falls back to the schema default, exactly
+  // like db/api in buildEnvConfig.
+  const figma = Object.assign({}, existingProject && existingProject.figma);
+  const figmaFileKey = String(answers['figma.fileKey'] || '').trim();
+  if (figmaFileKey) figma.fileKey = figmaFileKey; else delete figma.fileKey;
+  const figmaTokenVar = String(answers['figma.tokenEnvVar'] || '').trim();
+  if (figmaTokenVar || figmaFileKey) figma.token = { envSecret: figmaTokenVar || 'FIGMA_TOKEN' };
+  else delete figma.token;
+  if (Object.keys(figma).length) proj.figma = figma; else delete proj.figma;
   return proj;
 }
 
