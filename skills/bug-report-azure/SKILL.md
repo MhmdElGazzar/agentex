@@ -208,5 +208,5 @@ has exactly one interaction: the approval.
   same on Windows/macOS/Linux. Details of the REST routes and the field schema live in
   `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/references/azure-devops.md`.
 - Keep spec files out of committed state (write them to a temp/execution folder).
-- `/estimate-story` and `/design-test` still drive the `az` CLI — their setup (including
-  the `AZURE_DEVOPS_EXT_PAT` export) is theirs alone and no longer applies to bug filing.
+- All board flows (bug filing, `/estimate-story`, `/design-test`) share the tracker scripts
+  and the `.env` PAT — one setup covers them all.

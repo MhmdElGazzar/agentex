@@ -62,7 +62,7 @@ db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
 
 AgenTeX can also work your ADO backlog — fill the `azure` block in `config/project.json` first
 (org/project/team/assignee); legacy `AZURE_*` keys in `.env` still work as a fallback. The PAT
-always stays in `.env` as `AZURE_DEVOPS_EXT_PAT`:
+always stays in `.env` as `AZURE_PAT`, read by the bundled scripts themselves:
 
 - `/design-test <story-ids>` — analyze a story's ACs and create linked test cases
   (project conventions live in `.agentex/test-template.md`, scaffolded on first run).

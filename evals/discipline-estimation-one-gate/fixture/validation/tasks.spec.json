@@ -1,0 +1,83 @@
+{
+  "assignee": "qa.engineer@example.com",
+  "stories": [
+    {
+      "id": 2101,
+      "complexity": "Simple",
+      "tasks": [
+        {
+          "title": "[Testing] Requirement Review",
+          "estimate": 1
+        },
+        {
+          "title": "[Testing] Test Creation",
+          "estimate": 1
+        },
+        {
+          "title": "[Testing] Test Execution",
+          "estimate": 1
+        },
+        {
+          "title": "[Testing] Bug Review and Retest",
+          "estimate": 1
+        },
+        {
+          "title": "[Testing] Automation",
+          "estimate": 1
+        }
+      ]
+    },
+    {
+      "id": 2102,
+      "complexity": "Heavy",
+      "tasks": [
+        {
+          "title": "[Testing] Requirement Review",
+          "estimate": 2
+        },
+        {
+          "title": "[Testing] Test Creation",
+          "estimate": 4
+        },
+        {
+          "title": "[Testing] Test Execution",
+          "estimate": 3
+        },
+        {
+          "title": "[Testing] Bug Review and Retest",
+          "estimate": 2
+        },
+        {
+          "title": "[Testing] Automation",
+          "estimate": 3
+        }
+      ]
+    },
+    {
+      "id": 2103,
+      "complexity": "Medium",
+      "tasks": [
+        {
+          "title": "[Testing] Requirement Review",
+          "estimate": 1
+        },
+        {
+          "title": "[Testing] Test Creation",
+          "estimate": 2
+        },
+        {
+          "title": "[Testing] Test Execution",
+          "estimate": 2
+        },
+        {
+          "title": "[Testing] Bug Review and Retest",
+          "estimate": 1
+        },
+        {
+          "title": "[Testing] Automation",
+          "estimate": 2
+        }
+      ]
+    }
+  ]
+}

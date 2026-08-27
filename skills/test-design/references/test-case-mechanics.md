@@ -1,137 +1,114 @@
-# Tool: Test Case mechanics (`az boards` — Test Case work items)
+# Tool: Test Case mechanics (`create-cases.js` — Test Case work items)
 
-Test-Case-specific `az boards` mechanics. Read this before creating or linking test cases, or
-when a command behaves unexpectedly. For shared basics (extension install, auth,
-`configure --defaults`, current-iteration fetch, WIQL), see the shared tracker reference
-`references/tracker/ado-boards-cli.md` (plugin root).
+Test-Case-specific mechanics: what the bundled script builds, what the agent supplies, and the
+facts to check when something looks wrong. All board traffic goes through
+`${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/create-cases.js` (tracker layer, ADO REST
+over built-in fetch — no `az`, no shell). For shared boards knowledge (field reference names,
+WIQL + current-iteration gotcha, relation directions, delete constraints), see
+`references/tracker/ado-boards.md` (plugin root).
 
 ## Fetch a story for analysis
 
 ```bash
-az boards work-item show --id <STORY_ID> --expand all --output json
+node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/create-cases.js story --id <STORY_ID>
 ```
 
-Pull specific fields with JMESPath (escape the double-quotes around dotted names):
+One JSON line: `{ok, story: {id, type, title, state, iterationPath, areaPath, url,
+description, acceptanceCriteria, relations}}`. Description/AC come back as **HTML** — read the
+tags to extract the design link (`<a href=...>`) and any translation tables. A non-User-Story
+id exits 1 naming the actual type; ask the user for a valid story id.
+
+## The spec file (agent judgment in, script mechanics out)
+
+The agent writes a spec JSON to the **OS temp dir** (never into the consumer's repo) and runs
+the dry run; step *content* is judgment, XML/quoting/IDs are the script's problem:
+
+```json
+{
+  "storyId": 12345,
+  "assignee": "qa.engineer@example.com",
+  "cases": [
+    { "title": "<Persona> || <Feature> || user checks the page UI",
+      "steps": [
+        { "type": "action",   "text": "Open the design for reference: <DESIGN_URL>" },
+        { "type": "action",   "text": "…standard setup step from the conventions file…" },
+        { "type": "validate", "text": "user checks the stepper/header/content", "expected": "matches the design" }
+      ] }
+  ]
+}
+```
+
+- `type` is `action` or `validate`; every step needs `text`; every `validate` step needs
+  `expected`. To reference a design link, put it in an ActionStep before the validations.
+- `assignee` falls back to a single-valued `azure.assignee`; iteration/area are **always**
+  inherited from the story by the script — do not put them in the spec.
 
 ```bash
-az boards work-item show --id <STORY_ID> --expand all \
-  --query "{title: fields.\"System.Title\", iteration: fields.\"System.IterationPath\", ac: fields.\"Microsoft.VSTS.Common.AcceptanceCriteria\"}" -o json
+# Dry run (default — the validation gate; writes NOTHING):
+node …/create-cases.js --spec "$TMP/cases.json" [--allow-duplicate] [--refresh-fields]
+# Only after the user's ONE approval of the consolidated screen:
+node …/create-cases.js --spec "$TMP/cases.json" --execute
 ```
 
-Key field reference names:
-- Acceptance Criteria → `Microsoft.VSTS.Common.AcceptanceCriteria`
-- Description → `System.Description`
-- Title → `System.Title`
-- Iteration → `System.IterationPath`
-- Test Case steps → `Microsoft.VSTS.TCM.Steps`
+## Steps XML (built by the script — never write it by hand)
 
-AC/description come back as **HTML** — read the tags to extract the design link
-(`<a href=...>`) and any translation tables.
-
-## Steps XML format
+`create-cases.js` builds the `Microsoft.VSTS.TCM.Steps` value from the structured steps:
 
 ```xml
-<steps id="0" last="[last_step_id]">
+<steps id="0" last="[highest_step_id]">
   <step id="2" type="ActionStep">
     <parameterizedString isformatted="true">Action text</parameterizedString>
     <parameterizedString isformatted="true"/>
   </step>
-  <step id="4" type="ValidateStep">
+  <step id="3" type="ValidateStep">
     <parameterizedString isformatted="true">What the user does</parameterizedString>
     <parameterizedString isformatted="true">Expected result</parameterizedString>
   </step>
 </steps>
 ```
 
-Rules:
-- Step IDs start at 2 (`id="0"` is the container, `id="1"` is reserved).
+Rules the script owns (so they can no longer be gotten wrong):
+
+- Step IDs start at 2 and increment by 1 (`id="0"` is the container, `id="1"` is reserved) —
+  the scheme portal-authored Test Cases use.
 - **ActionStep**: second `<parameterizedString>` is always empty.
 - **ValidateStep**: first string = action/check, second string = expected result.
 - `last` attribute = the highest step ID used.
-- Escape XML-reserved characters inside step text: `&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`.
-- To reference a design link, add an ActionStep like:
-  `Open the design for reference: [DESIGN_URL]` before the validation steps.
+- XML-reserved characters in step text are escaped (`&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`).
+- The XML travels as a **JSON request-body value** — there is no command line, no quoting
+  trick, and no length ceiling involved.
 
-## Create a Test Case (file + `$STEPS` — never inline the XML)
+## Linking (`Tested By`) — atomic, inside the create
 
-The Steps field is a large XML blob full of double-quotes — inlining it on the command line
-breaks argument parsing. Write it to a file first, then load it:
+Each Test Case is created with the relation `Microsoft.VSTS.Common.TestedBy-Reverse →
+<storyId>` **in the same POST** — the story then shows **"Tested By →"** the test case
+(its forward side). There is no separate link step, so "forgot to link" and "reversed the
+direction" are not possible states. The post-write coverage check re-reads the story
+(`story --id`, a free read) to show the links landed.
 
-```bash
-# 1. Write the steps XML to a temp file (use the scratchpad dir)
-cat > "$SCRATCH/tc_steps.xml" <<'EOF'
-<steps id="0" last="5"><step id="2" type="ActionStep">...</step>...</steps>
-EOF
+## Failure paths (the script's error JSON)
 
-# 2. Load it and create the Test Case
-STEPS=$(cat "$SCRATCH/tc_steps.xml")
-# $ITER = the story's iteration (fetch per the shared azure-devops-cli reference)
-az boards work-item create \
-  --type "Test Case" \
-  --title "<Persona> || <Feature> || [condition]" \
-  --iteration "$ITER" \
-  --assigned-to "$AZURE_ASSIGNEE" \
-  --fields "Microsoft.VSTS.TCM.Steps=$STEPS" \
-  --query "id" -o tsv
-```
-
-Notes:
-- Inside `"Microsoft.VSTS.TCM.Steps=$STEPS"`, the double-quotes coming from `$STEPS` are
-  treated as literal text — the field round-trips intact (verified working).
-- The heredoc uses `'EOF'` (quoted) so `$` and backticks in the XML are not expanded.
-- On Windows run via the **Bash** tool (Git Bash); quote values containing spaces/backslashes.
-- `--query "id" -o tsv` returns just the new work-item ID — capture it for linking.
-- If a call returns a transient `503`, wait a couple of seconds and retry once.
-
-## Link test cases to the story (`Tested By`)
-
-After ALL test cases are created, link each to the parent story. The friendly name
-`"Tested By"` resolves to `Microsoft.VSTS.Common.TestedBy-Forward`
-(confirm with `az boards work-item relation list-type`).
-
-```bash
-# --id = the STORY (source), --target-id = the TEST CASE(s)
-# NOTE: relation add does NOT take --yes (that flag is for relation remove / work-item delete)
-az boards work-item relation add \
-  --id <STORY_ID> \
-  --relation-type "Tested By" \
-  --target-id <TC1>,<TC2>,<TC3>
-```
-
-**Critical direction rule:** `--id` is the STORY, `--target-id` is the TEST CASE. This makes
-the story show **"Tested By → TC"** (forward). Reversing the IDs — or using
-`--relation-type "tests"` / `TestedBy-Reverse` — produces the wrong direction.
-
-Verify the links landed forward:
-
-```bash
-az boards work-item show --id <STORY_ID> --expand relations \
-  --query "relations[?contains(rel,'Tested')].rel" -o json
-# expect: ["Microsoft.VSTS.Common.TestedBy-Forward", ...]
-```
-
-## Deleting / removing Test Cases
-
-**The CLI cannot delete Test Case work items.** `az boards work-item delete` returns
-*"You cannot delete or restore test work items using this API"*, and the Test Management REST
-delete needs elevated permissions most identities don't have.
-
-To handle duplicates/mistakes:
-- **Mark for manual cleanup** — retitle and tag so a human can bulk-delete in the ADO web UI:
-  ```bash
-  az boards work-item update --id <TC_ID> \
-    --title "ZZZ DELETE ME - <reason>" \
-    --fields "System.Tags=DELETE-ME"
-  ```
-- Or ask the user to delete it from the Azure DevOps portal (Boards → work item → Delete).
+- **Duplicate titles** (`duplicate-title`, ids listed): an identically-titled Test Case
+  already exists. Confirm with the user; only their explicit go-ahead justifies
+  `--allow-duplicate`. A duplicate check that cannot complete (`dup-check-failed`) blocks —
+  the script never creates blind.
+- **`server-rejected-create`** after the cache passed: the field cache is stale — the JSON
+  carries the live options and `cacheStale: true`; offer `--refresh-fields`. Nothing is
+  retried automatically.
+- **Transient `503` during `--execute`**: the failed case shows as `failed` in the ledger and
+  later cases stay `not-attempted`. Report the exact ledger; re-running (with the already-created
+  cases removed from the spec) is the **user's** call — never an automatic retry.
+- **A wrong/duplicate Test Case that got created**: Test Cases cannot be deleted through the
+  work-item APIs — ask the user to delete it from the Azure DevOps portal (Boards → work item
+  → Delete). No cleanup writes.
 
 ## Quick reference
 
 | Task | Command |
 |---|---|
-| Read a story | `az boards work-item show --id <id> --expand all -o json` |
-| Create a test case | `az boards work-item create --type "Test Case" --fields "Microsoft.VSTS.TCM.Steps=$STEPS" …` |
-| Link story → TC | `az boards work-item relation add --id <STORY> --relation-type "Tested By" --target-id <TC>` |
-| Verify link direction | `… --expand relations --query "relations[?contains(rel,'Tested')].rel"` |
-| List relation types | `az boards work-item relation list-type` |
-| Mark TC for manual delete | `az boards work-item update --id <TC> --title "ZZZ DELETE ME - …" --fields "System.Tags=DELETE-ME"` |
+| Read a story | `node …/create-cases.js story --id <id>` |
+| Validate a case spec (no writes) | `node …/create-cases.js --spec <file.json>` |
+| Create the cases (after the one approval) | `node …/create-cases.js --spec <file.json> --execute` |
+| Duplicate title, user said go | add `--allow-duplicate` |
+| Picklists changed on the org | add `--refresh-fields` |
+| Test plans / suites / runs | `node …/testplan.js` (separate concern, same conventions) |

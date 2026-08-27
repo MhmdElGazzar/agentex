@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // read-workitem.js — the bug-report-azure skill's READ-ONLY entry point:
 // template-bug read, parent-story validation, ad-hoc work-item show, and
-// exact-title search. Replaces the agent-run `az boards work-item show` /
-// `az boards query` lookups: everything goes through the tracker layer's REST
-// adapter (scripts/lib/tracker/) over Node's built-in fetch — no az CLI, no
-// process spawning, zero npm dependencies.
+// exact-title search. Replaces the agent-composed Azure CLI work-item-show and
+// WIQL-query lookups from before v0.19.0: everything goes through the tracker
+// layer's REST adapter (scripts/lib/tracker/) over Node's built-in fetch — no
+// az CLI, no process spawning, zero npm dependencies.
 //
 // READ ONLY BY CONSTRUCTION: there is no --execute flag and no write method is
 // ever called; the sibling test asserts both. Reads run freely (invariant 4).

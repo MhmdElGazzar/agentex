@@ -87,8 +87,8 @@ real-world shortcut.
 
 **How:** move the file into the shared skill's `references/`, update both skills' pointers.
 
-**Example:** the ADO boards CLI reference moved to the plugin-root `references/tracker/`
-(as `ado-boards-cli.md`) once three skills consumed it across skill boundaries.
+**Example:** the shared ADO boards knowledge moved to the plugin-root `references/tracker/`
+(today `ado-boards.md`) once three skills consumed it across skill boundaries.
 
 **Pros/cons:** + no premature abstraction — but a brief window where content looks duplicated
 right before the move.
