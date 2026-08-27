@@ -49,6 +49,7 @@ const LIB = path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'tracker');
 const { resolveTracker, TrackerError } = require(path.join(LIB, 'index.js'));
 const fieldCache = require(path.join(LIB, 'cache.js'));
 const { WritePlan } = require(path.join(LIB, 'ledger.js'));
+const adf = require(path.join(LIB, 'adf.js'));
 
 // ---- CLI arg parser: --key value / --key=value / --flag ----------------------
 function parseArgs(argv) {
@@ -122,6 +123,276 @@ function buildReproHtml(spec, uploaded) {
 
 const REQUIRED = ['title', 'severity', 'priority', 'parentStoryId', 'assignedTo', 'summary', 'steps', 'expected', 'actual'];
 const PARENT_LINK = 'System.LinkTypes.Hierarchy-Reverse'; // the ONLY link this script creates
+
+/* ════ Jira strategy (design §5.7) — the ADO path below is untouched ═════════
+ * The write order INVERTS around the attachment step (Jira attaches to an
+ * existing issue; ADO uploads then relates): create Bug → attach ×N → link
+ * story — the inversion is visible in the plan the user approves; the ledger
+ * contract is unchanged. The repro is an ADF doc composed from the structured
+ * spec via adf.js; severity rides a severity-like CUSTOM field only when the
+ * project's Bug screen has one (absent → omitted, and the plan says so —
+ * priority still carries the recommendation); the bug→story link type comes
+ * from spec/config with live options offered (Relates recommended, A-3) —
+ * never invented.
+ */
+
+// Structured repro -> ADF (heading/summary/ordered steps/expected/actual/config).
+function buildReproAdf(spec) {
+  return adf.doc(
+    adf.heading(3, 'Summary'),
+    adf.paragraph(...(spec.timestamp ? [adf.strong(`${spec.timestamp} — `), spec.summary] : [spec.summary])),
+    adf.heading(3, 'Steps'),
+    adf.orderedList(spec.steps.map(String)),
+    adf.heading(3, 'Expected Result'),
+    adf.paragraph(spec.expected),
+    adf.heading(3, 'Actual Result'),
+    adf.paragraph(spec.actual),
+    adf.heading(3, 'Test Configuration'),
+    adf.paragraph(spec.testConfig || 'Windows 11 / Chrome'),
+  );
+}
+
+async function runJiraBug(adapter, spec, args, cwd) {
+  const mode = args.execute ? 'executed' : 'plan';
+  const cfg = adapter.config;
+  const blocked = [];
+  const validation = {};
+
+  // 1) parent story: exists and IS the configured story type.
+  let storyKey = spec.parentStoryId;
+  try {
+    const wi = await adapter.getWorkItem(spec.parentStoryId);
+    const f = (wi && wi.fields) || {};
+    storyKey = wi.key || spec.parentStoryId;
+    validation.parent = {
+      id: storyKey, type: (f.issuetype || {}).name || null,
+      title: f.summary || null, state: (f.status || {}).name || null,
+    };
+    if (validation.parent.type !== cfg.storyType) {
+      blocked.push({
+        reason: 'parent-not-a-story',
+        message: `parent ${spec.parentStoryId} is a "${validation.parent.type || '?'}", not a "${cfg.storyType}" — a Bug may only hang off a ${cfg.storyType}`,
+      });
+    }
+  } catch (e) {
+    blocked.push({ reason: 'parent-not-found', message: `parent story ${spec.parentStoryId} could not be read: ${e.message}` });
+  }
+
+  // 2) duplicate check — FAILS CLOSED (exact-title semantics via the adapter).
+  try {
+    const dupes = await adapter.findByTitle('Bug', spec.title);
+    validation.duplicates = dupes;
+    if (dupes.length && !args['allow-duplicate']) {
+      blocked.push({
+        reason: 'duplicate-title', ids: dupes,
+        message: `${dupes.length} existing Bug(s) share this exact title (${dupes.join(', ')}) — confirm with the user, then pass --allow-duplicate`,
+      });
+    }
+  } catch (e) {
+    blocked.push({ reason: 'dup-check-failed', message: `duplicate check failed — refusing to file blind (fails closed): ${e.message}` });
+  }
+
+  // 3) the Bug type must exist here (validated against the real types).
+  let issueTypes = [];
+  try { issueTypes = await adapter.listIssueTypes(); }
+  catch (e) { blocked.push({ reason: 'issue-types-unavailable', message: `the project's issue types could not be read: ${e.message}` }); }
+  if (issueTypes.length && !issueTypes.some((t) => t.name === 'Bug')) {
+    blocked.push({
+      reason: 'no-bug-type', options: issueTypes.map((t) => t.name),
+      message: `this project has no "Bug" issue type — real types: ${issueTypes.map((t) => t.name).join(', ')}`,
+    });
+  }
+
+  // 4) assignee email -> accountId (O5) — carried into the plan, never invented.
+  const assignee = String(spec.assignedTo || '').trim();
+  let accountId = null;
+  if (assignee) {
+    try {
+      const users = await adapter.findUser(assignee);
+      const exact = users.filter((u) => String(u.emailAddress || '').toLowerCase() === assignee.toLowerCase());
+      const pool = exact.length ? exact : users;
+      if (pool.length === 1) accountId = pool[0].accountId;
+      else {
+        blocked.push({
+          reason: pool.length === 0 ? 'assignee-not-found' : 'assignee-ambiguous',
+          ...(pool.length ? { options: pool.map((u) => ({ accountId: u.accountId, displayName: u.displayName })) } : {}),
+          message: pool.length === 0
+            ? `no Jira user matches "${assignee}" — Jira assigns by accountId, so an unresolvable email blocks (fails closed)`
+            : `${pool.length} Jira users match "${assignee}" — ask the user which accountId, never pick silently`,
+        });
+      }
+    } catch (e) {
+      blocked.push({ reason: 'assignee-resolution-failed', message: `the email→accountId read failed — refusing to assign blind (fails closed): ${e.message}` });
+    }
+  }
+  validation.assigneeAccountId = accountId;
+
+  // 5) createmeta cache (Bug screen): priority against the REAL names; the
+  //    severity-like custom field discovered by display name — used only when
+  //    the screen has one (absent → omitted, said on the screen).
+  let cacheInfo = null; let fieldMap = {};
+  try {
+    cacheInfo = await fieldCache.ensure(cwd, adapter, { types: ['Bug'], refresh: Boolean(args['refresh-fields']) });
+    fieldMap = (cacheInfo.cache.types.Bug && cacheInfo.cache.types.Bug.fields) || {};
+  } catch (e) {
+    blocked.push({ reason: 'field-cache-failed', message: `field metadata could not be read: ${e.message}` });
+  }
+  if (cacheInfo) {
+    for (const r of fieldCache.validateValues(cacheInfo.cache, 'Bug', [{ field: 'priority', value: spec.priority }])) {
+      if (r.ok) continue;
+      blocked.push({
+        reason: r.reason, field: r.field, value: r.value,
+        ...(r.allowedValues ? { allowedValues: r.allowedValues } : {}),
+        message: r.reason === 'field-not-on-type'
+          ? `field ${r.field} does not exist on this project's Bug create screen`
+          : `"${r.value}" is not a valid value for ${r.field} — valid: ${r.allowedValues.join(' | ')} (Jira priorities are names, not numbers)`,
+      });
+    }
+  }
+  let severityFieldId = null;
+  try {
+    const all = await adapter.listAllFields();
+    const candidates = all.filter((f) => /severity/i.test(String(f.name || '')));
+    severityFieldId = (candidates.find((f) => fieldMap[f.id]) || {}).id || null;
+  } catch { /* discovery unavailable — treated as absent, said below */ }
+  if (severityFieldId) {
+    const meta = fieldMap[severityFieldId] || {};
+    if (meta.allowedValues && !meta.allowedValues.some((v) => String(v).trim() === String(spec.severity).trim())) {
+      blocked.push({
+        reason: 'invalid-value', field: severityFieldId, value: spec.severity, allowedValues: meta.allowedValues,
+        message: `"${spec.severity}" is not a valid value for the severity field (${severityFieldId}) — valid: ${meta.allowedValues.join(' | ')}`,
+      });
+    }
+    validation.severity = { field: severityFieldId, value: spec.severity };
+  } else {
+    validation.severity = {
+      omitted: true,
+      note: 'no severity-like field on this project\'s Bug screen — severity is omitted from the Jira create ' +
+        '(say so on the consolidated screen); priority still carries the recommendation',
+    };
+  }
+  if (spec.environment && !fieldMap.environment) {
+    validation.environmentNote = 'the environment field is not on this project\'s Bug screen — omitted from the create';
+  }
+
+  // 6) bug→story link type: spec/config, LIVE options, Relates recommended (A-3).
+  let linkType = (spec.linkType && String(spec.linkType).trim()) || cfg.bugLinkType || null;
+  let liveTypes = null;
+  try { liveTypes = (await adapter.listLinkTypes()).map((l) => l.name); } catch { /* options unavailable */ }
+  if (!linkType) {
+    blocked.push({
+      reason: 'missing-link-type',
+      ...(liveTypes ? { options: liveTypes } : {}),
+      message: 'no bug→story link type chosen — Jira has no parent link for a Bug under a story, so the link is an issue link; ' +
+        'ask the user in the ONE bundle round ("Relates" is the recommended default) or set jira.bugLinkType in config/project.json',
+    });
+  } else if (liveTypes && !liveTypes.includes(linkType)) {
+    blocked.push({
+      reason: 'link-type-not-found', options: liveTypes,
+      message: `link type "${linkType}" is not one of this site's issue link types (${liveTypes.join(', ')}) — never invented`,
+    });
+  }
+  validation.linkType = linkType;
+
+  // 7) attachment structural checks + evidence policy (unchanged discipline).
+  const atts = spec.attachments || [];
+  validation.attachments = atts.map((a) => {
+    const c = structuralCheck(a);
+    return { file: a, ok: c.ok, ...(c.fmt ? { format: c.fmt } : {}), ...(c.w ? { width: c.w, height: c.h } : {}), ...(c.reason ? { reason: c.reason } : {}) };
+  });
+  const bad = validation.attachments.filter((a) => !a.ok);
+  if (bad.length && !args.force) {
+    blocked.push({
+      reason: 'attachment-invalid', files: bad,
+      message: `${bad.length} attachment(s) failed the structural check (${bad.map((b) => `${b.file}: ${b.reason}`).join('; ')}) — fix/drop them or pass --force`,
+    });
+  }
+  if (atts.length === 0 && !args['no-screenshots']) {
+    blocked.push({
+      reason: 'no-evidence',
+      message: 'no screenshots attached — bugs carry evidence; pass --no-screenshots only as a deliberate, user-confirmed waiver',
+    });
+  }
+
+  // No server-side dry-run exists on Jira — the cache carried pre-gate
+  // validation alone, and the consolidated screen is honest about it.
+  validation.validateOnly = 'unsupported-on-jira';
+
+  const fields = {
+    summary: spec.title,
+    description: buildReproAdf(spec),
+    ...(spec.environment && fieldMap.environment ? { environment: spec.environment } : {}),
+    priority: { name: String(spec.priority) },
+    ...(severityFieldId
+      ? { [severityFieldId]: (fieldMap[severityFieldId] && fieldMap[severityFieldId].allowedValues) ? { value: spec.severity } : spec.severity }
+      : {}),
+    ...(accountId ? { assignee: { accountId } } : {}),
+  };
+
+  const cacheOut = cacheInfo
+    ? { file: cacheInfo.file, rebuilt: cacheInfo.rebuilt, builtAt: cacheInfo.cache.builtAt, ...(cacheInfo.reason ? { reason: cacheInfo.reason } : {}) }
+    : null;
+  if (blocked.length) {
+    return { code: 2, out: { ok: false, mode, blocked, validation, ...(cacheOut ? { cache: cacheOut } : {}) } };
+  }
+
+  if (!args.execute) {
+    const plan = [];
+    const dCreate = await adapter.createWorkItem('Bug', { fields }, { execute: false });
+    plan.push({ step: 'create-bug', describe: `${dCreate.method} ${dCreate.url}`, request: dCreate });
+    for (const a of atts) {
+      const d = await adapter.uploadAttachment(a, { issueId: '{new-bug-key}', execute: false });
+      plan.push({ step: 'upload-attachment', describe: `${d.method} ${d.url} (after the create — Jira attaches to an existing issue)`, file: a, request: d });
+    }
+    const dLink = await adapter.addRelation('{new-bug-key}', linkType, storyKey, { execute: false });
+    plan.push({ step: 'link-story', describe: `${dLink.method} ${dLink.url} (${linkType} -> ${storyKey}, the only link)`, request: dLink });
+    return { code: 0, out: { ok: true, mode: 'plan', validation, plan, cache: cacheOut } };
+  }
+
+  // ---- WRITE PHASE: create → attach ×N → link (§5.7) ------------------------
+  const uploaded = [];
+  let bugKey = null; let bugUrl = null;
+  const intents = [
+    {
+      step: 'create-bug',
+      describe: 'create the Bug (POST /rest/api/3/issue)',
+      run: async () => {
+        const r = await adapter.createWorkItem('Bug', { fields }, { execute: true });
+        bugKey = r.id; bugUrl = r.url;
+        return { id: r.id, url: r.url };
+      },
+    },
+    ...atts.map((a) => ({
+      step: 'upload-attachment',
+      describe: `attach ${path.basename(a)} (POST /rest/api/3/issue/{key}/attachments, multipart)`,
+      run: async () => {
+        const u = await adapter.uploadAttachment(a, { issueId: bugKey, execute: true });
+        uploaded.push(u);
+        return { id: u.id, url: u.url };
+      },
+    })),
+    {
+      step: 'link-story',
+      describe: `link the Bug -> story ${storyKey} (${linkType}, POST /rest/api/3/issueLink — the only link)`,
+      run: async () => {
+        await adapter.addRelation(bugKey, linkType, storyKey, { execute: true });
+        return { id: bugKey, url: bugUrl };
+      },
+    },
+  ];
+  const ledger = await new WritePlan(intents).execute();
+  const allDone = ledger.every((l) => l.status === 'done');
+  return {
+    code: allDone ? 0 : 1,
+    out: {
+      ok: allDone,
+      mode: 'executed',
+      ledger,
+      created: { ...(bugKey ? { bugId: bugKey, url: bugUrl } : {}), attachments: uploaded },
+      ...(cacheOut ? { cache: cacheOut } : {}),
+    },
+  };
+}
 
 // ---- validation phase (shared by dry run and the pre-write guard) ------------
 // Reads + local checks only — NOTHING here writes to the board.
@@ -299,6 +570,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
     }
 
     const adapter = resolveTracker(cwd, { fetch });
+    if (adapter.name === 'jira') return await runJiraBug(adapter, spec, args, cwd);
     const { blocked, validation, fields, atts, cacheInfo, cacheStale } = await validate(adapter, spec, args, cwd);
     const cacheOut = cacheInfo
       ? { file: cacheInfo.file, rebuilt: cacheInfo.rebuilt, builtAt: cacheInfo.cache.builtAt, ...(cacheInfo.reason ? { reason: cacheInfo.reason } : {}) }

@@ -379,6 +379,171 @@ const isWrite = (c) =>
     }
   });
 
+  // ════ Jira strategy (design §5.7) — the ADO suite above is untouched ═══════
+  const SENTINEL_JT = 'SENTINEL-JIRA-TOKEN-cb-44556677';
+  for (const n of ['JIRA_EMAIL', 'JIRA_API_TOKEN']) delete process.env[n];
+
+  function jproj({ jira = {}, withAttachment = true } = {}) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-cb-'));
+    fs.mkdirSync(path.join(dir, 'config'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config', 'project.json'), JSON.stringify({
+      jira: { site: 'example', project: 'PROJ', assignee: 'qa.engineer@example.com', bugLinkType: 'Relates', ...jira },
+    }));
+    fs.writeFileSync(path.join(dir, '.env'), `JIRA_EMAIL=qa.engineer@example.com\nJIRA_API_TOKEN=${SENTINEL_JT}\n`);
+    if (withAttachment) fs.writeFileSync(path.join(dir, 'evidence.png'), fakePng());
+    return dir;
+  }
+  const jSpecFile = (dir, overrides = {}) => writeSpec(dir, {
+    parentStoryId: 'PROJ-9', severity: 'Major', priority: 'High', ...overrides,
+  });
+
+  const J_TYPES = { issueTypes: [
+    { id: '10001', name: 'Story', subtask: false },
+    { id: '10003', name: 'Bug', subtask: false },
+  ] };
+  const J_BUG_META = { total: 5, fields: [
+    { fieldId: 'summary', name: 'Summary', required: true },
+    { fieldId: 'description', name: 'Description', required: false },
+    { fieldId: 'environment', name: 'Environment', required: false },
+    { fieldId: 'priority', name: 'Priority', required: false, allowedValues: [{ name: 'Highest' }, { name: 'High' }, { name: 'Medium' }, { name: 'Low' }] },
+    { fieldId: 'customfield_10050', name: 'Severity', required: false, allowedValues: [{ value: 'Critical' }, { value: 'Major' }, { value: 'Minor' }] },
+  ] };
+  const J_ALL_FIELDS = [
+    { id: 'customfield_10050', name: 'Severity' },
+    { id: 'priority', name: 'Priority' },
+  ];
+  const J_STORY9 = { key: 'PROJ-9', fields: { issuetype: { name: 'Story' }, summary: 'Checkout story', status: { name: 'In Progress' } } };
+
+  function jRoutes(extra = []) {
+    return [
+      ...extra,
+      { match: '/rest/api/3/issue/PROJ-9?', json: J_STORY9 },
+      { method: 'POST', match: '/search/jql', json: { issues: [] } },
+      { match: '/issue/createmeta/PROJ/issuetypes/10003', json: J_BUG_META },
+      { match: '/issue/createmeta/PROJ/issuetypes', json: J_TYPES },
+      { match: '/rest/api/3/field', json: J_ALL_FIELDS },
+      { match: '/rest/api/3/user/search', json: [{ accountId: 'acc-7', emailAddress: 'qa.engineer@example.com', displayName: 'QA' }] },
+      { match: '/rest/api/3/issueLinkType', json: { issueLinkTypes: [{ name: 'Relates' }, { name: 'Blocks' }] } },
+      { method: 'POST', match: '/attachments', json: [{ id: '9001', filename: 'evidence.png', content: 'https://example.atlassian.net/rest/api/3/attachment/content/9001' }] },
+      { method: 'POST', match: '/rest/api/3/issueLink', status: 201, text: '' },
+      { method: 'POST', match: '/rest/api/3/issue', json: { key: 'PROJ-88' } },
+    ];
+  }
+  const isJiraWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.includes('/search/jql'));
+
+  await test('jira dry run: the plan order INVERTS around the attachment — create → attach ×N → link (visible to the user)', async () => {
+    const dir = jproj();
+    const f = fakeFetch(jRoutes());
+    const { code, out } = await run(['--spec', jSpecFile(dir)], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.deepStrictEqual(out.plan.map((p) => p.step), ['create-bug', 'upload-attachment', 'link-story']);
+    const create = out.plan[0].request.body.fields;
+    assert.match(create.summary, /Payment fails at checkout/);
+    assert.strictEqual(create.issuetype.name, 'Bug');
+    assert.strictEqual(create.description.type, 'doc', 'the repro is an ADF doc');
+    const headings = create.description.content.filter((n) => n.type === 'heading').map((n) => n.content[0].text);
+    assert.deepStrictEqual(headings, ['Summary', 'Steps', 'Expected Result', 'Actual Result', 'Test Configuration']);
+    const list = create.description.content.find((n) => n.type === 'orderedList');
+    assert.strictEqual(list.content.length, 3, 'one list item per repro step');
+    assert.deepStrictEqual(create.priority, { name: 'High' });
+    assert.deepStrictEqual(create.customfield_10050, { value: 'Major' }, 'the severity-like custom field, discovered by name');
+    assert.deepStrictEqual(create.assignee, { accountId: 'acc-7' });
+    assert.strictEqual(create.environment.type, 'doc', 'the run environment rides the environment field, ADF-wrapped by the dialect seam');
+    assert.ok(out.plan[1].request.url.includes('%7Bnew-bug-key%7D') || out.plan[1].request.url.includes('{new-bug-key}'), 'attach needs the created key');
+    assert.strictEqual(out.plan[1].request.headers['x-atlassian-token'], 'no-check');
+    assert.deepStrictEqual(out.plan[2].request.body.type, { name: 'Relates' }, 'the configured link type, on the screen');
+    assert.strictEqual(out.validation.validateOnly, 'unsupported-on-jira');
+    assert.strictEqual(f.calls.filter(isJiraWrite).length, 0, 'dry run writes nothing');
+  });
+
+  await test('jira: NO severity-like field on the Bug screen → severity omitted AND said so; priority still validated', async () => {
+    const noSev = { total: 4, fields: J_BUG_META.fields.filter((x) => x.fieldId !== 'customfield_10050') };
+    const dir = jproj();
+    const f = fakeFetch(jRoutes([{ match: '/issue/createmeta/PROJ/issuetypes/10003', json: noSev }]));
+    const { code, out } = await run(['--spec', jSpecFile(dir)], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.ok(!('customfield_10050' in out.plan[0].request.body.fields), 'severity never emitted blind');
+    assert.match(JSON.stringify(out.validation), /severity/i);
+    assert.match(JSON.stringify(out.validation), /omitted|no severity/i, 'the consolidated screen can say so');
+    assert.deepStrictEqual(out.plan[0].request.body.fields.priority, { name: 'High' });
+  });
+
+  await test('jira: a priority not in the project\'s REAL names blocks with the allowedValues', async () => {
+    const dir = jproj();
+    const { code, out } = await run(['--spec', jSpecFile(dir, { priority: '1' })], { cwd: dir, fetch: fakeFetch(jRoutes()) });
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    const b = out.blocked.find((x) => x.field === 'priority');
+    assert.ok(b, JSON.stringify(out.blocked));
+    assert.deepStrictEqual(b.allowedValues, ['Highest', 'High', 'Medium', 'Low']);
+  });
+
+  await test('jira: no link type in spec/config → blocked with the LIVE options, Relates recommended — never invented', async () => {
+    const dir = jproj({ jira: { bugLinkType: undefined } });
+    const { code, out } = await run(['--spec', jSpecFile(dir)], { cwd: dir, fetch: fakeFetch(jRoutes()) });
+    assert.strictEqual(code, 2);
+    const b = out.blocked.find((x) => x.reason === 'missing-link-type');
+    assert.deepStrictEqual(b.options, ['Relates', 'Blocks']);
+    assert.match(b.message, /Relates/);
+  });
+
+  await test('jira: the dup check FAILS CLOSED; an exact-title hit blocks without --allow-duplicate', async () => {
+    const dir = jproj();
+    const r1 = await run(['--spec', jSpecFile(dir)], {
+      cwd: dir, fetch: fakeFetch(jRoutes([{ method: 'POST', match: '/search/jql', status: 500, text: 'boom' }])),
+    });
+    assert.strictEqual(r1.code, 2);
+    assert.match(JSON.stringify(r1.out.blocked), /dup-check-failed/);
+    const spec2 = jSpecFile(dir);
+    const exactTitle = JSON.parse(fs.readFileSync(spec2, 'utf8')).title;
+    const r2 = await run(['--spec', spec2], {
+      cwd: dir, fetch: fakeFetch(jRoutes([{ method: 'POST', match: '/search/jql', json: { issues: [{ key: 'PROJ-70', fields: { summary: exactTitle } }] } }])),
+    });
+    assert.strictEqual(r2.code, 2);
+    assert.match(JSON.stringify(r2.out.blocked), /duplicate-title/);
+  });
+
+  await test('jira --execute: write order create → attach → link on the wire; created key + attachments surfaced', async () => {
+    const dir = jproj();
+    const f = fakeFetch(jRoutes());
+    const { code, out } = await run(['--spec', jSpecFile(dir), '--execute'], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.ok(out.ok);
+    const writes = f.calls.filter(isJiraWrite);
+    assert.ok(/\/rest\/api\/3\/issue(\?|$)/.test(writes[0].url), 'create first');
+    assert.ok(writes[1].url.includes('/issue/PROJ-88/attachments'), 'attach to the JUST-created key');
+    assert.ok(writes[2].url.includes('/issueLink'), 'link last');
+    const link = JSON.parse(writes[2].body);
+    assert.deepStrictEqual(link.outwardIssue, { key: 'PROJ-88' });
+    assert.deepStrictEqual(link.inwardIssue, { key: 'PROJ-9' });
+    assert.strictEqual(out.created.bugId, 'PROJ-88');
+    assert.ok(out.created.url.includes('/browse/PROJ-88'));
+    assert.strictEqual(out.created.attachments.length, 1);
+  });
+
+  await test('jira --execute link failure: exit 1, ledger names the created bug + landed attachments, no retry', async () => {
+    const dir = jproj();
+    const f = fakeFetch(jRoutes([{ method: 'POST', match: '/rest/api/3/issueLink', status: 400, text: JSON.stringify({ errorMessages: ['no such link type'] }) }]));
+    const { code, out } = await run(['--spec', jSpecFile(dir), '--execute'], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 1);
+    assert.strictEqual(out.ok, false, 'a partial write is never a success');
+    assert.strictEqual(out.ledger[0].status, 'done');
+    assert.strictEqual(out.ledger[1].status, 'done');
+    assert.strictEqual(out.ledger[2].status, 'failed');
+    assert.match(out.ledger[2].reason, /no such link type/);
+    assert.strictEqual(out.created.bugId, 'PROJ-88', 'the created key is ALWAYS surfaced');
+    assert.strictEqual(out.created.attachments.length, 1, 'landed attachments are named');
+  });
+
+  await test('jira: sentinel credentials in zero bytes of any mode\'s output', async () => {
+    const dir = jproj();
+    const outs = [];
+    outs.push(await run(['--spec', jSpecFile(dir)], { cwd: dir, fetch: fakeFetch(jRoutes()) }));
+    outs.push(await run(['--spec', jSpecFile(dir), '--execute'], { cwd: dir, fetch: fakeFetch(jRoutes()) }));
+    const all = JSON.stringify(outs);
+    assert.ok(!all.includes(SENTINEL_JT));
+    assert.ok(!all.includes(Buffer.from(`qa.engineer@example.com:${SENTINEL_JT}`).toString('base64')));
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
