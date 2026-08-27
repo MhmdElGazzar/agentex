@@ -2,10 +2,11 @@
 // Tracker resolution — the provider-neutral entrypoint of scripts/lib/tracker/.
 //
 // resolveTracker(cwd[, {fetch, timeoutMs}]) reads the consumer's
-// config/project.json and returns the configured provider's adapter. Phase 1
-// ships exactly one adapter (Azure DevOps, REST over built-in fetch); the
-// config shape — one optional block per provider (`azure`, later `jira`) —
-// precludes no Phase-3 selection UX.
+// config/project.json and returns the configured provider's adapter — one
+// optional block per provider (`azure` → adapters/ado.js, `jira` →
+// adapters/jira.js). Provider SELECTION is a wizard-time question (Q12): the
+// wizard writes exactly one block, and this resolver is the fail-closed
+// runtime backstop behind it.
 //
 // Fail-closed rules (invariant 10 / owner decision D-10):
 //   - no provider block and no legacy AZURE_* keys  -> explicit exit-2 error
@@ -18,11 +19,13 @@
 // The optional {fetch} is the offline-test seam (injected, never monkey-patched).
 const path = require('node:path');
 const pc = require(path.join(__dirname, '..', 'project_config.js'));
+const { TrackerError } = require('./errors.js');
 const ado = require('./adapters/ado.js');
+const jira = require('./adapters/jira.js');
 
-// Provider blocks the config shape knows about. Phase 3 adds 'jira' to ADAPTERS.
+// Provider blocks the config shape knows about, and their adapters.
 const KNOWN_PROVIDERS = ['azure', 'jira'];
-const ADAPTERS = { azure: ado.createAdapter };
+const ADAPTERS = { azure: ado.createAdapter, jira: jira.createAdapter };
 
 function configError(message) {
   const e = new Error(message);
@@ -41,9 +44,10 @@ function resolveTracker(cwd = process.cwd(), { fetch, timeoutMs } = {}) {
   }
   if (configured.length === 0) {
     throw configError(
-      'No tracker is configured — looked for an `azure` block in config/project.json ' +
-      '(keys: azure.org, azure.project) and for legacy AZURE_URL / AZURE_PROJECT lines in .env, and found neither. ' +
-      'Fill the azure block (the /init-test wizard writes it).');
+      'No tracker is configured — looked for an `azure` block (keys: azure.org, azure.project) ' +
+      'and a `jira` block (keys: jira.site, jira.project) in config/project.json, ' +
+      'and for legacy AZURE_URL / AZURE_PROJECT lines in .env, and found none. ' +
+      'Fill exactly one provider block (the /init-test wizard writes it).');
   }
   if (configured.length > 1) {
     throw configError(
@@ -63,6 +67,7 @@ function resolveTracker(cwd = process.cwd(), { fetch, timeoutMs } = {}) {
 
 module.exports = {
   resolveTracker,
-  TrackerError: ado.TrackerError,
+  TrackerError,
   PAT_ENV_NAMES: ado.PAT_ENV_NAMES,
+  JIRA_CRED_ENV_NAMES: jira.CRED_ENV_NAMES,
 };

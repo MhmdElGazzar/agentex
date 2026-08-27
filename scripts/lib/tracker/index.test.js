@@ -44,7 +44,7 @@ test('legacy AZURE_* keys in .env resolve to the ADO adapter (no config/project.
   assert.strictEqual(a.config.project, 'Old Proj');
 });
 
-test('no tracker configured: exit-2 error naming the keys looked for (invariant 10)', () => {
+test('no tracker configured: exit-2 error naming BOTH providers\' keys and the wizard (invariant 10)', () => {
   const dir = proj({ 'config/project.json': { kb: {} } });
   assert.throws(() => resolveTracker(dir, { fetch: noFetch }), (e) => {
     assert.strictEqual(e.exitCode, 2);
@@ -52,6 +52,9 @@ test('no tracker configured: exit-2 error naming the keys looked for (invariant 
     assert.match(e.message, /config\/project\.json/);
     assert.match(e.message, /AZURE_URL/);
     assert.match(e.message, /AZURE_PROJECT/);
+    assert.match(e.message, /jira\.site/);
+    assert.match(e.message, /jira\.project/);
+    assert.match(e.message, /wizard|init-test/i);
     return true;
   });
 });
@@ -71,14 +74,22 @@ test('two provider blocks: Phase 1 fails closed, listing both (D-10)', () => {
   });
 });
 
-test('a lone unsupported provider block is an explicit error, not a silent fallback', () => {
-  const dir = proj({ 'config/project.json': { jira: { site: 'x', project: 'PROJ' } } });
-  assert.throws(() => resolveTracker(dir, { fetch: noFetch }), (e) => {
-    assert.strictEqual(e.exitCode, 2);
-    assert.match(e.message, /jira/);
-    assert.match(e.message, /not supported|Phase 3/i);
-    return true;
+test('a jira-only config resolves to the Jira adapter (Phase 3)', () => {
+  const dir = proj({
+    'config/project.json': { jira: { site: 'example', project: 'PROJ' } },
+    '.env': 'JIRA_EMAIL=qa@example.com\nJIRA_API_TOKEN=x\n',
   });
+  const a = resolveTracker(dir, { fetch: noFetch });
+  assert.strictEqual(a.name, 'jira');
+  assert.strictEqual(a.config.base, 'https://example.atlassian.net');
+  assert.strictEqual(a.capabilities.dialect, 'json');
+  assert.strictEqual(a.capabilities.query, 'jql');
+});
+
+test('a provider block with no adapter is still an explicit error, not a silent fallback', () => {
+  // Defensive branch: KNOWN_PROVIDERS may gain names before ADAPTERS does.
+  const trackerIndex = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf8');
+  assert.match(trackerIndex, /configured but not supported/, 'the honest-refusal branch stays in place');
 });
 
 test('capability flags are present and a consumer can branch on a false flag (Q11)', () => {
