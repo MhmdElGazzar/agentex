@@ -380,6 +380,11 @@ const PROJ = 'Sample%20Project';
   });
 
   // ── capability flags ────────────────────────────────────────────────────────
+  await test('webUrl is exposed on the adapter (consumers drop their ADO-shaped local helpers)', async () => {
+    const a = createAdapter({ cwd: proj(), fetch: fakeFetch([]) });
+    assert.strictEqual(a.webUrl(4711), `${BASE}/${PROJ}/_workitems/edit/4711`);
+  });
+
   await test('capability flags describe ADO honestly (Phase-3 seam)', async () => {
     const a = createAdapter({ cwd: proj(), fetch: fakeFetch([]) });
     assert.strictEqual(a.name, 'ado');

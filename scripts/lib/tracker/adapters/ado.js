@@ -198,6 +198,9 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     name: 'ado',
     cwd,
     config: cfg,
+    // Exposed so consumers use adapter.webUrl(id) instead of composing an
+    // ADO-shaped URL locally (the one latent provider leak in Phase-2 consumers).
+    webUrl,
     capabilities: {
       validateOnly: true,               // server-side dry-run of a create
       attachments: true,                // binary upload API exists
