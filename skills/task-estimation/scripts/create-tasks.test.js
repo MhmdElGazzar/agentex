@@ -22,7 +22,7 @@
 //                    exact ledger (1..k-1 done with ids+urls, k failed, rest
 //                    not-attempted), created IDs in the JSON, no retry
 //   safety         : sentinel PAT in zero bytes of output, one JSON line,
-//                    no child_process in the delivered script
+//                    no child_process or process.exit in the delivered script
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -519,6 +519,14 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
   await test('no child_process in the delivered task-estimation script (structural source read)', async () => {
     const src = fs.readFileSync(path.join(__dirname, 'create-tasks.js'), 'utf8');
     assert.ok(!/child_process|spawnSync|execSync/.test(src), 'create-tasks.js must not spawn processes');
+  });
+
+  await test('no process.exit in the delivered task-estimation script (structural source read)', async () => {
+    // Force-exiting after fetch trips a libuv assertion on Windows/Node 24 and can
+    // corrupt the exit code; print, set process.exitCode, and let the loop drain
+    // (the run_api.js doctrine).
+    const src = fs.readFileSync(path.join(__dirname, 'create-tasks.js'), 'utf8');
+    assert.ok(!src.includes('process.exit('), 'create-tasks.js must not force-exit');
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

@@ -12,7 +12,8 @@
 //                    dup found w/o --allow-duplicate, DUP CHECK ERROR (fails
 //                    CLOSED), parent not a User Story, no evidence w/o waiver
 //   safety rules   : zero writes in dry run, created IDs always in the JSON,
-//                    sentinel PAT in zero bytes of output, no child_process
+//                    sentinel PAT in zero bytes of output, no child_process,
+//                    no process.exit (exitCode + event-loop drain)
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -365,6 +366,16 @@ const isWrite = (c) =>
     for (const name of ['create-bug.js', 'read-workitem.js']) {
       const src = fs.readFileSync(path.join(__dirname, name), 'utf8');
       assert.ok(!/child_process|spawnSync|execSync/.test(src), `${name} must not spawn processes`);
+    }
+  });
+
+  await test('no process.exit in any delivered bug-skill script (structural source read)', async () => {
+    // Force-exiting after fetch trips a libuv assertion on Windows/Node 24 and can
+    // corrupt the exit code; print, set process.exitCode, and let the loop drain
+    // (the run_api.js doctrine).
+    for (const name of ['create-bug.js', 'read-workitem.js']) {
+      const src = fs.readFileSync(path.join(__dirname, name), 'utf8');
+      assert.ok(!src.includes('process.exit('), `${name} must not force-exit`);
     }
   });
 

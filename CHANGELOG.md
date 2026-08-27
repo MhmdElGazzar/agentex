@@ -2,6 +2,18 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Fixed
+- **Wrong exit codes from the tracker CLIs on Windows/Node 24.** A correct read could
+  exit 127 after printing valid JSON: force-exiting after fetch work trips a libuv
+  assertion (`!(handle->flags & UV_HANDLE_CLOSING)`, src\win\async.c:94) on open undici
+  handles, corrupting the exit code — the release gate observed it live on
+  `create-cases.js story`. The five tracker CLIs (`create-cases.js`, `testplan.js`,
+  `create-tasks.js`, `create-bug.js`, `read-workitem.js`) now print their one JSON line,
+  set `process.exitCode`, and let the event loop drain — the `run_api.js` doctrine.
+  Exit-code semantics (0/1/2) are unchanged, and each sibling test file structurally
+  pins the pattern: the delivered script's source contains no `process.exit(`.
+
 ## [0.20.0] — 2026-08-27
 ### Added
 - **A behavior-changing release must now prove itself as a consumer before it ships.** New
