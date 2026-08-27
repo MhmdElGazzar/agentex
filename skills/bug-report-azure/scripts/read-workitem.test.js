@@ -119,6 +119,14 @@ function fakeFetch(routes = []) {
     assert.ok(!/child_process/.test(src), 'no process spawning in the delivered script');
   });
 
+  await test('no process.exit in the delivered script (structural source read)', async () => {
+    // Force-exiting after fetch trips a libuv assertion on Windows/Node 24 and can
+    // corrupt the exit code; print, set process.exitCode, and let the loop drain
+    // (the run_api.js doctrine).
+    const src = fs.readFileSync(path.join(__dirname, 'read-workitem.js'), 'utf8');
+    assert.ok(!src.includes('process.exit('), 'read-workitem.js must not force-exit');
+  });
+
   await test('sentinel PAT never reaches stdout/stderr (spawned CLI run, one JSON line, zero network)', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-rwi-'));
     fs.writeFileSync(path.join(dir, '.env'), `AZURE_PAT=${SENTINEL_PAT}\n`); // no tracker config on purpose

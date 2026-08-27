@@ -433,6 +433,8 @@ module.exports = { run, buildStepsXml, TESTED_BY_LINK };
 if (require.main === module) {
   run(process.argv.slice(2)).then(({ code, out }) => {
     console.log(JSON.stringify(out));
-    process.exit(code);
+    // After a fetch, force-exiting crashes libuv on Windows (open undici handles).
+    // Print, set the exit code, and let the event loop drain instead.
+    process.exitCode = code;
   });
 }

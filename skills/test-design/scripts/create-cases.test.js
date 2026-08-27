@@ -20,7 +20,7 @@
 //                    TestedBy-Reverse relation targeting the story; mid-plan
 //                    failure -> exit 1 + partial ledger with created case IDs
 //   safety         : sentinel PAT in zero bytes of output, one JSON line,
-//                    no child_process in the delivered script
+//                    no child_process or process.exit in the delivered script
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -430,6 +430,16 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     for (const name of ['create-cases.js', 'testplan.js']) {
       const src = fs.readFileSync(path.join(__dirname, name), 'utf8');
       assert.ok(!/child_process|spawnSync|execSync/.test(src), `${name} must not spawn processes`);
+    }
+  });
+
+  await test('no process.exit in the delivered test-design scripts (structural source read)', async () => {
+    // Force-exiting after fetch trips a libuv assertion on Windows/Node 24 and can
+    // corrupt the exit code; print, set process.exitCode, and let the loop drain
+    // (the run_api.js doctrine).
+    for (const name of ['create-cases.js', 'testplan.js']) {
+      const src = fs.readFileSync(path.join(__dirname, name), 'utf8');
+      assert.ok(!src.includes('process.exit('), `${name} must not force-exit`);
     }
   });
 

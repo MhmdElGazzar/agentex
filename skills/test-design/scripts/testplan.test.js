@@ -254,6 +254,14 @@ const isWrite = (c) =>
     assert.ok(!/child_process|spawnSync|execSync/.test(src));
   });
 
+  await test('no process.exit in the delivered script (structural source read)', async () => {
+    // Force-exiting after fetch trips a libuv assertion on Windows/Node 24 and can
+    // corrupt the exit code; print, set process.exitCode, and let the loop drain
+    // (the run_api.js doctrine).
+    const src = fs.readFileSync(path.join(__dirname, 'testplan.js'), 'utf8');
+    assert.ok(!src.includes('process.exit('), 'testplan.js must not force-exit');
+  });
+
   await test('CLI: one JSON line, exit 2 on bad usage (spawned, zero network)', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-tp-'));
     const r = spawnSync(process.execPath, [path.join(__dirname, 'testplan.js')], {
