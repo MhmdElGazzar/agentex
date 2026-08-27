@@ -6,9 +6,13 @@ All notable changes to AgenTeX are documented here.
 ### Added
 - **A behavior-changing release must now prove itself as a consumer before it ships.** New
   maintainer-facing harness `scripts/release-gate/` — the mechanics under the release
-  checklist's new Precondition 5 (E2E gate): `prepare.js` creates a throwaway consumer
-  project in the system temp dir and copies the tracker env values into its `.env` (values
-  never printed; sentinel-vs-live mode auto-detected from the `EVAL_SENTINEL_PAT_` prefix),
+  checklist's new Precondition 5 (E2E gate): `prepare.js` creates a genuinely fresh
+  throwaway consumer project in the system temp dir (writes nothing into it — pre-seeded
+  tracker keys are legacy signals that would send `init.js` down the migration branch;
+  sentinel-vs-live mode auto-detected from the `EVAL_SENTINEL_PAT_` prefix, values never
+  printed), `inject-env.js` copies the tracker env values into the throwaway `.env` only
+  AFTER the wizard's `/api/done` — merge without clobbering wizard-written keys, fail
+  closed like prepare,
   `verify-wizard.js` asserts every wizard answer landed in its documented home with secrets
   ONLY in `.env` — schema-driven from `scripts/wizard/schema.json`, so it cannot drift from
   the wizard, `verify-reports.js` requires `report.md` + `extent-report.html` to exist and

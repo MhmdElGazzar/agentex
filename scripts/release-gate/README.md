@@ -11,13 +11,17 @@ wrong PASS live here, in tested code).
 Nothing in this folder is ever invoked by consumer flows. The private tracker project is
 **never named** in any artifact of this gate — not in scripts, fixtures, ledgers, logs, or
 reports (the never-name rule). Real values live only in the plugin repo's untracked
-`.env`; `prepare.js` copies them into the throwaway project's `.env` at run time.
+`.env`; `inject-env.js` copies them into the throwaway project's `.env` at run time —
+**after** the wizard, never before `init.js` (the tracker key names are legacy signals to
+the scaffolder, and a pre-seeded `.env` would send init down the migration branch instead
+of the fresh-consumer path this gate attests).
 
 ## Scripts
 
 | Script | Role | Exit codes |
 |---|---|---|
-| `prepare.js` | Create the throwaway project dir (system temp, `agentex-gate-<ts>`), copy the documented tracker keys from the plugin repo's untracked `.env` into the throwaway `.env` (values never printed), detect **sentinel vs live** mode from the PAT prefix (`EVAL_SENTINEL_PAT_` → sentinel). Prints one JSON line `{dir, mode}`. | 0 · 2 config |
+| `prepare.js` | Create the throwaway project dir (system temp, `agentex-gate-<ts>`) and detect **sentinel vs live** mode from the PAT prefix (`EVAL_SENTINEL_PAT_` → sentinel), reading the plugin repo's untracked `.env` (values never printed). Writes **nothing** into the dir — to `init.js` it must look like a genuinely fresh consumer folder. Prints one JSON line `{dir, mode}`. | 0 · 2 config |
+| `inject-env.js` | **After** the wizard's `/api/done`, **before** the tracker lane: copy the documented tracker keys from the plugin repo's untracked `.env` into the throwaway `.env` — empty scaffolded `KEY=` lines filled in place, missing keys appended, non-empty wizard-written values preserved verbatim (never clobbered). Key names only on stdout; values never printed. Fails closed like prepare (nothing written on failure). Prints one JSON line `{ok, mode, injected, preserved}`. | 0 · 2 config |
 | `verify-wizard.js` | After the wizard's `/api/done`: every answer landed in its documented home — project answers in `config/project.json`, per-env answers in `environments/<env>.json`, every secret **only** in `.env` (and absent from both JSON surfaces). Schema-driven from `scripts/wizard/schema.json`. | 0 · 1 findings · 2 usage |
 | `verify-reports.js` | Reporting lane: `executions/execu_<ts>/report.md` **and** `extent-report.html` exist and reflect the run (every expected scenario name + verdict in both). | 0 · 1 · 2 |
 | `gate-ledger.js` | The gate-owned teardown ledger: `open` / `record` / `disposition` / `check` / `finalize`. Strips `url` fields from everything it stores (ADO URLs embed the org). | check: 0 · 3 · 1 (below) |
@@ -26,8 +30,13 @@ reports (the never-name rule). Real values live only in the plugin repo's untrac
 | `fixtures/` | Sentinel-mode canned reads: `story-ar.json` (generic Arabic User Story, `getWorkItem` shape) and `fields-bug.json` (`listFields` shape). Generic content only. |  |
 
 Run order in a gate run: `prepare` → persona follows `commands/init-test.md` + drives the
-wizard → `verify-wizard` → lanes (recording every tracker create in the ledger the moment
-it is confirmed) → `verify-reports` → `gate-ledger.js check` → `teardown`.
+wizard → `verify-wizard` → `inject-env` → lanes (recording every tracker create in the
+ledger the moment it is confirmed) → `verify-reports` → `gate-ledger.js check` →
+`teardown`.
+
+A `[skipped]` version-stamp line or any legacy-signal note from `init.js` on the gate's
+fresh scaffold is a **defect** (gate or plugin), never an expected artifact: nothing may
+touch the throwaway dir between `prepare` and `init.js`.
 
 ## Sentinel vs live
 
@@ -38,11 +47,12 @@ Mode is auto-detected from the PAT prefix; nothing else changes in how the gate 
   served from `fixtures/`. Ledger entries record `status: "descriptor-only"` with
   disposition `not-attempted` — self-describing: nothing reached the board, so no deletion
   is owed and the terminal-disposition check treats the run as complete without live ids.
-  Missing org/project values are filled with generic placeholders so descriptor
-  composition works with zero real values.
+  Missing org/project values are filled with generic placeholders by `inject-env.js` so
+  descriptor composition works with zero real values.
 - **Live**: real ids, real Arabic round-trip, real Recycle Bin deletes, and the scan runs
   against the real secret values. Live mode without org/project in the source `.env` fails
-  closed (exit 2).
+  closed (exit 2) — in `prepare.js` (early, before a wizard run is wasted) and again in
+  `inject-env.js`.
 
 ## Teardown ledger
 
@@ -89,16 +99,8 @@ No `url` field is ever stored (never-name rule); ids and work-item types only.
 `AZURE_URL`, `AZURE_PROJECT` (tracker org/project + scan), and the optional tracker
 fallbacks `AZURE_TEAM`, `AZURE_AREA_PATH`, `AZURE_ITERATION_PATH`, `AZURE_BUG_TEMPLATE_ID`,
 `AZURE_ASSIGNEE`, `AZURE_VALUE_AREA`, `AZURE_ENVIRONMENT`, `AZURE_BUG_CATEGORY`,
-`AZURE_TEST_PLAN_ID`, `AZURE_API_VERSION` (copied into the throwaway `.env` when present).
-All are listed in `.env.example`.
-
-## Known interaction: the legacy-signal note
-
-`prepare.js` writes `AZURE_URL` / `AZURE_PROJECT` into the throwaway `.env` **before**
-`init.js` scaffolds it, and those key names are legacy signals to the scaffolder
-(`ENV_KEY_MAP`). The consequence is one `[skipped]` line — the version stamp is not
-written and init suggests `/update-agentex`. This is an expected artifact of the gate's
-env pre-copy, **not a plugin defect**; the persona must not report it as one.
+`AZURE_TEST_PLAN_ID`, `AZURE_API_VERSION` (injected into the throwaway `.env` by
+`inject-env.js` when present). All are listed in `.env.example`.
 
 ## Live outcomes
 
