@@ -1,11 +1,17 @@
 'use strict';
 // Unit tests for the release-gate prepare script.
 // Run: node scripts/release-gate/prepare.test.js — fully offline, sentinel values only.
+//
+// Amendment 1 (design: release-e2e-gate): prepare creates the throwaway dir and
+// detects sentinel/live mode but writes NO tracker values into it — the dir must
+// look to scripts/init.js like a genuinely fresh consumer folder (no legacy
+// signals). Env injection is inject-env.js's job, AFTER the wizard.
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { hasLegacySignals } = require(path.join(__dirname, '..', 'lib', 'scaffold.js'));
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -14,12 +20,13 @@ async function test(name, fn) {
 }
 
 const CLI = path.join(__dirname, 'prepare.js');
+const INIT = path.join(__dirname, '..', 'init.js');
 const SENTINEL = 'EVAL_SENTINEL_PAT_a1b2c3d4';
 const FAKE_LIVE = 'live-pat-value-0f9e8d7c6b5a';
 
 function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-prep-')); }
 
-// A fake "plugin repo" dir whose .env is the copy source.
+// A fake "plugin repo" dir whose .env is the mode-detection source.
 function sourceDir(envLines) {
   const dir = tmp();
   if (envLines !== null) fs.writeFileSync(path.join(dir, '.env'), envLines);
@@ -39,7 +46,7 @@ function run(source, destParent) {
 }
 
 (async () => {
-  await test('sentinel PAT → mode sentinel, throwaway dir created, one {dir, mode} JSON line, no value printed', async () => {
+  await test('sentinel PAT → mode sentinel, throwaway dir created EMPTY (no .env, no tracker values), one {dir, mode} JSON line, no value printed', async () => {
     const parent = tmp();
     const r = run(sourceDir(`AZURE_PAT=${SENTINEL}\n`), parent);
     assert.strictEqual(r.status, 0, r.stderr);
@@ -50,40 +57,41 @@ function run(source, destParent) {
     assert.ok(out.dir.startsWith(parent), out.dir);
     assert.match(path.basename(out.dir), /^agentex-gate-/);
     assert.ok(fs.existsSync(out.dir));
+    assert.deepStrictEqual(fs.readdirSync(out.dir), [], 'the throwaway dir starts genuinely fresh — nothing pre-written');
+    assert.ok(!fs.existsSync(path.join(out.dir, '.env')), 'no .env is pre-seeded');
     assert.ok(!(r.stdout + r.stderr).includes(SENTINEL), 'PAT value never printed');
   });
 
-  await test('sentinel mode fills generic org/project placeholders so the tracker lane composes without real values', async () => {
+  await test('prepared dir scaffolds as a genuinely fresh consumer project — init.js stamps it, hasLegacySignals never fires', async () => {
     const r = run(sourceDir(`AZURE_PAT=${SENTINEL}\n`), tmp());
     const out = JSON.parse(r.stdout.trim());
-    const env = fs.readFileSync(path.join(out.dir, '.env'), 'utf8');
-    assert.match(env, new RegExp(`^AZURE_PAT=${SENTINEL}$`, 'm'));
-    assert.match(env, /^AZURE_URL=https:\/\/dev\.azure\.com\/exampleorg$/m);
-    assert.match(env, /^AZURE_PROJECT=Sample Project$/m);
+    assert.strictEqual(hasLegacySignals(out.dir), false, 'no legacy signal before init');
+    const init = spawnSync(process.execPath, [INIT, out.dir], { encoding: 'utf8', env: cleanEnv() });
+    assert.strictEqual(init.status, 0, init.stderr);
+    assert.ok(!init.stdout.includes('legacy conventions detected'),
+      `init must not take the legacy/migration branch on a fresh gate scaffold:\n${init.stdout}`);
+    assert.ok(fs.existsSync(path.join(out.dir, '.agentex', 'version.json')),
+      'the version stamp is written — the genuinely-fresh consumer path');
+    assert.strictEqual(hasLegacySignals(out.dir), false, 'no legacy signal after init either');
   });
 
-  await test('live PAT + org/project → mode live, every present tracker key copied verbatim', async () => {
+  await test('live PAT + org/project → mode live, dir still empty — no tracker value travels at prepare time', async () => {
     const src = sourceDir([
       `AZURE_PAT=${FAKE_LIVE}`,
       'AZURE_URL=https://dev.azure.com/someorg',
       'AZURE_PROJECT=Some Project',
       'AZURE_TEST_PLAN_ID=42',
-      'UNRELATED_KEY=should-not-travel',
     ].join('\n') + '\n');
     const r = run(src, tmp());
     assert.strictEqual(r.status, 0, r.stderr);
     const out = JSON.parse(r.stdout.trim());
     assert.strictEqual(out.mode, 'live');
-    const env = fs.readFileSync(path.join(out.dir, '.env'), 'utf8');
-    assert.match(env, new RegExp(`^AZURE_PAT=${FAKE_LIVE}$`, 'm'));
-    assert.match(env, /^AZURE_URL=https:\/\/dev\.azure\.com\/someorg$/m);
-    assert.match(env, /^AZURE_PROJECT=Some Project$/m);
-    assert.match(env, /^AZURE_TEST_PLAN_ID=42$/m);
-    assert.ok(!env.includes('UNRELATED_KEY'), 'only the documented tracker keys travel');
+    assert.deepStrictEqual(fs.readdirSync(out.dir), [], 'nothing is written into the throwaway dir');
     assert.ok(!(r.stdout + r.stderr).includes(FAKE_LIVE), 'PAT value never printed');
+    assert.ok(!(r.stdout + r.stderr).includes('someorg'), 'org value never printed');
   });
 
-  await test('live PAT without org/project → exit 2 naming AZURE_URL / AZURE_PROJECT, nothing echoed', async () => {
+  await test('live PAT without org/project → exit 2 naming AZURE_URL / AZURE_PROJECT (early fail-closed, before a wizard run is wasted), nothing echoed', async () => {
     const r = run(sourceDir(`AZURE_PAT=${FAKE_LIVE}\n`), tmp());
     assert.strictEqual(r.status, 2);
     assert.match(r.stderr, /AZURE_URL/);
