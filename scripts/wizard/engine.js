@@ -37,6 +37,39 @@ const FIELD_KEY_RE = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const FIELD_TYPES = ['text', 'email', 'number', 'url'];
 
+// Tracker provider blocks the config shape knows about (mirrors
+// scripts/lib/tracker/index.js KNOWN_PROVIDERS). Q12 defense-in-depth: a
+// projectConfig carrying more than one is rejected at save with the same
+// fail-closed wording resolveTracker uses at runtime.
+const TRACKER_PROVIDERS = ['azure', 'jira'];
+
+/**
+ * Conditional-step gating (O8): a step may declare `when: { key, equals }` —
+ * it applies only while the named answer equals the given value. Steps without
+ * `when` always apply. Evaluated by the engine (validate) and mirrored by
+ * ui.html's navigation/progress/review.
+ */
+function stepApplies(step, answers) {
+  if (!step || !step.when) return true;
+  return String(((answers || {})[step.when.key]) ?? '') === String(step.when.equals);
+}
+
+/** Provider-block sanity for a projectConfig payload — at most ONE configured
+ *  (non-empty) tracker block; the wording mirrors resolveTracker's runtime error. */
+function validateTrackerBlocks(projectConfig) {
+  if (!projectConfig || typeof projectConfig !== 'object') return [];
+  const configured = TRACKER_PROVIDERS.filter(
+    (p) => projectConfig[p] && typeof projectConfig[p] === 'object' && !Array.isArray(projectConfig[p]) &&
+      Object.keys(projectConfig[p]).length > 0);
+  if (configured.length > 1) {
+    return [
+      `More than one tracker provider is configured (${configured.join(', ')}) — ` +
+      'every tracker script fails closed on such a config rather than silently picking one. ' +
+      'Keep exactly one provider block in config/project.json.'];
+  }
+  return [];
+}
+
 /**
  * Validate one field-descriptor array (`userFields` / `defaultsFields`).
  * `opts.reserved` names keys that may never appear (e.g. `handle`).
@@ -166,9 +199,38 @@ function buildConfigs(answers, steps, fields = {}) {
     };
   }
 
-  // Strip empty azure block
-  if (!projectConfig.azure.org && !projectConfig.azure.project &&
+  // ── Tracker provider block (Q12) ─────────────────────────────────────────
+  // When the tracker answer is present, it — and ONLY it — keys which provider
+  // block is emitted (never answer emptiness: switching selections mid-wizard
+  // must not leak the abandoned provider's stale answers into the save). The
+  // tracker answer itself is NOT persisted: the single provider block IS the
+  // selection; resolveTracker's detection stays the runtime source of truth.
+  // Without a tracker answer (legacy callers), the historical
+  // strip-empty-azure behavior below applies unchanged.
+  const tracker = answers['tracker'];
+  if (tracker === 'azure' || tracker === 'jira' || tracker === 'none') {
+    if (tracker !== 'azure') delete projectConfig.azure;
+    else if (!projectConfig.azure.org && !projectConfig.azure.project &&
+        !projectConfig.azure.team && !projectConfig.azure.assignee) {
+      delete projectConfig.azure;   // chosen but nothing filled yet — no empty placeholder
+    }
+    if (tracker === 'jira') {
+      projectConfig.jira = {
+        site: answers['jira.site'] || '',
+        project: answers['jira.project'] || '',
+        board: answers['jira.board'] || '',
+        assignee: answers['jira.assignee'] || '',
+      };
+      // Mirror the azure-block convention: fully-empty means nothing chosen yet.
+      if (!projectConfig.jira.site && !projectConfig.jira.project &&
+          !projectConfig.jira.board && !projectConfig.jira.assignee) {
+        delete projectConfig.jira;
+      }
+    }
+  } else if (projectConfig.azure &&
+      !projectConfig.azure.org && !projectConfig.azure.project &&
       !projectConfig.azure.team && !projectConfig.azure.assignee) {
+    // Strip empty azure block (legacy no-tracker-answer path)
     delete projectConfig.azure;
   }
 
@@ -226,6 +288,7 @@ function validate(answers, steps) {
   const errors = [];
   for (const step of steps) {
     if (!step.fields) continue;
+    if (!stepApplies(step, answers)) continue;   // when-gated away (O8): not shown, not enforced
     for (const field of step.fields) {
       if (field.required && !answers[field.key]) {
         errors.push(`"${field.label || field.key}" is required (step: ${step.id})`);
@@ -383,6 +446,7 @@ function validateConfigs(projectConfig, envConfig, envName) {
   if (!projectConfig || typeof projectConfig !== 'object') errors.push('projectConfig is required');
   else if (!String(projectConfig.name || '').trim()) errors.push('project name is required');
   errors.push(...validateProjectFieldSchema(projectConfig));
+  errors.push(...validateTrackerBlocks(projectConfig));
   return errors.concat(validateEnvConfig(envConfig, envName));
 }
 
@@ -458,6 +522,9 @@ function planSave(payload, diskState) {
   // Field-descriptor arrays (design #4), when the payload carries them —
   // defense-in-depth: the UI validates in its editor, the save re-checks.
   errors.push(...validateProjectFieldSchema(projectConfig));
+  // Q12 defense-in-depth: no wizard payload may write a config resolveTracker
+  // would refuse (more than one provider block).
+  errors.push(...validateTrackerBlocks(projectConfig));
 
   if (!environments || typeof environments !== 'object' || Array.isArray(environments)) {
     return { errors: errors.concat('environments must be an object keyed by environment name'), reconcile: [], finalEnvNames: [] };
@@ -679,6 +746,7 @@ module.exports = {
   DEFAULT_ENV_NAME,
   BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS,
   validateFieldDescriptors, validateProjectFieldSchema,
+  stepApplies, validateTrackerBlocks, TRACKER_PROVIDERS,
   buildConfigs, validate, validateConfigs, validateEnvConfig, planSave, buildEnvUsers, isHttpUrl,
   extractFromText, extractUsers, mergeExtracted, mergeUsers, flattenObject,
 };

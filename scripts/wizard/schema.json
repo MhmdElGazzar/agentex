@@ -31,6 +31,34 @@
           "aiHint": "project name or system name"
         },
         {
+          "key": "tracker",
+          "label": "أداة تتبع المهام (Tracker)",
+          "labelEn": "Work Tracker",
+          "type": "select",
+          "required": true,
+          "persisted": false,
+          "hint": "المشروع بيستخدم أي أداة لتتبع المهام؟ بتتسأل مرة واحدة هنا — بلوك الأداة المختارة فقط هو اللي بيتكتب في config/project.json، من غير قيمة افتراضية صامتة",
+          "hintEn": "Which work tracker does this project use? Asked once, here — only the chosen provider's block is written to config/project.json; never a silent default",
+          "options": [
+            {
+              "value": "azure",
+              "label": "Azure DevOps",
+              "labelEn": "Azure DevOps"
+            },
+            {
+              "value": "jira",
+              "label": "Jira Cloud",
+              "labelEn": "Jira Cloud"
+            },
+            {
+              "value": "none",
+              "label": "بدون — تخطَّ ميزات الـ tracker",
+              "labelEn": "None — skip tracker features"
+            }
+          ],
+          "aiHint": "which work tracker the project uses: azure, jira, or none"
+        },
+        {
           "key": "login.mode",
           "label": "نمط تسجيل الدخول",
           "labelEn": "Login Mode",
@@ -63,6 +91,7 @@
       "group": "project",
       "target": "config/project.json",
       "optional": true,
+      "when": { "key": "tracker", "equals": "azure" },
       "fields": [
         {
           "key": "azure.org",
@@ -110,6 +139,83 @@
           "secret": true,
           "envKey": "AZURE_PAT",
           "aiHint": "Azure DevOps personal access token"
+        }
+      ]
+    },
+    {
+      "id": "jira",
+      "title": "Jira",
+      "titleEn": "Jira",
+      "description": "إعدادات ربط Jira Cloud لإنشاء الـ bugs والتقديرات وتصميم الاختبارات",
+      "descriptionEn": "Jira Cloud settings for bug filing, estimation, and test design",
+      "icon": "🧭",
+      "group": "project",
+      "target": "config/project.json",
+      "optional": true,
+      "when": { "key": "tracker", "equals": "jira" },
+      "fields": [
+        {
+          "key": "jira.site",
+          "label": "Site",
+          "labelEn": "Site",
+          "type": "text",
+          "placeholder": "your-site.atlassian.net",
+          "required": false,
+          "hint": "اسم الموقع أو الرابط كاملاً — الاسم المجرد بيتحول تلقائياً إلى ‎https://<name>.atlassian.net",
+          "hintEn": "The site name or the full URL — a bare name becomes https://<name>.atlassian.net",
+          "aiHint": "Jira Cloud site name or full site URL"
+        },
+        {
+          "key": "jira.project",
+          "label": "مفتاح المشروع (Project Key)",
+          "labelEn": "Project Key",
+          "type": "text",
+          "placeholder": "PROJ",
+          "required": false,
+          "aiHint": "Jira project key"
+        },
+        {
+          "key": "jira.board",
+          "label": "Board",
+          "labelEn": "Board",
+          "type": "text",
+          "placeholder": "42",
+          "required": false,
+          "hint": "رقم أو اسم الـ board — مفيد لما يكون في أكثر من سبرنت مفتوح في المشروع",
+          "hintEn": "Board id or name — steers sprint discovery when the project has more than one open sprint",
+          "aiHint": "Jira board id or name for sprint discovery"
+        },
+        {
+          "key": "jira.assignee",
+          "label": "المسؤول الافتراضي",
+          "labelEn": "Default Assignee",
+          "type": "email",
+          "placeholder": "qa@example.com",
+          "required": false,
+          "aiHint": "default assignee email for Jira issues"
+        },
+        {
+          "key": "jira.email",
+          "label": "Jira Email",
+          "type": "email",
+          "placeholder": "you@example.com",
+          "required": false,
+          "secret": true,
+          "envKey": "JIRA_EMAIL",
+          "hint": "نصف بيانات الدخول (Basic auth) — بيتكتب في ‎.env، مش في أي ملف JSON",
+          "hintEn": "Half of the Basic-auth pair — written to .env, never to any JSON file",
+          "aiHint": "Atlassian account email used for API authentication"
+        },
+        {
+          "key": "jira.apiToken",
+          "label": "Jira API Token",
+          "type": "password",
+          "placeholder": "API token من id.atlassian.com",
+          "placeholderEn": "API token from id.atlassian.com",
+          "required": false,
+          "secret": true,
+          "envKey": "JIRA_API_TOKEN",
+          "aiHint": "Jira API token"
         }
       ]
     },
