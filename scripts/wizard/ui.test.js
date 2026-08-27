@@ -75,6 +75,9 @@ const ui = new Function(script + `
   buildEnvConfig, buildUsersObj, buildSecretsPayload, snapshotActiveEnv, envNameProblem,
   markActiveEnvDirty, dirtyEnvNames, envVarSuffix, buildProjectConfig,
   buildField, buildDefaultsSecretField,
+  stepVisible, visibleStepIndexes, nextVisibleIndex, prevVisibleIndex,
+  deriveTrackerFrom, providerSwitchRemovals,
+  get secretsV(){return secrets},
   addField, renameField, removeField, toggleFieldSecret, fieldKeyProblem,
   deriveUserFieldRenames, deriveDefaultsFieldRenames, userFieldDropKeys, defaultsFieldDropKeys,
   userFieldBlastRadius, defaultsFieldBlastRadius, envScopedKeys,
@@ -446,6 +449,89 @@ setTimeout(() => {
     const secDiv = ui.buildDefaultsSecretField(sec);
     assert.ok(!secDiv.innerHTML.includes('<PIN VAR') && secDiv.innerHTML.includes('&lt;PIN VAR'),
       'secret-defaults branch renders the placeholder literally');
+  });
+
+  // ── Q12 tracker selection mirrors (Jira design §5.9) ─────────────────────
+  test('the tracker select renders a disabled placeholder — no silent first-option default (Q12)', () => {
+    const schema = require('./schema.json');
+    const basics = schema.steps.find(s => s.id === 'project-basics');
+    const trackerField = basics.fields.find(f => f.key === 'tracker');
+    delete ui.answers['tracker'];
+    const div = ui.buildField(trackerField);
+    assert.ok(div.innerHTML.includes('selected disabled hidden'), 'placeholder option holds the empty slot');
+    assert.strictEqual(ui.answers['tracker'], undefined, 'nothing is silently seeded');
+    const loginField = basics.fields.find(f => f.key === 'login.mode');
+    const div2 = ui.buildField(loginField);
+    assert.ok(!div2.innerHTML.includes('selected disabled hidden'), 'a select WITH a default keeps its preselection');
+  });
+
+  test('when-gating: exactly one provider page is visible, keyed off the tracker answer; navigation skips the hidden one', () => {
+    const schema = require('./schema.json');
+    const idx = (id) => schema.steps.findIndex(s => s.id === id);
+    delete ui.answers['tracker'];
+    let vis = ui.visibleStepIndexes();
+    assert.ok(!vis.includes(idx('azure-devops')) && !vis.includes(idx('jira')), 'no provider page before a pick');
+    ui.answers['tracker'] = 'azure';
+    vis = ui.visibleStepIndexes();
+    assert.ok(vis.includes(idx('azure-devops')) && !vis.includes(idx('jira')));
+    ui.answers['tracker'] = 'jira';
+    vis = ui.visibleStepIndexes();
+    assert.ok(!vis.includes(idx('azure-devops')) && vis.includes(idx('jira')));
+    assert.strictEqual(ui.nextVisibleIndex(idx('project-basics')), idx('jira'), 'next skips the hidden azure page');
+    assert.strictEqual(ui.prevVisibleIndex(idx('figma')), idx('jira'), 'back skips it too');
+    ui.answers['tracker'] = 'none';
+    assert.strictEqual(ui.nextVisibleIndex(idx('project-basics')), idx('figma'), 'none shows neither provider page');
+    delete ui.answers['tracker'];
+  });
+
+  test('tracker prefill derives from the existing config — derived state, not a default', () => {
+    assert.strictEqual(ui.deriveTrackerFrom({ azure: { org: 'o' } }), 'azure');
+    assert.strictEqual(ui.deriveTrackerFrom({ jira: { site: 's' } }), 'jira');
+    assert.strictEqual(ui.deriveTrackerFrom({}), 'none');
+    assert.strictEqual(ui.deriveTrackerFrom({ azure: {} }), 'none', 'an empty block is not a selection');
+  });
+
+  test('buildProjectConfig emits ONE provider block keyed off the tracker; a switch removes the old block, announced', () => {
+    const savedExisting = { name: 'p', defaultEnvironment: 'qc' };
+    ui.existingProjectV = { name: 'p', defaultEnvironment: 'qc', azure: { org: 'oldorg', project: 'OldProj' } };
+    ui.answers['tracker'] = 'jira';
+    ui.answers['jira.site'] = 'example';
+    ui.answers['jira.project'] = 'PROJ';
+    ui.answers['azure.org'] = 'stale-mid-wizard';   // abandoned answers must not leak
+    const proj = ui.buildProjectConfig();
+    assert.ok(!('azure' in proj), 'the existing azure block is removed by the switch');
+    assert.deepStrictEqual(proj.jira, { site: 'example', project: 'PROJ' });
+    assert.ok(!('tracker' in proj), 'the tracker answer is never persisted — the block IS the selection');
+    assert.deepStrictEqual(ui.providerSwitchRemovals(proj), ['azure'], 'the removal is announced, never silent');
+    ui.answers['tracker'] = 'azure';
+    const proj2 = ui.buildProjectConfig();
+    assert.ok(!('jira' in proj2), 'switching back never carries the other block');
+    assert.strictEqual(proj2.azure.org, 'stale-mid-wizard', 'screen wins for the CHOSEN provider');
+    assert.deepStrictEqual(ui.providerSwitchRemovals(proj2), []);
+    ui.answers['tracker'] = 'none';
+    const proj3 = ui.buildProjectConfig();
+    assert.ok(!('azure' in proj3) && !('jira' in proj3), 'none removes both');
+    assert.deepStrictEqual(ui.providerSwitchRemovals(proj3), ['azure']);
+    delete ui.answers['tracker'];
+    delete ui.answers['jira.site']; delete ui.answers['jira.project']; delete ui.answers['azure.org'];
+    ui.existingProjectV = savedExisting;
+  });
+
+  test('a gated-away provider\'s typed secrets never ride the save (buildSecretsPayload mirrors the gating)', () => {
+    ui.secretsV['azure.pat'] = 'typed-then-abandoned';
+    ui.secretsV['jira.apiToken'] = 'tok-jira-1';
+    ui.secretsV['jira.email'] = 'jira.user@example.com';
+    ui.answers['tracker'] = 'jira';
+    const out = ui.buildSecretsPayload();
+    assert.strictEqual(out['JIRA_API_TOKEN'], 'tok-jira-1');
+    assert.strictEqual(out['JIRA_EMAIL'], 'jira.user@example.com', 'the email routes to .env like any secret (O9)');
+    assert.ok(!('AZURE_PAT' in out), 'the abandoned provider\'s secret stays out of the payload');
+    ui.answers['tracker'] = 'azure';
+    const out2 = ui.buildSecretsPayload();
+    assert.strictEqual(out2['AZURE_PAT'], 'typed-then-abandoned');
+    assert.ok(!('JIRA_API_TOKEN' in out2) && !('JIRA_EMAIL' in out2));
+    delete ui.secretsV['azure.pat']; delete ui.secretsV['jira.apiToken']; delete ui.secretsV['jira.email'];
+    delete ui.answers['tracker'];
   });
 
   // ── Static copy checks ────────────────────────────────────────────────────

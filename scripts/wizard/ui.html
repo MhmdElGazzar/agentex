@@ -807,7 +807,7 @@ async function loadExistingConfig() {
   if (projLoaded) {
     if (proj.name) answers['name'] = proj.name;
     if (proj.login && proj.login.mode) answers['login.mode'] = proj.login.mode;
-    for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']]]) {
+    for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']], ['jira', ['site','project','board','assignee']]]) {
       for (const k of keys) {
         const v = proj[group] && proj[group][k];
         if (v) answers[`${group}.${k}`] = v;
@@ -815,6 +815,11 @@ async function loadExistingConfig() {
     }
     if (proj.figma && proj.figma.fileKey) answers['figma.fileKey'] = proj.figma.fileKey;
     if (proj.figma && proj.figma.token && proj.figma.token.envSecret) answers['figma.tokenEnvVar'] = proj.figma.token.envSecret;
+    // Q12 prefill: on an existing project the tracker selection derives from
+    // the user's own file (derived state, not a default) — azure block →
+    // azure, jira block → jira, neither → none. Fresh projects get NO prefill:
+    // the required select demands an explicit pick.
+    answers['tracker'] = deriveTrackerFrom(proj);
   }
 
   // Seed the session store: every readable, non-pristine environment on disk,
@@ -1378,7 +1383,7 @@ function renderIntro() {
           <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h12"/><path d="M2 12h12"/><path d="M2 18h12"/><circle cx="19.5" cy="6" r="1.5"/><circle cx="19.5" cy="12" r="1.5"/><circle cx="19.5" cy="18" r="1.5"/></svg></div>
           <div>
             <div class="mode-title">${L('خطوة بخطوة', 'Step by step')}</div>
-            <div class="mode-desc">${L(`املأ بيانات المشروع بنفسك في ${schema.steps.length} خطوات قصيرة`, `Fill your project data in yourself, across ${schema.steps.length} short steps`)}</div>
+            <div class="mode-desc">${L(`املأ بيانات المشروع بنفسك في ${visibleStepIndexes().length} خطوات قصيرة`, `Fill your project data in yourself, across ${visibleStepIndexes().length} short steps`)}</div>
           </div>
         </div>
       </div>
@@ -1538,12 +1543,35 @@ function renderFileMode() {
   fi.onchange = () => pickFile(fi.files[0]);
 }
 
+/* ── Conditional steps (mirror of engine.js stepApplies — keep in sync) ──── */
+// A step may declare when: {key, equals}: it is visible only while that answer
+// holds. Q12 uses this to show exactly one provider page (azure OR jira).
+function stepVisible(step) {
+  if (!step || !step.when) return true;
+  return String(answers[step.when.key] ?? '') === String(step.when.equals);
+}
+function visibleStepIndexes() {
+  const out = [];
+  schema.steps.forEach((s, i) => { if (stepVisible(s)) out.push(i); });
+  return out;
+}
+function nextVisibleIndex(from) {
+  for (let i = from + 1; i < schema.steps.length; i++) if (stepVisible(schema.steps[i])) return i;
+  return -1;
+}
+function prevVisibleIndex(from) {
+  for (let i = from - 1; i >= 0; i--) if (stepVisible(schema.steps[i])) return i;
+  return -1;
+}
+
 /* ── Steps Track ────────────────────────────────────────────────────────── */
 function buildTrack() {
   const track = document.getElementById('steps-track');
   track.innerHTML = '';
   let prevGroup = null;
+  let renderedAny = false;
   schema.steps.forEach((step, i) => {
+    if (!stepVisible(step)) return;   // gated away: not on the track at all
     const group = step.group || null;
     if (group !== prevGroup && group && schema.groups && schema.groups[group]) {
       // Group boundary: a label instead of a connector — the track reads
@@ -1552,7 +1580,7 @@ function buildTrack() {
       label.className = 'sgroup-label';
       label.textContent = loc(schema.groups[group], 'label');
       track.appendChild(label);
-    } else if (i > 0) {
+    } else if (renderedAny) {
       const conn = document.createElement('div');
       conn.className = `snode-connector${i <= current ? ' done' : ''}`;
       track.appendChild(conn);
@@ -1564,17 +1592,20 @@ function buildTrack() {
       <div class="slabel">${loc(step, 'title')}</div>`;
     node.onclick = () => { if (i <= current) goTo(i); };
     track.appendChild(node);
+    renderedAny = true;
     prevGroup = group;
   });
 }
 
 function updateProgress() {
-  const total = schema ? schema.steps.length : 1;
-  const pct   = current < 0 ? 0 : Math.round(((current + 1) / total) * 100);
+  const vis = schema ? visibleStepIndexes() : [];
+  const total = vis.length || 1;
+  const pos = current < 0 ? 0 : vis.filter(i => i <= current).length;
+  const pct   = current < 0 ? 0 : Math.round((pos / total) * 100);
   document.getElementById('prog-fill').style.width = pct + '%';
   const pill = document.getElementById('hdr-pill');
   if (current >= 0) {
-    pill.textContent = L(`الخطوة ${current + 1} من ${total}`, `Step ${current + 1} of ${total}`);
+    pill.textContent = L(`الخطوة ${pos} من ${total}`, `Step ${pos} of ${total}`);
     pill.classList.add('show');
   } else {
     pill.classList.remove('show');
@@ -1712,7 +1743,12 @@ function buildField(field) {
       // untouched field with a default — e.g. a preselected <select> — is
       // "filled" for validation, not just visually.
       if (answers[field.key] === undefined && inp.value !== '') answers[field.key] = inp.value;
-      inp.addEventListener('change', () => { answers[field.key] = inp.value; });
+      inp.addEventListener('change', () => {
+        answers[field.key] = inp.value;
+        // A gating answer (e.g. the tracker select) changes which steps exist —
+        // redraw the track and progress so the flow updates immediately.
+        if (schema.steps.some(s => s.when && s.when.key === field.key)) { buildTrack(); updateProgress(); }
+      });
       inp.addEventListener('input',  () => {
         answers[field.key] = inp.value;
         if (envScopedKeys().includes(field.key)) markActiveEnvDirty();
@@ -1724,9 +1760,15 @@ function buildField(field) {
 
 function buildInput(field, val) {
   if (field.type === 'select') {
+    // A select with no default and no saved answer must not let the browser
+    // silently preselect its first option (Q12: never a silent default) — a
+    // disabled placeholder holds the slot until the user picks explicitly.
+    const needsPlaceholder = (val === undefined || val === null || val === '') && field.default === undefined;
+    const placeholder = needsPlaceholder
+      ? `<option value="" selected disabled hidden>${L('— اختر —', '— choose —')}</option>` : '';
     const opts = field.options.map(o =>
       `<option value="${o.value}"${val===o.value?' selected':''}>${loc(o, 'label')}</option>`).join('');
-    return `<select>${opts}</select>`;
+    return `<select>${placeholder}${opts}</select>`;
   }
   const t = { password:'password', email:'email', number:'number', url:'url' }[field.type] || 'text';
   return `<input type="${t}" value="${esc(val)}" placeholder="${esc(loc(field, 'placeholder'))}" />`;
@@ -2535,6 +2577,17 @@ function renderReviewStep() {
   if (untouched.length) {
     lines.push(L(`<div class="op-line">🔒 من غير أي تغيير: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join('، ')}</div>`, `<div class="op-line">🔒 left untouched: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join(', ')}</div>`));
   }
+  // Provider switch (D14 consented-destructive): choosing a different tracker
+  // removes the old provider's block from config/project.json — said HERE,
+  // before anything happens. .env is never edited by a switch: old keys
+  // (e.g. AZURE_PAT) stay — secrets are only ever written, never removed.
+  for (const p of providerSwitchRemovals(projectConfig)) {
+    const pick = String(answers['tracker'] || '');
+    const chosenLabel = pick === 'jira' ? 'Jira' : pick === 'azure' ? 'Azure DevOps' : L('بدون tracker', 'no tracker');
+    lines.push(L(
+      `<div class="op-line">🔁 <code>config/project.json</code>: بلوك <code>${esc(p)}</code> هيتشال — الـ tracker اتغيّر إلى ${esc(chosenLabel)} (ملف ‎.env مش بيتلمس: مفاتيح قديمة زي AZURE_PAT بتفضل زي ما هي)</div>`,
+      `<div class="op-line">🔁 <code>config/project.json</code>: the <code>${esc(p)}</code> block will be removed — tracker switched to ${esc(chosenLabel)} (.env is left untouched: old keys like AZURE_PAT stay)</div>`));
+  }
   lines.push(L(`<div class="op-line">⭐ البيئة الافتراضية: <code>${esc(currentDefaultName() || '?')}</code></div>`, `<div class="op-line">⭐ default environment: <code>${esc(currentDefaultName() || '?')}</code></div>`));
   ops.innerHTML = `<div class="ops-list-title">${L('📋 العمليات اللي هتتنفذ عند الحفظ:', '📋 What this save will do:')}</div>` + lines.join('');
   wrap.appendChild(ops);
@@ -2601,7 +2654,7 @@ function renderFooter(step) {
     const skip = document.createElement('button');
     skip.className = 'btn-text';
     skip.textContent = L('تخطي', 'Skip');
-    skip.onclick = () => goTo(current + 1);
+    skip.onclick = () => { const n = nextVisibleIndex(current); if (n !== -1) goTo(n); };
     foot.appendChild(skip);
   }
 
@@ -2680,8 +2733,8 @@ function validateStep() {
   return errs.length === 0;
 }
 
-function next() { collectAnswers(); if (!validateStep()) return; if (current < schema.steps.length-1) goTo(current+1); }
-function prev() { collectAnswers(); if (current > 0) goTo(current-1); }
+function next() { collectAnswers(); if (!validateStep()) return; const n = nextVisibleIndex(current); if (n !== -1) goTo(n); }
+function prev() { collectAnswers(); const p = prevVisibleIndex(current); if (p !== -1) goTo(p); }
 
 function goTo(idx) {
   if (finished) return;   // the wizard is over — nothing to navigate to
@@ -2710,6 +2763,7 @@ function collectAnswers() {
 function buildSecretsPayload() {
   const out = {};
   for (const step of schema.steps) {
+    if (!stepVisible(step)) continue;   // a gated-away provider's typed secrets never ride the save
     for (const f of (step.fields || [])) {
       if (!f.secret) continue;
       if (step.group === 'environment') {
@@ -2760,6 +2814,27 @@ function buildSecretsPayload() {
 }
 
 /* ── Build Configs ───────────────────────────────────────────────────────── */
+/** Q12 prefill derivation: which tracker an existing config selects — the
+ *  single provider block IS the selection (mirror of resolveTracker's detection). */
+function deriveTrackerFrom(proj) {
+  const has = (b) => proj && proj[b] && typeof proj[b] === 'object' && Object.keys(proj[b]).length > 0;
+  return has('azure') ? 'azure' : has('jira') ? 'jira' : 'none';
+}
+
+/** Provider blocks this save REMOVES from an existing config (a tracker
+ *  switch, D14 consented-destructive pattern) — listed on the review step and
+ *  echoed by the server; never silent. */
+function providerSwitchRemovals(projectConfig) {
+  const removed = [];
+  for (const p of ['azure', 'jira']) {
+    if (existingProject && existingProject[p] && typeof existingProject[p] === 'object' &&
+        Object.keys(existingProject[p]).length > 0 && !(p in projectConfig)) {
+      removed.push(p);
+    }
+  }
+  return removed;
+}
+
 function buildProjectConfig() {
   // Start from what's on disk so keys the wizard has no input for (azure.areaPath,
   // kb.org, custom fields) survive a re-run instead of being silently dropped.
@@ -2781,7 +2856,25 @@ function buildProjectConfig() {
   // filling only Team/Assignee must not drop them. Hand-added keys the wizard
   // has no input for are preserved; a block disappears only when nothing is
   // left in it.
-  setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
+  // Q12: the tracker answer keys which provider block the save carries —
+  // exactly one, never both (mirror of engine.js buildConfigs; a mid-wizard
+  // switch must not leak the abandoned provider's stale answers, and choosing
+  // a different provider on an existing project removes the old block — the
+  // review step announces that removal, and .env is never edited by a switch).
+  const trackerPick = String(answers['tracker'] || '');
+  if (trackerPick === 'jira') {
+    setManagedBlock(proj, 'jira', ['site', 'project', 'board', 'assignee']);
+    delete proj.azure;
+  } else if (trackerPick === 'azure') {
+    setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
+    delete proj.jira;
+  } else if (trackerPick === 'none') {
+    delete proj.azure;
+    delete proj.jira;
+  } else {
+    // No tracker answer (legacy session state): historical behavior.
+    setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
+  }
   setManagedBlock(proj, 'kb', ['baseUrl', 'project']);
   // figma follows the same mirror rule but not the flat shape: fileKey is a
   // plain managed key, while the tokenEnvVar answer lands as
