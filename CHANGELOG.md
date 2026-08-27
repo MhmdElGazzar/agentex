@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.20.1] — 2026-08-28
 ### Fixed
 - **Wrong exit codes from the tracker CLIs on Windows/Node 24.** A correct read could
   exit 127 after printing valid JSON: force-exiting after fetch work trips a libuv
