@@ -69,15 +69,17 @@ complete example — lives in
 `${CLAUDE_PLUGIN_ROOT}/skills/extent-report/references/run-summary-schema.md`. Read it before
 composing the JSON. In short:
 
-- Top level: `schemaVersion: 2`, `title`, `date`, `run` (execution context: start/end/duration,
-  mode, environment, target URL, login mode, session→spec map, preflight `tools` JSON),
+- Top level: `schemaVersion: 2`, `title`, `date`, `run` (execution context: start/end
+  wall-clock timestamps, execution-time duration (human-wait excluded), mode, environment,
+  target URL, login mode, session→spec map, preflight `tools` JSON),
   `summary` (status counts), `testCases`, optional `defects`.
 - Status vocabulary (unchanged): `passed`/`failed`/`blocked`/`na`/`notrun` plus the ui-check
   statuses `warning`/`viewMismatch` and the execution status `flaky` for steps and test cases;
   `passed`/`failed`/`blocked`/`naDescoped`/`notRun` plus optional `warnings`/`viewMismatch`/
   `flaky` counts for the top-level summary (count key `warnings`, status key `warning` — the
   quirk is documented in the reference).
-- Test cases carry `durationMs` (required for executed scenarios), optional
+- Test cases carry `durationMs` (required for executed scenarios; execution time, like every
+  duration in this schema), optional
   `startedAt`/`endedAt`/`session`, evidence `screenshots`, `flaky` attempt records, `blockedBy`
   causality, resolved `deferred` records; steps optionally carry `durationMs`, `evidence`,
   `integration` outcome summaries, and `uiCheck` detail. Every enriched field is optional to

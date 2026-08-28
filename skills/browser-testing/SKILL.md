@@ -129,10 +129,14 @@ Follow this loop and STOP for approval at each checkpoint. Do not skip ahead.
    to create `executions/execu_<timestamp>/` and get this run's unique session name; prefix
    EVERY `playwright-cli` command with `-s=<that name>` (never run a bare, default-session
    command). Record the run-start ISO timestamp alongside the `init_run.js` call, and record
-   each scenario's start and end wall-clock the same way — one line before and one after:
+   each scenario's start and end the same way — one line before and one after:
    `node -e "console.log(new Date().toISOString())"` (or the shell's `date`). These agent-
    recorded timestamps feed `run-summary.json` at REPORT — run and per-scenario timing is
-   required, per-step timing optional when known. Run scenarios one at a time. After each
+   required, per-step timing optional when known. **Durations are execution time, not raw
+   wall-clock — pause the clock across user interactions.** Whenever you hand control to the
+   user (a checkpoint, a question, a NEEDS-USER resolution), note the timestamp at the
+   hand-off and again when you resume, and subtract the waited time — user wait never counts
+   toward a scenario's `durationMs` or the run's. Run scenarios one at a time. After each
    scenario, report PASS/FAIL with evidence
    (screenshot + observed vs. expected). A failed scenario follows the **Flake doctrine**
    below: retry only an infrastructure failure, only once, and a scenario that passed only on
@@ -146,7 +150,11 @@ Follow this loop and STOP for approval at each checkpoint. Do not skip ahead.
    produces (mode parity), shape per the extent-report skill's
    `references/run-summary-schema.md`: run start/end/duration + mode/environment/target/login
    mode, per-scenario durations from the timestamps you recorded, evidence paths relative to
-   the run folder. It is a MANDATORY retained artifact — no step of the run deletes it. Link
+   the run folder. `run.startedAt`/`run.endedAt` are the real wall-clock timestamps, but
+   `run.durationMs` is EXECUTION TIME — the sum of active execution (setup included) with
+   every user-wait interval subtracted, NOT `endedAt − startedAt`; in a sequential run
+   `endedAt − startedAt` exceeding `durationMs` is expected, not an error. It is a MANDATORY
+   retained artifact — no step of the run deletes it. Link
    it from `report.md`: `**Run summary (JSON):** [run-summary.json](./run-summary.json)`.
    Summarize results as a defect list (format below). Optionally generate an interactive
    `extent-report.html` next to `report.md` **from that `run-summary.json`** via the
@@ -197,7 +205,9 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
    format below. Record the run-end timestamp and compose
    `executions/execu_<ts>/run-summary.json` from the executor reports — the persistent,
    machine-readable run record (shape per the extent-report skill's
-   `references/run-summary-schema.md`): run start/end/duration + mode/environment/target/
+   `references/run-summary-schema.md`): run start/end/duration (an autonomous run has no
+   user wait, so the recorded timestamps already measure execution time — the same duration
+   semantics as sequential) + mode/environment/target/
    login mode, `run.tools` from SETUP's preflight JSON, `run.sessions` from `init_run.js`,
    per-scenario timings and evidence paths from each executor's report, ui-check detail,
    flaky attempt records, deferrals resolved above (as resolved history), and the defects.

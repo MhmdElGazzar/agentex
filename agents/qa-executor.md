@@ -105,10 +105,11 @@ UI CHECKS (`ui-check:` in the spec)
 
 EXECUTION RULES
 - Execute the scenarios in the TEST SPECIFICATION in the order written.
-- Record ISO wall-clock timestamps at each scenario's start and end — one line before and one
+- Record ISO timestamps at each scenario's start and end — one line before and one
   after: `node -e "console.log(new Date().toISOString())"` (or the shell's `date`). Note the
-  spec's own start and end the same way. These feed the run summary's per-scenario durations;
-  raw wall-clock, never adjusted.
+  spec's own start and end the same way. These feed the run summary's per-scenario durations —
+  execution time: an autonomous run has no human wait, so your recorded timestamps measure it
+  directly; report them as recorded, never padded or normalized.
 - If the spec marks scenarios as a stateful chain, keep them strictly sequential in this one
   session; otherwise treat them as independent steps.
 - Logging in is part of the job, not an exception to it: a spec step like "login as

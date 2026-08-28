@@ -46,15 +46,24 @@ Presence column: **required** = required-by-capture (the orchestrator must write
 
 | Field | Type | Presence | Notes |
 |---|---|---|---|
-| `startedAt` | string | required | ISO-8601, agent-recorded wall-clock. |
-| `endedAt` | string | required | ISO-8601, agent-recorded wall-clock. |
-| `durationMs` | integer | required | Raw wall-clock, both modes — the run `mode` is the interpretive cue. |
+| `startedAt` | string | required | ISO-8601, agent-recorded — a real wall-clock fact in both modes. |
+| `endedAt` | string | required | ISO-8601, agent-recorded — a real wall-clock fact in both modes. |
+| `durationMs` | integer | required | **Execution time** (active execution incl. setup); human-wait excluded — see Duration semantics. |
 | `mode` | string | required | `"sequential"` \| `"parallel"`. |
 | `environment` | string | optional | Active environment name; `""`/absent for legacy projects. |
 | `targetUrl` | string | optional | The tested portal URL. |
 | `loginMode` | string | optional | `"session"` \| `"fresh"` — the mode word ONLY (see Secrets). |
 | `sessions` | array | optional | Session→spec map, kept from `init_run.js` output: `{session, spec, label}`. |
 | `tools` | object | optional | The `preflight.js` JSON, verbatim (`{ "<tool>": {"ok": bool, "version": "…"} }`). |
+
+**Duration semantics (every `durationMs` field).** Durations are **execution time**, not raw
+wall-clock. In sequential (human-in-the-loop) runs, time spent waiting on the user —
+checkpoint approvals, questions, NEEDS-USER resolution — is excluded from `run.durationMs`
+and from per-scenario `durationMs`. Parallel/autonomous runs have no human wait, so their
+durations equal the recorded wall-clock spans — the semantics are identical in both modes.
+`startedAt`/`endedAt` stay real wall-clock timestamps (raw wall-clock remains derivable from
+them), so in a sequential run `endedAt − startedAt` may exceed `durationMs`; that is
+expected, not an inconsistency.
 
 ### `summary`
 
@@ -73,7 +82,7 @@ from the legacy shape.
 | `name` | string | required | Scenario name. |
 | `spec` | string | optional | Spec file path. |
 | `status` | string | required | `passed`/`failed`/`blocked`/`na`/`notrun`/`warning`/`viewMismatch`/`flaky` — rollup, worst status among steps. |
-| `durationMs` | integer | required* | *For executed scenarios; absent for `notrun`/`na`. |
+| `durationMs` | integer | required* | *For executed scenarios; absent for `notrun`/`na`. Execution time (see Duration semantics). |
 | `startedAt`, `endedAt` | string | optional | ISO-8601 per scenario. |
 | `session` | string | optional | The session that ran it. |
 | `screenshots` | array | optional | Evidence for pass AND fail: `{path, caption}`. Paths RELATIVE to this JSON's folder (the run root), e.g. `browser-sessions/<s>/screenshots/x.png`. |

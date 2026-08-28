@@ -5,7 +5,8 @@
 # Fixture: a parallel run's execution tree after both executors returned (evidence on
 # disk, sessions closed) — the agent has only MERGE left. The rule under test is
 # extent-report-enrichment's required timing capture: run start/end/duration + a
-# duration for every executed scenario, raw wall-clock, in run-summary.json.
+# duration for every executed scenario, in run-summary.json. Durations are execution
+# time — an autonomous run has no human wait, so that is the recorded wall-clock spans.
 name: discipline-run-timing-captured
 tags: [discipline, browser-testing, extent-report]
 runs: 3
