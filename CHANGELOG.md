@@ -2,6 +2,27 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **`/update-agentex` now checks whether the plugin itself is stale — before any project
+  migration.** New bundled script `scripts/self_update.js` (`check`/`pull` verbs, one JSON
+  line, exit 0/1/2) derives the marketplace and plugin identity from its own install path
+  (`plugins/cache/<marketplace>/<plugin>/<version>` — never hardcoded), refreshes the
+  marketplace's local cache, and compares versions with the same shared semantics the
+  stamp-newer abort uses (`compareVersions` extracted to `scripts/lib/version.js`, required
+  by both `migrate.js` and `self_update.js`, so the two gates can never disagree). When a
+  newer version exists, the command asks exactly ONE confirmation (installed vs. latest,
+  `plugin@marketplace`, what a yes does) — never a silent pull, never inform-only. After a
+  successful pull the command STOPS with the instruction to run `/reload-plugins --force`
+  (or restart) and re-run `/update-agentex`, so the migration runs entirely on the new
+  version; the pull is verified deterministically against the refreshed cache (fail
+  closed). A check that cannot run (offline, cache missing, not a marketplace install —
+  e.g. a dev clone) and a pull that fails after consent are reported loudly and the
+  migration proceeds on the installed version. CLI invocations are non-interactive with
+  hard timeouts (win32 `.cmd` shim handled), covered by sibling unit tests
+  (`self_update.test.js`, `lib/version.test.js`) and 4 new discipline evals
+  (`discipline-update-agentex-{one-gate-pull,stop-after-pull,loud-check-failure,loud-pull-failure}`).
+
 ## [0.20.1] — 2026-08-28
 ### Fixed
 - **Wrong exit codes from the tracker CLIs on Windows/Node 24.** A correct read could
