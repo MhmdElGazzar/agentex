@@ -94,19 +94,29 @@ test('parseInstallPath: dev clone and non-cache layouts are null', () => {
 });
 
 // ── composed CLI invocation: both platforms ───────────────────────────────────
-test('buildCliCall: win32 uses shell:true (the .cmd shim), non-interactive stdio, timeout', () => {
+test('buildCliCall: win32 goes through the shell as ONE composed command string, args EMPTY (DEP0190 pin), non-interactive stdio, timeout', () => {
   const call = su.buildCliCall(['plugin', 'marketplace', 'update', 'test-marketplace'],
     { platform: 'win32', timeoutMs: 60000 });
-  assert.strictEqual(call.command, 'claude');
-  assert.deepStrictEqual(call.args, ['plugin', 'marketplace', 'update', 'test-marketplace']);
+  assert.strictEqual(call.command, 'claude plugin marketplace update test-marketplace');
+  assert.deepStrictEqual(call.args, [],
+    "shell:true with a populated args array is Node's deprecated DEP0190 form (stderr DeprecationWarning) — the whole call must live in the command string");
   assert.strictEqual(call.options.shell, true);
   assert.strictEqual(call.options.timeout, 60000);
   assert.strictEqual(call.options.stdio[0], 'ignore', 'stdin closed — an interactive prompt must hang into the timeout, never stall');
 });
 
-test('buildCliCall: POSIX platforms run the binary directly (shell:false)', () => {
+test('buildCliCall: win32 quotes command-string tokens that need it (spaces, cmd metacharacters)', () => {
+  const call = su.buildCliCall(['plugin', 'update', 'has space@test-marketplace'],
+    { platform: 'win32', timeoutMs: 300000 });
+  assert.strictEqual(call.command, 'claude plugin update "has space@test-marketplace"');
+  assert.deepStrictEqual(call.args, []);
+});
+
+test('buildCliCall: POSIX platforms run the binary directly (shell:false, plain args array)', () => {
   const call = su.buildCliCall(['plugin', 'update', 'test-plugin@test-marketplace'],
     { platform: 'linux', timeoutMs: 300000 });
+  assert.strictEqual(call.command, 'claude');
+  assert.deepStrictEqual(call.args, ['plugin', 'update', 'test-plugin@test-marketplace']);
   assert.strictEqual(call.options.shell, false);
   assert.strictEqual(call.options.timeout, 300000);
 });
