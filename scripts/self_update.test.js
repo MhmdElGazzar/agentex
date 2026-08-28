@@ -86,7 +86,7 @@ test('parseInstallPath: POSIX cache path', () => {
 });
 
 test('parseInstallPath: dev clone and non-cache layouts are null', () => {
-  assert.strictEqual(su.parseInstallPath('D:\\Dnlds\\projects\\some-clone'), null);
+  assert.strictEqual(su.parseInstallPath('D:\\dev\\some-clone'), null);
   assert.strictEqual(su.parseInstallPath('/home/x/projects/some-clone'), null);
   assert.strictEqual(su.parseInstallPath('C:\\Users\\x\\.claude\\plugins\\repos\\m\\p\\1.0.0'), null);
   assert.strictEqual(su.parseInstallPath('/home/x/.claude/plugins/cache/only-two'), null);
