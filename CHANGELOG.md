@@ -2,6 +2,27 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Fixed
+- **`/update-agentex`'s plugin self-update pull actually pulls now.** Shipped in 0.21.0,
+  `scripts/self_update.js` composed `claude plugin install <plugin>@<marketplace>` for
+  the `pull` verb — and the CLI's `install` no-ops on an already-installed plugin: it
+  printed "already installed" in ~2s, exited 0, and created no new versioned dir, so the
+  filesystem post-condition correctly refused the result and EVERY real-world pull ended
+  `pull-failed` — the feature degraded to inform-only (fail-closed held: no wrong success
+  was ever possible). The pull now composes `claude plugin update <plugin>@<marketplace>`
+  — the CLI's actual update verb, verified live 0.20.1 → 0.21.0 in ~16s, non-interactive,
+  with the new versioned dir landing beside the old one. The post-condition that caught
+  the defect, the exit codes (0/1/2), and the fail-closed order are all unchanged; the
+  update-agentex discipline evals now name `claude plugin update` as the pull mechanism.
+  Covered by the flipped pull-composition cases in `scripts/self_update.test.js`.
+- **The self-update CLI calls no longer emit Node's `DEP0190` DeprecationWarning on
+  Windows.** The win32 spawn passed an args array alongside `shell: true` (the deprecated
+  form); `buildCliCall` now composes ONE cmd-quoted command string with an empty args
+  array — contract untouched (one JSON line on stdout, stdin closed, hard timeouts, exit
+  0/1/2, no `process.exit()`, POSIX plain args) — pinned by the new win32 spawn-shape
+  tests in `scripts/self_update.test.js`, quoting included.
+
 ## [0.21.0] — 2026-08-28
 ### Added
 - **CI quality gate — AgenTeX runs are now invokable from a consumer's CI/CD pipeline.**
