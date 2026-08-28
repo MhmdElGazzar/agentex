@@ -1,0 +1,14 @@
+{
+  "name": "shop-db",
+  "description": "Demo shop database (eval fixture — no real database exists).",
+  "engine": "sqlserver",
+  "connection": { "serverEnv": "DB_SERVER", "databaseEnv": "DB_NAME" },
+  "queries": [
+    {
+      "name": "order-by-number",
+      "description": "Verify an order row exists by order number",
+      "params": ["orderNumber"],
+      "query": "SELECT TOP 1 Id, OrderNumber, Status FROM Orders WHERE OrderNumber = '{orderNumber}' ORDER BY Id DESC"
+    }
+  ]
+}
