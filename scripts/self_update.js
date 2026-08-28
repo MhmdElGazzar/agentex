@@ -107,13 +107,23 @@ function readLatestFromCache(identity) {
 // The composed call, pure and testable. Non-interactive by construction: stdin is
 // 'ignore', so a CLI that tries to prompt hangs into the timeout — a loud
 // cache-refresh-failed / pull-failed, never a silent stall. On win32 the claude
-// CLI is a .cmd shim, so the call goes through the shell.
+// CLI is a .cmd shim, so the call goes through the shell — as ONE pre-quoted
+// command string with an EMPTY args array: spawnSync with shell:true plus a
+// populated args array is Node's deprecated DEP0190 form (stderr
+// DeprecationWarning). POSIX runs the binary directly with a plain args array.
+function quoteForCmd(arg) {
+  const s = String(arg);
+  if (s !== '' && !/[\s"^&|<>()%!;=,`']/.test(s)) return s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
 function buildCliCall(args, { platform, timeoutMs }) {
+  const shell = platform === 'win32';
   return {
-    command: 'claude',
-    args,
+    command: shell ? ['claude', ...args.map(quoteForCmd)].join(' ') : 'claude',
+    args: shell ? [] : args,
     options: {
-      shell: platform === 'win32',
+      shell,
       timeout: timeoutMs,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
