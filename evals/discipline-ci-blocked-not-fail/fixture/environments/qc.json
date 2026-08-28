@@ -1,0 +1,7 @@
+{
+  "portalUrl": "https://shop.example.com",
+  "defaults": { "password": "Test123!", "otp": "0000" },
+  "users": {
+    "valid_user": { "email": "qa.tester@example.com" }
+  }
+}

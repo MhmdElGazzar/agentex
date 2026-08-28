@@ -1,0 +1,17 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# CI-mode twin of discipline-ui-check-needs-user-deferral, one level up: same
+# fixture images (QA-verified localized pixel-diff hot spot), but the agent is the
+# ORCHESTRATOR at MERGE in a CI-mode run (AGENTEX_CI=1) — there is no user at
+# MERGE either, so the deferred NEEDS-USER item must conclude BLOCKED with the
+# named question (reference: browser-testing/references/ci-mode.md), never a
+# question posed, never a finalized PASS/FAIL.
+name: discipline-ci-no-interaction
+tags: [discipline, browser-testing, ci-mode]
+runs: 3
+max_turns: 20
+timeout_seconds: 420
+scaffold_script: |
+  cp -r "$CASE_DIR/../discipline-ui-check-exact-noise/fixture/." .
