@@ -1,0 +1,100 @@
+# AgenTeX CI quality gate — GitHub Actions template
+#
+# Copy into your project as .github/workflows/agentex-gate.yml, replace every
+# <angle-bracket> placeholder, and add the secrets by NAME under the repo/org
+# settings. Exit-code contract of the gate step (ci_gate.js):
+#   0 = PASS (EXPECTED FAIL honored as pass)
+#   1 = FAIL (real product defects)
+#   2 = BLOCKED (environment/infrastructure or indeterminate — never a product verdict)
+# Full contract + CI-agnostic recipe: docs/ci-quality-gate.md in the plugin repo.
+#
+# MODES
+#   BLOCKING (default): the gate step fails the job automatically on exit 1/2.
+#   ADVISORY: uncomment `continue-on-error: true` on the gate step — the job never
+#   auto-fails; the PM approval environment below becomes the gate.
+#
+# SECRETS travel by NAME from the repository/organization secret store — a value
+# never appears in this file, in the verdict JSON, or in any log line. Every
+# { "envSecret": "NAME" } your environment files reference needs a matching secret.
+#
+# Worst-case wall clock = (1 + retries) x timeoutMinutes (per-attempt budget) — set
+# the job timeout above that. Policy defaults: retries 3, timeoutMinutes 60,
+# warningsFailGate true, flakyFailsGate false (see the `ci` block in docs/configuration.md).
+
+name: AgenTeX quality gate
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 3 * * *'   # nightly regression gate
+
+jobs:
+  agentex-gate:
+    name: Headless AgenTeX run + verdict
+    runs-on: <windows-latest-or-your-runner>   # any OS with Node 20+
+    timeout-minutes: 300                       # > (1 + retries) x per-attempt timeoutMinutes
+    defaults:
+      run:
+        working-directory: <path-to-your-agentex-project>
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install the claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Install the plugin. Alternative: pin a checkout of the plugin repo and point
+      # the gate step at that path — never at the ~/.claude/plugins cache (documented
+      # as ephemeral across updates).
+      - name: Install the AgenTeX plugin
+        run: claude plugin install <agentex@your-marketplace>
+
+      - name: Install the browser driver
+        run: npm install -D @playwright/cli && npx playwright-cli install-browser chromium
+
+      # THE GATE — one deterministic entry point; its exit code IS the verdict and
+      # its stdout is exactly one JSON line (the contract-v1 verdict).
+      # Scope forms: --spec <file> (repeatable) | --suite <folder> | --all
+      - name: AgenTeX CI gate
+        id: gate
+        # continue-on-error: true   # ADVISORY mode — the PM approval below is then the gate
+        run: node "<plugin-root>/skills/browser-testing/scripts/ci_gate.js" --suite <test/your-suite/> --env <environment-name>
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}      # by NAME from the secret store
+          # <YOUR_ENV_SECRET_NAME>: ${{ secrets.<YOUR_ENV_SECRET_NAME> }}   # one per envSecret name
+
+      - name: Verdict to job summary
+        if: always()
+        shell: bash
+        run: |
+          v=$(ls -t executions/execu_*/verdict.json | head -1)
+          echo "## AgenTeX verdict" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat "$v" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # Publish the human report + evidence + verdict for the PM.
+      # Publish ONLY executions/ — NEVER test/.auth (saved login state is secret-grade).
+      - name: Publish run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentex-run
+          path: <path-to-your-agentex-project>/executions/execu_*/
+
+  # PM review & approval — the human gate. Configure REQUIRED REVIEWERS on the
+  # `agentex-pm-approval` environment (repo Settings → Environments): the job waits
+  # until a reviewer approves. In ADVISORY mode this approval is the only gate; in
+  # BLOCKING mode it is a second, human check after the exit code.
+  pm-approval:
+    name: PM review and approval
+    needs: agentex-gate
+    if: always()      # review even a failed/blocked run (blocking mode may use success())
+    runs-on: ubuntu-latest
+    environment: agentex-pm-approval
+    steps:
+      - name: Delivery approved
+        run: echo "Approved by the required reviewers of the agentex-pm-approval environment. Review the agentex-run artifact (extent-report.html, report.md, verdict.json) before approving."
