@@ -60,6 +60,17 @@ All notable changes to AgenTeX are documented here.
   refuses Jira configs upfront (exit 2, `testPlans:false`); `read-workitem.js` output is
   provider-neutral. The one-gate/ledger/fail-closed discipline is byte-identical to ADO,
   and existing ADO behavior is untouched.
+- **`tracker-ops` — ad-hoc work-item operations behind one approval per write batch** (the
+  backlog's "search, read, create, update, transition, comment on, and link work items"
+  surface): a thin skill routing every one-off board ask ("move PROJ-12 to In Progress",
+  "comment on bug 4711", "link X to Y") through one bundled script
+  (`skills/tracker-ops/scripts/workitem.js` — show / search / create / update / transition /
+  comment / link on whichever provider is configured; one JSON line, exit 0/1/2). Reads run
+  freely; every write is a dry run by default returning the exact request plan, with
+  `--execute` behind ONE approval per write batch. Capability flags answer unsupported ops
+  upfront — and a `transition` ask on ADO routes to the honest equivalent, a `System.State`
+  field update, stated to the user (never dressed up as a workflow transition). Honors the
+  `AGENTEX_CI=1` write guard.
 - **Docs & surface:** new [`docs/jira.md`](./docs/jira.md) (setup walkthrough, token
   provenance, per-flow behavior, known-limitations table derived from the capability
   flags), `docs/configuration.md` jira/config + env rows, README feature-table and
