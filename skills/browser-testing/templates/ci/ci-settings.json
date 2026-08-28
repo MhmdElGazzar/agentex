@@ -4,6 +4,7 @@
     "allow > Bash(node:*) covers the plugin's bundled scripts (preflight.js, init_run.js, merge_run.js, run_api.js, run_db.js, ask_kb.js, session.js, fetch_baseline.js, make_html_report.js, write_verdict.js). To narrow it, replace with 'Bash(node <installed plugin path>/skills:*)'.",
     "deny > .env and key material: the bundled scripts read secrets from the environment themselves; the session never needs to READ them, so those reads are denied rather than trusted. test/.auth/** is secret-grade saved-login state — never readable here and NEVER a published pipeline artifact.",
     "deny > the interactive recommendation's 'ask' entries (bare curl/sqlcmd, close-all/kill-all, destructive az) are denied outright here: under dontAsk there is nobody to ask. API/DB steps run through the cataloged node runners, which stay allowed.",
+    "read scope > Read(./**) covers the CONSUMER project only. The plugin's own files (references, bundled scripts, templates) become readable via the `--add-dir <plugin-root>` argument ci_gate.js passes at spawn time from its self-resolved install location — a read-oriented grant this static file cannot carry; do not widen Read() here to compensate.",
     "deny > Edit/Write(./src/**) protect the application source only if it lives in ./src — repoint at your real source folder; a test run never needs to write there (it writes under test/ and executions/)."
   ],
   "$schema": "https://json.schemastore.org/claude-code-settings.json",

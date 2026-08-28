@@ -123,7 +123,7 @@ function proj(base, { ci, envSecretName, dotenv } = {}) {
 }
 
 // -- async gate runner (server lives in this process — keep the loop free) --------
-function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false } = {}) {
+function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false, script = SCRIPT } = {}) {
   const state = tmp('agentex-cg-state-');
   const env = {
     ...process.env,
@@ -138,7 +138,7 @@ function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false 
   };
   return new Promise((resolve) => {
     const child = spawn(process.execPath,
-      [SCRIPT, '--claude-cmd', `"${process.execPath}" "${STUB}"`, ...args], { cwd, env });
+      [script, '--claude-cmd', `"${process.execPath}" "${STUB}"`, ...args], { cwd, env });
     let stdout = ''; let stderr = '';
     child.stdout.on('data', (d) => { stdout += d; });
     child.stderr.on('data', (d) => { stderr += d; });
@@ -364,6 +364,51 @@ function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false 
     fs.writeFileSync(settings, '{}');
     const r = await runGate(proj(base), ['--suite', 'test/suite1/', '--settings', settings], { plan: 'pass' });
     assert.ok(r.argvDump(1).argv.join(' ').includes(settings), 'the settings path travels');
+  });
+
+  // ---- plugin-root read grant (D1 regression) ------------------------------------------------
+  // The shipped ci-settings.json allows Read(./**) only — the consumer project cwd.
+  // A plugin installed anywhere else was therefore unreadable to the spawned session:
+  // it could not load references/ci-mode.md (the deterministic verdict step) or
+  // write_verdict.js, hand-wrote a nonconforming verdict, locateVerdict rejected it
+  // fail-closed, and EVERY run concluded BLOCKED no-verdict. The spawn must grant
+  // READ on the self-resolved plugin root in every supported install layout.
+
+  await test('D1 pinned-checkout layout: spawn args grant read on the self-resolved plugin root (--add-dir)', async () => {
+    const r = await runGate(proj(base), ['--suite', 'test/suite1/'], { plan: 'pass' });
+    assert.strictEqual(r.calls, 1, r.stdout + r.stderr);
+    const argv = r.argvDump(1).argv;
+    const i = argv.indexOf('--add-dir');
+    assert.notStrictEqual(i, -1, `--add-dir missing from the spawn args: ${argv.join(' ')}`);
+    assert.strictEqual(argv[i + 1], PLUGIN_ROOT, 'the read grant must be the self-resolved plugin root');
+    assert.strictEqual(argv[argv.indexOf('--plugin-dir') + 1], argv[i + 1],
+      'the grant and --plugin-dir must derive from the SAME resolved root');
+  });
+
+  await test('D1 marketplace-managed layout: the grant follows the installed copy, not the consumer cwd', async () => {
+    const installRoot = path.join(tmp('agentex-cg-install-'), 'some-marketplace', 'agentex', '9.9.9');
+    for (const f of [
+      'skills/browser-testing/scripts/ci_gate.js',
+      'skills/browser-testing/scripts/ci_preflight.js',
+      'skills/browser-testing/scripts/preflight.js',
+      'skills/browser-testing/scripts/write_verdict.js',
+      'skills/browser-testing/templates/ci/ci-settings.json',
+      'scripts/lib/project_config.js',
+      '.claude-plugin/plugin.json',
+    ]) {
+      const dst = path.join(installRoot, ...f.split('/'));
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(path.join(PLUGIN_ROOT, ...f.split('/')), dst);
+    }
+    const installedGate = path.join(installRoot, 'skills', 'browser-testing', 'scripts', 'ci_gate.js');
+    const r = await runGate(proj(base), ['--suite', 'test/suite1/'], { plan: 'pass', script: installedGate });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.strictEqual(r.calls, 1, 'the installed copy must still spawn the session');
+    const argv = r.argvDump(1).argv;
+    const i = argv.indexOf('--add-dir');
+    assert.notStrictEqual(i, -1, `--add-dir missing from the spawn args: ${argv.join(' ')}`);
+    assert.strictEqual(argv[i + 1], installRoot, 'the grant must follow the installed plugin root');
+    assert.match(argv.join(' '), /--permission-mode dontAsk/, 'the read grant never relaxes the deny-by-default mode');
   });
 
   // ---- structural pin ----------------------------------------------------------------------

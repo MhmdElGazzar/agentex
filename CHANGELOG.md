@@ -10,8 +10,12 @@ All notable changes to AgenTeX are documented here.
   attempt (`ci_preflight.js` — target reachability, environment resolution, secrets
   present by NAME, browser installed, plugin manifest; any failure exits 2 with a named
   `preflight-*` reason), a fresh headless session per attempt
-  (`claude --bare -p "/agentex:execute-test ci …" --permission-mode dontAsk` with the
-  shipped deny-by-default `templates/ci/ci-settings.json`), a per-attempt wall-clock
+  (`claude --bare -p "/agentex:execute-test ci …" --add-dir <plugin-root>
+  --permission-mode dontAsk` with the shipped deny-by-default
+  `templates/ci/ci-settings.json`; the `--add-dir` read grant on the self-resolved
+  plugin root keeps the plugin's own references and scripts readable in every install
+  layout — the settings allowlist reads only the consumer project), a per-attempt
+  wall-clock
   budget (default 60 min — on expiry the session's process tree is killed and the
   partial report stays on disk), automatic retries for BLOCKED outcomes only (default 3;
   never on exit 0/1, and never for the `unstable` reason — the Flake doctrine's
