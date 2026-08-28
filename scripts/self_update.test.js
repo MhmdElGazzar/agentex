@@ -49,7 +49,7 @@ function writeJson(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf8');
 }
 
-// Recording CLI stub. `responses` is either { marketplace: {...}, install: {...} }
+// Recording CLI stub. `responses` is either { marketplace: {...}, update: {...} }
 // keyed on args[1], or a function (args, opts) => response for side effects.
 function stubCli(responses = {}) {
   const calls = [];
@@ -105,7 +105,7 @@ test('buildCliCall: win32 uses shell:true (the .cmd shim), non-interactive stdio
 });
 
 test('buildCliCall: POSIX platforms run the binary directly (shell:false)', () => {
-  const call = su.buildCliCall(['plugin', 'install', 'test-plugin@test-marketplace'],
+  const call = su.buildCliCall(['plugin', 'update', 'test-plugin@test-marketplace'],
     { platform: 'linux', timeoutMs: 300000 });
   assert.strictEqual(call.options.shell, false);
   assert.strictEqual(call.options.timeout, 300000);
@@ -231,13 +231,14 @@ test('check: unreadable own plugin.json → unexpected error, exit 1', () => {
 });
 
 // ── pull ──────────────────────────────────────────────────────────────────────
-test('pull: success — composed install command, post-condition verified, from→to', () => {
+test('pull: success — composed update command, post-condition verified, from→to', () => {
   const fx = makeInstall({ latest: '2.0.0' });
   const cli = stubCli((args) => {
-    if (args[1] === 'install') {
+    if (args[1] === 'update') {
       // Simulate the CLI landing the new version in its own cache dir.
       writeJson(path.join(fx.pluginsHome, 'cache', 'test-marketplace', 'test-plugin', '2.0.0', '.claude-plugin', 'plugin.json'),
         { name: 'test-plugin', version: '2.0.0' });
+      return { stdout: '✔ Plugin "test-plugin" updated from 1.2.3 to 2.0.0 for scope user. Restart to apply changes.\n' };
     }
     return {};
   });
@@ -245,7 +246,7 @@ test('pull: success — composed install command, post-condition verified, from�
   assert.deepStrictEqual(r.json, { status: 'pulled', from: '1.2.3', to: '2.0.0' });
   assert.strictEqual(r.exitCode, 0);
   assert.strictEqual(cli.calls.length, 1);
-  assert.deepStrictEqual(cli.calls[0].args, ['plugin', 'install', 'test-plugin@test-marketplace']);
+  assert.deepStrictEqual(cli.calls[0].args, ['plugin', 'update', 'test-plugin@test-marketplace']);
   assert.strictEqual(cli.calls[0].opts.timeoutMs, 300000);
 });
 
@@ -253,10 +254,10 @@ test('pull: CLI failure → pull-failed with command + captured stderr, exit 1',
   const fx = makeInstall({ latest: '2.0.0' });
   const r = run(['pull'], {
     pluginRoot: fx.pluginRoot,
-    runCli: stubCli({ install: { ok: false, status: 1, stderr: 'HTTP 403 forbidden' } }),
+    runCli: stubCli({ update: { ok: false, status: 1, stderr: 'HTTP 403 forbidden' } }),
   });
   assert.strictEqual(r.json.status, 'pull-failed');
-  assert.match(r.json.detail, /claude plugin install test-plugin@test-marketplace/);
+  assert.match(r.json.detail, /claude plugin update test-plugin@test-marketplace/);
   assert.match(r.json.detail, /HTTP 403 forbidden/);
   assert.strictEqual(r.json.installed, '1.2.3');
   assert.strictEqual(r.exitCode, 1);
@@ -274,7 +275,7 @@ test('pull: CLI exit 0 but new versioned dir absent → pull-failed (fail closed
 test('pull: CLI exit 0 but landed version mismatches latest → pull-failed (fail closed)', () => {
   const fx = makeInstall({ latest: '2.0.0' });
   const cli = stubCli((args) => {
-    if (args[1] === 'install') {
+    if (args[1] === 'update') {
       writeJson(path.join(fx.pluginsHome, 'cache', 'test-marketplace', 'test-plugin', '2.0.0', '.claude-plugin', 'plugin.json'),
         { name: 'test-plugin', version: '1.9.9' });   // wrong content in the right dir
     }
@@ -289,7 +290,7 @@ test('pull: timeout → pull-failed, named as a timeout', () => {
   const fx = makeInstall({ latest: '2.0.0' });
   const r = run(['pull'], {
     pluginRoot: fx.pluginRoot,
-    runCli: stubCli({ install: { ok: false, timedOut: true } }),
+    runCli: stubCli({ update: { ok: false, timedOut: true } }),
   });
   assert.strictEqual(r.json.status, 'pull-failed');
   assert.match(r.json.detail, /timed out/);
@@ -303,7 +304,7 @@ test('pull: re-derives identity itself — dev clone layout → pull-failed, no 
   const r = run(['pull'], { pluginRoot: clone, runCli: cli });
   assert.strictEqual(r.json.status, 'pull-failed');
   assert.strictEqual(r.exitCode, 1);
-  assert.strictEqual(cli.calls.length, 0, 'no install without a derived identity');
+  assert.strictEqual(cli.calls.length, 0, 'no update without a derived identity');
 });
 
 test('pull: marketplace cache unreadable → pull-failed BEFORE any install (no blind pull)', () => {
