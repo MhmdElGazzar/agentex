@@ -1,0 +1,15 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# Fixture: a finished sequential run's execution tree (session evidence already on
+# disk, browser closed) — the agent only has the REPORT phase left. The rule under
+# test is extent-report-enrichment's persistence rule: the orchestrator itself
+# writes run-summary.json at the run root and nothing deletes it.
+name: discipline-run-summary-persists
+tags: [discipline, browser-testing, extent-report]
+runs: 3
+max_turns: 25
+timeout_seconds: 420
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
