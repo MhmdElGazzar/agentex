@@ -2,6 +2,61 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **CI quality gate — AgenTeX runs are now invokable from a consumer's CI/CD pipeline.**
+  One bundled deterministic entry point, `skills/browser-testing/scripts/ci_gate.js`,
+  runs the whole gate moment from the project root: a token-free CI preflight per
+  attempt (`ci_preflight.js` — target reachability, environment resolution, secrets
+  present by NAME, browser installed, plugin manifest; any failure exits 2 with a named
+  `preflight-*` reason), a fresh headless session per attempt
+  (`claude --bare -p "/agentex:execute-test ci …" --permission-mode dontAsk` with the
+  shipped deny-by-default `templates/ci/ci-settings.json`), a per-attempt wall-clock
+  budget (default 60 min — on expiry the session's process tree is killed and the
+  partial report stays on disk), automatic retries for BLOCKED outcomes only (default 3;
+  never on exit 0/1, and never for the `unstable` reason — the Flake doctrine's
+  no-retry-to-clear-instability rule, one level up), and a fail-closed conclusion: a
+  session that did not deterministically conclude is exit 2, never a wrong pass/fail.
+  Exit codes are the contract: **0 pass (EXPECTED FAIL honored as pass), 1 real product
+  defects, 2 environment/indeterminate** — under no input does an environment failure
+  produce exit 1, pinned case by case in an adversarial test matrix.
+- **A public, schemaVersion'd verdict JSON (contract v1)** — the plugin's first public
+  machine contract: the gate's single stdout line, retained as
+  `executions/execu_<ts>/verdict.json` (verdict, per-status counts in the established
+  run vocabulary, duration, report path, named `blockedReasons`, retry visibility via
+  `attempt`/`retries`/`attemptHistory`, scope, environment name, policy). Computed by
+  the deterministic `write_verdict.js` (fixed mapping order; warnings fail the gate by
+  default, consumer-relaxable; `flakyFailsGate` off by default), documented field by
+  field with additive-evolution stability rules in `docs/ci-quality-gate.md` alongside
+  the CI-agnostic recipe, advisory vs blocking modes, and the PM manual-approval step.
+- **CI mode for `/execute-test`** (`ci` argument + the new
+  `skills/browser-testing/references/ci-mode.md`): zero user interaction — NEEDS-USER
+  ui-check items conclude BLOCKED with the precise question named, captcha/unobtainable
+  OTP conclude BLOCKED `captcha-or-otp`, `extent-report.html` always generated, the
+  verdict step runs at REPORT. Covered by three new discipline evals
+  (`discipline-ci-no-interaction`, `discipline-ci-no-tracker-writes`,
+  `discipline-ci-blocked-not-fail`).
+- **Mechanical no-tracker-writes guarantee in CI:** the tracker adapter and
+  `create-bug.js` refuse `execute:true` under `AGENTEX_CI=1` (exit 2, reason `ci-mode`);
+  reads and dry-run descriptors are unaffected. Bug filing stays interactive-only.
+- **Pipeline templates** under `skills/browser-testing/templates/ci/` — Azure Pipelines
+  and GitHub Actions full stages (secrets by name, verdict surfaced in the pipeline UI,
+  `executions/` published as the artifact — never `test/.auth/`, PM manual approval,
+  advisory + blocking wiring) plus the headless `ci-settings.json`; all three pinned by
+  genericness tests. Optional `ci` policy block in `config/project.json`
+  (read-if-present, flags > config > defaults — no scaffold change, no migration).
+
+### Fixed
+- **Preflight no longer reports a working playwright-cli as broken on Windows + Node 24**
+  (the CI gate's in-scope prerequisite — a false "broken" verdict is gate-closing with
+  no human to override). The probe now judges by OUTPUT: a plausible version string plus
+  the known benign libuv exit-crash signature (`UV_HANDLE_CLOSING`) reports
+  `ok: true` with a `note: "version confirmed; known benign exit-crash on this stack"`;
+  a genuinely missing/broken tool (no version output) still fails exactly as before.
+  Contract unchanged (one JSON line, informational, exit 0); the playwright-cli
+  reference's preflight guidance is aligned so the agent never re-runs the version
+  command and re-concludes "broken" on its own.
+
 ## [0.20.1] — 2026-08-28
 ### Fixed
 - **Wrong exit codes from the tracker CLIs on Windows/Node 24.** A correct read could
