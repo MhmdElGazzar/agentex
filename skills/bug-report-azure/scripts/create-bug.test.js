@@ -28,7 +28,7 @@ async function test(name, fn) {
 }
 
 const SENTINEL_PAT = 'SENTINEL-PAT-createbug-00112233445566778899';
-for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AZURE_URL', 'AZURE_PROJECT']) delete process.env[n];
+for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AZURE_URL', 'AZURE_PROJECT', 'AGENTEX_CI']) delete process.env[n];
 
 // A structurally valid PNG > 2KB (signature + IHDR with real dimensions + noise).
 function fakePng() {
@@ -377,6 +377,27 @@ const isWrite = (c) =>
       const src = fs.readFileSync(path.join(__dirname, name), 'utf8');
       assert.ok(!src.includes('process.exit('), `${name} must not force-exit`);
     }
+  });
+
+  await test('CI guard: --execute under AGENTEX_CI=1 is refused BEFORE any read — exit 2, ci-mode, zero calls', async () => {
+    process.env.AGENTEX_CI = '1';
+    try {
+      const dir = proj();
+      const f = fakeFetch(happyRoutes());
+      const { code, out } = await run(['--spec', writeSpec(dir), '--execute'], { cwd: dir, fetch: f });
+      assert.strictEqual(code, 2, JSON.stringify(out));
+      assert.strictEqual(out.ok, false);
+      assert.ok(out.blocked.some((b) => b.reason === 'ci-mode'), JSON.stringify(out.blocked));
+      assert.match(JSON.stringify(out.blocked), /tracker writes are disabled in CI/);
+      assert.strictEqual(f.calls.length, 0, 'refused before any request left the machine');
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
+  await test('CI guard: without AGENTEX_CI the same --execute goes through unchanged', async () => {
+    const dir = proj();
+    const { code, out } = await run(['--spec', writeSpec(dir), '--execute'], { cwd: dir, fetch: fakeFetch(happyRoutes()) });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.created.bugId, 4711);
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
