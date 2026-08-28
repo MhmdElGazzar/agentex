@@ -59,6 +59,20 @@ function configError(message) {
   return e;
 }
 
+// CI guard (invariant 4 / ci-quality-gate): CI mode performs no tracker writes of
+// any kind — the skill text says "don't offer"; this choke point guarantees
+// "cannot happen" even under drift. Every write method calls it after its
+// execute:false descriptor return, so dry-run plans and all reads are unaffected.
+// Environment-class refusal: exitCode 2, never a product failure. Exact parity
+// with the ADO adapter's guard.
+function assertCiWritesAllowed(op) {
+  if (process.env.AGENTEX_CI === '1') {
+    const e = configError(`ci-mode: tracker writes are disabled in CI (AGENTEX_CI=1) — ${op} with execute:true refused; bug filing and every other tracker write stay interactive`);
+    e.reason = 'ci-mode';
+    throw e;
+  }
+}
+
 // `jira.site` accepts both spellings, explicitly: a full URL is used as-is
 // (trailing slashes stripped); a bare site name becomes
 // https://<name>.atlassian.net — the documented mirror of ADO's org
@@ -403,6 +417,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       };
       const u = api('issue');
       if (!execute) return descriptor('createWorkItem', 'POST', u, { body: { fields: summarizeFields(body.fields) }, contentType: 'application/json' });
+      assertCiWritesAllowed('createWorkItem');
       const res = await request('createWorkItem', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
       const key = (res && (res.key || res.id)) || null;
       return { id: key, url: key ? webUrl(key) : null };
@@ -412,6 +427,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const fields = foldRelations(dialectFields(payload.fields), payload.addRelations, 'updateWorkItem');
       const u = api(`issue/${encodeURIComponent(id)}`);
       if (!execute) return descriptor('updateWorkItem', 'PUT', u, { body: { fields: summarizeFields(fields) }, contentType: 'application/json' });
+      assertCiWritesAllowed('updateWorkItem');
       await request('updateWorkItem', 'PUT', u, { body: JSON.stringify({ fields }), contentType: 'application/json' });
       return { id: String(id), url: webUrl(id) };
     },
@@ -431,6 +447,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       };
       const u = api('issueLink');
       if (!execute) return descriptor('addRelation', 'POST', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('addRelation');
       await request('addRelation', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: String(id), relType, targetId: String(targetId) };
     },
@@ -454,6 +471,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
           extraHeaders: { 'X-Atlassian-Token': 'no-check' },
         });
       }
+      assertCiWritesAllowed('uploadAttachment');
       const bytes = fs.readFileSync(filePath);
       const fd = new FormData();
       fd.append('file', new Blob([bytes]), name);
@@ -469,6 +487,10 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // them — never guessed. The dry run performs the free read and returns the
     // descriptor with the resolved transition.
     async transition(id, toNameOrId, { execute = false } = {}) {
+      // The execute path starts with the free transitions read, so the CI guard
+      // sits BEFORE it — an execute:true call under CI refuses with zero
+      // requests; the dry run (execute:false) still performs the read.
+      if (execute) assertCiWritesAllowed('transition');
       const tUrl = api(`issue/${encodeURIComponent(id)}/transitions`);
       const res = await request('transition', 'GET', tUrl);
       const list = (res && res.transitions) || [];
@@ -496,6 +518,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const adf = typeof body === 'string' ? toAdf(body) : body;
       const u = api(`issue/${encodeURIComponent(id)}/comment`);
       if (!execute) return descriptor('addComment', 'POST', u, { body: { body: adf }, contentType: 'application/json' });
+      assertCiWritesAllowed('addComment');
       const res = await request('addComment', 'POST', u, { body: JSON.stringify({ body: adf }), contentType: 'application/json' });
       return { id: res && res.id, issue: String(id) };
     },

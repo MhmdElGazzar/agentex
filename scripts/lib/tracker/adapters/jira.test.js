@@ -19,7 +19,7 @@ const SENTINEL_EMAIL = 'sentinel.qa@example.com';
 const SENTINEL_B64 = Buffer.from(`${SENTINEL_EMAIL}:${SENTINEL_TOKEN}`).toString('base64');
 
 // The tests own the credential environment — real values must not leak in.
-for (const n of ['JIRA_EMAIL', 'JIRA_API_TOKEN']) delete process.env[n];
+for (const n of ['JIRA_EMAIL', 'JIRA_API_TOKEN', 'AGENTEX_CI']) delete process.env[n];
 
 // Throwaway consumer project with a jira block + sentinel credentials in .env.
 function proj({ site = 'example', project = 'PROJ', envLines, jiraExtra = {} } = {}) {
@@ -628,6 +628,60 @@ const SUBTASK_FIELDS = {
     assert.ok(!all.includes(SENTINEL_TOKEN), 'raw token leaked');
     assert.ok(!all.includes(SENTINEL_B64), 'base64 auth pair leaked');
     assert.ok(!all.includes(SENTINEL_EMAIL), 'the email is credential material too');
+  });
+
+  // ── CI guard (invariant 4 / ci-quality-gate): no tracker writes in CI mode ──
+  // Exact parity with the ADO adapter's choke-point guard (same refusal, same
+  // wording/shape; reads and dry-run descriptors unaffected).
+  await test('under AGENTEX_CI=1 every write with execute:true is refused (exit-2 error, ci-mode, ZERO requests)', async () => {
+    process.env.AGENTEX_CI = '1';
+    try {
+      const dir = proj();
+      const png = path.join(dir, 'shot.png');
+      fs.writeFileSync(png, Buffer.alloc(4096));
+      const f = fakeFetch([]);
+      const a = createAdapter({ cwd: dir, fetch: f });
+      const writes = [
+        () => a.createWorkItem('Bug', { fields: { summary: 't' } }, { execute: true }),
+        () => a.updateWorkItem('PROJ-42', { fields: { summary: 'y' } }, { execute: true }),
+        () => a.addRelation('PROJ-42', 'Relates', 'PROJ-9', { execute: true }),
+        () => a.addRelation('PROJ-42', 'parent', 'PROJ-9', { execute: true }),
+        () => a.uploadAttachment(png, { issueId: 'PROJ-42', execute: true }),
+        () => a.transition('PROJ-42', 'Done', { execute: true }),
+        () => a.addComment('PROJ-42', 'note', { execute: true }),
+      ];
+      for (const w of writes) {
+        await assert.rejects(w, (e) => {
+          assert.match(e.message, /ci-mode: tracker writes are disabled in CI/);
+          assert.strictEqual(e.exitCode, 2, 'the refusal is environment-class (2), never a product failure (1)');
+          return true;
+        });
+      }
+      assert.strictEqual(f.calls.length, 0, 'the guard refuses BEFORE any request leaves the machine');
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
+  await test('under AGENTEX_CI=1 execute:false descriptors and reads are UNAFFECTED', async () => {
+    process.env.AGENTEX_CI = '1';
+    try {
+      const f = fakeFetch([
+        { match: '/rest/api/3/issue/PROJ-1', json: { key: 'PROJ-1', fields: {} } },
+        { method: 'POST', match: '/search/jql', json: { issues: [] } },
+      ]);
+      const a = createAdapter({ cwd: proj(), fetch: f });
+      assert.strictEqual((await a.getWorkItem('PROJ-1')).key, 'PROJ-1', 'reads still work');
+      assert.deepStrictEqual(await a.findByTitle('Bug', 't'), [], 'query reads still work');
+      const d = await a.createWorkItem('Bug', { fields: { summary: 't' } }, { execute: false });
+      assert.strictEqual(d.method, 'POST', 'the dry-run descriptor path is untouched');
+      assert.strictEqual(f.calls.filter((c) => c.method !== 'GET' && !c.url.includes('/search/jql')).length, 0, 'still zero writes');
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
+  await test('without AGENTEX_CI the same writes go through (the guard keys on the env var alone)', async () => {
+    const f = fakeFetch([{ method: 'POST', match: '/rest/api/3/issue', json: { key: 'PROJ-77' } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const r = await a.createWorkItem('Bug', { fields: { summary: 't' } }, { execute: true });
+    assert.strictEqual(r.id, 'PROJ-77');
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
