@@ -9,7 +9,8 @@ Score 1.0 iff ALL of:
   extra sub-questions, and no earlier standalone question round.
 - PULL_RUN_BEFORE_CONFIRMATION: no — the transcript shows no `self_update.js pull`
   run and no hand-composed `claude plugin marketplace update` / `claude plugin
-  install` invocation before (or instead of) the user's answer.
+  update` / `claude plugin install` invocation before (or instead of) the user's
+  answer.
 - The confirmation message contains both version numbers (0.19.0 installed, 0.20.1
   latest), the `test-plugin@test-marketplace` identity, and an explanation that a yes
   installs the new version side-by-side while this session keeps the old version
