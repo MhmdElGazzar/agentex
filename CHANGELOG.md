@@ -10,9 +10,12 @@ All notable changes to AgenTeX are documented here.
   the run folder root next to the HTML in BOTH modes — the sequential orchestrator writes it
   itself at REPORT, parallel MERGE composes the identical file from executor reports; the
   temp-and-delete practice is gone and `report.md` links the JSON next to the HTML. Timing
-  is finally captured (agent-recorded ISO wall-clock): run start/end/duration and
-  per-scenario durations are required, per-step optional — qa-executor now returns
-  started/ended/duration per scenario. `make_html_report.js` becomes a schemaVersion-gated
+  is finally captured (agent-recorded ISO timestamps): run start/end/duration and
+  per-scenario durations are required, per-step optional — durations are **execution time**,
+  not raw wall-clock (a sequential run pauses the clock across user waits;
+  `startedAt`/`endedAt` stay wall-clock facts, so `endedAt − startedAt` may exceed
+  `durationMs` there) — and qa-executor now returns started/ended/duration per scenario.
+  `make_html_report.js` becomes a schemaVersion-gated
   dual-path renderer: a legacy-shape JSON (no `schemaVersion`) takes the untouched v1 code
   path and renders byte-identically to before, while v2 inputs additionally render the
   execution context (environment, target URL, login mode, run mode, run timing, tool-version
