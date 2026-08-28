@@ -1,18 +1,20 @@
 ---
 name: bug-report-azure
-description: "After a completed test/regression run where one or more defects were found, file them as Azure DevOps Bugs following a configurable bug template — through bundled Node scripts that talk to the ADO REST API directly (no Azure CLI needed). Product/team-agnostic: org, project, area path, template, assignees, and test plan resolve from config, never hardcoded. ONE gate per filing: all reads and validation run first with zero board writes, then a single consolidated screen (validated fields + the exact write plan) and one approval before anything is written. Severity/priority recommended from the run's findings, screenshots validated in two passes, writes fail closed with an exact per-write ledger — the board never silently differs from what the user confirmed."
+description: "After a completed test/regression run where one or more defects were found, file them as tracker Bugs on the configured tracker — Azure DevOps or Jira Cloud (\"file these as Jira bugs\" works the same) — following a configurable bug template, through bundled Node scripts that talk to the tracker REST API directly (no Azure CLI, no acli needed). Product/team-agnostic: org/site, project, area path, template, assignees, and test plan resolve from config, never hardcoded. ONE gate per filing: all reads and validation run first with zero board writes, then a single consolidated screen (validated fields + the exact write plan) and one approval before anything is written. Severity/priority recommended from the run's findings, screenshots validated in two passes, writes fail closed with an exact per-write ledger — the board never silently differs from what the user confirmed."
 ---
 
-# Report Azure Bug (Generic)
+# Report Bug (Generic — Azure DevOps or Jira)
 
-Turn defects found during a run into Azure DevOps **Bugs** that mirror a configurable
-team template and hang off the right User Story — behind **exactly one approval**. This is
-the closing gate of a test run, and its whole promise is: *nothing lands on the board
-beyond what you confirmed, and nothing silently.*
+Turn defects found during a run into tracker **Bugs** that mirror a configurable team
+template and hang off the right User Story — behind **exactly one approval**, on the
+configured tracker (Azure DevOps or Jira Cloud). This is the closing gate of a test run,
+and its whole promise is: *nothing lands on the board beyond what you confirmed, and
+nothing silently.*
 
 This skill is **decoupled from any specific team or product**. Everything team-specific is a
-placeholder resolved at runtime from `config/project.json`'s `azure` block or legacy `AZURE_*`
-keys in `.env` (never hardcoded in the skill):
+placeholder resolved at runtime from `config/project.json` — the `azure` block (or legacy
+`AZURE_*` keys in `.env`) on ADO projects, the `jira` block on Jira projects — never
+hardcoded in the skill:
 
 | Placeholder | Meaning | Resolved from |
 |---|---|---|
@@ -22,21 +24,26 @@ keys in `.env` (never hardcoded in the skill):
 | `{{AREA_PATH}}` | Area Path | `azure.areaPath` → `AZURE_AREA_PATH` or inherited from the parent story |
 | `{{ITERATION_PATH}}` | Iteration Path | `azure.iterationPath` → `AZURE_ITERATION_PATH` or inherited from the parent story |
 | `{{TEMPLATE_BUG_ID}}` | Reference bug the template mirrors | `azure.bugTemplateId` → `AZURE_BUG_TEMPLATE_ID` (optional) |
-| `{{ASSIGNEE_EMAIL}}` | Bug assignee options | `azure.assignee` → `AZURE_ASSIGNEE` (comma-separated) |
-| `{{TEST_PLAN_ID}}` / `{{TEST_SUITE_ID}}` | Related test plan / suite | `azure.testPlanId` → `AZURE_TEST_PLAN_ID` |
+| `{{ASSIGNEE_EMAIL}}` | Bug assignee options | `azure.assignee` → `AZURE_ASSIGNEE` · `jira.assignee` (comma-separated) |
+| `{{TEST_PLAN_ID}}` / `{{TEST_SUITE_ID}}` | Related test plan / suite (ADO only) | `azure.testPlanId` → `AZURE_TEST_PLAN_ID` |
 | `{{ENVIRONMENT}}` / `{{BUG_CATEGORY}}` | Custom picklist fields | `azure.environment` / `azure.bugCategory` or the run's environment |
+| `{{JIRA_SITE}}` / `{{JIRA_PROJECT}}` | Jira site (URL or bare name) / project KEY | `jira.site` / `jira.project` (`config/project.json`) |
+| `{{LINK_TYPE}}` | Bug→story issue link type (Jira) | `jira.bugLinkType` → the Phase-B bundle (live options, `Relates` recommended) |
 
-The **PAT** is read from `.env` by the bundled scripts themselves (`AZURE_PAT`, legacy
-`AZURE_DEVOPS_EXT_PAT` / `AZURE_DEVOPS_PAT`) and sent only in the Authorization header —
-never printed, logged, or placed on a command line. No shell export, no `az login`, no
-Azure CLI install is needed for bug filing.
+Credentials are read from `.env` by the bundled scripts themselves — ADO: the **PAT**
+(`AZURE_PAT`, legacy `AZURE_DEVOPS_EXT_PAT` / `AZURE_DEVOPS_PAT`); Jira: `JIRA_EMAIL` +
+`JIRA_API_TOKEN` — and sent only in the Authorization header — never printed, logged, or
+placed on a command line. No shell export, no `az login`, no CLI install is needed for bug
+filing.
 
-## Tooling: bundled scripts over the ADO REST API
+## Tooling: bundled scripts over the tracker REST API
 
 Every lookup, validation, and write goes through bundled Node scripts built on the
-plugin's tracker layer (`scripts/lib/tracker/` — direct REST over Node's built-in fetch).
-**Never run `az` for any part of bug filing, and never compose REST calls yourself** — the
-scripts own transport, auth, and validation; you own judgment and the user conversation.
+plugin's tracker layer (`scripts/lib/tracker/` — direct REST over Node's built-in fetch;
+ADO or Jira Cloud v3, picked from the project's config by the scripts themselves).
+**Never run `az` or `acli` for any part of bug filing, and never compose REST calls
+yourself** — the scripts own transport, auth, and validation; you own judgment and the
+user conversation.
 
 - `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js` — validate a bug
   spec (dry run) and, behind `--execute`, run the fail-closed write sequence with a ledger.
@@ -44,9 +51,12 @@ scripts own transport, auth, and validation; you own judgment and the user conve
   `show --id <id> [--expand all]` (template bug, story validation), `find --type --title`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js` — test-plan mechanics
   (cross-skill, owned by test-design): `list-suites` / `list-cases` / `find-case` /
-  `create-case` / `fail`. Same dry-run default and ledger discipline.
+  `create-case` / `fail`. Same dry-run default and ledger discipline. **ADO only** — on a
+  Jira-configured project it refuses upfront (exit 2, `testPlans:false`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/check-image.js` — structural
   screenshot validation (Pass 1 of the evidence gate; local, no tracker access).
+- `${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md` — the shared Jira knowledge
+  (field ids, ADF, link semantics, known limitations); `ado-boards.md` is the ADO twin.
 
 Each script prints **one JSON line** and exits 0/1/2. Dry run is the default; nothing is
 written without `--execute`. You render the plan and the ledger for the user — the scripts
@@ -54,14 +64,47 @@ never talk to them.
 
 ### Field/picklist cache & the refresh path
 
-Valid picklist values (severity, priority, `Custom.*` fields) vary per ADO project. The
+Valid picklist values (severity, priority, `Custom.*` fields) vary per project. The
 scripts build a per-project metadata cache on first use —
-`.agentex/cache/tracker-fields-ado.json` (gitignored; committing it is an explicit opt-in:
-add a `!.agentex/cache/` line to `.gitignore`) — and validate every supplied value against
-the **project's real values** before the gate. When the user asks to refresh (or the
-server rejects a value the cache accepted), re-run the validating script with
-`--refresh-fields`; a stale-cache rejection comes back with the real current options and
-`cacheStale: true` — surface those options, never substitute a value silently.
+`.agentex/cache/tracker-fields-ado.json` on ADO, `tracker-fields-jira.json` on Jira
+(gitignored; committing it is an explicit opt-in: add a `!.agentex/cache/` line to
+`.gitignore`) — and validate every supplied value against the **project's real values**
+before the gate. When the user asks to refresh (or the server rejects a value the cache
+accepted), re-run the validating script with `--refresh-fields`; a stale-cache rejection
+comes back with the real current options and `cacheStale: true` — surface those options,
+never substitute a value silently.
+
+## On Jira (design §5.7 — same gate, inverted write order)
+
+The workflow, gate, ledger, and evidence discipline are identical; these are the Jira
+deltas, all owned by `create-bug.js`:
+
+- **The write order inverts around the attachment step**: Jira attaches to an *existing*
+  issue, so `--execute` runs **create Bug → attach ×N → link story** (ADO uploads first,
+  then relates). The inversion is visible in the plan the user approves, and a partial
+  failure still names the created key and exactly which attachments landed.
+- **Severity (explicit ask-don't-substitute line)**: Severity is not a standard Jira field.
+  A severity-like **custom** field is used only when the project's Bug screen has one
+  (cache discovery by name). When it is **absent**, severity is **omitted** from the Jira
+  spec and the consolidated screen says so — priority (a NAME, e.g. `High`, validated
+  against the project's real names) still carries the impact recommendation. Never invent
+  a severity field.
+- **Bug→story link**: Jira has no parent link for a Bug under a story, so the link is an
+  **issue link**. `jira.bugLinkType` pins the type; when unset, the choice joins the ONE
+  Phase-B bundle with the site's real options read live (`Relates` recommended). The chosen
+  link always appears on the consolidated screen — never invented, never silent.
+- **Test-case actions (explicit inform-first lines)**: Jira has no test-plan/run APIs and
+  no Tested-By link (`testPlans`/`testRuns: false`). Inform the user of that gap **upfront**
+  and offer only what exists: **skip (default)**, or — if the project created test
+  artifacts via `/design-test` — **link the bug to that artifact** with the same
+  issue-link mechanism, explicitly chosen on the screen; never a silent substitute. Do not
+  invoke `testplan.js` against a Jira config (it refuses with exit 2).
+- No server-side `validateOnly` exists on Jira — the createmeta cache + required-field
+  checks carry pre-gate validation; the dry-run JSON says
+  `validateOnly: 'unsupported-on-jira'` so the screen is honest about what was proven.
+- Spec keys on Jira: `parentStoryId` takes the issue KEY (e.g. `PROJ-9`), and an optional
+  `linkType` carries the bundle's choice when `jira.bugLinkType` is unset. Area/iteration
+  and test-plan keys have no Jira meaning and are ignored.
 
 ## Hard constraints (never violate — these are the point of the skill)
 
@@ -70,8 +113,10 @@ server rejects a value the cache accepted), re-run the validating script with
    the explicitly chosen test-case action. Nothing else, ever.
 2. **Reads and validation run freely; writes only behind the one approval.** Exactly ONE
    approval interaction sits between the user's filing request and the board writes.
-3. **One link type only:** User Story → (parent) → Bug (`System.LinkTypes.Hierarchy-Reverse`).
-   No related / duplicate / any other link. Never edit the User Story itself.
+3. **One link type only:** on ADO, User Story → (parent) → Bug
+   (`System.LinkTypes.Hierarchy-Reverse`); on Jira, exactly the ONE configured/chosen issue
+   link type to the story. No related / duplicate / any other extra link. Never edit the
+   User Story itself.
 4. **Never edit a Test Plan / Suite / Test Case** except the two explicit, user-chosen
    actions: record a *Failed outcome* on an existing case, or create a new case.
 5. **The duplicate check fails CLOSED.** If it cannot complete, the filing blocks — it
@@ -163,8 +208,9 @@ has exactly one interaction: the approval.
    node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js fail --plan <plan> --testcase <tc> --bug <bugId> --execute          # only if chosen
    ```
    On anything else: stop — zero writes. The write order inside `--execute` is fixed and
-   fail-closed: re-validate → upload attachments → create Bug → link parent → one
-   json-patch setting ReproSteps + evidence relations. First failure stops the sequence.
+   fail-closed — on ADO: re-validate → upload attachments → create Bug → link parent →
+   one json-patch setting ReproSteps + evidence relations; on Jira: re-validate → create
+   Bug → attach ×N → link story (the On Jira section). First failure stops the sequence.
 4. **Render the ledger.** Report every intended write as done (ID + URL) or not-done
    (reason), straight from the ledger JSON. A partial failure is reported as a **failure**
    with the exact board state — e.g. *"Bug #4711 was created (…/edit/4711) but the parent
@@ -209,4 +255,5 @@ has exactly one interaction: the approval.
   `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/references/azure-devops.md`.
 - Keep spec files out of committed state (write them to a temp/execution folder).
 - All board flows (bug filing, `/estimate-story`, `/design-test`) share the tracker scripts
-  and the `.env` PAT — one setup covers them all.
+  and the `.env` credentials (`AZURE_PAT`, or `JIRA_EMAIL` + `JIRA_API_TOKEN`) — one setup
+  covers them all.
