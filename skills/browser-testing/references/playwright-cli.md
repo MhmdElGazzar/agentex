@@ -6,8 +6,16 @@ when a `playwright-cli` command behaves unexpectedly.
 ## Setup & preflight
 - `playwright-cli` is provided by the npm package **@playwright/cli** (the bare
   `playwright-cli` package is **deprecated** — do NOT install it).
-- Preflight before testing: `npx playwright-cli --version`.
-  - If missing: `npm install -D @playwright/cli` then `npx playwright-cli install-browser chromium`.
+- Preflight before testing: trust the bundled `preflight.js` verdict — its playwright-cli
+  probe judges by **output**, not exit code alone. On Windows + current Node the CLI can
+  print its version and then die on its own exit path with a benign upstream libuv
+  assertion (`UV_HANDLE_CLOSING`); preflight reports that as `ok: true` with a
+  `note: "version confirmed; known benign exit-crash on this stack"`. A probe result
+  carrying that note means the tool IS usable: do NOT re-run `npx playwright-cli --version`
+  manually, see the non-zero exit or the assertion text, and re-conclude "broken" on your
+  own — proceed with the run.
+  - If preflight reports `ok: false` (no plausible version output): `npm install -D @playwright/cli`
+    then `npx playwright-cli install-browser chromium`.
 - `preflight.js` also reports a **`playwright`** key — the npm **library**, which is a
   different thing from this CLI and is needed only by `/optimize-login` when it resumes a
   saved session (only the library can load a `storageState`). `ok: false` there does not

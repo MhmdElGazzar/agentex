@@ -1,0 +1,113 @@
+# AgenTeX CI quality gate — Azure Pipelines template
+#
+# Copy into your project (e.g. pipelines/agentex-gate.yml), replace every
+# <angle-bracket> placeholder, and wire the variable group. The plugin is never a
+# runner or scheduler — this stage is yours; the plugin only provides the one
+# deterministic entry point (ci_gate.js) and its exit-code contract:
+#   0 = PASS (EXPECTED FAIL honored as pass)
+#   1 = FAIL (real product defects)
+#   2 = BLOCKED (environment/infrastructure or indeterminate — never a product verdict)
+# Full contract + CI-agnostic recipe: docs/ci-quality-gate.md in the plugin repo.
+#
+# MODES
+#   BLOCKING (default): the gate step fails the stage automatically on exit 1/2.
+#   ADVISORY: uncomment `continueOnError: true` on the gate step — the stage never
+#   auto-fails; the PM's ManualValidation approval below becomes the gate.
+#
+# SECRETS travel by NAME from the variable group — a value never appears in this
+# file, in the verdict JSON, or in any log line. Every { "envSecret": "NAME" } your
+# environment files reference needs a matching secret variable here.
+#
+# Worst-case wall clock = (1 + retries) x timeoutMinutes (per-attempt budget) — set
+# the job timeout above that. Policy defaults: retries 3, timeoutMinutes 60,
+# warningsFailGate true, flakyFailsGate false (see the `ci` block in docs/configuration.md).
+
+trigger: none            # run on your own schedule / PR policy instead
+# schedules:
+#   - cron: "0 3 * * *"
+#     displayName: nightly regression gate
+#     branches: { include: [main] }
+
+variables:
+  - group: agentex-ci-secrets    # carries ANTHROPIC_API_KEY (secret) + your envSecret names
+
+stages:
+  - stage: agentex_quality_gate
+    displayName: AgenTeX quality gate
+    jobs:
+      - job: run_gate
+        displayName: Headless AgenTeX run + verdict
+        timeoutInMinutes: 300    # > (1 + retries) x per-attempt timeoutMinutes
+        pool:
+          vmImage: <windows-latest-or-your-pool>   # any OS with Node 20+
+        steps:
+          - task: NodeTool@0
+            displayName: Node 20
+            inputs:
+              versionSpec: '20.x'
+
+          - script: npm install -g @anthropic-ai/claude-code
+            displayName: Install the claude CLI
+
+          # Install the plugin. Alternative: pin a checkout of the plugin repo and
+          # point the gate step at that path — never at the ~/.claude/plugins cache
+          # (documented as ephemeral across updates).
+          - script: claude plugin install <agentex@your-marketplace>
+            displayName: Install the AgenTeX plugin
+
+          - script: npm install -D @playwright/cli && npx playwright-cli install-browser chromium
+            displayName: Install the browser driver
+            workingDirectory: <path-to-your-agentex-project>
+
+          # THE GATE — one deterministic entry point; its exit code IS the verdict
+          # and its stdout is exactly one JSON line (the contract-v1 verdict).
+          # Scope forms: --spec <file> (repeatable) | --suite <folder> | --all
+          - script: node "<plugin-root>/skills/browser-testing/scripts/ci_gate.js" --suite <test/your-suite/> --env <environment-name>
+            displayName: AgenTeX CI gate
+            workingDirectory: <path-to-your-agentex-project>
+            # continueOnError: true    # ADVISORY mode — the PM approval below is then the gate
+            env:
+              ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)      # by NAME from the variable group
+              # <YOUR_ENV_SECRET_NAME>: $(<YOUR_ENV_SECRET_NAME>)   # one per envSecret name
+
+          # Surface the one-line verdict JSON in the pipeline UI.
+          - powershell: |
+              $v = Get-ChildItem "executions/execu_*/verdict.json" | Sort-Object LastWriteTime | Select-Object -Last 1
+              $json = Get-Content $v -Raw | ConvertFrom-Json
+              Write-Host "AgenTeX verdict: $($json.verdict) (exit $($json.exitCode)) — passed $($json.counts.passed), failed $($json.counts.failed), blocked $($json.counts.blocked), retries $($json.retries)"
+              "## AgenTeX verdict`n``````json`n$(Get-Content $v -Raw)`n``````" | Out-File verdict-summary.md
+              Write-Host "##vso[task.uploadsummary]$(Resolve-Path verdict-summary.md)"
+            displayName: Verdict to pipeline summary
+            condition: always()
+            workingDirectory: <path-to-your-agentex-project>
+
+          # Publish the human report + evidence + verdict for the PM.
+          # Publish ONLY executions/ — NEVER test/.auth (saved login state is secret-grade).
+          - task: PublishPipelineArtifact@1
+            displayName: Publish run artifacts
+            condition: always()
+            inputs:
+              targetPath: <path-to-your-agentex-project>/executions
+              artifactName: agentex-run
+
+      # PM review & approval — the human gate. In ADVISORY mode this approval is the
+      # only gate; in BLOCKING mode it is a second, human check after the exit code.
+      - job: pm_approval
+        displayName: PM review and approval
+        dependsOn: run_gate
+        condition: always()      # review even a failed/blocked run (blocking mode may use succeeded())
+        pool: server             # agentless job — ManualValidation requires it
+        timeoutInMinutes: 4320
+        steps:
+          - task: ManualValidation@0
+            displayName: PM approves the delivery
+            timeoutInMinutes: 4320
+            inputs:
+              notifyUsers: <pm@example.com>
+              instructions: >-
+                Review the agentex-run artifact (extent-report.html, report.md,
+                screenshots, verdict.json). Verdict meanings: PASS = proceed;
+                FAIL = real product defects (details in the report);
+                BLOCKED = environment/indeterminate — fix the environment and re-run,
+                do not treat as a product failure. Approve to let downstream stages proceed.
+              onTimeout: reject

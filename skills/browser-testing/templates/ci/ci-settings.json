@@ -1,0 +1,51 @@
+{
+  "//": "AgenTeX headless CI permission settings — passed to claude via --settings (ci_gate.js uses this file by default; copy it into your project to extend). Under --permission-mode dontAsk anything NOT allowed below is DENIED (deny-by-default): a denied tool ends the session without a verdict and the gate fails closed to exit 2 — never a wrong PASS/FAIL. Derived from settings.example.json (the interactive recommendation).",
+  "//notes": [
+    "allow > Bash(node:*) covers the plugin's bundled scripts (preflight.js, init_run.js, merge_run.js, run_api.js, run_db.js, ask_kb.js, session.js, fetch_baseline.js, make_html_report.js, write_verdict.js). To narrow it, replace with 'Bash(node <installed plugin path>/skills:*)'.",
+    "deny > .env and key material: the bundled scripts read secrets from the environment themselves; the session never needs to READ them, so those reads are denied rather than trusted. test/.auth/** is secret-grade saved-login state — never readable here and NEVER a published pipeline artifact.",
+    "deny > the interactive recommendation's 'ask' entries (bare curl/sqlcmd, close-all/kill-all, destructive az) are denied outright here: under dontAsk there is nobody to ask. API/DB steps run through the cataloged node runners, which stay allowed.",
+    "deny > Edit/Write(./src/**) protect the application source only if it lives in ./src — repoint at your real source folder; a test run never needs to write there (it writes under test/ and executions/)."
+  ],
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npx playwright-cli:*)",
+      "Bash(node:*)",
+      "Bash(npm install:*)",
+      "Read(./**)",
+      "Write(./executions/**)",
+      "Edit(./executions/**)",
+      "Write(./test/**)",
+      "Edit(./test/**)"
+    ],
+    "deny": [
+      "Read(./secrets/**)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/*.pfx)",
+      "Read(./**/id_rsa*)",
+      "Read(./**/.npmrc)",
+      "Read(./test/.auth/**)",
+      "Edit(./src/**)",
+      "Write(./src/**)",
+      "MultiEdit(./src/**)",
+      "NotebookEdit(./src/**)",
+      "Bash(npx playwright-cli close-all:*)",
+      "Bash(npx playwright-cli kill-all:*)",
+      "Bash(curl:*)",
+      "Bash(sqlcmd:*)",
+      "Bash(rm -rf:*)",
+      "Bash(rm -fr:*)",
+      "Bash(rm -r:*)",
+      "Bash(Remove-Item:*)",
+      "Bash(rmdir:*)",
+      "Bash(git push:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)"
+    ]
+  }
+}

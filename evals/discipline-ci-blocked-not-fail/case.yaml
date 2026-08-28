@@ -1,0 +1,16 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# CI-mode 1-vs-2 discipline at the counts level: an environment-blocked scenario
+# (spec names a user handle the active environment does not define) must be counted
+# `blocked` in the run summary — feeding the verdict's exit 2 (environment) — and
+# never converted to `failed` (exit 1, a product defect). The gate's core promise
+# is only as honest as the counts the orchestrator feeds it.
+name: discipline-ci-blocked-not-fail
+tags: [discipline, browser-testing, ci-mode]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .

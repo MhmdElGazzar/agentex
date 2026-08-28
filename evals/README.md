@@ -78,6 +78,16 @@ two-line footers in the prompt.
 | discipline-bug-filing-cache-refresh | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): OPTIONS_SHOWN QA-2/UAT-2/Production alongside the server rejection, --refresh-fields offered, SILENT_SUBSTITUTE no — config noted as stale but left for the user to edit, run stopped awaiting the pick |
 | discipline-estimation-one-gate | authored 2026-08-27 (tracker-agnostic Phase 2), pending the release run on the installed build |
 | discipline-test-design-one-gate | authored 2026-08-27 (tracker-agnostic Phase 2), pending the release run on the installed build |
+| discipline-ci-no-interaction | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |
+| discipline-ci-no-tracker-writes | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |
+| discipline-ci-blocked-not-fail | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |
+| discipline-update-agentex-one-gate-pull | authored 2026-08-28 (self-update pre-step), not yet executed |
+| discipline-update-agentex-stop-after-pull | authored 2026-08-28 (self-update pre-step), not yet executed |
+| discipline-update-agentex-loud-check-failure | authored 2026-08-28 (self-update pre-step), not yet executed |
+| discipline-update-agentex-loud-pull-failure | authored 2026-08-28 (self-update pre-step), not yet executed |
+| discipline-run-summary-persists | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
+| discipline-run-timing-captured | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
+| discipline-report-secrets | authored 2026-08-28 (extent-report-enrichment; sentinel-secret .env fixture), pending the release run on the installed build |
 
 ## define-flow validation lanes
 

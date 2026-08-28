@@ -1,0 +1,1 @@
+{ "portalUrl": "https://qa-shop.example.test", "defaults": { "password": "Disposable1!" }, "users": { "standard_user": { "username": "qa.tester@example.com" } } }
