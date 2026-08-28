@@ -108,9 +108,9 @@ deltas, all owned by `create-bug.js`:
 
 ## Hard constraints (never violate — these are the point of the skill)
 
-1. **Write nothing on Azure DevOps beyond what the user explicitly approved on the one
-   consolidated screen** — the bug, its single parent link, the validated attachments, and
-   the explicitly chosen test-case action. Nothing else, ever.
+1. **Write nothing on the tracker beyond what the user explicitly approved on the one
+   consolidated screen** — the bug, its single parent/story link, the validated
+   attachments, and the explicitly chosen test-case action. Nothing else, ever.
 2. **Reads and validation run freely; writes only behind the one approval.** Exactly ONE
    approval interaction sits between the user's filing request and the board writes.
 3. **One link type only:** on ADO, User Story → (parent) → Bug
