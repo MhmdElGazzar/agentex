@@ -52,16 +52,18 @@ as the counts you feed it.
 
 At REPORT (after `report.md` and `bugs/`), always:
 
-1. Generate `extent-report.html` via the **extent-report** skill (not optional in CI —
-   it is the artifact the pipeline publishes for the PM).
-2. Build the run-summary JSON exactly as for the extent report (same counts
-   vocabulary: `passed/failed/blocked/warnings/viewMismatch/flaky/naDescoped/notRun`)
-   into a temp file.
+1. Write `executions/execu_<ts>/run-summary.json` exactly as the REPORT phase specifies
+   (persistent, `schemaVersion: 2`, same counts vocabulary:
+   `passed/failed/blocked/warnings/viewMismatch/flaky/naDescoped/notRun` — shape in the
+   extent-report skill's `references/run-summary-schema.md`). It is a retained artifact;
+   the temp-and-delete convention is gone.
+2. Generate `extent-report.html` from that `run-summary.json` via the **extent-report**
+   skill (not optional in CI — it is the artifact the pipeline publishes for the PM).
 3. Run the verdict writer — judgment ends here; the mapping is code:
 
    ```
    node ${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/scripts/write_verdict.js \
-     --summary <temp run-summary.json> \
+     --summary executions/execu_<ts>/run-summary.json \
      --run-dir executions/execu_<ts> \
      --env <active environment name, when one resolved> \
      --scope-kind <spec|list|suite|all> --scope-value "<the run's scope>" \
@@ -74,8 +76,8 @@ At REPORT (after `report.md` and `bugs/`), always:
    `session-error`. Do NOT pass policy flags — policy arrives via the `AGENTEX_CI_POLICY`
    env var (set by `ci_gate.js`) or the project's `ci` config block; the script resolves
    it itself.
-4. Delete the temp summary file (extent-report convention). `verdict.json` in the run
-   folder is the retained artifact — never edit it by hand.
+4. `run-summary.json` and `verdict.json` in the run folder are both retained artifacts —
+   never delete the summary, never edit either by hand.
 
 Exit codes from `write_verdict.js` (0 PASS / 1 FAIL / 2 BLOCKED) are expected outcomes,
 not script errors — relay its one JSON line in the final message and do not re-run it

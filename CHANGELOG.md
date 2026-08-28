@@ -63,6 +63,34 @@ All notable changes to AgenTeX are documented here.
   hard timeouts (win32 `.cmd` shim handled), covered by sibling unit tests
   (`self_update.test.js`, `lib/version.test.js`) and 4 new discipline evals
   (`discipline-update-agentex-{one-gate-pull,stop-after-pull,loud-check-failure,loud-pull-failure}`).
+- **Extent report enrichment — the persistent rich run record.** The JSON that feeds
+  `extent-report.html` is now a retained artifact: `run-summary.json` (`schemaVersion: 2`,
+  internal contract in `skills/extent-report/references/run-summary-schema.md`) persists at
+  the run folder root next to the HTML in BOTH modes — the sequential orchestrator writes it
+  itself at REPORT, parallel MERGE composes the identical file from executor reports; the
+  temp-and-delete practice is gone and `report.md` links the JSON next to the HTML. Timing
+  is finally captured (agent-recorded ISO timestamps): run start/end/duration and
+  per-scenario durations are required, per-step optional — durations are **execution time**,
+  not raw wall-clock (a sequential run pauses the clock across user waits;
+  `startedAt`/`endedAt` stay wall-clock facts, so `endedAt − startedAt` may exceed
+  `durationMs` there) — and qa-executor now returns started/ended/duration per scenario.
+  `make_html_report.js` becomes a schemaVersion-gated
+  dual-path renderer: a legacy-shape JSON (no `schemaVersion`) takes the untouched v1 code
+  path and renders byte-identically to before, while v2 inputs additionally render the
+  execution context (environment, target URL, login mode, run mode, run timing, tool-version
+  chips, session→spec map), `naDescoped`/`notRun` stat cards, an after-pill per-scenario
+  duration chip (card headers stay lean — the release-gate name→pill window is untouched by
+  construction and pinned by a renderer test that calls `verifyReports` itself), a per-step
+  Duration column when known, base64-embedded evidence thumbnails with click-to-expand
+  (missing evidence renders a labeled placeholder, never a failure — the single HTML file
+  displays every image on any machine, no external requests, no `file://`), ui-check
+  baseline|actual pairs with the cached-baseline caveat verbatim, flaky attempt blocks,
+  upstream-block causality, resolved NEEDS-USER records, API/DB/KB outcome summaries (never
+  payloads), and a severity-bordered defects section. Secrets rule, strictest reading: both
+  artifacts carry user handles only — `envSecret` target names and resolved values never
+  appear in the JSON or the HTML. 11 new renderer tests (the existing 11 untouched and
+  green) + 3 discipline evals (`discipline-run-summary-persists`,
+  `discipline-run-timing-captured`, `discipline-report-secrets`).
 
 ### Fixed
 - **Preflight no longer reports a working playwright-cli as broken on Windows + Node 24**

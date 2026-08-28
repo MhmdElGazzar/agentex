@@ -18,9 +18,9 @@
 //
 // The run-summary is the extent-report input shape (same `summary` counts
 // vocabulary): {"summary": {"total","passed","failed","blocked","warnings",
-// "viewMismatch","flaky","naDescoped","notRun"}, ...}. The temp summary file is
-// the caller's to delete afterward (extent-report convention); verdict.json is
-// the retained artifact.
+// "viewMismatch","flaky","naDescoped","notRun"}, ...}. `run-summary.json` persists
+// at the run folder root (extent-report convention, schemaVersion 2); verdict.json
+// is retained alongside it.
 //
 // VERDICT MAPPING — fixed order; the 1-vs-2 promise in code. Exit 1 is reachable
 // ONLY through product observations; every environment path terminates in 3/4:

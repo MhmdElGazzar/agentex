@@ -94,6 +94,7 @@ nothing scattered elsewhere.
 executions/
 └── execu_<YYYY-MM-DD_HH-MM-SS>/        # one folder per execution
     ├── report.md                       # final report          [orchestrator]
+    ├── run-summary.json                # machine-readable run record (schemaVersion 2) [orchestrator]
     ├── browser-sessions/
     │   └── <session>/                   # one per session       [subagent owns its own]
     │       ├── logs/                    #   console / network captures
@@ -130,7 +131,16 @@ Follow this loop and STOP for approval at each checkpoint. Do not skip ahead.
 3. **EXECUTE** — Before the first browser action, run `init_run.js` (no `--sessions` needed)
    to create `executions/execu_<timestamp>/` and get this run's unique session name; prefix
    EVERY `playwright-cli` command with `-s=<that name>` (never run a bare, default-session
-   command). Run scenarios one at a time. After each scenario, report PASS/FAIL with evidence
+   command). Record the run-start ISO timestamp alongside the `init_run.js` call, and record
+   each scenario's start and end the same way — one line before and one after:
+   `node -e "console.log(new Date().toISOString())"` (or the shell's `date`). These agent-
+   recorded timestamps feed `run-summary.json` at REPORT — run and per-scenario timing is
+   required, per-step timing optional when known. **Durations are execution time, not raw
+   wall-clock — pause the clock across user interactions.** Whenever you hand control to the
+   user (a checkpoint, a question, a NEEDS-USER resolution), note the timestamp at the
+   hand-off and again when you resume, and subtract the waited time — user wait never counts
+   toward a scenario's `durationMs` or the run's. Run scenarios one at a time. After each
+   scenario, report PASS/FAIL with evidence
    (screenshot + observed vs. expected). A failed scenario follows the **Flake doctrine**
    below: retry only an infrastructure failure, only once, and a scenario that passed only on
    that retry is reported as FLAKY — never as a pass.
@@ -138,8 +148,20 @@ Follow this loop and STOP for approval at each checkpoint. Do not skip ahead.
 4. **REPORT** — Save screenshots/logs under `browser-sessions/<session>/` in the run folder,
    then write `report.md` + `bugs/` there, and close your session (`-s=<session> close` —
    never `close-all`/`kill-all`).
+   Record the run-end timestamp, then write `executions/execu_<ts>/run-summary.json`
+   YOURSELF — the same persistent, machine-readable run record a parallel run's MERGE
+   produces (mode parity), shape per the extent-report skill's
+   `references/run-summary-schema.md`: run start/end/duration + mode/environment/target/login
+   mode, per-scenario durations from the timestamps you recorded, evidence paths relative to
+   the run folder. `run.startedAt`/`run.endedAt` are the real wall-clock timestamps, but
+   `run.durationMs` is EXECUTION TIME — the sum of active execution (setup included) with
+   every user-wait interval subtracted, NOT `endedAt − startedAt`; in a sequential run
+   `endedAt − startedAt` exceeding `durationMs` is expected, not an error. It is a MANDATORY
+   retained artifact — no step of the run deletes it. Link
+   it from `report.md`: `**Run summary (JSON):** [run-summary.json](./run-summary.json)`.
    Summarize results as a defect list (format below). Optionally generate an interactive
-   `extent-report.html` next to `report.md` via the **extent-report** skill.
+   `extent-report.html` next to `report.md` **from that `run-summary.json`** via the
+   **extent-report** skill.
 
 ### Parallel mode — autonomous
 Run end to end WITHOUT stopping for per-checkpoint approval; present the final report when done.
@@ -150,6 +172,10 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
    to inject as each subagent's `SESSION`. Each carries the `label` it came from — use that,
    not the ASCII session name, when the report names the spec (a spec titled in a non-Latin
    script has no ASCII to keep, so its session name is `spec<n>-<digest>`).
+   Record the run-start ISO timestamp (`node -e "console.log(new Date().toISOString())"` or
+   the shell's `date`), and keep two JSON outputs for MERGE: the `preflight.js` line (it
+   becomes `run.tools` in `run-summary.json`) and `init_run.js`'s `sessions` (it becomes
+   `run.sessions`).
 2. **LOAD** — Read the planned test files (one bucket per file). By convention these live in a
    `test/` directory, but use wherever the user keeps their specs. Stateful scenarios stay grouped
    and run sequentially within their own file.
@@ -179,8 +205,20 @@ Run end to end WITHOUT stopping for per-checkpoint approval; present the final r
    the final `report.md` and
    build `bugs/` (`bug-list.md` + copy the bug-evidence screenshots each subagent flagged,
    including any ui-check FAILs finalized here) inside the execution folder. Use the defect
-   format below. Optionally generate an interactive `extent-report.html` next to `report.md`
-   via the **extent-report** skill.
+   format below. Record the run-end timestamp and compose
+   `executions/execu_<ts>/run-summary.json` from the executor reports — the persistent,
+   machine-readable run record (shape per the extent-report skill's
+   `references/run-summary-schema.md`): run start/end/duration (an autonomous run has no
+   user wait, so the recorded timestamps already measure execution time — the same duration
+   semantics as sequential) + mode/environment/target/
+   login mode, `run.tools` from SETUP's preflight JSON, `run.sessions` from `init_run.js`,
+   per-scenario timings and evidence paths from each executor's report, ui-check detail,
+   flaky attempt records, deferrals resolved above (as resolved history), and the defects.
+   It is a MANDATORY retained artifact in every run — the same file a sequential run's
+   orchestrator writes at REPORT (mode parity) — and no step deletes it. Link it from
+   `report.md`: `**Run summary (JSON):** [run-summary.json](./run-summary.json)`. Optionally
+   generate an interactive `extent-report.html` next to `report.md` **from that
+   `run-summary.json`** via the **extent-report** skill.
 5. **PRESENT** — Show the merged summary.
 
 Autonomy boundary (applies in parallel mode): still never modify app source, never CREATE an
@@ -236,6 +274,10 @@ tester hunting a bug that was never there. So instability is **reported, never r
   boundary above.
 - `config/project.json`, `environments/<env>.json`, and `.env` may be read to resolve config;
   never print, log, or pass secret values (tokens, credentials, envSecret targets) anywhere.
+  `run-summary.json` and `extent-report.html` carry user **handles** only (e.g.
+  `expired_user`) — never credential values, and never `envSecret` target names, anywhere in
+  either artifact (not in `run`, notes, or deferred questions); the login mode is recorded as
+  the mode word only.
 - Never retry a scenario to make a failure go away, and never report a scenario that only
   passed on a retry as a pass — see **Flake doctrine**.
 - Never modify application source code. You may write test notes/artifacts only.

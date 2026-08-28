@@ -85,6 +85,9 @@ two-line footers in the prompt.
 | discipline-update-agentex-stop-after-pull | authored 2026-08-28 (self-update pre-step), not yet executed |
 | discipline-update-agentex-loud-check-failure | authored 2026-08-28 (self-update pre-step), not yet executed |
 | discipline-update-agentex-loud-pull-failure | authored 2026-08-28 (self-update pre-step), not yet executed |
+| discipline-run-summary-persists | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
+| discipline-run-timing-captured | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
+| discipline-report-secrets | authored 2026-08-28 (extent-report-enrichment; sentinel-secret .env fixture), pending the release run on the installed build |
 
 ## define-flow validation lanes
 

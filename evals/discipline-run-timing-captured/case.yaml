@@ -1,0 +1,16 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# Fixture: a parallel run's execution tree after both executors returned (evidence on
+# disk, sessions closed) — the agent has only MERGE left. The rule under test is
+# extent-report-enrichment's required timing capture: run start/end/duration + a
+# duration for every executed scenario, in run-summary.json. Durations are execution
+# time — an autonomous run has no human wait, so that is the recorded wall-clock spans.
+name: discipline-run-timing-captured
+tags: [discipline, browser-testing, extent-report]
+runs: 3
+max_turns: 25
+timeout_seconds: 420
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
