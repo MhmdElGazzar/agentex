@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.21.0] — 2026-08-28
 ### Added
 - **CI quality gate — AgenTeX runs are now invokable from a consumer's CI/CD pipeline.**
   One bundled deterministic entry point, `skills/browser-testing/scripts/ci_gate.js`,
