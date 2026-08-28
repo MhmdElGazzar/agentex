@@ -4,8 +4,8 @@ Project data falls into three kinds, each with one home:
 
 | Kind | Examples | Home |
 |---|---|---|
-| Secrets | PAT, passwords, API tokens | `.env` (**only** these) |
-| Project settings | Azure org/project/team, login mode, KB settings | `config/project.json` |
+| Secrets | PAT, API tokens, passwords | `.env` (**only** these) |
+| Project settings | tracker settings (Azure DevOps or Jira), login mode, KB settings | `config/project.json` |
 | Environment data | portal URL, DB, API, test users, default OTP | `environments/<env>.json` |
 
 **The JSON files never contain a secret.** A secret-valued field (`password`,
@@ -25,7 +25,9 @@ name is an editable default — the wizard reconciles it to whatever you choose)
 and a secrets-only `.env` (gitignored automatically).
 Fill them in:
 
-1. `config/project.json` — your Azure org/project/team (if you use ADO), the KB
+1. `config/project.json` — your tracker block: the wizard asks **which tracker the
+   project uses** (Azure DevOps, Jira Cloud, or none) and writes only that provider's
+   block — `azure` (org/project/team) or `jira` (site/project key); plus the KB
    block (if you use `kb:` steps), and `defaultEnvironment`.
 2. `environments/qc.json` — your portal URL, test users, defaults, and the `db` /
    `api` blocks if specs use `db:` / `api:` steps. Copy it to `uat.json` / `live.json`
@@ -38,7 +40,10 @@ Fill them in:
 |---|---|
 | `name` | Project name. |
 | `defaultEnvironment` | Environment used when a run doesn't name one. |
-| `azure.org` / `.project` / `.team` / `.assignee` | Azure DevOps settings (see [azure-devops.md](./azure-devops.md)); optional extras: `areaPath`, `iterationPath`, `bugTemplateId`, `testPlanId`, `valueArea`, `environment`, `bugCategory`, `apiVersion`. |
+| `azure.org` / `.project` / `.team` / `.assignee` | Azure DevOps settings (see [azure-devops.md](./azure-devops.md)); optional extras: `areaPath`, `iterationPath`, `bugTemplateId`, `testPlanId`, `valueArea`, `environment`, `bugCategory`, `apiVersion`. A project configures **one** tracker block — `azure` or `jira`, never both (the wizard enforces it; the runtime fails closed on two). |
+| `jira.site` / `.project` | Jira Cloud settings (see [jira.md](./jira.md)) — the site (bare name → `https://<name>.atlassian.net`, or a full URL) and the project KEY. No `.env` fallback exists for these non-secrets. |
+| `jira.board` / `.assignee` | Optional: board id/name (steers sprint discovery on multi-sprint projects); default assignee email(s), comma-separated. |
+| `jira.storyType` / `.subtaskType` / `.bugLinkType` / `.storyPointsField` / `.acceptanceCriteriaField` | Optional documented overrides: story issue type (default `Story`); the sub-task type for `[Testing]` tasks; the bug→story issue link type (`Relates` recommended); the site's Story Points custom field id; the custom field holding acceptance criteria. Each is asked once when needed and pinned here — never guessed. |
 | `kb.baseUrl` / `.project` / `.org` | KB Ask settings (see [ask-kb.md](./ask-kb.md)). |
 | `figma.fileKey` / `.token` | Figma design source for `ui-check:` steps (see [ui-check.md](./ui-check.md)) — the file key from your Figma URL, plus the token as `{ "envSecret": "FIGMA_TOKEN" }`. Environment-independent: the design is the same truth for qa/uat/live. |
 | `viewports` | Optional named-viewport overrides for `ui-check:` steps, e.g. `{ "mobile": "414x896" }` (plugin defaults: desktop `1440x900`, tablet `768x1024`, mobile `390x844`). Read if present — no scaffold needed. |
@@ -65,6 +70,7 @@ fallback.
 | Variable | Purpose |
 |----------|---------|
 | `AZURE_PAT` | Azure DevOps PAT — read from `.env` by the bundled tracker scripts (bug filing, estimation, test design, test-plan updates) and sent only in the Authorization header. Never printed or passed. |
+| `JIRA_EMAIL` / `JIRA_API_TOKEN` | Jira Cloud credentials (the token comes from id.atlassian.com API tokens) — read from `.env` by the same bundled tracker scripts and sent only in the Authorization header (`Basic base64(email:token)`). The email is credential material too: never printed or passed. Fill only your tracker's keys — unused keys stay empty. |
 | `SQLCMDPASSWORD` | DB password — read natively by `sqlcmd` from the env; never on a command line. |
 | `API_TOKEN` | Bearer token for cataloged `api:` requests. |
 | `KB_ASK_API_KEY` | KB Ask shared secret (`x-api-key`). |
@@ -122,6 +128,6 @@ Two of those entries need your attention rather than a blind copy, and the file'
 
 - JSON config files and catalog files hold env-var **names**, never secret values.
 - Claude may read config keys but must never print or pass secrets.
-- DB and PAT secrets are read from the environment or `.env` by the tools themselves
-  (`SQLCMDPASSWORD` by sqlcmd, `AZURE_PAT` by the bundled tracker scripts), never placed
-  on a command line.
+- DB and tracker secrets are read from the environment or `.env` by the tools themselves
+  (`SQLCMDPASSWORD` by sqlcmd, `AZURE_PAT` / `JIRA_EMAIL` + `JIRA_API_TOKEN` by the bundled
+  tracker scripts), never placed on a command line.

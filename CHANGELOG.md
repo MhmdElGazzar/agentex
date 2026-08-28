@@ -4,6 +4,79 @@ All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
 ### Added
+- **Jira Cloud tracker support — every tracker flow now runs on Azure DevOps OR Jira
+  Cloud.** A second adapter behind the 0.20.0 tracker interface
+  (`scripts/lib/tracker/adapters/jira.js` — Jira platform REST v3 over Node's built-in
+  fetch, zero runtime npm deps, no CLI): JQL search through `POST /rest/api/3/search/jql`
+  with adapter-owned `nextPageToken` pagination (the removed legacy `/search` endpoint is
+  never called), field metadata from the per-issue-type createmeta routes normalized into
+  the existing per-project field cache (`.agentex/cache/tracker-fields-jira.json` —
+  additive beside the ADO file, `cache.js` untouched), rich text as Atlassian Document
+  Format composed deterministically by the new `scripts/lib/tracker/adf.js` (write
+  structured, read server-rendered HTML via `expand=renderedFields`), screenshot
+  attachments as multipart via built-in `FormData`/`Blob`, adapter-owned JQL escaping with
+  client-side exact-title dup filtering, and new capability-flagged ops — `transition`
+  (fail-closed against the issue's REAL transitions), `addComment`, agile board/sprint
+  reads — plus `adapter.webUrl(id)` exposed on both providers. Honest capability flags
+  declare every gap: `testPlans`/`testRuns: false`, `relations.testedBy: false`,
+  `validateOnly: false` (the createmeta cache carries pre-gate validation and the plan says
+  `validateOnly: 'unsupported-on-jira'`), and `deleteWorkItem: false` — Jira Cloud's only
+  issue delete is permanent and this plugin never performs permanent destroys. Credentials
+  are `JIRA_EMAIL` + `JIRA_API_TOKEN` from `.env` (id.atlassian.com API token), sent only
+  in the Authorization header — never printed, logged, or on a command line; the
+  `AGENTEX_CI=1` mechanical write guard has exact parity with the ADO adapter's.
+- **Tracker selection is now a setup-wizard question (asked once, never per-run, never a
+  silent default):** `/init-test`'s first page asks *which work tracker does this project
+  use* — Azure DevOps, Jira Cloud, or none — with no preselected default on fresh projects
+  (existing configs prefill from their own provider block). Only the chosen provider's
+  step is shown (wizard steps gained generic `when` gating) and only its block is written;
+  a save carrying more than one provider block is rejected with the same fail-closed
+  wording the runtime uses, and switching providers on an existing project announces the
+  old block's removal explicitly before anything is saved (`.env` is never edited by a
+  switch). `templates/config/project.json` no longer pre-carries an `azure` placeholder
+  block — a fresh scaffold has no tracker until the wizard's answer writes one, and the
+  no-tracker runtime error now names both providers' keys and the wizard. `.env.example`
+  gains keys-only `JIRA_EMAIL=` / `JIRA_API_TOKEN=` lines — fill only your tracker's.
+- **The three tracker flows on Jira:** `/estimate-story` creates the same five `[Testing]`
+  tasks per story as **sub-tasks** (parent inline, atomic) with hours mapped to Jira time
+  tracking and the label `testing`; the current sprint resolves via
+  `sprint in openSprints()` (several open sprints → blocked with the real names, one
+  bundled ask, `jira.board` steers it permanently), the sub-task type is discovered from
+  createmeta (several → asked once, pinned via `jira.subtaskType`), assignee emails
+  resolve to accountIds at validation time, and Story Points come from the site's custom
+  field by display-name discovery (`jira.storyPointsField` pins it — never guessed).
+  `/design-test` informs the user upfront that **Jira has no native Test Case type** and
+  asks what to create (the project's real issue types + document-only/skip — the spec's
+  `artifactType`, never defaulted by the script; pinnable in `.agentex/test-template.md`'s
+  Jira section); steps render as an ADF ordered action→expected list and non-sub-task
+  artifacts link back to the story via a chosen issue link type as a separate ledgered
+  write (no Tested-By exists). Bug filing inverts the write order around attachments —
+  **create Bug → attach ×N → link story**, visible in the approved plan — with priority
+  validated against the project's real names, a severity-like custom field used only when
+  the project's Bug screen has one (absent → omitted and the screen says so), the
+  bug→story link type read live and chosen explicitly (`Relates` recommended,
+  `jira.bugLinkType` pins it), and the test-plan gap informed upfront (skip by default, or
+  link an existing `/design-test` artifact — never a silent substitute). `testplan.js`
+  refuses Jira configs upfront (exit 2, `testPlans:false`); `read-workitem.js` output is
+  provider-neutral. The one-gate/ledger/fail-closed discipline is byte-identical to ADO,
+  and existing ADO behavior is untouched.
+- **Docs & surface:** new [`docs/jira.md`](./docs/jira.md) (setup walkthrough, token
+  provenance, per-flow behavior, known-limitations table derived from the capability
+  flags), `docs/configuration.md` jira/config + env rows, README feature-table and
+  `plugin.json` now say "Azure DevOps or Jira Cloud", `docs/azure-devops.md` cross-links,
+  the shared `references/tracker/jira-boards.md` reference (field ids, ADF, JQL gotchas,
+  accountId, timetracking, link semantics, known limitations), and the three tracker
+  skills' descriptions broadened so Jira phrasing triggers them (skill ids unchanged).
+- **Credit (closed with credit, not merged):** the Jira operation semantics and field
+  mappings were harvested from community **PR #4** ([Testing] task → Sub-task with parent;
+  `Activity=Testing` → label `testing`; `OriginalEstimate`/`RemainingWork` →
+  `timetracking.originalEstimate`/`remainingEstimate`; Story Points as a site-specific
+  custom field confirmed once per project, never guessed; the configurable bug→story link
+  type; the `.agentex/test-template.md` Jira-section pin) and **PR #11** (verification
+  that `parent` works only for sub-task types; the sub-task-with-text-steps artifact model
+  offered by `/design-test`'s artifact ask). Their acli/CLI transport approach was not
+  adopted (CLI dependency, no attachment upload, no custom-field writes) — no code was
+  lifted; the semantics were.
 - **CI quality gate — AgenTeX runs are now invokable from a consumer's CI/CD pipeline.**
   One bundled deterministic entry point, `skills/browser-testing/scripts/ci_gate.js`,
   runs the whole gate moment from the project root: a token-free CI preflight per
