@@ -71,6 +71,18 @@ All notable changes to AgenTeX are documented here.
   upfront — and a `transition` ask on ADO routes to the honest equivalent, a `System.State`
   field update, stated to the user (never dressed up as a workflow transition). Honors the
   `AGENTEX_CI=1` write guard.
+- **Evals:** four new behavioral cases, house pattern (prompt + graders + parseable
+  footers, no live tracker) — `discipline-test-design-jira-artifact-ask` (the Q11 rule:
+  inform + ask before any spec, pre-baked issue-type discovery fixture),
+  `discipline-tracker-selection-fail-closed` (the Q12 rule: dual azure+jira config relays
+  the fail-closed error, never a silent pick, never a config edit — fully offline),
+  `trigger-tracker-ops`, and `discipline-tracker-ops-one-gate` (one approval per write
+  batch, pre-baked dry-run plans) — registered in the eval baseline table. The three
+  existing trigger evals whose skill descriptions were broadened for Jira
+  (`trigger-task-estimation`, `trigger-test-design`, `trigger-bug-report-azure`) **must be
+  re-run on the installed build at the release run** — recorded as dated notes in their
+  baseline rows per the manual dated-row protocol (`claude plugin eval` is still early
+  access); no result is claimed before that run.
 - **Docs & surface:** new [`docs/jira.md`](./docs/jira.md) (setup walkthrough, token
   provenance, per-flow behavior, known-limitations table derived from the capability
   flags), `docs/configuration.md` jira/config + env rows, README feature-table and

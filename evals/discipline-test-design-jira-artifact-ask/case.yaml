@@ -1,0 +1,18 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# The Q11 rule on Jira (design §5.8 / decision-sheet minimum): Jira has no native
+# Test Case type — /design-test must INFORM the user of exactly that and ASK what
+# to create (the project's real issue types + document-only/skip) BEFORE any spec
+# or plan exists, in the ONE bundled round; never a silent substitute, never a
+# defaulted artifactType. Fixture: a jira-configured project with the story read
+# and the artifact-type discovery pre-baked (no live tracker).
+name: discipline-test-design-jira-artifact-ask
+tags: [discipline, test-design, jira]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'JIRA_EMAIL=\nJIRA_API_TOKEN=\n' > .env
