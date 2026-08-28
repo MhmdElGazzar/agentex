@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.21.1] — 2026-08-28
 ### Fixed
 - **`/update-agentex`'s plugin self-update pull actually pulls now.** Shipped in 0.21.0,
   `scripts/self_update.js` composed `claude plugin install <plugin>@<marketplace>` for
