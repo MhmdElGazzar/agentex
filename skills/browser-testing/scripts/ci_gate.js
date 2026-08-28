@@ -28,9 +28,17 @@
 //     a. ci_preflight.js — token-free; a failure concludes the attempt BLOCKED
 //        with its named preflight-* reasons and never spends a session.
 //     b. Spawn `<claude-cmd> --bare -p "/agentex:execute-test ci <scope> [on <env>]"
-//        --plugin-dir <self-resolved root> [--settings <file>]
-//        --permission-mode dontAsk --output-format json` with env AGENTEX_CI=1,
-//        AGENTEX_VERDICT_PATH=<absolute handshake path>, AGENTEX_CI_POLICY=<json>.
+//        --plugin-dir <self-resolved root> --add-dir <self-resolved root>
+//        [--settings <file>] --permission-mode dontAsk --output-format json`
+//        with env AGENTEX_CI=1, AGENTEX_VERDICT_PATH=<absolute handshake path>,
+//        AGENTEX_CI_POLICY=<json>. `--add-dir` grants the session READ access to
+//        the plugin's own root (references, scripts, templates) in every install
+//        layout — marketplace-managed or pinned checkout: the shipped settings
+//        allow Read(./**) only, which is the CONSUMER project, so without this
+//        grant a plugin installed elsewhere cannot read references/ci-mode.md or
+//        write_verdict.js and every run fail-closes to BLOCKED no-verdict. The
+//        grant is read-oriented and scoped to the plugin root — writes stay
+//        governed by the deny-by-default settings, which never widen.
 //        claude's own exit code is NOT the verdict — the verdict travels through
 //        the artifact write_verdict.js writes (script-to-script handshake).
 //     c. Enforce the per-attempt budget: on expiry kill the child process tree
@@ -236,6 +244,7 @@ async function main() {
       const command = [
         claudeCmd, '--bare', '-p', q(prompt),
         '--plugin-dir', q(PLUGIN_ROOT),
+        '--add-dir', q(PLUGIN_ROOT), // read grant on the plugin's own root (D1) — see flow 3b
         ...(settingsPath ? ['--settings', q(settingsPath)] : []),
         '--permission-mode', 'dontAsk',
         '--output-format', 'json',
