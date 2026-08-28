@@ -333,7 +333,10 @@ function toggleTC(i) {
     ctxChip('Run mode', run.mode),
     ctxChip('Started', run.startedAt),
     ctxChip('Ended', run.endedAt),
-    ctxChip('Duration', fmtDur(run.durationMs)),
+    // Label says "Execution time", not "Duration": durationMs is execution time (human-wait
+    // excluded in sequential runs), so next to the Started/Ended wall-clock chips a bare
+    // "Duration" would wrongly read as endedAt − startedAt.
+    ctxChip('Execution time', fmtDur(run.durationMs)),
   ].join('') + toolChips;
   const contextHtml = (ctxChips || sessionRows) ? `
   <div class="ctx">${ctxChips ? `

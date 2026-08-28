@@ -217,7 +217,7 @@ test('v2: context block renders environment, target, login/run mode, sessions, t
   assert.ok(html.includes('Run mode</span>parallel'), 'run mode chip');
   assert.ok(html.includes('Started</span>2026-08-28T14:02:11+02:00'), 'run started chip');
   assert.ok(html.includes('Ended</span>2026-08-28T14:14:45+02:00'), 'run ended chip');
-  assert.ok(html.includes('Duration</span>12m 34s'), 'run duration chip');
+  assert.ok(html.includes('Execution time</span>12m 34s'), 'run execution-time chip (label says execution time, not wall-clock)');
   assert.ok(html.includes('node</span>v22.1.0'), 'node tool chip');
   assert.ok(html.includes('playwright-cli</span>1.2.3'), 'playwright-cli tool chip');
   assert.match(html, /<td>cart-140211-a3f2<\/td><td>test\/suite1\/cart\.md<\/td>/, 'session→spec row');
@@ -325,7 +325,7 @@ test('v2: partial input (schemaVersion + timing only) renders timing and no empt
       steps: [{ desc: 'step one', status: 'passed', note: '' }] }],
   };
   const html = render(data);
-  assert.ok(html.includes('Duration</span>12m 34s'), 'run duration renders');
+  assert.ok(html.includes('Execution time</span>12m 34s'), 'run execution-time chip renders');
   assert.ok(html.includes('Started</span>2026-08-28T14:02:11+02:00'), 'run start renders');
   assert.ok(!html.includes('class="ctx-sessions"'), 'no empty session table');
   assert.ok(!html.includes('class="ctx-chip ctx-tool"'), 'no empty tool chips');
