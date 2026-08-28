@@ -43,6 +43,7 @@ Fill them in:
 | `figma.fileKey` / `.token` | Figma design source for `ui-check:` steps (see [ui-check.md](./ui-check.md)) — the file key from your Figma URL, plus the token as `{ "envSecret": "FIGMA_TOKEN" }`. Environment-independent: the design is the same truth for qa/uat/live. |
 | `viewports` | Optional named-viewport overrides for `ui-check:` steps, e.g. `{ "mobile": "414x896" }` (plugin defaults: desktop `1440x900`, tablet `768x1024`, mobile `390x844`). Read if present — no scaffold needed. |
 | `login.mode` | How a run gets in: `"session"` = reuse the login `/optimize-login` saved (`test/.auth/<app>-<env>-state.json`); `"fresh"` = drive the login UI every run. Absent or unreadable → `fresh` (nothing to reuse, and a run never creates a saved session you did not ask for). Projects scaffolded by an older wizard say `"per-test"` — the same as `"fresh"`, and nothing rewrites it. |
+| `ci` | Optional CI gate policy (see [ci-quality-gate.md](./ci-quality-gate.md)), read if present — no scaffold needed: `{ "warningsFailGate": true, "retries": 3, "timeoutMinutes": 60, "flakyFailsGate": false }` (the built-in defaults). `warningsFailGate` — warnings fail the gate (exit 1); `retries` — automatic retries for BLOCKED outcomes only; `timeoutMinutes` — per-attempt wall-clock budget; `flakyFailsGate` — FLAKY concludes BLOCKED (exit 2, never auto-retried). `ci_gate.js` CLI flags override per pipeline (flags > config > defaults). |
 
 ## `environments/<env>.json`
 
