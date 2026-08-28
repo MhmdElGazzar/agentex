@@ -91,7 +91,7 @@ nothing scattered elsewhere.
 executions/
 └── execu_<YYYY-MM-DD_HH-MM-SS>/        # one folder per execution
     ├── report.md                       # final report          [orchestrator]
-    ├── run-summary.json                 # machine-readable run record (schemaVersion 2) [orchestrator]
+    ├── run-summary.json                # machine-readable run record (schemaVersion 2) [orchestrator]
     ├── browser-sessions/
     │   └── <session>/                   # one per session       [subagent owns its own]
     │       ├── logs/                    #   console / network captures
