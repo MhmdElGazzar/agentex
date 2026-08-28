@@ -1,10 +1,59 @@
 ---
-description: "Migrate the current project to the installed AgenTeX version's conventions — folder structure, config file schemas, the secrets-only .env split, catalog format, CLAUDE.md and .gitignore entries. Refactor/merge, never re-scaffold: user values are carried, never reset. Requires a clean git tree; git is the rollback."
+description: "Checks for a newer plugin version first (one confirmation before any pull; after a pull, stop and reload), then migrates the current project to the installed AgenTeX version's conventions — folder structure, config file schemas, the secrets-only .env split, catalog format, CLAUDE.md and .gitignore entries. Refactor/merge, never re-scaffold: user values are carried, never reset. Requires a clean git tree; git is the rollback."
 ---
 
 Bring this project's AgenTeX setup up to the conventions of the installed plugin
-version. The migration itself is fully deterministic — a bundled script does every
-file change; you run it, relay its report, and explain what it flagged.
+version — after first checking whether the plugin itself is stale. Both halves are
+fully deterministic — bundled scripts do every check and every file change; you run
+them, branch on their one-line JSON, relay their reports, and explain what they
+flagged.
+
+0. **Plugin self-update check — before any migration.** Run:
+
+   ```
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/self_update.js" check
+   ```
+
+   It derives the plugin and marketplace identity from its own install path,
+   refreshes the marketplace's local cache, and prints ONE JSON line. Branch on its
+   `status` (never derive names or compose `claude plugin` CLI calls yourself):
+
+   - **`up-to-date`** → say so in one line (include the `installed` version; if the
+     JSON carries `note: "installed-ahead"`, say the installed version is ahead of
+     the marketplace — never offer a downgrade) and proceed to step 1. No
+     confirmation detour.
+   - **`update-available`** → ask exactly **one** confirmation before any pull.
+     That one message must show: the installed and latest version numbers from the
+     JSON, the `<plugin>@<marketplace>` identity, and what a yes does — install the
+     new version side-by-side while this session keeps the old one loaded until a
+     reload/restart. One yes/no question; no second "are you sure", no extra
+     sub-questions. Never pull without the user's yes, and never merely mention the
+     newer version without offering the pull.
+     - **Yes** → run:
+
+       ```
+       node "${CLAUDE_PLUGIN_ROOT}/scripts/self_update.js" pull
+       ```
+
+       - On `pulled` → **STOP the command here.** Report the pulled `from` → `to`
+         versions, instruct the user to run `/reload-plugins --force` (or restart
+         the session) and then re-run `/update-agentex`, and state explicitly that
+         the project migration did NOT run in this invocation. Do not invoke the
+         migration engine — nothing comes after this message.
+       - On `pull-failed` → report it loudly: relay the failing command and its
+         captured error `detail` from the JSON, and that the plugin remains at the
+         `installed` version. Then proceed to step 1 with a loud note that the
+         migration is running on the OLD plugin version — no additional gate; the
+         update part is over.
+     - **No** → proceed to step 1 on the installed version, exactly as before (the
+       stamp-newer abort in step 2 still applies if relevant).
+   - **`check-unavailable` (exit 2) — or any unexpected error (exit 1)** → report
+     it loudly, never silently: name the reason from the JSON
+     (`not-marketplace-install` — e.g. a local dev clone, `cache-refresh-failed` —
+     covers offline, `cache-missing`, `marketplace-entry-missing`), state
+     explicitly that the freshness check did NOT run, and that the migration
+     proceeds on installed version `installed`. Then proceed to step 1 — a failed
+     check never blocks the migration.
 
 1. **Run the migration engine** from the project root:
 

@@ -81,6 +81,10 @@ two-line footers in the prompt.
 | discipline-ci-no-interaction | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |
 | discipline-ci-no-tracker-writes | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |
 | discipline-ci-blocked-not-fail | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |
+| discipline-update-agentex-one-gate-pull | authored 2026-08-28 (self-update pre-step), not yet executed |
+| discipline-update-agentex-stop-after-pull | authored 2026-08-28 (self-update pre-step), not yet executed |
+| discipline-update-agentex-loud-check-failure | authored 2026-08-28 (self-update pre-step), not yet executed |
+| discipline-update-agentex-loud-pull-failure | authored 2026-08-28 (self-update pre-step), not yet executed |
 
 ## define-flow validation lanes
 

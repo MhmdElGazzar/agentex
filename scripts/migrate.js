@@ -26,6 +26,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const scaffold = require('./lib/scaffold.js');
 const { loadProjectConfig } = require('./lib/project_config.js');
+const { compareVersions } = require('./lib/version.js');
 const { DEFAULT_ENV_NAME } = require('./wizard/engine.js');
 
 const pluginRoot = path.resolve(__dirname, '..');
@@ -45,20 +46,6 @@ function abort(reason) {
 function git(args) {
   return execFileSync('git', ['-C', projectRoot, '-c', 'core.quotepath=off', ...args],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-}
-
-// Dotted-version compare: negative when a < b, 0 when equal, positive when a > b.
-function compareVersions(a, b) {
-  const pa = String(a).split('.'), pb = String(b).split('.');
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = parseInt(pa[i] || '0', 10), nb = parseInt(pb[i] || '0', 10);
-    if (Number.isNaN(na) || Number.isNaN(nb)) {
-      if ((pa[i] || '') !== (pb[i] || '')) return (pa[i] || '') < (pb[i] || '') ? -1 : 1;
-      continue;
-    }
-    if (na !== nb) return na - nb;
-  }
-  return 0;
 }
 
 // ── Guard 1: never run inside the plugin itself ──────────────────────────────
