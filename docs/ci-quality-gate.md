@@ -212,8 +212,12 @@ node "<plugin-root>/skills/browser-testing/scripts/ci_gate.js" --suite test/suit
 
 Inside the gate, the headless session runs as
 `claude --bare -p "/agentex:execute-test ci <scope> [on <env>]" --plugin-dir
-<plugin-root> --settings <ci-settings.json> --permission-mode dontAsk --output-format
-json`. `--bare` keeps the run deterministic across runners (no host hooks or CLAUDE.md);
+<plugin-root> --add-dir <plugin-root> --settings <ci-settings.json> --permission-mode
+dontAsk --output-format json`. `--bare` keeps the run deterministic across runners (no
+host hooks or CLAUDE.md); `--add-dir <plugin-root>` grants the session **read** access to
+the plugin's own files (references, bundled scripts, templates) wherever the plugin is
+installed — the settings allowlist reads only the consumer project, and the session must
+read e.g. `references/ci-mode.md` to conclude deterministically;
 the shipped `templates/ci/ci-settings.json` is a deny-by-default allowlist — under
 `dontAsk`, anything not allowed is denied, and a denied tool degrades to BLOCKED
 `no-verdict` (exit 2), never a wrong PASS/FAIL. A non-bare session that inherits the
