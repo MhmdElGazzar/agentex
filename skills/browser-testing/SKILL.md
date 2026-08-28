@@ -53,6 +53,9 @@ commands behaves unexpectedly. Available tool docs:
   for ALL browser actions (setup/preflight, `snapshot`/`screenshot`/`console`, network capture,
   sessions/dashboard, and the `screenshot --filename=` and no-`requests` gotchas). Read before
   driving a browser.
+- **`${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/references/ci-mode.md`** — CI mode (a headless
+  `/execute-test ci …` pipeline run): the zero-interaction rules and the deterministic verdict
+  step. Read BEFORE any action in a CI-mode run.
 
 Always-on rules (full details in the files above):
 - All browser actions go through `playwright-cli`, and **EVERY run — sequential included —

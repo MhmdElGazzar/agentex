@@ -18,7 +18,7 @@ const SENTINEL_PAT = 'SENTINEL-PAT-a1b2c3d4e5f60718293a4b5c6d7e8f90';
 const SENTINEL_B64 = Buffer.from(':' + SENTINEL_PAT).toString('base64');
 
 // The tests own the PAT environment — the machine's real values must not leak in.
-for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT']) delete process.env[n];
+for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AGENTEX_CI']) delete process.env[n];
 
 // Throwaway consumer project with an azure block + a sentinel PAT in .env.
 function proj({ org = 'exampleorg', project = 'Sample Project', envLines, azureExtra = {} } = {}) {
@@ -428,6 +428,59 @@ const PROJ = 'Sample%20Project';
     const all = JSON.stringify(outputs);
     assert.ok(!all.includes(SENTINEL_PAT), 'raw PAT leaked');
     assert.ok(!all.includes(SENTINEL_B64), 'base64 PAT leaked');
+  });
+
+  // ── CI guard (invariant 4 / ci-quality-gate): no tracker writes in CI mode ──
+  await test('under AGENTEX_CI=1 every write with execute:true is refused (exit-2 error, ci-mode, ZERO requests)', async () => {
+    process.env.AGENTEX_CI = '1';
+    try {
+      const png = path.join(proj(), 'shot.png');
+      fs.writeFileSync(png, Buffer.alloc(4096));
+      const f = fakeFetch([]);
+      const a = createAdapter({ cwd: proj(), fetch: f });
+      const writes = [
+        () => a.createWorkItem('Bug', { fields: { 'System.Title': 't' } }, { execute: true }),
+        () => a.updateWorkItem(42, { fields: { x: 'y' } }, { execute: true }),
+        () => a.addRelation(42, 'r', 9, { execute: true }),
+        () => a.uploadAttachment(png, { execute: true }),
+        () => a.addCaseToSuite(3, 4, 5, { execute: true }),
+        () => a.createRun({ name: 'r' }, { execute: true }),
+        () => a.updateRunResults(88, [], { execute: true }),
+        () => a.updateRun(88, { state: 'Completed' }, { execute: true }),
+        () => a.deleteWorkItem(7, { execute: true }),
+      ];
+      for (const w of writes) {
+        await assert.rejects(w, (e) => {
+          assert.match(e.message, /ci-mode: tracker writes are disabled in CI/);
+          assert.strictEqual(e.exitCode, 2, 'the refusal is environment-class (2), never a product failure (1)');
+          return true;
+        });
+      }
+      assert.strictEqual(f.calls.length, 0, 'the guard refuses BEFORE any request leaves the machine');
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
+  await test('under AGENTEX_CI=1 execute:false descriptors and reads are UNAFFECTED', async () => {
+    process.env.AGENTEX_CI = '1';
+    try {
+      const f = fakeFetch([
+        { match: '/workitems/1', json: { id: 1, fields: {} } },
+        { method: 'POST', match: '/wiql', json: { workItems: [] } },
+      ]);
+      const a = createAdapter({ cwd: proj(), fetch: f });
+      assert.strictEqual((await a.getWorkItem(1)).id, 1, 'reads still work');
+      assert.deepStrictEqual(await a.findByTitle('Bug', 't'), [], 'query reads still work');
+      const d = await a.createWorkItem('Bug', { fields: { 'System.Title': 't' } }, { execute: false });
+      assert.strictEqual(d.method, 'POST', 'the dry-run descriptor path is untouched');
+      assert.strictEqual(f.calls.filter((c) => c.method !== 'GET' && !c.url.includes('/wiql')).length, 0, 'still zero writes');
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
+  await test('without AGENTEX_CI the same writes go through (the guard keys on the env var alone)', async () => {
+    const f = fakeFetch([{ method: 'POST', match: '/workitems/$Bug', json: { id: 4711 } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const r = await a.createWorkItem('Bug', { fields: { 'System.Title': 't' } }, { execute: true });
+    assert.strictEqual(r.id, 4711);
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

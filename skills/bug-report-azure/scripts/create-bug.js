@@ -283,6 +283,15 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
   const args = parseArgs(argv);
   const mode = args.execute ? 'executed' : 'plan';
   try {
+    // CI guard (invariant 4 / ci-quality-gate): CI mode performs no tracker writes
+    // of any kind — refuse --execute BEFORE any read; bug filing stays interactive.
+    // The tracker adapter carries the same choke-point guard one level down.
+    if (args.execute && process.env.AGENTEX_CI === '1') {
+      return {
+        code: 2,
+        out: { ok: false, mode, blocked: [{ reason: 'ci-mode', message: 'tracker writes are disabled in CI (AGENTEX_CI=1) — bug filing stays interactive; file this defect from an interactive session' }] },
+      };
+    }
     if (!args.spec) return { code: 2, out: { ok: false, mode, error: { message: '--spec <file.json> is required' } } };
     let spec;
     try { spec = JSON.parse(fs.readFileSync(args.spec, 'utf8')); }

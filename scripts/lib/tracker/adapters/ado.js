@@ -53,6 +53,19 @@ function configError(message) {
   return e;
 }
 
+// CI guard (invariant 4 / ci-quality-gate): CI mode performs no tracker writes of
+// any kind — the skill text says "don't offer"; this choke point guarantees
+// "cannot happen" even under drift. Every write method calls it after its
+// execute:false descriptor return, so dry-run plans and all reads are unaffected.
+// Environment-class refusal: exitCode 2, never a product failure.
+function assertCiWritesAllowed(op) {
+  if (process.env.AGENTEX_CI === '1') {
+    const e = configError(`ci-mode: tracker writes are disabled in CI (AGENTEX_CI=1) — ${op} with execute:true refused; bug filing and every other tracker write stay interactive`);
+    e.reason = 'ci-mode';
+    throw e;
+  }
+}
+
 // azure block key first, legacy AZURE_* env second; empty/missing => null.
 function pick(cwd, az, key, envName) {
   const j = az[key];
@@ -278,6 +291,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`wit/workitems/$${encodeURIComponent(type)}`, validateOnly ? { validateOnly: 'true' } : {});
       const ops = toPatchOps(payload);
       if (!execute) return descriptor('createWorkItem', 'POST', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
+      assertCiWritesAllowed('createWorkItem');
       const res = await request('createWorkItem', 'POST', u, {
         body: JSON.stringify(ops), contentType: 'application/json-patch+json',
       });
@@ -289,6 +303,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`wit/workitems/${id}`);
       const ops = toPatchOps(payload);
       if (!execute) return descriptor('updateWorkItem', 'PATCH', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
+      assertCiWritesAllowed('updateWorkItem');
       const res = await request('updateWorkItem', 'PATCH', u, {
         body: JSON.stringify(ops), contentType: 'application/json-patch+json',
       });
@@ -310,6 +325,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
           contentType: 'application/octet-stream',
         });
       }
+      assertCiWritesAllowed('uploadAttachment');
       const bytes = fs.readFileSync(filePath);
       const res = await request('uploadAttachment', 'POST', u, { body: bytes, contentType: 'application/octet-stream' });
       return { name, id: res && res.id, url: res && res.url };
@@ -322,6 +338,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`testplan/suiteentry/${suiteId}`, {}, { apiVersion: `${cfg.apiVersion}-preview.2` });
       const body = [{ id: Number(caseId) }];
       if (!execute) return descriptor('addCaseToSuite', 'PATCH', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('addCaseToSuite');
       await request('addCaseToSuite', 'PATCH', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: Number(caseId), suiteId, planId };
     },
@@ -329,6 +346,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     async createRun(body, { execute = false } = {}) {
       const u = url('test/runs');
       if (!execute) return descriptor('createRun', 'POST', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('createRun');
       const res = await request('createRun', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: res && res.id, url: res && res.url };
     },
@@ -336,6 +354,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     async updateRunResults(runId, results, { execute = false } = {}) {
       const u = url(`test/Runs/${runId}/results`);
       if (!execute) return descriptor('updateRunResults', 'PATCH', u, { body: results, contentType: 'application/json' });
+      assertCiWritesAllowed('updateRunResults');
       await request('updateRunResults', 'PATCH', u, { body: JSON.stringify(results), contentType: 'application/json' });
       return { id: runId };
     },
@@ -343,6 +362,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     async updateRun(runId, body, { execute = false } = {}) {
       const u = url(`test/runs/${runId}`);
       if (!execute) return descriptor('updateRun', 'PATCH', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('updateRun');
       const res = await request('updateRun', 'PATCH', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: (res && res.id) ?? runId, state: res && res.state };
     },
@@ -360,6 +380,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       }
       const u = url(`wit/workitems/${n}`);
       if (!execute) return descriptor('deleteWorkItem', 'DELETE', u);
+      assertCiWritesAllowed('deleteWorkItem');
       const res = await request('deleteWorkItem', 'DELETE', u);
       return { id: (res && res.id) ?? n };
     },

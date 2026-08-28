@@ -1,0 +1,13 @@
+{
+  "name": "sample-shop-qa",
+  "defaultEnvironment": "qc",
+  "azure": {
+    "org": "exampleorg",
+    "project": "Sample Project",
+    "areaPath": "Sample Project\\Web",
+    "iterationPath": "Sample Project\\Sprint 9",
+    "assignee": "qa.engineer@example.com",
+    "environment": "QA"
+  },
+  "ci": { "warningsFailGate": true, "retries": 3, "timeoutMinutes": 60, "flakyFailsGate": false }
+}
