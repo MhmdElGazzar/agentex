@@ -4,7 +4,7 @@
 //
 // Usage: node self_update.js check    freshness check against the plugin's own
 //                                     marketplace (refreshes its local cache first)
-//        node self_update.js pull     install the latest version (run ONLY after the
+//        node self_update.js pull     update to the latest version (run ONLY after the
 //                                     user's explicit yes — consent lives in the
 //                                     command choosing to invoke this verb; there is
 //                                     no interactive prompt here)
@@ -29,7 +29,7 @@ const { spawnSync } = require('child_process');
 const { compareVersions } = require('./lib/version.js');
 
 const CHECK_TIMEOUT_MS = 60_000;    // marketplace cache refresh
-const PULL_TIMEOUT_MS = 300_000;    // plugin install
+const PULL_TIMEOUT_MS = 300_000;    // plugin update
 
 // ── identity derivation ───────────────────────────────────────────────────────
 // Parse a plugin root into { pluginsHome, marketplace, plugin, version } when its
@@ -204,13 +204,13 @@ function pull({ pluginRoot, runCli }) {
       exitCode: 1,
     };
   }
-  const installArgs = ['plugin', 'install', `${identity.name}@${identity.marketplace}`];
-  const install = runCli(installArgs, { timeoutMs: PULL_TIMEOUT_MS });
-  if (!install.ok) {
+  const updateArgs = ['plugin', 'update', `${identity.name}@${identity.marketplace}`];
+  const update = runCli(updateArgs, { timeoutMs: PULL_TIMEOUT_MS });
+  if (!update.ok) {
     return {
       result: {
         status: 'pull-failed',
-        detail: describeCliFailure(installArgs, install, PULL_TIMEOUT_MS),
+        detail: describeCliFailure(updateArgs, update, PULL_TIMEOUT_MS),
         installed: identity.installed,
       },
       exitCode: 1,
@@ -227,7 +227,7 @@ function pull({ pluginRoot, runCli }) {
     return {
       result: {
         status: 'pull-failed',
-        detail: `install command exited 0 but the post-condition failed: expected version ${cached.latest} under the marketplace cache dir, found ${landedVersion === null ? 'no readable plugin.json there' : `version ${landedVersion}`}`,
+        detail: `claude plugin update exited 0 but the post-condition failed: expected version ${cached.latest} under the marketplace cache dir, found ${landedVersion === null ? 'no readable plugin.json there' : `version ${landedVersion}`}`,
         installed: identity.installed,
       },
       exitCode: 1,
