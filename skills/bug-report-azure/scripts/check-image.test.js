@@ -1,9 +1,9 @@
 'use strict';
 // Self-contained tests for check-image.js — Pass 1 (structural) screenshot
 // validation. Fully offline and dependency-free: fixtures are synthesized
-// PNG/JPEG buffers; the script is spawned as the CLI it is (it has no module
-// export — it is a pure filter with no tracker coupling, unchanged by the
-// tracker-lib rebuild). Run: node skills/bug-report-azure/scripts/check-image.test.js
+// PNG/JPEG buffers; the script is spawned to preserve its CLI contract while its
+// exported checks are also reused by the high-level bug-report operation. It has
+// no tracker coupling. Run: node skills/bug-report-azure/scripts/check-image.test.js
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -57,6 +57,15 @@ const TINY = write('tiny.png', png(4, 4, { idatLen: 16 }));
 const ZERO = write('zero.png', png(0, 0));
 const BLANK = write('blank.png', png(1920, 1080, { idatLen: 64, pad: 8192 }));
 const NOTIMG = write('not-image.png', Buffer.alloc(5000, 0x41));
+const TRUNCATED = write('truncated.png', Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.from([0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52]),
+]));
+const MALFORMED = write('malformed.png', Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.from([0x00, 0x00, 0x00, 0x0c, 0x49, 0x48, 0x44, 0x52]),
+  Buffer.alloc(16),
+]));
 
 test('a real screenshot-shaped PNG passes with its dimensions', () => {
   const { status, results } = runJson([GOOD]);
@@ -74,6 +83,22 @@ test('bad magic bytes are not-an-image', () => {
   assert.deepStrictEqual(results[0].issues, ['not-an-image']);
 });
 
+test('a truncated image is actionable invalid evidence instead of crashing the batch', () => {
+  const { results } = runJson([TRUNCATED, GOOD]);
+  assert.strictEqual(results[0].ok, false);
+  assert.strictEqual(results[0].format, 'png');
+  assert.deepStrictEqual(results[0].issues, ['truncated-image']);
+  assert.strictEqual(results[1].ok, true, 'later evidence is still checked');
+  assert.strictEqual(runCli(['--strict', TRUNCATED]).status, 1);
+});
+
+test('a malformed image is reported distinctly', () => {
+  const { results } = runJson([MALFORMED]);
+  assert.strictEqual(results[0].ok, false);
+  assert.strictEqual(results[0].format, 'png');
+  assert.deepStrictEqual(results[0].issues, ['malformed-image']);
+});
+
 test('a 0x0 capture and a tiny file are hard-invalid', () => {
   const { results } = runJson([ZERO, TINY]);
   assert.strictEqual(results[0].ok, false);
@@ -86,6 +111,16 @@ test('a missing file reports not-found instead of throwing', () => {
   const { results } = runJson([path.join(TMP, 'ghost.png')]);
   assert.strictEqual(results[0].ok, false);
   assert.deepStrictEqual(results[0].issues, ['not-found']);
+});
+
+test('a read failure reports unreadable instead of throwing', () => {
+  const unreadable = path.join(TMP, 'unreadable.png');
+  fs.mkdirSync(unreadable);
+  const { results } = runJson([unreadable, GOOD]);
+  assert.strictEqual(results[0].ok, false);
+  assert.deepStrictEqual(results[0].issues, ['unreadable']);
+  assert.strictEqual(results[1].ok, true, 'later evidence is still checked');
+  assert.strictEqual(runCli(['--strict', unreadable]).status, 1);
 });
 
 test('likely-blank is a WARNING: flagged but still structurally ok', () => {

@@ -4,7 +4,7 @@ Provider knowledge shared by the **task-estimation** and **test-design** skills.
 entirely through bundled Node scripts on the tracker layer (`scripts/lib/tracker/` — ADO REST
 over built-in fetch); nothing here is an `az` command. Read this when interpreting a script's
 JSON, composing a spec file, or explaining a board state to the user. Bug filing's own field
-schema lives in `skills/bug-report-azure/references/azure-devops.md`.
+maintenance boundary lives in `skills/bug-report-azure/references/azure-devops.md`.
 
 ## Field reference names
 

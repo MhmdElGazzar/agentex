@@ -29,6 +29,7 @@ const pc = require(path.join(__dirname, '..', '..', 'project_config.js'));
 
 const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
+const WORK_ITEMS_BATCH_LIMIT = 200; // ADO REST contract: Get Work Items Batch
 const REDACTED_AUTH = '<Basic ***, not printed>';
 
 // What every adapter method throws on failure — never a raw fetch error, never
@@ -239,6 +240,85 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     async getWorkItem(id, { expand } = {}) {
       const u = url(`wit/workitems/${id}`, expand ? { $expand: expand === true ? 'all' : expand } : {});
       return request('getWorkItem', 'GET', u);
+    },
+
+    // ADO's batch read is a POST-shaped read. The adapter owns the provider's
+    // 200-id limit and returns work items in caller order even if ADO does not.
+    // `errorPolicy: fail` plus the local completeness checks ensure a caller
+    // can never mistake a partial response for an authoritative candidate set.
+    async getWorkItemsBatch(ids, { fields, expand } = {}) {
+      if (!Array.isArray(ids)) {
+        throw configError('getWorkItemsBatch needs an array of positive integer work-item ids');
+      }
+      const normalizedIds = [];
+      const seenIds = new Set();
+      for (const id of ids) {
+        const n = Number(id);
+        if (!Number.isInteger(n) || n <= 0) {
+          throw configError(`getWorkItemsBatch needs positive integer work-item ids (got ${JSON.stringify(id)})`);
+        }
+        if (seenIds.has(n)) {
+          throw configError(`getWorkItemsBatch needs unique work-item ids (duplicate #${n})`);
+        }
+        seenIds.add(n);
+        normalizedIds.push(n);
+      }
+
+      let projectedFields;
+      if (fields !== undefined) {
+        if (!Array.isArray(fields) || fields.some((field) => typeof field !== 'string' || !field.trim())) {
+          throw configError('getWorkItemsBatch fields must be an array of non-empty field reference names');
+        }
+        projectedFields = fields.map((field) => field.trim());
+      }
+
+      const expanded = expand ? (expand === true ? 'all' : String(expand)) : null;
+      const ordered = [];
+      for (let offset = 0; offset < normalizedIds.length; offset += WORK_ITEMS_BATCH_LIMIT) {
+        const chunk = normalizedIds.slice(offset, offset + WORK_ITEMS_BATCH_LIMIT);
+        const u = url('wit/workitemsbatch');
+        const body = {
+          ids: chunk,
+          ...(projectedFields ? { fields: projectedFields } : {}),
+          ...(expanded ? { $expand: expanded } : {}),
+          errorPolicy: 'fail',
+        };
+        const res = await request('getWorkItemsBatch', 'POST', u, {
+          body: JSON.stringify(body), contentType: 'application/json',
+        });
+        const malformed = (message) => new TrackerError({
+          op: 'getWorkItemsBatch', url: u, serverMessage: message,
+        });
+        if (!res || !Array.isArray(res.value)) {
+          throw malformed('malformed batch response: expected a value array');
+        }
+        if (res.count !== undefined &&
+            (!Number.isInteger(res.count) || res.count !== res.value.length)) {
+          throw malformed('malformed batch response: count does not match the value array');
+        }
+
+        const requested = new Set(chunk);
+        const byId = new Map();
+        for (const item of res.value) {
+          const itemId = Number(item && item.id);
+          if (!Number.isInteger(itemId) || itemId <= 0) {
+            throw malformed('malformed batch response: work item has no positive integer id');
+          }
+          if (!requested.has(itemId)) {
+            throw malformed(`malformed batch response: unrequested work item #${itemId}`);
+          }
+          if (byId.has(itemId)) {
+            throw malformed(`malformed batch response: duplicate work item #${itemId}`);
+          }
+          byId.set(itemId, item);
+        }
+        const missing = chunk.filter((id) => !byId.has(id));
+        if (missing.length) {
+          throw malformed(`batch response omitted work item${missing.length === 1 ? '' : 's'} ${missing.map((id) => `#${id}`).join(', ')}`);
+        }
+        ordered.push(...chunk.map((id) => byId.get(id)));
+      }
+      return ordered;
     },
 
     async query(text) {

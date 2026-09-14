@@ -120,6 +120,24 @@ function buildReproHtml(spec, uploaded) {
   ].join('');
 }
 
+// Bug-domain field names live here, behind the executable boundary.  The
+// high-level bug-report orchestrator imports this map when it normalizes a
+// configured template; the agent never needs to construct these references.
+const FIELD_REFS = Object.freeze({
+  workItemType: 'System.WorkItemType',
+  title: 'System.Title',
+  state: 'System.State',
+  areaPath: 'System.AreaPath',
+  iterationPath: 'System.IterationPath',
+  assignedTo: 'System.AssignedTo',
+  priority: 'Microsoft.VSTS.Common.Priority',
+  severity: 'Microsoft.VSTS.Common.Severity',
+  valueArea: 'Microsoft.VSTS.Common.ValueArea',
+  environment: 'Custom.Environment',
+  bugCategory: 'Custom.BugCategory',
+  reproSteps: 'Microsoft.VSTS.TCM.ReproSteps',
+});
+
 const REQUIRED = ['title', 'severity', 'priority', 'parentStoryId', 'assignedTo', 'summary', 'steps', 'expected', 'actual'];
 const PARENT_LINK = 'System.LinkTypes.Hierarchy-Reverse'; // the ONLY link this script creates
 
@@ -136,7 +154,7 @@ async function validate(adapter, spec, args, cwd) {
   try {
     const parent = await adapter.getWorkItem(spec.parentStoryId);
     parentFields = (parent && parent.fields) || {};
-    const type = parentFields['System.WorkItemType'];
+    const type = parentFields[FIELD_REFS.workItemType];
     if (type !== 'User Story') {
       blocked.push({
         reason: 'parent-not-a-user-story',
@@ -145,7 +163,7 @@ async function validate(adapter, spec, args, cwd) {
     }
     validation.parent = {
       id: spec.parentStoryId, type: type || null,
-      title: parentFields['System.Title'] || null, state: parentFields['System.State'] || null,
+      title: parentFields[FIELD_REFS.title] || null, state: parentFields[FIELD_REFS.state] || null,
     };
   } catch (e) {
     blocked.push({ reason: 'parent-not-found', message: `parent story #${spec.parentStoryId} could not be read: ${e.message}` });
@@ -174,21 +192,21 @@ async function validate(adapter, spec, args, cwd) {
     blocked.push({ reason: 'field-cache-failed', message: `field metadata could not be read: ${e.message}` });
   }
 
-  const areaPath = spec.areaPath || cfg.areaPath || parentFields['System.AreaPath'] || null;
-  const iterationPath = spec.iterationPath || cfg.iterationPath || parentFields['System.IterationPath'] || null;
+  const areaPath = spec.areaPath || cfg.areaPath || parentFields[FIELD_REFS.areaPath] || null;
+  const iterationPath = spec.iterationPath || cfg.iterationPath || parentFields[FIELD_REFS.iterationPath] || null;
   const envVal = spec.environment || cfg.environment || null;
   const catVal = spec.bugCategory || cfg.bugCategory || null;
   // ValueArea: an explicit value (spec/config) is validated as-is; the historic
   // 'Business' default is applied only when the project's Bug type HAS the field.
   const valueAreaExplicit = spec.valueArea || cfg.valueArea || null;
-  const valueArea = valueAreaExplicit || (fieldMap['Microsoft.VSTS.Common.ValueArea'] ? 'Business' : null);
+  const valueArea = valueAreaExplicit || (fieldMap[FIELD_REFS.valueArea] ? 'Business' : null);
 
   const toValidate = [
-    { field: 'Microsoft.VSTS.Common.Severity', value: spec.severity },
-    { field: 'Microsoft.VSTS.Common.Priority', value: spec.priority },
-    ...(valueArea ? [{ field: 'Microsoft.VSTS.Common.ValueArea', value: valueArea }] : []),
-    ...(envVal ? [{ field: 'Custom.Environment', value: envVal }] : []),
-    ...(catVal ? [{ field: 'Custom.BugCategory', value: catVal }] : []),
+    { field: FIELD_REFS.severity, value: spec.severity },
+    { field: FIELD_REFS.priority, value: spec.priority },
+    ...(valueArea ? [{ field: FIELD_REFS.valueArea, value: valueArea }] : []),
+    ...(envVal ? [{ field: FIELD_REFS.environment, value: envVal }] : []),
+    ...(catVal ? [{ field: FIELD_REFS.bugCategory, value: catVal }] : []),
   ];
   if (cacheInfo) {
     const results = fieldCache.validateValues(cacheInfo.cache, 'Bug', toValidate);
@@ -229,15 +247,15 @@ async function validate(adapter, spec, args, cwd) {
 
   // The fields the create will send (title always; paths only when resolvable).
   const fields = {
-    'System.Title': spec.title,
-    ...(areaPath ? { 'System.AreaPath': areaPath } : {}),
-    ...(iterationPath ? { 'System.IterationPath': iterationPath } : {}),
-    'System.AssignedTo': spec.assignedTo,
-    'Microsoft.VSTS.Common.Priority': Number(spec.priority),
-    'Microsoft.VSTS.Common.Severity': spec.severity,
-    ...(valueArea ? { 'Microsoft.VSTS.Common.ValueArea': valueArea } : {}),
-    ...(envVal ? { 'Custom.Environment': envVal } : {}),
-    ...(catVal ? { 'Custom.BugCategory': catVal } : {}),
+    [FIELD_REFS.title]: spec.title,
+    ...(areaPath ? { [FIELD_REFS.areaPath]: areaPath } : {}),
+    ...(iterationPath ? { [FIELD_REFS.iterationPath]: iterationPath } : {}),
+    [FIELD_REFS.assignedTo]: spec.assignedTo,
+    [FIELD_REFS.priority]: Number(spec.priority),
+    [FIELD_REFS.severity]: spec.severity,
+    ...(valueArea ? { [FIELD_REFS.valueArea]: valueArea } : {}),
+    ...(envVal ? { [FIELD_REFS.environment]: envVal } : {}),
+    ...(catVal ? { [FIELD_REFS.bugCategory]: catVal } : {}),
   };
 
   // 5) server-side validateOnly create — dry run only (D-5: proven once, not re-proven
@@ -279,7 +297,7 @@ async function validate(adapter, spec, args, cwd) {
 
 // ---- main ---------------------------------------------------------------------
 // Returns { code, out }; prints nothing. opts.fetch is the offline-test seam.
-async function run(argv, { cwd = process.cwd(), fetch } = {}) {
+async function run(argv, { cwd = process.cwd(), fetch, spec: providedSpec } = {}) {
   const args = parseArgs(argv);
   const mode = args.execute ? 'executed' : 'plan';
   try {
@@ -292,10 +310,17 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         out: { ok: false, mode, blocked: [{ reason: 'ci-mode', message: 'tracker writes are disabled in CI (AGENTEX_CI=1) — bug filing stays interactive; file this defect from an interactive session' }] },
       };
     }
-    if (!args.spec) return { code: 2, out: { ok: false, mode, error: { message: '--spec <file.json> is required' } } };
+    if (!args.spec && providedSpec === undefined) return { code: 2, out: { ok: false, mode, error: { message: '--spec <file.json> is required' } } };
+    if (args.spec && providedSpec !== undefined) return { code: 2, out: { ok: false, mode, error: { message: 'provide either --spec or an in-process spec, not both' } } };
     let spec;
-    try { spec = JSON.parse(fs.readFileSync(args.spec, 'utf8')); }
-    catch (e) { return { code: 2, out: { ok: false, mode, error: { message: `could not read spec: ${e.message}` } } }; }
+    if (providedSpec !== undefined) spec = providedSpec;
+    else {
+      try { spec = JSON.parse(fs.readFileSync(args.spec, 'utf8')); }
+      catch (e) { return { code: 2, out: { ok: false, mode, error: { message: `could not read spec: ${e.message}` } } }; }
+    }
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
+      return { code: 2, out: { ok: false, mode, error: { message: 'bug spec must be a JSON object' } } };
+    }
 
     // Required fields are never inferred — missing means BLOCKED, before any read.
     const missing = REQUIRED.filter((k) => spec[k] === undefined || spec[k] === null || spec[k] === '');
@@ -331,7 +356,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       const dLink = await adapter.addRelation('{new-bug-id}', PARENT_LINK, spec.parentStoryId, { execute: false });
       plan.push({ step: 'link-parent', describe: `${dLink.method} ${dLink.url} (${PARENT_LINK} -> #${spec.parentStoryId}, the only link)`, request: dLink });
       const dPatch = await adapter.updateWorkItem('{new-bug-id}', {
-        fields: { 'Microsoft.VSTS.TCM.ReproSteps': buildReproHtml(spec, plannedUploads) },
+        fields: { [FIELD_REFS.reproSteps]: buildReproHtml(spec, plannedUploads) },
         addRelations: plannedUploads.map((u) => ({ rel: 'AttachedFile', url: u.url, attributes: { comment: u.name } })),
       }, { execute: false });
       plan.push({ step: 'set-repro-and-evidence', describe: `${dPatch.method} ${dPatch.url}`, request: dPatch });
@@ -356,8 +381,13 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         describe: 'create the Bug (POST _apis/wit/workitems/$Bug)',
         run: async () => {
           const r = await adapter.createWorkItem('Bug', { fields }, { execute: true });
-          bugId = r.id; bugUrl = r.url;
-          return { id: r.id, url: r.url };
+          const rawId = r && r.id;
+          const id = typeof rawId === 'string' && /^\d+$/.test(rawId.trim()) ? Number(rawId) : rawId;
+          if (!Number.isSafeInteger(id) || id <= 0) {
+            throw new Error('Azure reported a successful Bug create but returned no positive work-item id; refusing dependent writes');
+          }
+          bugId = id; bugUrl = r.url;
+          return { id: bugId, url: bugUrl };
         },
       },
       {
@@ -373,7 +403,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         describe: 'set ReproSteps HTML + attach evidence (PATCH _apis/wit/workitems/{id}, json-patch)',
         run: async () => {
           await adapter.updateWorkItem(bugId, {
-            fields: { 'Microsoft.VSTS.TCM.ReproSteps': buildReproHtml(spec, uploaded) },
+            fields: { [FIELD_REFS.reproSteps]: buildReproHtml(spec, uploaded) },
             addRelations: uploaded.map((u) => ({ rel: 'AttachedFile', url: u.url, attributes: { comment: u.name } })),
           }, { execute: true });
           return { id: bugId, url: bugUrl };
@@ -402,7 +432,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
   }
 }
 
-module.exports = { run };
+module.exports = { run, buildReproHtml, FIELD_REFS, PARENT_LINK };
 
 if (require.main === module) {
   run(process.argv.slice(2)).then(({ code, out }) => {

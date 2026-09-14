@@ -1,0 +1,16 @@
+{
+  "projection": "selected duplicateReview fields from the existing full-view fallback result",
+  "duplicateReview": {
+    "reviewId": "2929292929292929292929292929292929292929292929292929292929292929",
+    "strategy": "lexical-idf-recall-v0",
+    "view": "all",
+    "defaultShortlistSize": 25,
+    "totalCandidates": 61,
+    "shownCandidates": 61,
+    "omittedCandidateCount": 0,
+    "truncated": false,
+    "pinnedExactTitleCount": 0,
+    "lowSignal": true
+  },
+  "nothingWritten": true
+}
