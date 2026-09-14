@@ -60,6 +60,22 @@ All notable changes to AgenTeX are documented here.
   device footprint never goes beyond installing/launching/exercising/closing the app under test.
 
 ### Changed
+- **`bug-report-azure` rebuilt around one agent-facing operation
+  (`skills/bug-report-azure/scripts/bug-report.js context/prepare/execute`).** The agent no
+  longer composes Azure requests or reads raw templates directly: `context` returns a
+  compact bootstrap (validated parent/template summary, resolved defaults, real allowed
+  picklist values, and an `intentTemplate` scaffold) and, once a semantic intent exists,
+  a deterministic duplicate-review shortlist; `prepare` re-validates against fresh runtime
+  data and writes a local, integrity-checked plan artifact with zero board writes; `execute`
+  accepts only that exact plan and performs the writes behind one consolidated approval.
+  Duplicate presentation now goes through a new deterministic lexical/IDF ranking module
+  (`skills/bug-report-azure/scripts/duplicate-ranking.js`) that orders candidates and
+  explains matches without making any duplicate verdict itself — that judgment call stays
+  with the agent. Covered by new `.test.js` files for both scripts and
+  by new discipline evals (`discipline-bug-filing-deferred-bundle`,
+  `discipline-bug-filing-early-bundle`, `discipline-bug-filing-efficient-flow`,
+  `discipline-bug-filing-fallback-trigger`) alongside updated fixtures/prompts for the
+  existing `discipline-bug-filing-*` cases.
 - **Azure DevOps comments are supported** by `tracker.js comment` (the comments API;
   previously refused upfront), and an ADO `search` whose WIQL names no project is now
   scoped to the configured project.

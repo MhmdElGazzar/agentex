@@ -263,6 +263,22 @@ const isWrite = (c) =>
     assert.strictEqual(out.created.bugId, undefined, 'no bug id was ever produced');
   });
 
+  await test('a successful create response without a positive Bug id fails closed before dependent writes', async () => {
+    const dir = proj();
+    const f = fakeFetch(happyRoutes([{ method: 'POST', match: '/workitems/$Bug', json: {} }]));
+    const { code, out } = await run(['--spec', writeSpec(dir), '--execute'], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 1);
+    assert.strictEqual(out.ok, false);
+    const byStep = Object.fromEntries(out.ledger.map((l) => [l.step, l]));
+    assert.strictEqual(byStep['upload-attachment'].status, 'done');
+    assert.strictEqual(byStep['create-bug'].status, 'failed');
+    assert.match(byStep['create-bug'].reason, /no positive work-item id/);
+    assert.strictEqual(byStep['link-parent'].status, 'not-attempted');
+    assert.strictEqual(byStep['set-repro-and-evidence'].status, 'not-attempted');
+    assert.strictEqual(out.created.bugId, undefined);
+    assert.strictEqual(f.calls.filter((c) => c.method === 'PATCH').length, 0, 'no dependent write may use a missing id');
+  });
+
   await test('failure at the LINK step: exit 1 and the created Bug ID is STILL in the JSON', async () => {
     const dir = proj();
     const f = fakeFetch(happyRoutes([{ method: 'PATCH', match: '/workitems/4711', bodyMatch: 'Hierarchy-Reverse', status: 403, text: JSON.stringify({ message: 'no link permission' }) }]));
@@ -363,7 +379,7 @@ const isWrite = (c) =>
   });
 
   await test('no child_process in any delivered bug-skill script (structural source read)', async () => {
-    for (const name of ['create-bug.js', 'read-workitem.js']) {
+    for (const name of ['bug-report.js', 'create-bug.js', 'read-workitem.js', 'check-image.js']) {
       const src = fs.readFileSync(path.join(__dirname, name), 'utf8');
       assert.ok(!/child_process|spawnSync|execSync/.test(src), `${name} must not spawn processes`);
     }
@@ -373,7 +389,7 @@ const isWrite = (c) =>
     // Force-exiting after fetch trips a libuv assertion on Windows/Node 24 and can
     // corrupt the exit code; print, set process.exitCode, and let the loop drain
     // (the run_api.js doctrine).
-    for (const name of ['create-bug.js', 'read-workitem.js']) {
+    for (const name of ['bug-report.js', 'create-bug.js', 'read-workitem.js', 'check-image.js']) {
       const src = fs.readFileSync(path.join(__dirname, name), 'utf8');
       assert.ok(!src.includes('process.exit('), `${name} must not force-exit`);
     }

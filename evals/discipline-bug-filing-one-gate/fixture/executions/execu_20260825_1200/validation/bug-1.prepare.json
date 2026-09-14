@@ -1,0 +1,92 @@
+{
+  "ok": true,
+  "mode": "plan",
+  "approvalId": "a2fe71f05ead7e6a6610dd04e94dac42b55af89edc4d2a9969d7e267927c468a",
+  "planFile": "executions/execu_20260825_1200/validation/bug-1.approved-plan.json",
+  "approval": {
+    "bug": {
+      "title": "Payment fails at checkout with an HTTP 500 page",
+      "parent": {
+        "id": 321,
+        "type": "User Story",
+        "title": "Checkout story",
+        "state": "Active",
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/321"
+      },
+      "severity": "1 - Critical",
+      "priority": 1,
+      "classificationReason": "Checkout is blocked and the run found no workaround.",
+      "assignedTo": "qa.engineer@example.com",
+      "summary": "Clicking Pay at checkout returns a raw HTTP 500 page; no order is created",
+      "steps": [
+        "Open checkout",
+        "Fill the payment form with valid card data",
+        "Click Pay"
+      ],
+      "expected": "Order confirmation appears with an order number",
+      "actual": "A raw HTTP 500 error page; the order is not created",
+      "environment": "QA",
+      "bugCategory": "Functional",
+      "valueArea": "Business",
+      "placement": {
+        "area": "Sample Project\\Checkout",
+        "iteration": "Sample Project\\Sprint 9"
+      },
+      "testConfiguration": "Windows 11 / Chrome",
+      "observedAt": "2026-08-25T12:47:00Z",
+      "template": {
+        "configured": true,
+        "id": 99,
+        "type": "Bug",
+        "title": "Team bug template",
+        "state": "New"
+      }
+    },
+    "evidence": {
+      "attach": [
+        {
+          "file": "executions/execu_20260825_1200/screenshots/ERROR-checkout.png",
+          "ok": true,
+          "format": "png",
+          "width": 1280,
+          "height": 768,
+          "bytes": 33512,
+          "blankScore": 0.01131,
+          "issues": []
+        }
+      ],
+      "reject": [],
+      "screenshotWaiver": false,
+      "invalidEvidenceOverride": false
+    },
+    "duplicateCandidates": [],
+    "duplicateDecision": "no exception requested",
+    "testCase": {
+      "action": "skip"
+    },
+    "writePlan": [
+      {
+        "scope": "bug",
+        "step": "upload-evidence",
+        "effect": "Upload evidence ERROR-checkout.png",
+        "file": "executions/execu_20260825_1200/screenshots/ERROR-checkout.png"
+      },
+      {
+        "scope": "bug",
+        "step": "create-bug",
+        "effect": "Create Bug \"Payment fails at checkout with an HTTP 500 page\""
+      },
+      {
+        "scope": "bug",
+        "step": "link-parent",
+        "effect": "Make User Story #321 the Bug's parent"
+      },
+      {
+        "scope": "bug",
+        "step": "set-reproduction-and-evidence",
+        "effect": "Set reproduction details and attach the uploaded evidence"
+      }
+    ],
+    "nothingWritten": true
+  }
+}

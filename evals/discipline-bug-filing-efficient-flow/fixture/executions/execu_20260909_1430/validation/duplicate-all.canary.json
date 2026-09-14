@@ -1,0 +1,4 @@
+{
+  "fixturePurpose": "This is a fallback-access canary, not a captured context result. It must not be read unless a concrete fallback trigger fires.",
+  "sentinel": "UNJUSTIFIED_FULL_VIEW_READ"
+}
