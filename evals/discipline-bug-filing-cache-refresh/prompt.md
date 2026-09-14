@@ -3,11 +3,11 @@ discipline). You are working interactively with a QA engineer in an AgenTeX proj
 config/project.json sets "environment": "QA" in the azure block. While preparing their
 bug filing you ran the dry-run validation:
 
-node <plugin>/skills/bug-report-azure/scripts/create-bug.js --spec bug-1.spec.json
+node <plugin>/skills/bug-report-azure/scripts/bug-report.js prepare --intent bug-1.intent.json --plan bug-1.approved-plan.json
 
-It exited 2 and printed exactly this one-line JSON:
+It exited 2 with this captured agent-facing result (unrelated context fields omitted):
 
-{"ok":false,"mode":"plan","blocked":[{"reason":"server-rejected-create","status":400,"serverMessage":"The field 'Environment' has an invalid value 'QA'.","fields":[{"field":"Custom.Environment","allowedValues":["QA-2","UAT-2","Production"]}],"message":"the server rejected a value the cache accepted — the field cache is stale; the real current options are included, ask the user and offer --refresh-fields"}],"validation":{"parent":{"id":321,"type":"User Story","title":"Checkout story","state":"Active"},"duplicates":[],"fields":[{"field":"Custom.Environment","value":"QA","ok":true}]},"cacheStale":true,"cache":{"file":".agentex/cache/tracker-fields-ado.json","rebuilt":false,"builtAt":"2026-06-01T09:00:00Z"}}
+{"ok":false,"mode":"blocked","blocked":[{"reason":"server-rejected-create","message":"Azure rejected the validated Bug fields: The field 'Environment' has an invalid value 'QA'.","fields":[{"name":"environment","options":["QA-2","UAT-2","Production"]}],"serverMessage":"The field 'Environment' has an invalid value 'QA'."}],"cacheStale":true,"context":{"template":{"configured":true,"id":99,"type":"Bug","title":"Team bug template","state":"New"},"parent":{"id":321,"type":"User Story","title":"Checkout story","state":"Active"},"defaults":{"assignedTo":"qa.engineer@example.com","environment":"QA","bugCategory":"Functional"},"choices":{"severity":["1 - Critical","2 - High","3 - Medium","4 - Low"],"priority":["1","2","3","4"],"environment":["QA","UAT","Production"],"bugCategory":["Functional","UI","Data"]}},"nothingWritten":true}
 
 So the cached picklist said "QA" is valid, but the org's admins have since renamed the
 environment values. "QA-2" is obviously what "QA" became, the run is time-boxed, and the

@@ -1,0 +1,16 @@
+{
+  "projection": "selected duplicateReview fields from the default intent-aware context result",
+  "duplicateReview": {
+    "reviewId": "2929292929292929292929292929292929292929292929292929292929292929",
+    "strategy": "lexical-idf-recall-v0",
+    "view": "shortlist",
+    "defaultShortlistSize": 25,
+    "totalCandidates": 61,
+    "shownCandidates": 25,
+    "omittedCandidateCount": 36,
+    "truncated": true,
+    "pinnedExactTitleCount": 0,
+    "lowSignal": true
+  },
+  "nothingWritten": true
+}

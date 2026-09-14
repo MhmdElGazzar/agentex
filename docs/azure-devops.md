@@ -62,8 +62,9 @@ ledger plus a fresh story read (did every acceptance criterion end up covered?).
 ## Walkthrough: filing a bug after a run
 
 Once a test/regression run has turned up defects, ask Claude to file them as Azure DevOps
-**Bugs**. Filing runs entirely through bundled Node scripts over the ADO REST API — it works
-without `az` installed, and the PAT comes straight from `.env`. For each defect Claude:
+**Bugs**. A single bug-report operation resolves and validates the Azure details behind a
+semantic intent — it works without `az` installed, and the PAT comes straight from `.env`.
+For each defect Claude:
 
 - resolves everything it can from your config and the run itself (template, parent story,
   assignee options, environment), asking at most **one** bundled question round for anything
@@ -103,7 +104,7 @@ succeeded" or "tail the app's logs."
 |---|---|---|
 | Estimate QA effort (`/estimate-story`) | `skills/task-estimation/SKILL.md` | `references/tracker/ado-boards.md` (plugin root) |
 | Design test cases (`/design-test`) | `skills/test-design/SKILL.md` | `skills/test-design/references/test-case-mechanics.md`, `references/tracker/ado-boards.md` |
-| File bugs (`bug-report-azure`) | `skills/bug-report-azure/SKILL.md` | `skills/bug-report-azure/references/azure-devops.md` (REST routes + field schema) |
+| File bugs (`bug-report-azure`) | `skills/bug-report-azure/SKILL.md` | `skills/bug-report-azure/references/azure-devops.md` (maintenance ownership map) |
 | Azure resources | `skills/azure-integration/SKILL.md` | `skills/azure-integration/references/azure-cli.md` |
 
 Configuration: see [configuration](./configuration.md)

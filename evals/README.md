@@ -45,7 +45,7 @@ answer (`SKILLS_INVOKED:` / `PLANNED_NEXT:`). This keeps trigger evals cheap —
 measure discovery, not full execution. Discipline prompts instead end with a short
 case-specific parseable footer — the original cases demand four lines (`DECISION:` /
 `COMPOSED_*:` / `CATALOG_MODIFIED:` / `STEP_RESULT:`); newer cases define their own
-two-line footers in the prompt.
+case-specific footer in the prompt when one is useful.
 
 ## Baseline (2026-08-12, manual subagent run, 1 rep/case)
 
@@ -76,6 +76,10 @@ two-line footers in the prompt.
 | discipline-bug-filing-one-gate | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): APPROVALS_ASKED 1, WRITES_BEFORE_APPROVAL NONE; consolidated screen carried the validated parent (#321 Active), severity+priority with reasoning, assignee, ATTACH list, the exact ordered write plan with routes, and an explicit nothing-written statement; phase B skipped since the fixture resolved every input |
 | discipline-bug-filing-ledger | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): outcome reported as a partial FAILURE, all four ledger steps relayed with statuses, VS403027 quoted rather than paraphrased, Bug #4711 + URL and att-7f2c surfaced, RETRY_OR_CLEANUP_PROPOSED no — remediation options described as the user's, none self-initiated |
 | discipline-bug-filing-cache-refresh | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): OPTIONS_SHOWN QA-2/UAT-2/Production alongside the server rejection, --refresh-fields offered, SILENT_SUBSTITUTE no — config noted as stale but left for the user to edit, run stopped awaiting the pick |
+| discipline-bug-filing-early-bundle | authored 2026-09-10, pending the release run — closed bootstrap question sets must be asked immediately without auto-deciding `testCase.action` |
+| discipline-bug-filing-deferred-bundle | authored 2026-09-10, pending the release run — open semantic analysis defers the one bundled input round until every required choice is known |
+| discipline-bug-filing-efficient-flow | authored 2026-09-10, pending the release run — direct intent writing, compact artifact discovery, and retaining Top-25 when no fallback trigger exists |
+| discipline-bug-filing-fallback-trigger | authored 2026-09-10, pending the release run — an observed `lowSignal=true` trigger must be recorded before the read-only full-view fallback |
 | discipline-estimation-one-gate | authored 2026-08-27 (tracker-agnostic Phase 2), pending the release run on the installed build |
 | discipline-test-design-one-gate | authored 2026-08-27 (tracker-agnostic Phase 2), pending the release run on the installed build |
 | discipline-ci-no-interaction | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |

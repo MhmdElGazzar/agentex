@@ -83,6 +83,87 @@ const PROJ = 'Sample%20Project';
     assert.match(f.calls[0].url, /\$expand=all/);
   });
 
+  await test('getWorkItemsBatch POSTs projected fields, fail policy, and optional expand', async () => {
+    const f = fakeFetch([{
+      method: 'POST', match: '/_apis/wit/workitemsbatch?',
+      json: { count: 2, value: [{ id: 12, fields: {} }, { id: 11, fields: {} }] },
+    }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const fields = ['System.Id', 'System.Title', 'Microsoft.VSTS.TCM.ReproSteps'];
+    const result = await a.getWorkItemsBatch([11, 12], { fields, expand: 'links' });
+    assert.deepStrictEqual(result.map((item) => item.id), [11, 12], 'caller order is restored');
+    assert.strictEqual(f.calls.length, 1);
+    assert.strictEqual(f.calls[0].method, 'POST');
+    assert.ok(f.calls[0].url.startsWith(`${BASE}/${PROJ}/_apis/wit/workitemsbatch?`), f.calls[0].url);
+    assert.match(f.calls[0].url, /api-version=7\.1/);
+    assert.strictEqual(f.calls[0].headers['Content-Type'], 'application/json');
+    assert.deepStrictEqual(JSON.parse(f.calls[0].body), {
+      ids: [11, 12], fields, $expand: 'links', errorPolicy: 'fail',
+    });
+  });
+
+  await test('getWorkItemsBatch chunks more than 200 ids and preserves global input order', async () => {
+    const calls = [];
+    const f = async (url, opts = {}) => {
+      const body = JSON.parse(opts.body);
+      calls.push({ url: String(url), method: opts.method, body });
+      const value = [...body.ids].reverse().map((id) => ({ id, fields: { 'System.Id': id } }));
+      return { ok: true, status: 200, text: async () => JSON.stringify({ count: value.length, value }) };
+    };
+    const ids = Array.from({ length: 401 }, (_, index) => index + 1);
+    const result = await createAdapter({ cwd: proj(), fetch: f }).getWorkItemsBatch(ids, {
+      fields: ['System.Id'],
+    });
+    assert.deepStrictEqual(calls.map((call) => call.body.ids.length), [200, 200, 1]);
+    assert.ok(calls.every((call) => call.method === 'POST' && call.url.includes('/wit/workitemsbatch?')));
+    assert.deepStrictEqual(result.map((item) => item.id), ids);
+  });
+
+  await test('getWorkItemsBatch with no ids returns an empty list without fetching', async () => {
+    const f = fakeFetch([]);
+    const result = await createAdapter({ cwd: proj(), fetch: f }).getWorkItemsBatch([], {
+      fields: ['System.Id'],
+    });
+    assert.deepStrictEqual(result, []);
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('getWorkItemsBatch fails closed on missing, malformed, duplicate, or unexpected items', async () => {
+    const cases = [
+      { name: 'missing', response: { count: 1, value: [{ id: 1 }] }, pattern: /omitted work item #2/ },
+      { name: 'malformed', response: {}, pattern: /expected a value array/ },
+      { name: 'duplicate', response: { count: 2, value: [{ id: 1 }, { id: 1 }] }, pattern: /duplicate work item #1/ },
+      { name: 'unexpected', response: { count: 2, value: [{ id: 1 }, { id: 3 }] }, pattern: /unrequested work item #3/ },
+    ];
+    for (const c of cases) {
+      const f = fakeFetch([{ method: 'POST', match: '/wit/workitemsbatch?', json: c.response }]);
+      const a = createAdapter({ cwd: proj(), fetch: f });
+      await assert.rejects(() => a.getWorkItemsBatch([1, 2], { fields: ['System.Id'] }), (e) => {
+        assert.ok(e instanceof TrackerError, `${c.name}: typed error`);
+        assert.strictEqual(e.op, 'getWorkItemsBatch', c.name);
+        assert.strictEqual(e.status, null, c.name);
+        assert.match(e.serverMessage, c.pattern, c.name);
+        return true;
+      });
+      assert.strictEqual(f.calls.length, 1, `${c.name}: one failed batch and no partial retry`);
+    }
+  });
+
+  await test('getWorkItemsBatch propagates an HTTP batch failure as TrackerError', async () => {
+    const f = fakeFetch([{
+      method: 'POST', match: '/wit/workitemsbatch?', status: 503,
+      text: JSON.stringify({ message: 'Service temporarily unavailable' }),
+    }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await assert.rejects(() => a.getWorkItemsBatch([1], { fields: ['System.Id'] }), (e) => {
+      assert.ok(e instanceof TrackerError);
+      assert.strictEqual(e.op, 'getWorkItemsBatch');
+      assert.strictEqual(e.status, 503);
+      assert.strictEqual(e.serverMessage, 'Service temporarily unavailable');
+      return true;
+    });
+  });
+
   await test('query() POSTs WIQL; findByTitle escapes quotes and returns ids', async () => {
     const f = fakeFetch([{ method: 'POST', match: '/_apis/wit/wiql', json: { workItems: [{ id: 11 }, { id: 12 }] } }]);
     const a = createAdapter({ cwd: proj(), fetch: f });

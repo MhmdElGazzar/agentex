@@ -1,212 +1,251 @@
 ---
 name: bug-report-azure
-description: "After a completed test/regression run where one or more defects were found, file them as Azure DevOps Bugs following a configurable bug template — through bundled Node scripts that talk to the ADO REST API directly (no Azure CLI needed). Product/team-agnostic: org, project, area path, template, assignees, and test plan resolve from config, never hardcoded. ONE gate per filing: all reads and validation run first with zero board writes, then a single consolidated screen (validated fields + the exact write plan) and one approval before anything is written. Severity/priority recommended from the run's findings, screenshots validated in two passes, writes fail closed with an exact per-write ledger — the board never silently differs from what the user confirmed."
+description: File defects found by a completed test or regression run as Azure DevOps Bugs. Use for selecting run findings, writing useful reproduction details, classifying severity/priority/category, checking evidence and duplicates, and filing behind one consolidated approval.
 ---
 
-# Report Azure Bug (Generic)
+# Report Azure Bugs
 
-Turn defects found during a run into Azure DevOps **Bugs** that mirror a configurable
-team template and hang off the right User Story — behind **exactly one approval**. This is
-the closing gate of a test run, and its whole promise is: *nothing lands on the board
-beyond what you confirmed, and nothing silently.*
+Turn confirmed run findings into useful Bugs under the correct User Stories. The agent
+owns defect judgment and the user conversation. The bundled operation owns Azure
+configuration, template and field discovery, validation, formatting, attachments,
+relationships, test-plan mechanics, and writes.
 
-This skill is **decoupled from any specific team or product**. Everything team-specific is a
-placeholder resolved at runtime from `config/project.json`'s `azure` block or legacy `AZURE_*`
-keys in `.env` (never hardcoded in the skill):
+Use only this agent-facing operation for the filing flow:
 
-| Placeholder | Meaning | Resolved from |
-|---|---|---|
-| `{{ORG_URL}}` | Azure DevOps org (URL or bare org name) | `azure.org` (`config/project.json`) → `AZURE_URL` |
-| `{{PROJECT_NAME}}` | Project | `azure.project` (`config/project.json`) → `AZURE_PROJECT` |
-| `{{TEAM_NAME}}` | Team | `azure.team` (`config/project.json`) → `AZURE_TEAM` |
-| `{{AREA_PATH}}` | Area Path | `azure.areaPath` → `AZURE_AREA_PATH` or inherited from the parent story |
-| `{{ITERATION_PATH}}` | Iteration Path | `azure.iterationPath` → `AZURE_ITERATION_PATH` or inherited from the parent story |
-| `{{TEMPLATE_BUG_ID}}` | Reference bug the template mirrors | `azure.bugTemplateId` → `AZURE_BUG_TEMPLATE_ID` (optional) |
-| `{{ASSIGNEE_EMAIL}}` | Bug assignee options | `azure.assignee` → `AZURE_ASSIGNEE` (comma-separated) |
-| `{{TEST_PLAN_ID}}` / `{{TEST_SUITE_ID}}` | Related test plan / suite | `azure.testPlanId` → `AZURE_TEST_PLAN_ID` |
-| `{{ENVIRONMENT}}` / `{{BUG_CATEGORY}}` | Custom picklist fields | `azure.environment` / `azure.bugCategory` or the run's environment |
-
-The **PAT** is read from `.env` by the bundled scripts themselves (`AZURE_PAT`, legacy
-`AZURE_DEVOPS_EXT_PAT` / `AZURE_DEVOPS_PAT`) and sent only in the Authorization header —
-never printed, logged, or placed on a command line. No shell export, no `az login`, no
-Azure CLI install is needed for bug filing.
-
-## Tooling: bundled scripts over the ADO REST API
-
-Every lookup, validation, and write goes through bundled Node scripts built on the
-plugin's tracker layer (`scripts/lib/tracker/` — direct REST over Node's built-in fetch).
-**Never run `az` for any part of bug filing, and never compose REST calls yourself** — the
-scripts own transport, auth, and validation; you own judgment and the user conversation.
-
-- `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js` — validate a bug
-  spec (dry run) and, behind `--execute`, run the fail-closed write sequence with a ledger.
-- `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/read-workitem.js` — read-only:
-  `show --id <id> [--expand all]` (template bug, story validation), `find --type --title`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js` — test-plan mechanics
-  (cross-skill, owned by test-design): `list-suites` / `list-cases` / `find-case` /
-  `create-case` / `fail`. Same dry-run default and ledger discipline.
-- `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/check-image.js` — structural
-  screenshot validation (Pass 1 of the evidence gate; local, no tracker access).
-
-Each script prints **one JSON line** and exits 0/1/2. Dry run is the default; nothing is
-written without `--execute`. You render the plan and the ledger for the user — the scripts
-never talk to them.
-
-### Field/picklist cache & the refresh path
-
-Valid picklist values (severity, priority, `Custom.*` fields) vary per ADO project. The
-scripts build a per-project metadata cache on first use —
-`.agentex/cache/tracker-fields-ado.json` (gitignored; committing it is an explicit opt-in:
-add a `!.agentex/cache/` line to `.gitignore`) — and validate every supplied value against
-the **project's real values** before the gate. When the user asks to refresh (or the
-server rejects a value the cache accepted), re-run the validating script with
-`--refresh-fields`; a stale-cache rejection comes back with the real current options and
-`cacheStale: true` — surface those options, never substitute a value silently.
-
-## Hard constraints (never violate — these are the point of the skill)
-
-1. **Write nothing on Azure DevOps beyond what the user explicitly approved on the one
-   consolidated screen** — the bug, its single parent link, the validated attachments, and
-   the explicitly chosen test-case action. Nothing else, ever.
-2. **Reads and validation run freely; writes only behind the one approval.** Exactly ONE
-   approval interaction sits between the user's filing request and the board writes.
-3. **One link type only:** User Story → (parent) → Bug (`System.LinkTypes.Hierarchy-Reverse`).
-   No related / duplicate / any other link. Never edit the User Story itself.
-4. **Never edit a Test Plan / Suite / Test Case** except the two explicit, user-chosen
-   actions: record a *Failed outcome* on an existing case, or create a new case.
-5. **The duplicate check fails CLOSED.** If it cannot complete, the filing blocks — it
-   never proceeds on a dup-check failure. A found duplicate is surfaced and needs the
-   user's explicit go-ahead (`--allow-duplicate`).
-6. **Never infer or auto-fill required fields** (severity, priority, parent story,
-   assignee). Recommend with reasoning where the skill says so; the user's choice wins.
-7. **Every partial failure is reported as a FAILURE with the exact ledger** — every
-   intended write shown as done (ID + URL) or not-done (reason). Created work-item IDs are
-   always reported, even when a later step threw. **No auto-retry, no cleanup writes** —
-   remediation is the user's call on the board.
-8. **Never rewrite the consumer's config.** An invalid config-supplied value blocks the
-   run and is corrected *for this run only*.
-
-## When to run
-
-At the end of any run/task that surfaced one or more issues. Offer it proactively: "N
-issues were found — want to file any as Azure Bugs?" If the user declines, stop. Nothing
-touches the board.
-
-## Workflow — three phases, one gate
-
-### Phase A — collect & read (no user interaction, no writes)
-
-1. **Defects:** take them from the run's report. The user's ask usually names which to
-   file; if it is genuinely ambiguous, that question joins the Phase-B bundle — it never
-   stands alone.
-2. **Resolve from config + run context** (ask for nothing that is already known):
-   - Template: `{{TEMPLATE_BUG_ID}}` →
-     `node read-workitem.js show --id {{TEMPLATE_BUG_ID}} --expand all` to mirror its shape.
-   - Parent story: from the ask or the run's story context; validate via
-     `node read-workitem.js show --id <storyId>` — it must exist and be a **User Story**.
-   - Assignee options (`azure.assignee`), environment/category (`azure.*` or the run's
-     environment), test-plan intent (`azure.testPlanId`).
-3. **Screenshot evidence (two passes, unchanged discipline):**
-   - Pass 1 — structural: `node check-image.js --dir <screenshots-folder>` drops
-     corrupt / 0×0 / too-small / likely-blank images.
-   - Pass 2 — content relevance (your vision): Read each surviving image and judge it
-     against this bug's summary/expected/actual. An unrelated or unsupportive screenshot
-     is flagged (Phase-B bundle), never silently attached.
-4. **Severity + priority recommendation** from the observed impact in this run (the user
-   still decides — the recommendation and its one-line reasoning go on the consolidated
-   screen, where approving the screen approves the values):
-
-| Observed impact in the run | Recommended Severity | Recommended Priority |
-|---|---|---|
-| Blocks the flow, no workaround (can't advance / pay / issue) | `1 - Critical` | `1` |
-| Wrong/missing data in an issued artifact, or broken core path w/ workaround | `2 - High` | `1` or `2` |
-| Localized functional error, visible but non-blocking | `3 - Medium` | `2` or `3` |
-| Minor cosmetic / edge polish | `4 - Low` | `3` or `4` |
-
-### Phase B — ONE bundled input round, only if needed
-
-Everything still unresolved after Phase A is asked in **one** `AskUserQuestion` carrying
-all open questions at once — never a series of separate questions:
-
-- severity + priority, only when the impact is too ambiguous for a confident
-  recommendation (recommended option first, alternatives listed);
-- assignee (configured options + "other"), only when config gives none or several with no
-  steer;
-- parent story ID, only when unresolvable from the ask/run;
-- test-case decision: link-existing / create-new / skip, only when unresolvable;
-- evidence exceptions (a screenshot flagged irrelevant in Pass 2).
-
-When config + run context answer everything, **skip Phase B entirely** — the happy path
-has exactly one interaction: the approval.
-
-### Phase C — validate, one screen, one approval, write
-
-1. **Dry-run validation** (build one spec JSON per issue — shape below):
-   ```
-   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json
-   ```
-   This runs the whole gate: parent is a User Story, duplicate check (fails closed),
-   cache-based picklist validation, attachment structural re-check, and a server-side
-   `validateOnly` create. Exit 2 = blocked: surface the reasons (they include the valid
-   options), get the correction — a failure-path round, not part of the happy path — and
-   re-run the dry run. If a test-case action was chosen, dry-run it too
-   (`testplan.js create-case …` / `testplan.js fail …` without `--execute`).
-2. **Render THE consolidated screen** from the plan JSON — one message covering:
-   template choice · parent story (id, title, state — validated) · severity + priority
-   with the one-line reasoning · assignee · test-case decision · the ATTACH/REJECT list
-   with reasons · **the exact write plan** (every intended write, in order, with its
-   target route) · the explicit note that **nothing has been written yet**.
-3. **One approval.** On the user's "yes":
-   ```
-   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json --execute
-   node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js create-case --plan <plan> --suite <suite> --title "<t>" --execute   # only if chosen
-   node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js fail --plan <plan> --testcase <tc> --bug <bugId> --execute          # only if chosen
-   ```
-   On anything else: stop — zero writes. The write order inside `--execute` is fixed and
-   fail-closed: re-validate → upload attachments → create Bug → link parent → one
-   json-patch setting ReproSteps + evidence relations. First failure stops the sequence.
-4. **Render the ledger.** Report every intended write as done (ID + URL) or not-done
-   (reason), straight from the ledger JSON. A partial failure is reported as a **failure**
-   with the exact board state — e.g. *"Bug #4711 was created (…/edit/4711) but the parent
-   link was not added: <server message>. Nothing was retried; remediation is your call on
-   the board."* Never soften a partial write into a success. If the failure JSON carries
-   `cacheStale: true`, show the real options it contains and offer `--refresh-fields`.
-
-## Spec JSON shape (for create-bug.js)
-
-```json
-{
-  "title": "Concise defect statement",
-  "severity": "2 - High",
-  "priority": 1,
-  "parentStoryId": 0,
-  "assignedTo": "{{ASSIGNEE_EMAIL}}",
-  "summary": "One-line summary shown in the Repro header",
-  "steps": ["Step 1", "Step 2", "Step 3"],
-  "expected": "What should happen",
-  "actual": "What actually happened",
-  "environment": "{{ENVIRONMENT}}",
-  "bugCategory": "{{BUG_CATEGORY}}",
-  "areaPath": "{{AREA_PATH}}",
-  "iterationPath": "{{ITERATION_PATH}}",
-  "testConfig": "Windows 11 / Chrome",
-  "timestamp": "1/1/2026 3:00 PM",
-  "attachments": ["executions/.../screenshots/ERROR.png"]
-}
+```text
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js context --parent <story-id> --emit-intent
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js context --intent <intent.json> [--duplicate-view all]
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js prepare --intent <intent.json> --duplicate-review <review-id> --plan <new-plan.json>
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js execute --plan <prepare.planFile>
 ```
 
-- `severity` / `priority` come from the gate (recommendation approved or user's pick) and
-  are validated against the **project's** picklists — the script never invents them.
-- `areaPath` / `iterationPath` default to the parent story's when omitted.
-- Flags: `--allow-duplicate` (after the user's explicit go-ahead), `--no-screenshots`
-  (deliberate, user-confirmed evidence waiver), `--force` (attachment structural-check
-  override), `--refresh-fields` (rebuild the field cache).
+Do not read project secrets, inspect raw template fields, compose Azure requests, or call
+the low-level bug/test-plan scripts during normal filing. The operation prints one JSON
+result: exit 0 is ready/success, exit 2 is blocked before a board write, and exit 1 is a
+failed or partial execution whose ledger is authoritative.
 
-## Notes
+## Non-negotiable policy
 
-- The scripts need only Node (built-in modules) — no Azure CLI, no npm installs, works the
-  same on Windows/macOS/Linux. Details of the REST routes and the field schema live in
-  `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/references/azure-devops.md`.
-- Keep spec files out of committed state (write them to a temp/execution folder).
-- All board flows (bug filing, `/estimate-story`, `/design-test`) share the tracker scripts
-  and the `.env` PAT — one setup covers them all.
+- Perform all reads, evidence review, and `prepare` validation before asking for approval.
+- Present one consolidated approval screen for all Bugs in this filing. Do not ask for a
+  second confirmation after the user approves it, and never run `execute` before approval.
+- Use only values returned by runtime context or explicitly supplied by the user/run. Never
+  infer a required severity, priority, parent, assignee, category, or test-case decision.
+- Duplicate discovery fails closed and still reads every direct Bug child of the selected
+  parent across all states. Intent-aware context presents a deterministic review ordering:
+  25 candidates by default plus every normalized exact-title match. Ranking, omission, and
+  candidate presence are never duplicate verdicts or automatic blocks. Treat that shortlist
+  as the default semantic decision surface. Never invoke `--duplicate-view all` merely to be
+  safe; use it only for a concrete, recorded ambiguity supported by the review output. Set
+  `duplicate.allow: true` only after the user explicitly chooses to file despite a candidate.
+- A Bug receives one parent User Story and no agent-requested extra relationship. Never edit
+  the parent story.
+- The only permitted test-case actions are the user's explicit choice: `fail-existing`,
+  `create-new`, or `skip`.
+- No screenshots, structurally invalid evidence, or an unsupported screenshot require an
+  explicit user-approved waiver/exception. Never silently attach rejected evidence.
+  Missing or unreadable evidence cannot be waived because it cannot be uploaded.
+- Report a partial execution as a failure. Relay every ledger entry, all created IDs/URLs,
+  and the exact returned reason. Never retry, clean up, or make a compensating board write
+  unless the user makes a new request.
+- Never rewrite project configuration to make a filing pass. A corrected runtime choice is
+  for that filing only.
+- In CI (`AGENTEX_CI=1`), do not offer or attempt interactive bug filing.
+
+## Workflow
+
+### 1. Collect semantic defect content
+
+When artifacts follow the documented `executions/execu_<timestamp>/` layout, resolve the run
+directory once. Combine independent deterministic discovery and reads of the report, Bug
+list, and evidence candidates into the smallest practical number of tool calls the host
+supports. Reuse the resolved paths; do not repeatedly list an already resolved directory or
+run overlapping searches for the same artifacts. Expand discovery only when an expected
+artifact is missing or ambiguous.
+
+For each selected finding, derive from the run evidence:
+
+- a concise, observable title and one-line summary;
+- minimal reproducible steps;
+- expected and actual results;
+- the parent story from the run/ask;
+- environment, test configuration, and observation time when known;
+- candidate screenshots.
+
+View candidate images and decide whether each one actually supports this defect. Record
+both the attach list and rejected files with reasons. Structural validity is checked again
+by `prepare`; `likely-blank` is a warning for your visual judgment, not an automatic reject.
+
+### 2. Retrieve bootstrap context
+
+Run `context --emit-intent`, including the known parent ID. Use its compact output for:
+
+- configured template and validated parent summaries;
+- resolved defaults and assignee choices;
+- real allowed severity, priority, environment, and category values;
+- project-required semantic fields or unsupported process requirements;
+- configured test-plan identity.
+
+This bootstrap still performs fail-closed parent candidate discovery, but deliberately does
+not return an arbitrary candidate list before the defect intent exists. Its
+`duplicateReview.status` is `intent-required`, with the discovered total and zero shown.
+
+The opt-in `intentTemplate` is a structurally complete intent skeleton derived from the
+operation's executable contract. Keep it as the starting object for this Bug; do not
+reconstruct the field names or nesting from these instructions. Its parent is prefilled
+when validated by `context`. Runtime-defaultable values stay null so `prepare` resolves
+them again from current runtime data.
+
+Check `requiredInputs.assignedTo`: when `needsUserInput` is true and the request/run has
+not already supplied an assignee, ask for a concrete assignee in the bundled input round.
+Never offer `Unassigned` for this required field.
+
+Immediately after bootstrap context returns, inventory every unresolved explicit user
+decision and determine whether that complete question set is closed. A null
+`testCase.action` is unresolved unless the user already chose `fail-existing`, `create-new`,
+or `skip`. The set is closed only when the run, evidence work, and bootstrap facts show that
+later classification, duplicate, or evidence analysis cannot introduce another required
+question. If it is closed and nonempty, issue the single bundled input question at this
+point; if it is empty, continue without a question. Where the host permits, continue
+independent intent and evidence work while waiting for the answer. If later semantic work
+may still add a required question, defer the bundle until that work closes the set. Never
+auto-decide `testCase.action` or any other explicit user choice.
+
+When materializing the scaffold as intent JSON, use the host's direct structured
+file-write/edit operation on the first attempt and write the complete JSON object. Do not
+use a shell heredoc or `sed` patching as the default for escaping-sensitive intent content.
+Preserve the scaffold's exact schema and nesting; `prepare` remains the authoritative
+validator.
+
+Do not separately inspect configuration or retrieve the raw template. If a configured
+template or parent is unavailable/wrong, filing is blocked.
+
+### 3. Recommend classification
+
+Explain the recommendation in one line. Match impact to the closest allowed values returned
+by `context`; conventional projects commonly use:
+
+| Observed impact | Severity | Priority |
+|---|---|---|
+| Flow blocked with no workaround | `1 - Critical` | `1` |
+| Wrong issued data or broken core path with a workaround | `2 - High` | `1` or `2` |
+| Localized, visible, non-blocking functional error | `3 - Medium` | `2` or `3` |
+| Cosmetic or edge-case polish | `4 - Low` | `3` or `4` |
+
+For Bug Category, interpret only the returned choices against the observed failure (for
+example functional, UI, or data). If the match is ambiguous, ask; never invent a value.
+
+### 4. Review duplicates and complete any deferred bundled input
+
+Fill the scaffold's evidence-derived title, summary, steps, expected result, and actual
+result, then run `context --intent <intent.json>`. The top-level `duplicateCandidates` is the
+intent-ranked list for semantic review and retains each candidate's ID, title, state, and
+reproduction summary. `duplicateReview` reports the review ID, strategy/view, default size,
+total/shown/omitted counts, truncation, exact-title pin count, and shortlist IDs.
+
+The Top-25 view is the default semantic decision surface unless additional normalized
+exact-title candidates are pinned. Closed and Resolved Bugs remain eligible, and state is
+not a ranking signal. A truncated list or nonzero omitted count alone is not a reason to
+request every candidate, and never invoke `--duplicate-view all` merely "to be safe." Use
+the full view only when a concrete trigger exists:
+
+- `duplicateReview.lowSignal` is `true`;
+- there is an exact-title collision that needs broader duplicate context;
+- a candidate at the shortlist boundary has a failure mode that cannot be ruled out from
+  the shown evidence; or
+- another specific ambiguity is supported by the shortlist evidence.
+
+Before invoking the fallback, state in the operational record which trigger fired. If none
+fired, retain the shortlist's `reviewId` and continue. The full view remains available and
+returns the complete candidate set in the same deterministic ordering. This display choice
+does not weaken fail-closed discovery: the runtime still reads every direct Bug child, and
+the review receipt remains bound to the complete candidate snapshot. The ID is a freshness
+receipt, not a duplicate verdict or approval.
+
+If the bundled input question was not issued after bootstrap, ask it here once the complete
+set closes, containing every unresolved item: which findings to file, ambiguous
+classification, assignee, parent, duplicate exception, test-case action/details, and
+evidence exception. Ask at most one bundled question round before approval; never open a
+second round after an early bundle. Skip the round when the ask, run, and runtime context
+already settle everything.
+
+If that input changes a ranking-relevant field (`title`, `summary`, `steps`, `expected`, or
+`actual`), rerun the intent-aware context before preparing. Other semantic decisions remain
+agent-authored and do not turn the review receipt into a code-side verdict.
+
+### 5. Prepare the exact approval plan
+
+Use the intent JSON materialized from the returned `intentTemplate`; do not create a second
+schema or reconstruct its fields before `prepare`. Replace its null/empty semantic values
+with the decisions and evidence already collected.
+Required defect content, classification, evidence choices, duplicate exceptions, and the
+test-case action remain agent-authored. In particular, `testCase.action` is deliberately
+null: set it to the user's explicit `fail-existing`, `create-new`, or `skip` decision and
+complete the corresponding fields already present in the skeleton.
+
+Leave `assignedTo`, `environment`, `bugCategory`, `valueArea`, and `testCase.planId` null
+when not overriding runtime configuration. `prepare` resolves those values from fresh
+runtime data; the context-time values are not frozen into the intent. A missing suite
+returns real suite choices. Set duplicate permission, screenshot/evidence waivers, or new
+Test Case duplicate permission to true only after the required explicit user decision.
+
+Run `prepare` with the reviewed intent, its `--duplicate-review <review-id>`, and a new plan
+path. It retrieves dynamic data again and verifies that the parent/project, ranking version,
+ranking-relevant intent, complete compact candidate content, and shortlist IDs still match. A missing
+or stale review stops before plan creation and every board write, returning a refreshed
+shortlist and new review ID. Review that list and rerun `prepare` with the new ID; a separate
+context call is needed only when the full view is wanted.
+
+After the freshness check, `prepare` validates everything without a board write and saves the
+exact local plan artifact. If blocked, surface all returned corrections together, update the
+semantic intent only after the user's decision, and prepare a new plan file. For
+`cacheStale: true`, show the returned current options and offer one re-prepare with
+`--refresh-fields`; field-cache refresh does not repair a stale duplicate review, and project
+configuration must not be edited.
+
+### 6. Show one screen, then execute once
+
+Render each successful result's `approval` object, including:
+
+- template and parent identity;
+- classification plus its rationale, assignee, and resolved placement;
+- reproduction content;
+- ATTACH/REJECT evidence with reasons/warnings;
+- the compact duplicate-review receipt and decision, plus any project-wide exact-title
+  exception candidates (never the full parent candidate list);
+- test-case decision;
+- every logical effect in `writePlan`, in order;
+- an explicit statement that nothing has been written to Azure yet.
+
+Immediately after rendering that complete approval screen, invoke `AskUserQuestion` once
+with one single-select question:
+
+- Header: `Approval`
+- Question: `Execute the prepared plan exactly as shown?`
+- Choices, in this exact order:
+  1. `Execute this plan`
+  2. `Cancel — no board writes`
+
+Do not replace the full approval screen with the question, abbreviate the screen inside the
+question, or add a separate prose confirmation. Only a returned selection of `Execute this
+plan` is approval. Treat `prepare.planFile` as an opaque, authoritative value. Carry that
+returned value forward directly; never reconstruct, normalize, retype, relocate, or infer
+the plan path from the requested `--plan` path, working directory, `approvalId`, or any other
+value. For an approved selection, invoke `execute` exactly once per displayed plan, in the
+displayed order, passing that exact `prepare.planFile` value verbatim as the `--plan`
+argument; its `approvalId` binding remains authoritative. If the exact returned value is
+unavailable, stop rather than guessing another path. If the user selects `Cancel — no board
+writes`, dismisses the question, supplies free text, or gives any other response, stop
+without invoking `execute` and perform zero board writes. Stop the execution sequence on the
+first failure.
+
+Report the returned ledger verbatim in substance. `done` means the ID/URL now exists;
+`failed` is the stopping error; `not-attempted` did not happen. A plan is single-use: any
+retry or changed evidence requires a fresh prepare-and-approval cycle.
+
+## Maintenance only
+
+The legacy low-level CLIs remain for compatibility and diagnostics, not normal agent use.
+Their implementation ownership is documented in
+`${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/references/azure-devops.md`; do not load that
+reference during an ordinary filing.

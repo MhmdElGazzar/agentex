@@ -1,116 +1,83 @@
-# Azure DevOps — bug field schema & REST routes (reference)
+# Azure DevOps bug integration — maintenance map
 
-Backing detail for the `bug-report-azure` skill: the Bug field schema, the ReproSteps HTML
-shape, and the ADO REST routes the bundled tracker adapter uses. Day-to-day the scripts
-handle all of it — read this when you need exact field reference names or want to explain
-a route on the consolidated screen. Everything here is **product/team agnostic** —
-substitute the `{{PLACEHOLDERS}}` from `config/project.json`'s `azure` block.
+This reference is for maintaining or diagnosing the implementation. Normal bug filing
+must use `scripts/bug-report.js` and does not need this file.
 
-**Transport:** every operation goes through the plugin's tracker layer
-(`scripts/lib/tracker/` — Node built-in `fetch` against `{{ORG_URL}}/{{PROJECT_NAME}}/_apis/…`).
-There is no Azure CLI anywhere in this flow, and the agent never composes REST calls by
-hand — the scripts own transport and auth.
+## Responsibility boundaries
 
-## Connection & auth
-
-- Org/project resolve from `azure.org` / `azure.project` (`config/project.json`), legacy
-  `AZURE_URL` / `AZURE_PROJECT` in `.env`. `azure.org` accepts a full URL
-  (`https://dev.azure.com/<org>`, on-prem collection URLs too) or a bare org name.
-- The **PAT** is read by the adapter from `.env` — `AZURE_PAT` first, then legacy
-  `AZURE_DEVOPS_EXT_PAT` / `AZURE_DEVOPS_PAT` — and becomes
-  `Authorization: Basic base64(":" + PAT)` per request. It is never printed, logged,
-  or placed on a command line; dry-run output shows `authorization: <Basic ***, not printed>`.
-- `api-version` comes from `azure.apiVersion` (default `7.1`).
-- No shell export and no `az` install are needed for bug filing.
-
-## Bug field schema (template mirror)
-
-Mirror of the configured template bug `{{TEMPLATE_BUG_ID}}` (a child of a `{{TEAM_NAME}}`
-User Story). Adjust field reference names to your process if it differs from the default
-Agile Bug.
-
-| Field (reference name) | Value | Notes |
-|---|---|---|
-| `System.WorkItemType` | `Bug` | create route `POST …/_apis/wit/workitems/$Bug` |
-| `System.Title` | short defect statement | duplicate-checked before create (fails closed) |
-| `System.AreaPath` | `{{AREA_PATH}}` | inherit from parent story if unset |
-| `System.IterationPath` | `{{ITERATION_PATH}}` | inherit from parent story if unset |
-| `System.AssignedTo` | email | from the gate — `assignees` config or "other" |
-| `Microsoft.VSTS.Common.Priority` | `1`–`4` | recommended from run impact, approved at the gate |
-| `Microsoft.VSTS.Common.Severity` | `1 - Critical`…`4 - Low` | recommended from run impact, approved at the gate |
-| `Microsoft.VSTS.Common.ValueArea` | `Business` | sent only when the project's Bug type has the field |
-| `Custom.Environment` | `{{ENVIRONMENT}}` | validated against the field cache (omit if not in your process) |
-| `Custom.BugCategory` | `{{BUG_CATEGORY}}` | validated against the field cache (omit if not in your process) |
-| `Microsoft.VSTS.TCM.ReproSteps` | HTML (see below) | set post-create via json-patch — no size limit applies |
-
-> Severity, priority, and `Custom.*` picklists are validated against the **project's real
-> allowedValues** from the field cache (`.agentex/cache/tracker-fields-ado.json`), not a
-> hardcoded table. A field the project doesn't define blocks the run instead of being
-> emitted blind. Refresh the cache with `--refresh-fields`.
-
-## REST routes the adapter uses
-
-Reads (free, no gating):
-
-| Operation | Route |
+| Owner | Responsibility |
 |---|---|
-| Show work item (story/template validation) | `GET {{ORG_URL}}/{{PROJECT_NAME}}/_apis/wit/workitems/{id}?api-version=7.1[&$expand=all]` |
-| Duplicate query (WIQL) | `POST …/_apis/wit/wiql` body `{"query": "SELECT [System.Id] FROM workitems WHERE …"}` |
-| Field/picklist metadata (cache builder) | `GET …/_apis/wit/workitemtypes/{type}/fields?$expand=allowedValues` |
-| Suites in a plan | `GET …/_apis/testplan/Plans/{plan}/suites` |
-| Cases in a suite | `GET …/_apis/testplan/Plans/{plan}/Suites/{suite}/TestCase` |
-| Test point for a case | `GET …/_apis/testplan/Plans/{plan}/Suites/{suite}/TestPoint?testCaseId={tc}` (per-suite — the global shortcut 404s on many orgs) |
-| Run results | `GET …/_apis/test/Runs/{run}/results` |
+| `scripts/bug-report.js` | Agent-facing context, semantic intent normalization, configured-template summary/defaults, approval artifact integrity, composite Bug/test-case execution, and semantic output. |
+| `scripts/duplicate-ranking.js` | Deterministic lexical/IDF ordering, explanatory match evidence, and shortlist projection. It performs no Azure reads, duplicate verdict, blocking decision, or write policy. |
+| `scripts/create-bug.js` | Bug-domain validation, field mapping, reproduction formatting, evidence upload, parent relationship, duplicate query, write order, and the low-level Bug ledger. |
+| `scripts/check-image.js` | Dependency-free structural image validation. It cannot decide whether an image is relevant to a defect. |
+| `scripts/read-workitem.js` | Legacy/ad-hoc raw work-item read CLI. It is not part of normal filing. |
+| `scripts/lib/tracker/index.js` | Tracker selection and fail-closed project resolution. |
+| `scripts/lib/tracker/adapters/ado.js` | Azure configuration fallbacks, credential handling, transport, request construction, provider field dialect, complete/chunked work-item batch reads, attachments, individual work items, and test-plan/run API calls. |
+| `scripts/lib/tracker/cache.js` | Per-project runtime field metadata and allowed-value validation. |
+| `scripts/lib/tracker/ledger.js` | Ordered writes, stop-on-first-failure behavior, and exact done/failed/not-attempted accounting. |
+| `skills/test-design/scripts/testplan.js` | Test-suite/case reads, minimal Test Case creation, and recording an existing case as Failed. Bug filing calls this owner; it does not reproduce its logic. |
 
-Writes (dry-run by default; `--execute` only past the one approval):
+Configuration is documented in `docs/configuration.md` and resolved by the tracker adapter.
+Do not add direct project JSON or `.env` parsing to a bug script. Azure resource-plane CLI
+support in `skills/azure-integration` is unrelated to DevOps Boards and is not a fallback.
 
-| Operation | Route | Body |
-|---|---|---|
-| Server-side create validation | `POST …/_apis/wit/workitems/$Bug?validateOnly=true` | json-patch field ops |
-| Create the Bug | `POST …/_apis/wit/workitems/$Bug` | `application/json-patch+json` — `[{"op":"add","path":"/fields/<ref>","value":…}, …]` |
-| Parent link (the ONLY link) | `PATCH …/_apis/wit/workitems/{bugId}` | one relation op: `{"rel":"System.LinkTypes.Hierarchy-Reverse","url":"…/_apis/wit/workItems/{storyId}"}` |
-| Upload a screenshot | `POST …/_apis/wit/attachments?fileName={name.png}` | raw bytes, `application/octet-stream` → returns `{id, url}` |
-| ReproSteps + evidence relations | `PATCH …/_apis/wit/workitems/{bugId}` | ONE json-patch: the ReproSteps HTML + one `AttachedFile` relation per upload |
-| Create a Test Case | `POST …/_apis/wit/workitems/$Test%20Case` | json-patch (`System.Title`, optional `System.AreaPath`) |
-| Add TC to a suite | `PATCH …/_apis/testplan/suiteentry/{suiteId}?api-version=7.1-preview.2` | `[{"id": <tcId>}]` |
-| Create a test run | `POST …/_apis/test/runs` | `{name, plan:{id}, pointIds:[…], automated:false, state:"InProgress"}` |
-| Record the Failed result | `PATCH …/_apis/test/Runs/{run}/results` | `[{id, outcome:"Failed", state:"Completed", comment, associatedBugs:[{id}]}]` |
-| Complete the run | `PATCH …/_apis/test/runs/{run}` | `{state:"Completed"}` |
-| TC → bug durable link | `PATCH …/_apis/wit/workitems/{tcId}` | relation op `Microsoft.VSTS.Common.TestedBy-Reverse` |
+## High-level contract
 
-The write sequence for a bug filing is fixed and fail-closed: validate everything → upload
-attachments → create Bug → link parent → ReproSteps/evidence patch. The first failure
-stops the sequence and every intended write lands in the ledger — done with ID + URL, or
-not-done with the reason. Nothing is retried and nothing is cleaned up automatically.
+`bug-report.js context --parent <id> --emit-intent` is the bootstrap form. It returns only
+facts that can change an agent decision: normalized template/parent summaries, resolved
+defaults, allowed choices, process requirements, test-plan identity, and an intent scaffold.
+Parent-scoped discovery remains complete and fail-closed, but candidate bodies are withheld
+until ranking has semantic input.
 
-## ReproSteps HTML shape
+`bug-report.js context --intent <file>` derives the parent from that intent, reads every
+direct Bug child across all states, and returns the deterministic default review ordering of
+25 candidates plus any normalized exact-title pins. Metadata makes total, shown, omitted,
+and truncation counts explicit. `--duplicate-view all` returns the same complete ranked
+ordering without omissions. Neither rank nor shortlist membership is a duplicate verdict.
 
-```
-[hr] <table>  <b>{timestamp}</b> | {one-line summary}                       </table>
-[hr] <table>  <b>Steps:</b>                                                 </table>
-     <table>  <ol><li>step 1</li> … </ol>
-              <u>Expected Result</u>  {text}
-              <u>Actual Result</u>    {text}  <img src={attachment-url}>      </table>
-[hr] <table>  <b>Test Configuration:</b> | {testConfig}                      </table>
-```
+`bug-report.js prepare` requires the duplicate review ID and recomputes current runtime and
+candidate data before any plan or board write. The receipt binds project, parent, ranking
+version and inputs, the complete compact candidate content, and default shortlist IDs. A missing or
+stale receipt returns a fresh shortlist/new ID and writes no plan. A fresh receipt allows the
+existing read/dry-run validation and local plan creation. Successful approval contains a
+compact receipt and any project-wide exact-title exception candidates, never the full parent
+candidate list; the rest remains logical effects rather than provider mechanics.
 
-`create-bug.js` regenerates this exact structure from the spec JSON — you don't hand-write
-HTML. It travels as a request body, so a large repro can never hit a command-line length
-limit. The returned attachment `url` is embedded as `<img src=…>` inside ReproSteps *and*
-added as an `AttachedFile` relation, so the evidence renders in the bug body and lists
-under Attachments.
+`bug-report.js execute` verifies the artifact, project binding, evidence hashes, selected
+test-case preconditions, CI state, and single-use marker before delegating writes. The Bug
+must complete before a test-case write begins. The returned composite ledger preserves all
+created IDs and stops after the first failed write; it never retries or cleans up.
 
-## Failing an existing test case (what `testplan.js fail` does)
+The low-level `create-bug.js` and `testplan.js` CLIs remain compatible for diagnostics and
+their own tests. They are implementation surfaces, not an instruction for the agent to
+assemble a filing manually.
 
-A Test Case work item has a **State** (Design/Ready/Closed), not pass/fail — the outcome
-lives on a **Test Point** inside a Plan/Suite. `fail` locates the point (iterating the
-plan's suites), then runs the fixed plan: create run → record the Failed result (reading
-the real result id first — never guessed) → complete the run → tested-by link. A failure
-partway names the run left `InProgress` in the ledger; completing or deleting it is the
-user's call.
+## Intentional remaining limits
 
-## Related references
+- Duplicate handling is hybrid: strict parent-wide discovery -> deterministic intent-aware
+  ordering/projection -> agent semantic judgment -> review-ID freshness check, plus the
+  unchanged project-wide exact-title guard in `create-bug.js`. `bug-report.js` expands the
+  selected parent and derives every direct `Hierarchy-Forward` child ID from that authoritative
+  response. It then uses the adapter's 200-ID chunked batch read with only ID, type, title,
+  state, and reproduction fields projected; complete response validation prevents partial
+  discovery. A narrowly gated compatibility fallback uses at most eight concurrent individual
+  reads when the endpoint or projection is explicitly unavailable. Ordinary request failures,
+  malformed responses, and missing children remain fail-closed.
+  State never changes eligibility or score, omitted shortlist entries are not classified as
+  non-duplicates, and `--duplicate-view all` is the exhaustive fallback. Sibling presence and
+  lexical score alone never block or allow preparation.
+- The configured template currently supplies normalized defaults for the known optional Bug
+  concepts. Runtime metadata reports additional required process fields; unknown fields are
+  still ultimately enforced by server-side validation rather than blindly copied from a
+  template.
+- Provider relation identifiers remain pinned in the domain scripts that use them. Moving
+  them behind semantic adapter methods would require a coordinated tracker-wide change and
+  is outside this Bug-only refactor.
+- `create-bug.js` keeps its own last-line attachment check even though `check-image.js`
+  performs the richer pre-approval structural pass. The duplication is deliberate defense
+  against a changed file at write time; the plan artifact also verifies evidence hashes.
 
-- Estimation / test-design flows (same tracker layer, their own scripts):
-  `${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards.md` — shared boards knowledge, not
-  needed by bug filing.
+When changing behavior, run the sibling Bug tests, the test-plan tests, and the shared
+tracker/cache/ledger tests. Prefer assertions on semantic effects and safety invariants over
+assertions that force raw provider requests back into agent-facing output.

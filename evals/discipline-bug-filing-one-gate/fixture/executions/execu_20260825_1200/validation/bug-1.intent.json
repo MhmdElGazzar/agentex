@@ -1,0 +1,31 @@
+{
+  "title": "Payment fails at checkout with an HTTP 500 page",
+  "summary": "Clicking Pay at checkout returns a raw HTTP 500 page; no order is created",
+  "steps": [
+    "Open checkout",
+    "Fill the payment form with valid card data",
+    "Click Pay"
+  ],
+  "expected": "Order confirmation appears with an order number",
+  "actual": "A raw HTTP 500 error page; the order is not created",
+  "severity": "1 - Critical",
+  "priority": 1,
+  "classificationReason": "Checkout is blocked and the run found no workaround.",
+  "parentStoryId": 321,
+  "testConfiguration": "Windows 11 / Chrome",
+  "observedAt": "2026-08-25T12:47:00Z",
+  "evidence": {
+    "attach": [
+      "executions/execu_20260825_1200/screenshots/ERROR-checkout.png"
+    ],
+    "reject": [],
+    "waiveScreenshots": false,
+    "allowInvalid": false
+  },
+  "duplicate": {
+    "allow": false
+  },
+  "testCase": {
+    "action": "skip"
+  }
+}

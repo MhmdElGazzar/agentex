@@ -1,0 +1,77 @@
+{
+  "ok": true,
+  "mode": "context",
+  "template": { "configured": true, "id": 99, "type": "Bug", "title": "Team bug template", "state": "New" },
+  "parent": { "id": 321, "type": "User Story", "title": "Checkout story", "state": "Active" },
+  "defaults": {
+    "assignedTo": "qa.engineer@example.com",
+    "environment": "QA",
+    "bugCategory": "Functional",
+    "valueArea": "Business"
+  },
+  "choices": {
+    "assignedTo": ["qa.engineer@example.com"],
+    "severity": ["1 - Critical", "2 - High", "3 - Medium", "4 - Low"],
+    "priority": ["1", "2", "3", "4"],
+    "environment": ["QA", "UAT", "Production"],
+    "bugCategory": ["Functional", "UI", "Data"]
+  },
+  "requiredInputs": {
+    "assignedTo": { "required": true, "resolved": true, "needsUserInput": false, "choices": ["qa.engineer@example.com"] }
+  },
+  "supported": { "environment": true, "bugCategory": true, "valueArea": true },
+  "processRequirements": {
+    "agentSupplied": ["title", "assignee", "priority", "severity", "reproduction details"],
+    "automatic": [],
+    "unsupported": []
+  },
+  "testPlan": { "configured": true, "id": "3" },
+  "metadata": { "refreshed": false, "builtAt": "2026-09-09T14:31:00Z" },
+  "duplicateReview": {
+    "status": "intent-required",
+    "strategy": "lexical-idf-recall-v0",
+    "view": "shortlist",
+    "defaultShortlistSize": 25,
+    "totalCandidates": 61,
+    "shownCandidates": 0,
+    "omittedCandidateCount": 61,
+    "truncated": true,
+    "pinnedExactTitleCount": 0,
+    "shortlistCandidateIds": []
+  },
+  "intentTemplate": {
+    "title": null,
+    "summary": null,
+    "steps": [],
+    "expected": null,
+    "actual": null,
+    "severity": null,
+    "priority": null,
+    "classificationReason": null,
+    "parentStoryId": 321,
+    "assignedTo": null,
+    "environment": null,
+    "bugCategory": null,
+    "valueArea": null,
+    "testConfiguration": null,
+    "observedAt": null,
+    "evidence": {
+      "attach": [],
+      "reject": [],
+      "waiveScreenshots": false,
+      "allowInvalid": false
+    },
+    "duplicate": { "allow": false },
+    "testCase": {
+      "action": null,
+      "planId": null,
+      "testCaseId": null,
+      "comment": null,
+      "runName": null,
+      "suiteId": null,
+      "title": null,
+      "allowDuplicate": false
+    }
+  },
+  "nothingWritten": true
+}
