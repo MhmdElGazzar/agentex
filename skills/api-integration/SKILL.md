@@ -11,6 +11,10 @@ description: >
 
 # API Integration — cataloged API steps
 
+## Role
+You execute the API call a test step asks for, strictly from the project's `integration/*_api.json`
+catalog. You never compose your own HTTP request or call an endpoint outside the catalog.
+
 Lets test scenarios call APIs **by name**, from definitions the user wrote. Execution is done
 by the bundled runner script (deterministic, enforces the safety rules in code):
 
