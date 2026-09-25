@@ -1,6 +1,6 @@
 // AgenTeX preflight — checks every tool a run might need, in one call.
 //
-// Usage: node preflight.js
+// Usage: node preflight.js [--needs browser,api,db]
 // Prints ONE JSON line: {"playwright-cli": {...}, "playwright": {...}, "curl": {...},
 // "sqlcmd": {...}, "az": {...}, "node": {...}} — informational, always exits 0.
 // The agent decides what's required for the run at hand (sqlcmd only matters for db: steps, etc.)
@@ -89,13 +89,25 @@ function probePlaywrightPackage(cwd = process.cwd()) {
 
 module.exports = { probe, judgePlaywrightCliProbe, probePlaywrightCli, probePlaywrightPackage };
 
-if (require.main === module) {
-  console.log(JSON.stringify({
+// --needs <list> (from spec_drivers.js): without browser, the playwright probes are skipped
+// (the CLI probe can take up to 60s). Default: every probe, as before.
+function inventory(needs) {
+  const skip = { ok: null, skipped: 'not needed by this run' };
+  const browser = !needs || needs.has('browser');
+  return {
     node: { ok: true, version: process.version },
-    'playwright-cli': probePlaywrightCli(),
-    playwright: probePlaywrightPackage(),
+    'playwright-cli': browser ? probePlaywrightCli() : skip,
+    playwright: browser ? probePlaywrightPackage() : skip,
     curl: probe('curl', ['--version']),
     sqlcmd: probe('sqlcmd', ['--version']),
     az: probe('az', ['--version']),
-  }));
+  };
+}
+
+module.exports.inventory = inventory;
+
+if (require.main === module) {
+  const i = process.argv.indexOf('--needs');
+  const needs = i >= 0 ? new Set(String(process.argv[i + 1] || '').split(',').map((x) => x.trim()).filter(Boolean)) : null;
+  console.log(JSON.stringify(inventory(needs)));
 }

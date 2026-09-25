@@ -308,6 +308,15 @@ function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false,
     assert.ok(r.json.attemptHistory.every((a) => a.reasonCodes.includes('preflight-target')));
   });
 
+  await test('an API-only scope (Drivers: api) never demands a browser: unreachable portalUrl, the session still runs', async () => {
+    const dir = proj('http://127.0.0.1:9/');
+    fs.writeFileSync(path.join(dir, 'test', 'suite1', 'sample.md'), '# api spec\nDrivers: api\n## Scenarios\n1. api: shop.get(id=1) → 200\n');
+    const r = await runGate(dir, ['--suite', 'test/suite1/', '--retries', '0'], { plan: 'pass' });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.strictEqual(r.calls, 1);
+    assert.match(r.stderr, /drivers for this scope: api/);
+  });
+
   await test('1-vs-2: missing secret NAME → exit 2, name listed, never 1', async () => {
     const dir = proj(base, { envSecretName: 'QA_CI_GATE_MISSING_SECRET' });
     const r = await runGate(dir, ['--suite', 'test/suite1/', '--retries', '0'], { plan: 'pass' });
@@ -386,11 +395,13 @@ function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false,
   });
 
   await test('D1 marketplace-managed layout: the grant follows the installed copy, not the consumer cwd', async () => {
-    const installRoot = path.join(tmp('agentex-cg-install-'), 'some-marketplace', 'agentex', '9.9.9');
+    // realpath: on macOS os.tmpdir() is behind the /var → /private/var symlink, and the gate reports real paths.
+    const installRoot = path.join(fs.realpathSync(tmp('agentex-cg-install-')), 'some-marketplace', 'agentex', '9.9.9');
     for (const f of [
       'skills/test-execution/scripts/ci_gate.js',
       'skills/test-execution/scripts/ci_preflight.js',
       'skills/test-execution/scripts/preflight.js',
+      'skills/test-execution/scripts/spec_drivers.js',
       'skills/test-execution/scripts/write_verdict.js',
       'skills/test-execution/templates/ci/ci-settings.json',
       'scripts/lib/project_config.js',

@@ -224,6 +224,57 @@ const codes = (j) => (j.blockedReasons || []).map((b) => b.code);
     assert.ok(c.includes('preflight-target') && c.includes('preflight-browser'), JSON.stringify(c));
   });
 
+  // --- --needs: an API/DB-only run never demands a browser ---------------------
+  const empty = () => tmp('agentex-cipf-nobrowsers-');
+  const noBrowser = { AGENTEX_PWCLI_PROBE_CMD: pwcliStub('broken'), PLAYWRIGHT_BROWSERS_PATH: empty() };
+  const sqlStub = (ok) => `"${process.execPath}" -e "process.exitCode = ${ok ? 0 : 1}; ${ok ? "console.log('sqlcmd 1.0')" : "console.error('sqlcmd: not found')"}"`;
+  const apiEnv = (baseUrl) => ({ users: {}, ...(baseUrl ? { api: { baseUrl } } : {}) });
+
+  await test('--needs api: no portalUrl, broken playwright, no browser binary → exit 0; browser checks skipped', async () => {
+    const r = await runPreflight(proj({ envFile: apiEnv(base), dotenv: '' }), ['--needs', 'api'], noBrowser);
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.deepStrictEqual(r.json.needs, ['api']);
+    assert.ok(r.json.checks.target.skipped && r.json.checks.browser.skipped, JSON.stringify(r.json.checks));
+    assert.strictEqual(r.json.checks.tools['playwright-cli'].ok, null);
+    assert.strictEqual(r.json.checks.apiTarget.ok, true);
+    assert.strictEqual(r.json.checks.apiTarget.url, base);
+  });
+
+  await test('--needs api: the env api.baseUrl is unreachable → exit 2 preflight-target (an outage is never exit 1)', async () => {
+    const r = await runPreflight(proj({ envFile: apiEnv('http://127.0.0.1:9'), dotenv: '' }), ['--needs', 'api'], noBrowser);
+    assert.strictEqual(r.status, 2);
+    const t = r.json.blockedReasons.find((b) => b.code === 'preflight-target');
+    assert.ok(t && /^api http:\/\/127\.0\.0\.1:9/.test(t.detail), JSON.stringify(r.json.blockedReasons));
+  });
+
+  await test('--needs api with no api block → the catalog resolves its target; not gated here', async () => {
+    const r = await runPreflight(proj({ envFile: apiEnv(null), dotenv: '' }), ['--needs', 'api'], noBrowser);
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.match(r.json.checks.apiTarget.skipped, /no api block/);
+  });
+
+  await test('--needs db: sqlcmd unusable → exit 2 preflight-tools naming sqlcmd; usable → exit 0', async () => {
+    let r = await runPreflight(proj({ envFile: apiEnv(null), dotenv: '' }), ['--needs', 'db'], { ...noBrowser, AGENTEX_SQLCMD_PROBE_CMD: sqlStub(false) });
+    assert.strictEqual(r.status, 2);
+    assert.match(r.json.blockedReasons.find((b) => b.code === 'preflight-tools').detail, /^sqlcmd:/);
+    r = await runPreflight(proj({ envFile: apiEnv(null), dotenv: '' }), ['--needs', 'db'], { ...noBrowser, AGENTEX_SQLCMD_PROBE_CMD: sqlStub(true) });
+    assert.strictEqual(r.status, 0, r.stdout);
+    assert.strictEqual(r.json.checks.tools.sqlcmd.ok, true);
+  });
+
+  await test('--needs browser,api: both targets are checked; the browser half still gates', async () => {
+    const r = await runPreflight(proj({ envFile: { portalUrl: base, api: { baseUrl: 'http://127.0.0.1:9' } }, dotenv: '' }), ['--needs', 'browser,api']);
+    assert.strictEqual(r.status, 2);
+    assert.strictEqual(r.json.checks.target.ok, true);
+    assert.strictEqual(r.json.checks.apiTarget.ok, false);
+  });
+
+  await test('no --needs → browser (every existing caller keeps today\'s checks)', async () => {
+    const r = await runPreflight(proj({ portalUrl: base }));
+    assert.deepStrictEqual(r.json.needs, ['browser']);
+    assert.strictEqual(r.json.checks.apiTarget.ok, null);
+  });
+
   await test('structural pin: ci_preflight.js contains no process.exit(', async () => {
     const src = fs.readFileSync(SCRIPT, 'utf8');
     assert.ok(!src.includes('process.exit('), 'ci_preflight.js must not force-exit (exitCode + drain)');

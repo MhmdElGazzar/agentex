@@ -119,6 +119,25 @@ test('contract: broken tool fixture (no version output) → ok:false end to end,
 
 // ---- structural pin (0.20.1 doctrine) ----------------------------------------
 
+test('--needs without browser: the playwright probes never run (reported skipped); default still probes', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-pf-needs-'));
+  const marker = path.join(dir, 'probed');
+  const stub = path.join(dir, 'pwcli.js');
+  fs.writeFileSync(stub, `require('fs').writeFileSync(${JSON.stringify(marker)}, 'x'); process.stdout.write('0.1.18\\n');`);
+  const env = { ...process.env, AGENTEX_PWCLI_PROBE_CMD: `"${process.execPath}" "${stub}"` };
+  let r = spawnSync(process.execPath, [SCRIPT, '--needs', 'api,db'], { encoding: 'utf8', env });
+  let j = JSON.parse(r.stdout.trim());
+  assert.strictEqual(r.status, 0);
+  assert.strictEqual(j['playwright-cli'].ok, null);
+  assert.strictEqual(j.playwright.ok, null);
+  assert.ok(!fs.existsSync(marker), 'the playwright-cli probe must not run');
+  r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', env });
+  j = JSON.parse(r.stdout.trim());
+  assert.strictEqual(j['playwright-cli'].ok, true);
+  assert.ok(fs.existsSync(marker));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('structural pin: preflight.js contains no process.exit(', () => {
   const src = fs.readFileSync(SCRIPT, 'utf8');
   assert.ok(!src.includes('process.exit('), 'preflight.js must not force-exit');

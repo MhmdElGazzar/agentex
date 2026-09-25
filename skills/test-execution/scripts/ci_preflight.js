@@ -4,29 +4,34 @@
 // here closes the gate: exit 2 with a named preflight-* reason. Exit 2 — never 1:
 // an environment problem must never masquerade as product defects.
 //
-// Usage: node ci_preflight.js [--env <name>] [--plugin-root <path>]
+// Usage: node ci_preflight.js [--env <name>] [--needs browser,api,db] [--plugin-root <path>]
 //        (run from the consumer project root; --plugin-root is for tests/callers,
 //         default: this script's own plugin)
 //
 // Prints ONE JSON line:
-//   { ok, checks: { tools, target, environment, secrets, browser, pluginVersion },
+//   { ok, needs, checks: { tools, target, apiTarget, environment, secrets, browser, pluginVersion },
 //     blockedReasons: [{ code, detail }] }
 //
-// The six checks (design: ci-quality-gate):
-//   preflight-tools           node + playwright-cli usable (posture-fixed probe —
-//                             judged by output, the benign exit-crash never gates);
-//                             curl/sqlcmd/az stay informational (the agent decides
-//                             what a run needs), so they never gate here
-//   preflight-target          the resolved environment's portalUrl answers HTTP —
-//                             ANY response counts (a 500 is the app's problem to
-//                             fail scenarios on, not preflight's)
+// --needs names the drivers the run's specs use (spec_drivers.js); default: browser.
+// Browser-only checks (playwright-cli, portalUrl, browser binary) gate ONLY when browser
+// is needed, so an API/DB-only run never demands a browser. Needs api: the env's
+// api.baseUrl answers HTTP (skipped when the env has no api block — the catalog then
+// resolves its own target). Needs db: sqlcmd is usable.
+//
+// The checks (design: ci-quality-gate):
+//   preflight-tools           node; + playwright-cli usable when browser is needed
+//                             (posture-fixed probe — judged by output, the benign
+//                             exit-crash never gates); + sqlcmd usable when db is needed
+//   preflight-target          browser: the environment's portalUrl answers HTTP; api:
+//                             its api.baseUrl answers HTTP — ANY response counts (a 500
+//                             is the app's problem to fail scenarios on, not preflight's)
 //   preflight-environment     named env file exists / defaultEnvironment resolves /
 //                             legacy QA_TARGET_URL — never a silent fallback
 //   preflight-secrets         every { envSecret: NAME } referenced by the active
 //                             environment, config/project.json and integration/
 //                             catalogs resolves via process.env or .env — missing
 //                             NAMES are listed; a VALUE is never printed
-//   preflight-browser         a Playwright browser binary is present on disk
+//   preflight-browser         (browser only) a Playwright browser binary is present on disk
 //                             (deterministic filesystem check, no exit codes)
 //   preflight-plugin-version  plugin manifest + project stamp reported; gates ONLY
 //                             on an unreadable plugin manifest — version drift is
@@ -37,7 +42,7 @@
 // after async work (the 0.20.1 doctrine; the exit code IS the product here).
 const fs = require('node:fs');
 const path = require('node:path');
-const { probePlaywrightCli } = require(path.join(__dirname, 'preflight.js'));
+const { probe, probePlaywrightCli } = require(path.join(__dirname, 'preflight.js'));
 const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 
 const TARGET_TIMEOUT_MS = 10_000;
@@ -47,6 +52,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--env') out.env = argv[++i];
     else if (argv[i] === '--plugin-root') out.pluginRoot = argv[++i];
+    else if (argv[i] === '--needs') out.needs = String(argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
   }
   return out;
 }
@@ -82,16 +88,12 @@ function checkEnvironment(cwd, envName) {
   }
 }
 
-async function checkTarget(environment) {
-  if (!environment.ok) return { ok: false, error: 'skipped: environment did not resolve' };
-  const url = environment.legacy ? environment.legacyTarget : (environment.env && environment.env.portalUrl);
-  if (!url) {
-    return { ok: false, error: `portalUrl missing in environments/${environment.name}.json` };
-  }
+// ANY HTTP response = reachable; only a transport failure or timeout fails.
+async function probeUrl(url) {
   for (const method of ['HEAD', 'GET']) {
     try {
       const res = await fetch(url, { method, redirect: 'manual', signal: AbortSignal.timeout(TARGET_TIMEOUT_MS) });
-      return { ok: true, url, status: res.status }; // ANY HTTP response = reachable
+      return { ok: true, url, status: res.status };
     } catch (e) {
       if (method === 'GET') {
         const msg = e && (e.name === 'TimeoutError' || e.name === 'AbortError')
@@ -101,6 +103,23 @@ async function checkTarget(environment) {
     }
   }
   return { ok: false, url, error: 'unreachable' };
+}
+
+async function checkTarget(environment) {
+  if (!environment.ok) return { ok: false, error: 'skipped: environment did not resolve' };
+  const url = environment.legacy ? environment.legacyTarget : (environment.env && environment.env.portalUrl);
+  if (!url) {
+    return { ok: false, error: `portalUrl missing in environments/${environment.name}.json` };
+  }
+  return probeUrl(url);
+}
+
+async function checkApiTarget(cwd, environment) {
+  if (!environment.ok) return { ok: false, error: 'skipped: environment did not resolve' };
+  if (environment.legacy) return { ok: true, skipped: 'legacy project — the integration catalog resolves its own target' };
+  const api = pc.resolveApiTarget(cwd, environment.name);
+  if (!api) return { ok: true, skipped: `no api block in environments/${environment.name}.json — the integration catalog resolves its own target` };
+  return probeUrl(api.baseUrl);
 }
 
 function checkSecrets(cwd, environment) {
@@ -120,12 +139,22 @@ function checkSecrets(cwd, environment) {
   return { ok: missing.length === 0, required, missing };
 }
 
-function checkTools() {
+const SKIPPED = { ok: null, skipped: 'not needed by this run' };
+
+// AGENTEX_SQLCMD_PROBE_CMD is a fixture-only test seam, like AGENTEX_PWCLI_PROBE_CMD.
+function probeSqlcmd() {
+  const seam = process.env.AGENTEX_SQLCMD_PROBE_CMD;
+  return seam ? probe(seam, []) : probe('sqlcmd', ['--version']);
+}
+
+function checkTools(needs) {
   const tools = {
     node: { ok: true, version: process.version },
-    'playwright-cli': probePlaywrightCli(),
+    'playwright-cli': needs.has('browser') ? probePlaywrightCli() : SKIPPED,
+    sqlcmd: needs.has('db') ? probeSqlcmd() : SKIPPED,
   };
-  return { ok: tools.node.ok && tools['playwright-cli'].ok, ...tools };
+  const failed = ['playwright-cli', 'sqlcmd'].filter((k) => tools[k].ok === false);
+  return { ok: tools.node.ok && failed.length === 0, failed, ...tools };
 }
 
 function defaultBrowsersDir() {
@@ -163,25 +192,33 @@ async function main() {
   const cwd = process.cwd();
   const pluginRoot = args.pluginRoot || path.resolve(__dirname, '..', '..', '..');
 
+  const needs = new Set(args.needs && args.needs.length ? args.needs : ['browser']);
+
   const environment = checkEnvironment(cwd, args.env);
-  const [target, tools] = [await checkTarget(environment), checkTools()];
+  const target = needs.has('browser') ? await checkTarget(environment) : { ok: true, skipped: 'no browser steps in this run' };
+  const apiTarget = needs.has('api') ? await checkApiTarget(cwd, environment) : SKIPPED;
+  const tools = checkTools(needs);
   const secrets = checkSecrets(cwd, environment);
-  const browser = checkBrowser();
+  const browser = needs.has('browser') ? checkBrowser() : { ok: true, skipped: 'no browser steps in this run' };
   const pluginVersion = checkPluginVersion(cwd, pluginRoot);
 
   const blockedReasons = [];
-  if (!tools.ok) blockedReasons.push({ code: 'preflight-tools', detail: (tools['playwright-cli'].error || 'a required tool is unusable') });
+  if (!tools.ok) blockedReasons.push({ code: 'preflight-tools', detail: tools.failed.map((k) => `${k}: ${tools[k].error || 'unusable'}`).join('; ') || 'a required tool is unusable' });
   if (!target.ok) blockedReasons.push({ code: 'preflight-target', detail: target.url ? `${target.url}: ${target.error}` : target.error });
+  if (apiTarget.ok === false) blockedReasons.push({ code: 'preflight-target', detail: `api ${apiTarget.url ? `${apiTarget.url}: ${apiTarget.error}` : apiTarget.error}` });
   if (!environment.ok) blockedReasons.push({ code: 'preflight-environment', detail: environment.error });
   if (!secrets.ok) blockedReasons.push({ code: 'preflight-secrets', detail: `missing secret values for: ${secrets.missing.join(', ')} — provide them by NAME via the CI secret store or .env` });
   if (!browser.ok) blockedReasons.push({ code: 'preflight-browser', detail: browser.error });
   if (!pluginVersion.ok) blockedReasons.push({ code: 'preflight-plugin-version', detail: pluginVersion.error });
 
+  const view = (c) => ({ ok: c.ok, ...(c.url ? { url: c.url } : {}), ...(c.status !== undefined ? { status: c.status } : {}), ...(c.error ? { error: c.error } : {}), ...(c.skipped ? { skipped: c.skipped } : {}) });
   const out = {
     ok: blockedReasons.length === 0,
+    needs: [...needs].sort(),
     checks: {
-      tools: { ok: tools.ok, node: tools.node, 'playwright-cli': tools['playwright-cli'] },
-      target: { ok: target.ok, ...(target.url ? { url: target.url } : {}), ...(target.status !== undefined ? { status: target.status } : {}), ...(target.error ? { error: target.error } : {}) },
+      tools: { ok: tools.ok, node: tools.node, 'playwright-cli': tools['playwright-cli'], sqlcmd: tools.sqlcmd },
+      target: view(target),
+      apiTarget: view(apiTarget),
       environment: { ok: environment.ok, name: environment.name, legacy: environment.legacy, ...(environment.error ? { error: environment.error } : {}) },
       secrets,
       browser,

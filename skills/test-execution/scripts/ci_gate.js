@@ -69,6 +69,7 @@ const { COUNT_KEYS, DEFAULTS } = require(path.join(__dirname, 'write_verdict.js'
 
 const PLUGIN_ROOT = path.resolve(__dirname, '..', '..', '..');
 const CI_PREFLIGHT = path.join(__dirname, 'ci_preflight.js');
+const { specDrivers } = require(path.join(__dirname, 'spec_drivers.js'));
 const DEFAULT_SETTINGS = path.join(PLUGIN_ROOT, 'skills', 'test-execution', 'templates', 'ci', 'ci-settings.json');
 const RETRY_DELAY_MS = process.env.AGENTEX_CI_RETRY_DELAY_MS !== undefined
   ? Math.max(0, Number(process.env.AGENTEX_CI_RETRY_DELAY_MS) || 0)
@@ -161,8 +162,17 @@ function run(command, { cwd, env, budgetMs }) {
   });
 }
 
-async function runPreflight(cwd, envName) {
-  const cmd = [q(process.execPath), q(CI_PREFLIGHT), ...(envName ? ['--env', q(envName)] : []), '--plugin-root', q(PLUGIN_ROOT)].join(' ');
+// The drivers the scope's specs use (spec_drivers.js), so the preflight only demands their
+// tools. Any spec path that does not resolve falls back to browser: the strictest checks.
+function scopeNeeds(cwd, args) {
+  const raw = args.all ? ['test'] : args.suite ? [args.suite] : args.specs;
+  const paths = raw.map((p) => [p, path.join('test', p)].find((c) => fs.existsSync(path.join(cwd, c))));
+  if (paths.some((p) => !p)) return ['browser'];
+  try { return specDrivers(paths, cwd).drivers; } catch { return ['browser']; }
+}
+
+async function runPreflight(cwd, envName, needs) {
+  const cmd = [q(process.execPath), q(CI_PREFLIGHT), ...(envName ? ['--env', q(envName)] : []), '--needs', q(needs.join(',')), '--plugin-root', q(PLUGIN_ROOT)].join(' ');
   const r = await run(cmd, { cwd, env: process.env });
   try {
     const parsed = JSON.parse(r.out.trim().split(/\r?\n/).pop());
@@ -232,10 +242,12 @@ async function main() {
   const maxAttempts = 1 + policy.retries;
   const budgetMs = Math.max(1, Math.round(policy.timeoutMinutes * 60_000));
   const attempts = []; // { attempt, verdict|null, reasons, runDir|null }
+  const needs = scopeNeeds(cwd, args);
+  log(`drivers for this scope: ${needs.join(', ')}`);
 
   for (let n = 1; n <= maxAttempts; n++) {
     log(`attempt ${n}/${maxAttempts} — CI preflight`);
-    const preflight = await runPreflight(cwd, args.env);
+    const preflight = await runPreflight(cwd, args.env, needs);
     if (!preflight.ok) {
       attempts.push({ attempt: n, verdict: null, reasons: preflight.blockedReasons, runDir: null });
     } else {
