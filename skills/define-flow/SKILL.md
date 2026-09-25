@@ -57,9 +57,9 @@ mid-run interaction.
 
 ## 1. SETUP
 
-1. **Resolve target & environment** exactly per the "Target & environment resolution" rules
-   in `${CLAUDE_PLUGIN_ROOT}/skills/test-execution/SKILL.md` — read that section and follow
-   it as written (explicit environment → `defaultEnvironment` in `config/project.json` →
+1. **Resolve target & environment** exactly per the "Which environment?" and "Which login mode?"
+   rules under Decisions in `${CLAUDE_PLUGIN_ROOT}/skills/test-execution/SKILL.md` — read those
+   sections and follow them as written (explicit environment → `defaultEnvironment` in `config/project.json` →
    legacy `.env`; undefined environment names are an error, undefined user handles are
    BLOCKED). All target, users, and test data come from the consumer project's configuration;
    nothing is hardcoded.

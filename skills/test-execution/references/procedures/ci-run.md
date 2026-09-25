@@ -1,8 +1,8 @@
-# CI mode — headless pipeline runs
+# Procedure: CI run (headless pipeline)
 
 The rules for a CI-mode run (`/execute-test ci …`, normally spawned headlessly by the
 bundled `ci_gate.js` with `AGENTEX_CI=1` set). Read this BEFORE any action in a CI-mode
-run. CI mode is parallel-mode orchestration (SETUP → LOAD → DISPATCH → MERGE → PRESENT)
+run. CI mode is parallel-mode orchestration (`parallel-run.md`: SETUP → LOAD → DISPATCH → MERGE → PRESENT)
 with stricter dispositions — everything below overrides the interactive behavior it
 conflicts with; everything it does not mention works exactly as in a parallel run
 (mode parity: a CI run produces the same artifacts as an interactive run, plus
@@ -48,11 +48,11 @@ turns blocked counts into exit 2 (environment), and failed counts into exit 1 (p
 defects); the 1-vs-2 separation is the gate's core promise, and it is only as honest
 as the counts you feed it.
 
-## REPORT: the deterministic verdict step
+## End of MERGE: the deterministic verdict step
 
-At REPORT (after `report.md` and `bugs/`), always:
+At the end of MERGE (after `report.md` and `bugs/`), always:
 
-1. Write `executions/execu_<ts>/run-summary.json` exactly as the REPORT phase specifies
+1. Write `executions/execu_<ts>/run-summary.json` exactly as parallel-mode MERGE specifies (`run-record.md`)
    (persistent, `schemaVersion: 2`, same counts vocabulary:
    `passed/failed/blocked/warnings/viewMismatch/flaky/naDescoped/notRun` — shape in the
    extent-report skill's `references/run-summary-schema.md`). It is a retained artifact;
@@ -93,4 +93,8 @@ to change a verdict.
 - `agents/qa-executor.md` needs nothing special: executors already defer NEEDS-USER
   items and never ask mid-run. Only the MERGE-time disposition differs (BLOCKED with
   the named question instead of asking the user).
+- Drivers: `ci_gate.js` already ran the gating preflight for the scope's drivers
+  (`spec_drivers.js` → `ci_preflight.js --needs`). A scope with no browser steps never
+  needs playwright-cli, a browser binary, or a `portalUrl`. Inject each file's `DRIVERS`
+  into its executor exactly as in a parallel run.
 - The scope token `all` means every spec file under `test/`.

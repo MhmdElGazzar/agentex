@@ -21,7 +21,7 @@ Arguments: $ARGUMENTS
   the project's `defaultEnvironment` applies (legacy projects: `.env`). An environment with
   no file is an error — list `environments/` and stop.
 
-Then follow the skill: resolve target & environment per browser-testing's resolution rules,
-read the skill's referenced `playwright-cli.md` before the first browser action, and run the
+Then follow the skill: resolve target & environment per test-execution's environment rules,
+read the skill's referenced `playwright-cli.md` (browser-driver) before the first browser action, and run the
 session (SETUP → STEP LOOP → ASSEMBLE → VALIDATE). The session is one sitting, forward-only,
 and driven by you, the main agent — never by a subagent.
