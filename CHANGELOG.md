@@ -2,6 +2,41 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Changed
+- **`browser-testing` is split into `test-execution` (the orchestrator) and `browser-driver`
+  (the browser driver).** `test-execution` runs the test (modes, environment, verdicts, Flake
+  rules, reports, CI verdict) and routes each spec step to its driver: prose → browser-driver,
+  `api:` → api-integration, `db:` → db-integration, `kb:` → ask-kb, `ui-check:` → ui-check.
+  `/execute-test` and every existing spec behave as before: same checkpoints, same
+  `executions/` tree, same session naming, same reports. The skill now leads with its rules and
+  loads each mode's procedure only when that mode starts (~2,400 tokens, was ~5,000).
+  `qa-executor` takes a new `DRIVERS` input.
+- **CI pipelines: the gate's path moved** to `<plugin-root>/skills/test-execution/scripts/ci_gate.js`.
+  The old `skills/browser-testing/scripts/ci_gate.js` still works as a forwarder that prints a
+  deprecation warning; it will be removed in a later minor release. Update your pipeline line.
+  If you pass `--settings …/browser-testing/templates/ci/ci-settings.json` explicitly, point it at
+  `…/test-execution/templates/ci/ci-settings.json`.
+### Added
+- **API / DB-only specs run without a browser.** A spec declares `Drivers: api` (or `api, db`) in
+  its header and then needs no browser, no `Target:`, and no `portalUrl`, locally and in CI.
+  `spec_drivers.js` resolves a run's drivers. `ci_preflight.js` / `preflight.js` take `--needs`:
+  playwright-cli, the browser binary and `portalUrl` gate only when a browser is needed; `api`
+  probes the environment's `api.baseUrl`, and `db` gates on `sqlcmd`, so an API or DB outage is
+  BLOCKED (exit 2), never exit 1. Specs without a `Drivers:` line resolve exactly as before.
+  New eval: `discipline-api-only-run-no-browser`.
+### Fixed
+- **Parallel dispatch no longer relies on a queue that does not exist.** Executors go out in waves
+  of at most 6. A spawn refused at the session's subagent limit is dispatched again, and a spec
+  that never got dispatched is recorded `notRun` (incomplete), never silently dropped.
+- **`qa-executor` reports BLOCKED.** It is now in the per-scenario outcome and the tally line
+  (`<n> pass / <m> fail / <b> blocked, …`), so blocked scenarios reach the CI verdict's blocked
+  count.
+- **CI mode's verdict step runs at the end of MERGE.** The CI procedure named a REPORT phase that
+  only sequential mode has.
+- **`ci_gate.test.js` marketplace-layout case passes on macOS.** The temp dir sits behind the
+  `/var` → `/private/var` symlink; the comparison now uses the real path.
+
 ## [0.21.1] — 2026-08-28
 ### Fixed
 - **`/update-agentex`'s plugin self-update pull actually pulls now.** Shipped in 0.21.0,

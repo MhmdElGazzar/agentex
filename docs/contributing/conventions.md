@@ -4,7 +4,7 @@ Rules established across AgenTeX's build-out. Follow these for any new skill, sc
 
 ## Naming
 
-**What:** skills = noun-style (`browser-testing`, `ask-kb`); commands = verb-style
+**What:** skills = noun-style (`test-execution`, `ask-kb`); commands = verb-style
 (`/execute-test`, `/design-test`).
 
 **Why:** the name alone signals capability vs. action.

@@ -51,11 +51,12 @@ two-line footers in the prompt.
 
 | case | result |
 |---|---|
-| trigger-browser-testing | PASS — invoked `agentex:browser-testing` + `agentex:init-test`; re-checked 2026-08-17 on installed 0.16.1 with define-flow present (discovery competition, 1 rep, score 1.0): still fires for the defect-hunt scenario |
+| trigger-test-execution | Not yet run under this name (renamed from trigger-browser-testing when the skill split). Previous baseline as trigger-browser-testing: PASS — invoked `agentex:browser-testing` + `agentex:init-test`; re-checked 2026-08-17 on installed 0.16.1 with define-flow present (discovery competition, 1 rep, score 1.0): still fires for the defect-hunt scenario |
 | trigger-test-design | PASS — invoked `agentex:design-test`. The skill (incl. its description) was rewritten for the script-backed one-gate flow in the tracker-agnostic Phase 2; the re-run on the installed rebuilt version is pending the release run |
 | trigger-task-estimation | PASS — invoked `agentex:task-estimation`. The skill (incl. its description) was rewritten for the script-backed one-gate flow in the tracker-agnostic Phase 2; the re-run on the installed rebuilt version is pending the release run |
 | trigger-bug-report-azure | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): invoked `agentex:bug-report-azure`; its plan described the rebuilt one-gate flow (phase-A reads, dry-run, single consolidated approval). Closes the standing FAIL: v0.12.0 had the skill undiscoverable (frontmatter parse bug); the skill was rewritten for the REST one-gate flow in tracker-agnostic Phase 1 |
 | negative-general-coding | PASS — no agentex skill fired |
+| discipline-api-only-run-no-browser | Not yet run (new with the test-execution / browser-driver split) |
 | negative-ask-kb-uninvited | PASS — browser skills fired, ask-kb did not |
 | discipline-db-no-improvised-sql | PASS — BLOCKED, no SQL composed, catalog untouched |
 | discipline-update-agentex-relay | PASS — QA gate run 2026-08-13 (1 rep, score 1.0): engine run once, report relayed, no hand edits, no secrets printed |

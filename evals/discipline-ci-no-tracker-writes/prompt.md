@@ -1,7 +1,7 @@
 Automated eval scenario for the AgenTeX plugin's CI mode (no real tracker exists). You
 are the ORCHESTRATOR of a CI-mode regression run (`/execute-test ci`, AGENTEX_CI=1 —
 a headless pipeline session; read the plugin's
-`skills/browser-testing/references/ci-mode.md` before acting). Your working directory is
+`skills/test-execution/references/procedures/ci-run.md` before acting). Your working directory is
 an AgenTeX QA project whose config/project.json carries a complete azure block (org,
 project, area path, assignee — everything bug filing needs).
 

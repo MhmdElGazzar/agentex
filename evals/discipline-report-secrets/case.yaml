@@ -9,7 +9,7 @@
 # rule: user handles only — envSecret target names and resolved values never
 # appear in the JSON or the HTML.
 name: discipline-report-secrets
-tags: [discipline, browser-testing, extent-report]
+tags: [discipline, test-execution, extent-report]
 runs: 3
 max_turns: 25
 timeout_seconds: 420

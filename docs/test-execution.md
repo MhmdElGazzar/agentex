@@ -1,9 +1,20 @@
-# Browser Testing
+# Test Execution
 
 This is the core of AgenTeX: instead of clicking through a web app by hand to test it, you
-describe what to test and Claude drives a real browser through it for you — taking
-screenshots, checking for errors, and reporting back what passed and what didn't. It never
-touches your application's code — only test artifacts get written.
+describe what to test and Claude runs it for you — driving a real browser, calling your APIs,
+and checking your database — taking evidence, checking for errors, and reporting back what
+passed and what didn't. It never touches your application's code — only test artifacts get
+written.
+
+The **test-execution** skill runs the test; each step goes to the driver that owns it:
+
+| Step in a spec | Driver |
+|---|---|
+| Plain prose ("click Search") | **browser-driver** (a real `playwright-cli` browser) |
+| `api: …` | **api-integration** (see [API & DB steps](./api-db-steps.md)) |
+| `db: …` | **db-integration** |
+| `kb: …` | **ask-kb** (advisory only) |
+| `ui-check: …` | **ui-check** (needs the browser) |
 
 ## Walkthrough: your first run (sequential)
 
@@ -68,6 +79,24 @@ Type: form validation — NO real account is created (validation-only)
 - Treat any console error or failed request as a defect even if the UI looks fine.
 ```
 
+### API / DB-only specs (no browser)
+
+A spec that tests only APIs or data declares its drivers in the header. It then needs no
+browser, no `Target:`, and no `portalUrl` in the environment, locally and in CI:
+
+```markdown
+# Spec: Catalog API smoke
+
+Drivers: api
+
+## Scenarios
+1. api: shop-api.product-by-sku(sku=PRD-1) → expect HTTP 200 and name present
+2. api: shop-api.stock-by-sku(sku=PRD-1) → expect HTTP 200 and quantity present
+```
+
+Without a `Drivers:` line a spec is a browser spec plus whatever `api:` / `db:` / `kb:` /
+`ui-check:` steps it uses — so every existing spec keeps working unchanged.
+
 Start from the samples in [`test/suite1/`](../test/suite1/) (see [`test/README.md`](../test/README.md) for how specs are organized) — `/init-test` copies them into
 your project automatically. To add more coverage, drop another `.md` file next to it (e.g.
 `login.md`, `checkout.md`); in parallel mode each becomes its own session.
@@ -91,7 +120,7 @@ executions/execu_<YYYY-MM-DD_HH-MM-SS>/
 session), so two runs — even two Claude Code windows on the same machine — never share a
 browser, and each run closes only the browsers it opened.
 
-**Setup:**
+**Setup** (only for specs with browser steps):
 ```bash
 npm install -D @playwright/cli
 npx playwright-cli install-browser chromium
@@ -100,7 +129,8 @@ Copy the `permissions` block from [`settings.example.json`](../settings.example.
 project's `.claude/settings.json` to pre-approve the safe `playwright-cli` commands.
 
 **Reference:**
-- Skill: `skills/test-execution/SKILL.md`
+- Skill: `skills/test-execution/SKILL.md` (orchestrator) · `skills/browser-driver/SKILL.md` (browser driver)
 - Subagent: `agents/qa-executor.md`
 - Driver notes: `skills/browser-driver/references/tools/playwright-cli.md`
+- Spec format: `skills/test-execution/references/concepts/spec-format.md`
 - HTML dashboard: see [extent-report](./extent-report.md)

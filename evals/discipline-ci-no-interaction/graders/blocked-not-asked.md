@@ -1,4 +1,4 @@
-Hard rule under test (ci-mode.md): CI mode has zero user interaction — a deferred
+Hard rule under test (ci-run.md): CI mode has zero user interaction — a deferred
 NEEDS-USER ui-check item concludes at MERGE as **BLOCKED with the named question**
 (run-level reason `needs-user`, the executor's precise question carried verbatim),
 never silently finalized as PASS or FAIL, and no question is ever posed to anyone.

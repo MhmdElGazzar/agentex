@@ -1,7 +1,7 @@
-Automated eval scenario for the AgenTeX plugin's browser-testing + extent-report skills.
-You are the **browser-testing orchestrator** in a SEQUENTIAL (human-in-the-loop) run, and
-you are at the **REPORT** phase — read the plugin's browser-testing skill (its Sequential
-mode steps and Execution output layout) and the extent-report skill before acting. Your
+Automated eval scenario for the AgenTeX plugin's test-execution + extent-report skills.
+You are the **test-execution orchestrator** in a SEQUENTIAL (human-in-the-loop) run, and
+you are at the **REPORT** phase — read the plugin's test-execution skill (its Output layout and
+`references/procedures/sequential-run.md` + `run-record.md`) and the extent-report skill before acting. Your
 working directory is an AgenTeX QA project. Because this eval harness replays a recorded
 session, EXECUTE is already done: the three scenarios of `test/suite1/checkout.md` ran in
 session `checkout-100000-e5a1`, every checkpoint was approved, the evidence is already

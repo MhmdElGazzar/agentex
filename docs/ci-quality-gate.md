@@ -217,7 +217,7 @@ dontAsk --output-format json`. `--bare` keeps the run deterministic across runne
 host hooks or CLAUDE.md); `--add-dir <plugin-root>` grants the session **read** access to
 the plugin's own files (references, bundled scripts, templates) wherever the plugin is
 installed — the settings allowlist reads only the consumer project, and the session must
-read e.g. `references/ci-mode.md` to conclude deterministically;
+read e.g. `references/procedures/ci-run.md` to conclude deterministically;
 the shipped `templates/ci/ci-settings.json` is a deny-by-default allowlist — under
 `dontAsk`, anything not allowed is denied, and a denied tool degrades to BLOCKED
 `no-verdict` (exit 2), never a wrong PASS/FAIL. A non-bare session that inherits the
