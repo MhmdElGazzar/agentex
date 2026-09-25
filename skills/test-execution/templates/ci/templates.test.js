@@ -1,5 +1,5 @@
 'use strict';
-// Tests for the shipped CI templates (skills/browser-testing/templates/ci/):
+// Tests for the shipped CI templates (skills/test-execution/templates/ci/):
 // ci-settings.json parses and keeps the deny-by-default security posture;
 // both pipeline YAMLs are structurally sane (no YAML parser ships with the
 // plugin — zero-dependency rule — so the YAML check is a structural lint:
@@ -8,7 +8,7 @@
 // step, publish only executions/ artifacts, and stay fully generic — no
 // consumer/org/project names, no plugin cache paths, placeholders only.
 //
-// Run: node skills/browser-testing/templates/ci/templates.test.js
+// Run: node skills/test-execution/templates/ci/templates.test.js
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -59,7 +59,7 @@ for (const [label, file] of [['azure-pipelines.yml', AZ], ['github-actions.yml',
   test(`${label}: invokes the ci_gate.js entry point and branches on its exit code`, () => {
     const src = read(file);
     assert.match(src, /ci_gate\.js/);
-    assert.match(src, /skills\/browser-testing\/scripts\/ci_gate\.js/);
+    assert.match(src, /skills\/test-execution\/scripts\/ci_gate\.js/);
   });
 
   test(`${label}: shows BOTH advisory and blocking wiring`, () => {

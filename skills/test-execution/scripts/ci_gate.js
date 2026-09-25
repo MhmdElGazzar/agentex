@@ -6,7 +6,7 @@
 // kill, partial artifacts preserved), BLOCKED-only retries, fail-closed verdict
 // location, the single stdout JSON line, and the 0/1/2 exit code.
 //
-//   node <plugin-root>/skills/browser-testing/scripts/ci_gate.js
+//   node <plugin-root>/skills/test-execution/scripts/ci_gate.js
 //        [--spec <file>]... | --suite <folder> | --all
 //        [--env <name>]
 //        [--retries N] [--timeout-minutes N] [--warnings-fail true|false]
@@ -35,7 +35,7 @@
 //        the plugin's own root (references, scripts, templates) in every install
 //        layout — marketplace-managed or pinned checkout: the shipped settings
 //        allow Read(./**) only, which is the CONSUMER project, so without this
-//        grant a plugin installed elsewhere cannot read references/ci-mode.md or
+//        grant a plugin installed elsewhere cannot read references/procedures/ci-run.md or
 //        write_verdict.js and every run fail-closes to BLOCKED no-verdict. The
 //        grant is read-oriented and scoped to the plugin root — writes stay
 //        governed by the deny-by-default settings, which never widen.
@@ -69,7 +69,7 @@ const { COUNT_KEYS, DEFAULTS } = require(path.join(__dirname, 'write_verdict.js'
 
 const PLUGIN_ROOT = path.resolve(__dirname, '..', '..', '..');
 const CI_PREFLIGHT = path.join(__dirname, 'ci_preflight.js');
-const DEFAULT_SETTINGS = path.join(PLUGIN_ROOT, 'skills', 'browser-testing', 'templates', 'ci', 'ci-settings.json');
+const DEFAULT_SETTINGS = path.join(PLUGIN_ROOT, 'skills', 'test-execution', 'templates', 'ci', 'ci-settings.json');
 const RETRY_DELAY_MS = process.env.AGENTEX_CI_RETRY_DELAY_MS !== undefined
   ? Math.max(0, Number(process.env.AGENTEX_CI_RETRY_DELAY_MS) || 0)
   : 30_000;

@@ -135,7 +135,7 @@ WHEN A SCENARIO FAILS: DEFECT OR FLAKE
   browser or session died, navigation never completed (`net::ERR_*`, connection reset or
   refused, DNS/proxy failure), the CLI errored instead of returning a page, `snapshot` came
   back with no page, or a step timed out with no page rendered at all. The symptom list is in
-  `${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/references/playwright-cli.md` under
+  `${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/references/tools/playwright-cli.md` under
   "Driver error vs app defect".
 - NEVER retry a failure where the app DID answer and the answer was wrong: a missing or wrong
   element, wrong text, wrong count, a 4xx/5xx from the app under test, a wrong DB row, a JS

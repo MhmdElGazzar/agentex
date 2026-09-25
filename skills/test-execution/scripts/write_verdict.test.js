@@ -8,7 +8,7 @@
 // NEVER 1, case by case — exit 1 is reachable only through product observations
 // (failed scenarios, or warnings under the default policy).
 //
-// Run: node skills/browser-testing/scripts/write_verdict.test.js
+// Run: node skills/test-execution/scripts/write_verdict.test.js
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');

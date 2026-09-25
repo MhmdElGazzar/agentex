@@ -10,7 +10,7 @@
 // unreachable target, missing secret name, missing env file, per-attempt
 // timeout, no-verdict — each asserted exit 2, NEVER 1.
 //
-// Run: node skills/browser-testing/scripts/ci_gate.test.js
+// Run: node skills/test-execution/scripts/ci_gate.test.js
 const assert = require('node:assert');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -369,7 +369,7 @@ function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false,
   // ---- plugin-root read grant (D1 regression) ------------------------------------------------
   // The shipped ci-settings.json allows Read(./**) only — the consumer project cwd.
   // A plugin installed anywhere else was therefore unreadable to the spawned session:
-  // it could not load references/ci-mode.md (the deterministic verdict step) or
+  // it could not load references/procedures/ci-run.md (the deterministic verdict step) or
   // write_verdict.js, hand-wrote a nonconforming verdict, locateVerdict rejected it
   // fail-closed, and EVERY run concluded BLOCKED no-verdict. The spawn must grant
   // READ on the self-resolved plugin root in every supported install layout.
@@ -388,11 +388,11 @@ function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false,
   await test('D1 marketplace-managed layout: the grant follows the installed copy, not the consumer cwd', async () => {
     const installRoot = path.join(tmp('agentex-cg-install-'), 'some-marketplace', 'agentex', '9.9.9');
     for (const f of [
-      'skills/browser-testing/scripts/ci_gate.js',
-      'skills/browser-testing/scripts/ci_preflight.js',
-      'skills/browser-testing/scripts/preflight.js',
-      'skills/browser-testing/scripts/write_verdict.js',
-      'skills/browser-testing/templates/ci/ci-settings.json',
+      'skills/test-execution/scripts/ci_gate.js',
+      'skills/test-execution/scripts/ci_preflight.js',
+      'skills/test-execution/scripts/preflight.js',
+      'skills/test-execution/scripts/write_verdict.js',
+      'skills/test-execution/templates/ci/ci-settings.json',
       'scripts/lib/project_config.js',
       '.claude-plugin/plugin.json',
     ]) {
@@ -400,7 +400,7 @@ function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false,
       fs.mkdirSync(path.dirname(dst), { recursive: true });
       fs.copyFileSync(path.join(PLUGIN_ROOT, ...f.split('/')), dst);
     }
-    const installedGate = path.join(installRoot, 'skills', 'browser-testing', 'scripts', 'ci_gate.js');
+    const installedGate = path.join(installRoot, 'skills', 'test-execution', 'scripts', 'ci_gate.js');
     const r = await runGate(proj(base), ['--suite', 'test/suite1/'], { plan: 'pass', script: installedGate });
     assert.strictEqual(r.status, 0, r.stdout + r.stderr);
     assert.strictEqual(r.calls, 1, 'the installed copy must still spawn the session');

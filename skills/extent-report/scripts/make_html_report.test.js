@@ -1,6 +1,6 @@
 'use strict';
 // Tests for make_html_report.js — including the first-class `warning` and
-// `viewMismatch` statuses (ui-check verdicts) and `flaky` (the browser-testing flake
+// `viewMismatch` statuses (ui-check verdicts) and `flaky` (the test-execution flake
 // doctrine's outcome for a scenario that only passed on its one retry). Run-summary
 // JSON contract widened from 5 to 8 statuses.
 // Run: node skills/extent-report/scripts/make_html_report.test.js

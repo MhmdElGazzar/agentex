@@ -100,7 +100,7 @@ Copy the `permissions` block from [`settings.example.json`](../settings.example.
 project's `.claude/settings.json` to pre-approve the safe `playwright-cli` commands.
 
 **Reference:**
-- Skill: `skills/browser-testing/SKILL.md`
+- Skill: `skills/test-execution/SKILL.md`
 - Subagent: `agents/qa-executor.md`
-- Driver notes: `skills/browser-testing/references/playwright-cli.md`
+- Driver notes: `skills/browser-driver/references/tools/playwright-cli.md`
 - HTML dashboard: see [extent-report](./extent-report.md)

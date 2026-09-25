@@ -7,7 +7,7 @@
 // Secrets are reported by NAME only; a sentinel VALUE must appear in zero bytes
 // of output.
 //
-// Run: node skills/browser-testing/scripts/ci_preflight.test.js
+// Run: node skills/test-execution/scripts/ci_preflight.test.js
 // Offline: local http server as the target; playwright-cli probe injected via the
 // AGENTEX_PWCLI_PROBE_CMD seam; browsers dir via PLAYWRIGHT_BROWSERS_PATH.
 const assert = require('node:assert');

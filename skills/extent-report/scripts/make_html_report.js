@@ -34,7 +34,7 @@
 //
 // `warnings` / `viewMismatch` counts and the `warning` / `viewMismatch` statuses are
 // first-class ui-check outcomes; `flaky` is the execution outcome for a scenario that
-// failed on infrastructure and then passed on its one retry (browser-testing skill,
+// failed on infrastructure and then passed on its one retry (test-execution skill,
 // "Flake doctrine") — an unstable result, never folded into `passed`. All three carry
 // own colors, pills, stat cards and donut segments, and all three are optional — a
 // run-summary JSON without them renders exactly as before.
@@ -401,7 +401,7 @@ function toggleTC(i) {
         ])}
       </div>` : '';
     // Resolved NEEDS-USER history only — an unresolved NEEDS-USER never reaches a
-    // final artifact (browser-testing MERGE resolves them before this JSON is written).
+    // final artifact (test-execution MERGE resolves them before this JSON is written).
     const deferredBlocks = (tc.deferred || []).map((d) => `
       <div class="deferred-block">
         <div class="deferred-title">Resolved deferred question</div>

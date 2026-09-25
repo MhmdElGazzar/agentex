@@ -62,7 +62,7 @@ At REPORT (after `report.md` and `bugs/`), always:
 3. Run the verdict writer — judgment ends here; the mapping is code:
 
    ```
-   node ${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/scripts/write_verdict.js \
+   node ${CLAUDE_PLUGIN_ROOT}/skills/test-execution/scripts/write_verdict.js \
      --summary executions/execu_<ts>/run-summary.json \
      --run-dir executions/execu_<ts> \
      --env <active environment name, when one resolved> \

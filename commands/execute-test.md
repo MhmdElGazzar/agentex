@@ -30,7 +30,7 @@ Target / scope: $ARGUMENTS
 - This is a headless pipeline run (normally spawned by the bundled `ci_gate.js` with
   `AGENTEX_CI=1` set): use **parallel**-mode orchestration with ZERO user interaction —
   no checkpoints, no questions, no tracker writes.
-- Read `${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/references/ci-mode.md` FIRST — it carries
+- Read `${CLAUDE_PLUGIN_ROOT}/skills/test-execution/references/procedures/ci-run.md` FIRST — it carries
   the hard rules (NEEDS-USER → BLOCKED with the named question, captcha/OTP → BLOCKED,
   always generate `extent-report.html`, and the deterministic `write_verdict.js` step at REPORT).
 - The scope token `all` means every spec file under `test/`.

@@ -9,7 +9,7 @@
 // human can override. The probe now trusts the version evidence when the crash
 // matches that known benign signature, and ONLY then.
 //
-// Run: node skills/browser-testing/scripts/preflight.test.js
+// Run: node skills/test-execution/scripts/preflight.test.js
 // Fixture-level: no live playwright-cli needed (probe command injected via the
 // AGENTEX_PWCLI_PROBE_CMD test seam for the end-to-end contract cases).
 const assert = require('node:assert');

@@ -61,7 +61,7 @@ jobs:
       - name: AgenTeX CI gate
         id: gate
         # continue-on-error: true   # ADVISORY mode — the PM approval below is then the gate
-        run: node "<plugin-root>/skills/browser-testing/scripts/ci_gate.js" --suite <test/your-suite/> --env <environment-name>
+        run: node "<plugin-root>/skills/test-execution/scripts/ci_gate.js" --suite <test/your-suite/> --env <environment-name>
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}      # by NAME from the secret store
           # <YOUR_ENV_SECRET_NAME>: ${{ secrets.<YOUR_ENV_SECRET_NAME> }}   # one per envSecret name

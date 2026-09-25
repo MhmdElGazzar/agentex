@@ -1,6 +1,6 @@
 'use strict';
 // Tests for init_run.js — the run output tree and the unique session names.
-// Run: node skills/browser-testing/scripts/init_run.test.js
+// Run: node skills/test-execution/scripts/init_run.test.js
 // Each case runs the script in its own temp cwd, so nothing touches this repo.
 const assert = require('node:assert');
 const fs = require('node:fs');

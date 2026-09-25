@@ -63,7 +63,7 @@ executions/execu_<YYYY-MM-DD_HH-MM-SS>/
 └── bugs/{bug-list.md, screenshots/}
 ```
 
-`skills/browser-testing/scripts/init_run.js` creates this tree in one call rather than a chain
+`skills/test-execution/scripts/init_run.js` creates this tree in one call rather than a chain
 of `mkdir`s — see [testing.md](./testing.md) for how scripts like this get tested.
 
 ## Dispatching the qa-executor subagent

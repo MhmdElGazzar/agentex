@@ -62,7 +62,7 @@ stages:
           # THE GATE — one deterministic entry point; its exit code IS the verdict
           # and its stdout is exactly one JSON line (the contract-v1 verdict).
           # Scope forms: --spec <file> (repeatable) | --suite <folder> | --all
-          - script: node "<plugin-root>/skills/browser-testing/scripts/ci_gate.js" --suite <test/your-suite/> --env <environment-name>
+          - script: node "<plugin-root>/skills/test-execution/scripts/ci_gate.js" --suite <test/your-suite/> --env <environment-name>
             displayName: AgenTeX CI gate
             workingDirectory: <path-to-your-agentex-project>
             # continueOnError: true    # ADVISORY mode — the PM approval below is then the gate

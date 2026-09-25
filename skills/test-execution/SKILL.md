@@ -49,11 +49,11 @@ yourself in sequential mode.
 Per-tool setup, install, and usage details live in this skill's `references/` folder. **Read the
 relevant file BEFORE the first use of that tool in a session**, and again whenever one of its
 commands behaves unexpectedly. Available tool docs:
-- **`${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/references/playwright-cli.md`** — the browser driver
+- **`${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/references/tools/playwright-cli.md`** — the browser driver
   for ALL browser actions (setup/preflight, `snapshot`/`screenshot`/`console`, network capture,
   sessions/dashboard, and the `screenshot --filename=` and no-`requests` gotchas). Read before
   driving a browser.
-- **`${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/references/ci-mode.md`** — CI mode (a headless
+- **`${CLAUDE_PLUGIN_ROOT}/skills/test-execution/references/procedures/ci-run.md`** — CI mode (a headless
   `/execute-test ci …` pipeline run): the zero-interaction rules and the deterministic verdict
   step. Read BEFORE any action in a CI-mode run.
 
@@ -77,7 +77,7 @@ Always-on rules (full details in the files above):
 - Specs may include **`ui-check:` steps** (compare the live page against a design baseline —
   a Figma frame or a screenshot image) — execute via the **ui-check** skill; read it before
   the first such step. Unresolvable baselines are BLOCKED, never improvised.
-- Helper scripts (all in `${CLAUDE_PLUGIN_ROOT}/skills/browser-testing/scripts/`, each prints
+- Helper scripts (all in `${CLAUDE_PLUGIN_ROOT}/skills/test-execution/scripts/`, each prints
   one JSON line): `preflight.js` — check all tools in one call at session start;
   `init_run.js [--sessions label1,label2]` — create the whole execution tree (use instead of
   mkdir chains) AND generate this run's unique session names: the JSON's `sessions` keys are
