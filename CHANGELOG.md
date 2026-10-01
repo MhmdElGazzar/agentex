@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.22.0] — 2026-10-01
 ### Changed
 - **`browser-testing` is split into `test-execution` (the orchestrator) and `browser-driver`
   (the browser driver).** `test-execution` runs the test (modes, environment, verdicts, Flake
