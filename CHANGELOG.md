@@ -2,6 +2,18 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **Bug screenshots are attached annotated.** `bug-report-azure` now uploads a copy of each
+  screenshot with a red box and label on the defect (optionally a green one on something
+  correct) and a one-line summary banner above it, drawn by the new
+  `skills/bug-report-azure/scripts/annotate-image.js` through the project's playwright-cli.
+  The annotated copy, with the text it adds, is what the one approval lists and uploads;
+  `create-bug.js` is unchanged. Without playwright-cli, or when a box is still off after
+  two fixes, the raw screenshot is attached and the consolidated screen says why —
+  annotation never blocks a filing or adds a question. Covered by
+  `skills/bug-report-azure/scripts/annotate-image.test.js`.
+
 ## [0.21.1] — 2026-08-28
 ### Fixed
 - **`/update-agentex`'s plugin self-update pull actually pulls now.** Shipped in 0.21.0,
