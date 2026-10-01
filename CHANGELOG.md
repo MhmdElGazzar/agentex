@@ -2,6 +2,21 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.21.2] — 2026-10-01
+### Fixed
+- **The Setup Wizard's save-gate jumps you to the problem instead of just naming it.** When
+  `saveAndClose` finds a non-active environment that's missing its application URL or has no
+  test user, it used to show a toast and tell you to go open the environments page yourself —
+  easy to miss on a first pass through the wizard. It now switches straight to that environment
+  and the exact unfinished step (environment URL or test users). The active environment's
+  answers are safely captured first, so nothing you typed is lost by the jump.
+### Changed
+- **Nine more skills state their Role up front.** `api-integration`, `ask-kb`,
+  `azure-integration`, `bug-report-azure`, `db-integration`, `optimize-login`,
+  `task-estimation`, `test-design`, and `ui-check` now open with the same explicit
+  scope-and-boundary statement already used by `browser-testing`, `define-flow`, and
+  `extent-report`. No behavior change.
+
 ## [0.21.1] — 2026-08-28
 ### Fixed
 - **`/update-agentex`'s plugin self-update pull actually pulls now.** Shipped in 0.21.0,
