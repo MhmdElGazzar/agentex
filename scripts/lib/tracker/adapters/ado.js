@@ -331,16 +331,38 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return { name, id: res && res.id, url: res && res.url };
     },
 
-    // The exact route `az devops invoke --area testplan --resource "suite entries"`
-    // resolves: PATCH .../testplan/suiteentry/{suiteId}, body [{id}]. The endpoint
-    // is preview-only, so the api-version carries the -preview.2 suffix.
-    async addCaseToSuite(planId, suiteId, caseId, { execute = false } = {}) {
-      const u = url(`testplan/suiteentry/${suiteId}`, {}, { apiVersion: `${cfg.apiVersion}-preview.2` });
-      const body = [{ id: Number(caseId) }];
-      if (!execute) return descriptor('addCaseToSuite', 'PATCH', u, { body, contentType: 'application/json' });
+    // Legacy route POST .../test/Plans/{p}/suites/{s}/testcases/{ids} — the one that
+    // actually adds cases (verified live). Not PATCH testplan/suiteentry/{s} (live: HTTP
+    // 404, controller not found) and not testplan/.../TestCase with ids in the path
+    // (HTTP 200, nothing added). Idempotent: ids already in the suite are skipped. Fails
+    // closed: after the POST the suite is re-read, and any requested id still missing throws.
+    async addCaseToSuite(planId, suiteId, caseIds, { execute = false } = {}) {
+      const ids = [].concat(caseIds).map(String);
+      const casesUrl = url(`test/Plans/${planId}/suites/${suiteId}/testcases`);
+      const memberIds = async () => {
+        const res = await request('addCaseToSuite', 'GET', casesUrl);
+        return new Set(((res && res.value) || []).map((e) => String(e.testCase && e.testCase.id)));
+      };
+      if (!execute) {
+        return descriptor('addCaseToSuite', 'POST', url(`test/Plans/${planId}/suites/${suiteId}/testcases/${ids.join(',')}`));
+      }
       assertCiWritesAllowed('addCaseToSuite');
-      await request('addCaseToSuite', 'PATCH', u, { body: JSON.stringify(body), contentType: 'application/json' });
-      return { id: Number(caseId), suiteId, planId };
+      const before = await memberIds();
+      const toAdd = ids.filter((id) => !before.has(id));
+      const alreadyPresent = ids.filter((id) => before.has(id));
+      if (toAdd.length) {
+        const u = url(`test/Plans/${planId}/suites/${suiteId}/testcases/${toAdd.join(',')}`);
+        await request('addCaseToSuite', 'POST', u);
+        const after = await memberIds();
+        const missing = toAdd.filter((id) => !after.has(id));
+        if (missing.length) {
+          throw new TrackerError({
+            op: 'addCaseToSuite', url: u,
+            serverMessage: `the request succeeded but test case(s) ${missing.join(', ')} are not in suite ${suiteId} on re-read`,
+          });
+        }
+      }
+      return { ids: ids.map(Number), added: toAdd.map(Number), alreadyPresent: alreadyPresent.map(Number), suiteId, planId };
     },
 
     async createRun(body, { execute = false } = {}) {
