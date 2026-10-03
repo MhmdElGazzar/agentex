@@ -72,7 +72,7 @@ Writes (dry-run by default; `--execute` only past the one approval):
 | Upload a screenshot | `POST …/_apis/wit/attachments?fileName={name.png}` | raw bytes, `application/octet-stream` → returns `{id, url}` |
 | ReproSteps + evidence relations | `PATCH …/_apis/wit/workitems/{bugId}` | ONE json-patch: the ReproSteps HTML + one `AttachedFile` relation per upload |
 | Create a Test Case | `POST …/_apis/wit/workitems/$Test%20Case` | json-patch (`System.Title`, optional `System.AreaPath`) |
-| Add TC to a suite | `PATCH …/_apis/testplan/suiteentry/{suiteId}?api-version=7.1-preview.2` | `[{"id": <tcId>}]` |
+| Add TC to a suite | `POST …/_apis/test/Plans/{planId}/suites/{suiteId}/testcases/{tcIds}` | none. Ids already in the suite are skipped first, and the suite is re-read after the POST. A missing id fails the step. (`PATCH testplan/suiteentry` returns HTTP 404 on ADO Services, so don't use it.) |
 | Create a test run | `POST …/_apis/test/runs` | `{name, plan:{id}, pointIds:[…], automated:false, state:"InProgress"}` |
 | Record the Failed result | `PATCH …/_apis/test/Runs/{run}/results` | `[{id, outcome:"Failed", state:"Completed", comment, associatedBugs:[{id}]}]` |
 | Complete the run | `PATCH …/_apis/test/runs/{run}` | `{state:"Completed"}` |
