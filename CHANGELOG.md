@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.23.0] — 2026-10-03
 ### Added
 - **Jira Cloud tracker support — every tracker flow now runs on Azure DevOps OR Jira
   Cloud.** A second adapter behind the 0.20.0 tracker interface
@@ -33,18 +33,8 @@ All notable changes to AgenTeX are documented here.
   a save carrying more than one provider block is rejected with the same fail-closed
   wording the runtime uses, and switching providers on an existing project announces the
   old block's removal explicitly before anything is saved (`.env` is never edited by a
-  switch). `templates/config/project.json` no longer pre-carries an `azure` placeholder
-  block — a fresh scaffold has no tracker until the wizard's answer writes one, and the
-  no-tracker runtime error now names both providers' keys and the wizard. `.env.example`
-  gains keys-only `JIRA_EMAIL=` / `JIRA_API_TOKEN=` lines — fill only your tracker's.
-- **Jira project prerequisites are discovered at run time, with the fix.** A Kanban
-  board (no sprints), a sprint that isn't started, a sub-task type without the Time
-  tracking field, and a project without a Bug type each block before any write, and the
-  message says what to change on Jira. `/estimate-story --current-sprint` used to return
-  an empty story list in the first case; it now blocks with `no-open-sprint` and offers
-  `--ids`. The how-to-enable steps live in `references/tracker/jira-boards.md` ("Project
-  prerequisites") and `docs/jira.md` ("What your Jira project needs"). Found on a live
-  Jira Cloud site.
+  switch). `.env.example` gains keys-only `JIRA_EMAIL=` / `JIRA_API_TOKEN=` lines — fill
+  only your tracker's.
 - **The three tracker flows on Jira:** `/estimate-story` creates the same five `[Testing]`
   tasks per story as **sub-tasks** (parent inline, atomic) with hours mapped to Jira time
   tracking and the label `testing`; the current sprint resolves via
@@ -98,8 +88,27 @@ All notable changes to AgenTeX are documented here.
   the shared `references/tracker/jira-boards.md` reference (field ids, ADF, JQL gotchas,
   accountId, timetracking, link semantics, known limitations), and the three tracker
   skills' descriptions broadened so Jira phrasing triggers them (skill ids unchanged).
-- **Credit (closed with credit, not merged):** the Jira operation semantics and field
-  mappings were harvested from community **PR #4** ([Testing] task → Sub-task with parent;
+
+### Changed
+- **Fresh scaffolds carry no tracker.** `templates/config/project.json` no longer
+  pre-carries an `azure` placeholder block — a fresh scaffold has no tracker until the
+  wizard's answer writes one, and the no-tracker runtime error now names both providers'
+  keys and the wizard.
+- **Jira project prerequisites are discovered at run time, with the fix.** A Kanban
+  board (no sprints), a sprint that isn't started, a sub-task type without the Time
+  tracking field, and a project without a Bug type each block before any write, and the
+  message says what to change on Jira. `/estimate-story --current-sprint` used to return
+  an empty story list in the first case; it now blocks with `no-open-sprint` and offers
+  `--ids`. The how-to-enable steps live in `references/tracker/jira-boards.md` ("Project
+  prerequisites") and `docs/jira.md` ("What your Jira project needs"). Found on a live
+  Jira Cloud site.
+- **The two-tracker error is current.** A config with both an `azure` and a `jira` block
+  still fails closed, but the message no longer calls provider selection "not supported
+  yet": it says a project uses one tracker and points at the `/init-test` tracker
+  question.
+
+### Credits
+- The Jira operation semantics and field mappings were harvested from community **PR #4** ([Testing] task → Sub-task with parent;
   `Activity=Testing` → label `testing`; `OriginalEstimate`/`RemainingWork` →
   `timetracking.originalEstimate`/`remainingEstimate`; Story Points as a site-specific
   custom field confirmed once per project, never guessed; the configurable bug→story link
@@ -107,7 +116,7 @@ All notable changes to AgenTeX are documented here.
   that `parent` works only for sub-task types; the sub-task-with-text-steps artifact model
   offered by `/design-test`'s artifact ask). Their acli/CLI transport approach was not
   adopted (CLI dependency, no attachment upload, no custom-field writes) — no code was
-  lifted; the semantics were.
+  lifted; the semantics were. Both PRs were closed with credit, not merged.
 
 ## [0.22.0] — 2026-10-01
 ### Changed
