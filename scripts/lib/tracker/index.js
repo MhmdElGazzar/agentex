@@ -52,8 +52,8 @@ function resolveTracker(cwd = process.cwd(), { fetch, timeoutMs } = {}) {
   if (configured.length > 1) {
     throw configError(
       `More than one tracker provider is configured (${configured.join(', ')}) — ` +
-      'selecting between providers is not supported yet, so this fails closed rather than silently picking one. ' +
-      'Keep exactly one provider block in config/project.json.');
+      'a project uses one tracker, so this fails closed rather than silently picking one. ' +
+      'Keep exactly one provider block in config/project.json — re-run the /init-test wizard and answer its tracker question to switch cleanly.');
   }
   const provider = configured[0];
   const make = ADAPTERS[provider];
