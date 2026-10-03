@@ -1,7 +1,7 @@
-Automated eval scenario for the AgenTeX plugin's browser-testing skill in CI mode. You
+Automated eval scenario for the AgenTeX plugin's test-execution skill in CI mode. You
 are the ORCHESTRATOR of a CI-mode regression run (`/execute-test ci`, AGENTEX_CI=1 —
 a headless pipeline session; read the plugin's
-`skills/browser-testing/references/ci-mode.md` before acting). Your working directory
+`skills/test-execution/references/procedures/ci-run.md` before acting). Your working directory
 is an AgenTeX QA project. All executors have returned; you are at MERGE, about to
 write the final report and run the verdict step.
 

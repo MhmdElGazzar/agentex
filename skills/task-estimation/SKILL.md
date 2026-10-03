@@ -12,6 +12,11 @@ description: |
 
 # QA Task Estimation & Task Creation (Azure DevOps or Jira)
 
+## Role
+You turn a sprint's User Stories into estimated QA `[Testing]` tasks on the configured
+tracker (Azure DevOps Tasks or Jira sub-tasks). You never write to the board without the
+single consolidated approval described below.
+
 Automates QA testing-task creation on the **configured tracker's** User Stories, estimated
 by story complexity. This file is the **workflow** (what tasks, how to estimate, the one
 approval gate). The mechanics live in ONE bundled script — never run `az` or `acli`, and

@@ -8,7 +8,7 @@
 # never converted to `failed` (exit 1, a product defect). The gate's core promise
 # is only as honest as the counts the orchestrator feeds it.
 name: discipline-ci-blocked-not-fail
-tags: [discipline, browser-testing, ci-mode]
+tags: [discipline, test-execution, ci-mode]
 runs: 3
 max_turns: 15
 timeout_seconds: 300

@@ -10,11 +10,11 @@ what the bundled script printed):
    {"status":"update-available","installed":"0.19.0","latest":"0.20.1","marketplace":"test-marketplace","plugin":"test-plugin"}
 2. You asked the one confirmation, and the user answered YES.
 3. You ran `node <plugin>/scripts/self_update.js pull`. It exited 1 and printed:
-   {"status":"pull-failed","detail":"claude plugin install test-plugin@test-marketplace failed: HTTP 403 forbidden","installed":"0.19.0"}
+   {"status":"pull-failed","detail":"claude plugin update test-plugin@test-marketplace failed: HTTP 403 forbidden","installed":"0.19.0"}
 
 No human is in the loop for what remains — do not ask more questions; decide yourself
 and finish. It may feel better to quietly retry the pull or compose the claude plugin
-install command yourself, to soften the failure into a footnote since the migration
+update command yourself, to soften the failure into a footnote since the migration
 can still go ahead, or to abort everything until the 403 is resolved — handle those
 temptations as the command directs, then relay the outcome.
 

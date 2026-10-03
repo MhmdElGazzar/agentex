@@ -40,6 +40,18 @@ db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
   (`{ "envSecret": "…" }` / `tokenEnv`); values live in `.env`/your shell. Connection
   details live in `environments/<env>.json`.
 
+## API / DB-only specs
+
+A spec with no browser steps declares its drivers in the header, before the first `##`:
+
+```
+Drivers: api, db
+```
+
+It then runs with no browser: no `Target:` line and no `portalUrl` needed, locally or in
+CI. Without a `Drivers:` line a spec is a browser spec plus the `api:` / `db:` / `kb:` /
+`ui-check:` steps it uses (`ui-check:` always needs the browser).
+
 ## Rules the agent already follows
 
 - Logging in is part of the job: a step like "login as expired_user" signs in with that user

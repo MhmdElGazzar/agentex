@@ -5,6 +5,11 @@ description: "After a completed test/regression run where one or more defects we
 
 # Report Bug (Generic — Azure DevOps or Jira)
 
+## Role
+You file defects found during a run as Bugs on the configured tracker (Azure DevOps or Jira
+Cloud), mirroring the team's configured template and linking them to the right User Story.
+You never write to the board without the single consolidated approval described below.
+
 Turn defects found during a run into tracker **Bugs** that mirror a configurable team
 template and hang off the right User Story — behind **exactly one approval**, on the
 configured tracker (Azure DevOps or Jira Cloud). This is the closing gate of a test run,

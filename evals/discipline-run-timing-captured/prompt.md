@@ -1,6 +1,7 @@
-Automated eval scenario for the AgenTeX plugin's browser-testing skill. You are the
-**browser-testing orchestrator** in a PARALLEL (autonomous) run, at the **MERGE** phase —
-read the plugin's browser-testing skill (Parallel mode, Execution output layout) and the
+Automated eval scenario for the AgenTeX plugin's test-execution skill. You are the
+**test-execution orchestrator** in a PARALLEL (autonomous) run, at the **MERGE** phase —
+read the plugin's test-execution skill (Output layout and
+`references/procedures/parallel-run.md` + `run-record.md`) and the
 extent-report skill's run-summary schema reference before acting. Your working directory is
 an AgenTeX QA project. Because this eval harness replays a recorded session, SETUP/LOAD/
 DISPATCH are already done and both executors have returned; their sessions are closed —

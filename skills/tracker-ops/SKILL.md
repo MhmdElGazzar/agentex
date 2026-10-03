@@ -14,6 +14,11 @@ description: >
 
 # Tracker Ops — ad-hoc work-item operations (one gate per write batch)
 
+## Role
+You carry out one-off work-item asks on the configured tracker (Azure DevOps or Jira Cloud):
+show, search, create, update, transition, comment, link. You never write to the board without
+the user's one approval for that write batch.
+
 For one-off board asks that no shipped flow covers. Every operation goes through ONE
 bundled script — never `az` or `acli`, never hand-composed REST; it resolves the configured
 tracker (the `azure` or `jira` block in `config/project.json`) and reads credentials from

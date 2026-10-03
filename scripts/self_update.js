@@ -4,7 +4,7 @@
 //
 // Usage: node self_update.js check    freshness check against the plugin's own
 //                                     marketplace (refreshes its local cache first)
-//        node self_update.js pull     install the latest version (run ONLY after the
+//        node self_update.js pull     update to the latest version (run ONLY after the
 //                                     user's explicit yes — consent lives in the
 //                                     command choosing to invoke this verb; there is
 //                                     no interactive prompt here)
@@ -29,7 +29,7 @@ const { spawnSync } = require('child_process');
 const { compareVersions } = require('./lib/version.js');
 
 const CHECK_TIMEOUT_MS = 60_000;    // marketplace cache refresh
-const PULL_TIMEOUT_MS = 300_000;    // plugin install
+const PULL_TIMEOUT_MS = 300_000;    // plugin update
 
 // ── identity derivation ───────────────────────────────────────────────────────
 // Parse a plugin root into { pluginsHome, marketplace, plugin, version } when its
@@ -107,13 +107,23 @@ function readLatestFromCache(identity) {
 // The composed call, pure and testable. Non-interactive by construction: stdin is
 // 'ignore', so a CLI that tries to prompt hangs into the timeout — a loud
 // cache-refresh-failed / pull-failed, never a silent stall. On win32 the claude
-// CLI is a .cmd shim, so the call goes through the shell.
+// CLI is a .cmd shim, so the call goes through the shell — as ONE pre-quoted
+// command string with an EMPTY args array: spawnSync with shell:true plus a
+// populated args array is Node's deprecated DEP0190 form (stderr
+// DeprecationWarning). POSIX runs the binary directly with a plain args array.
+function quoteForCmd(arg) {
+  const s = String(arg);
+  if (s !== '' && !/[\s"^&|<>()%!;=,`']/.test(s)) return s;
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
 function buildCliCall(args, { platform, timeoutMs }) {
+  const shell = platform === 'win32';
   return {
-    command: 'claude',
-    args,
+    command: shell ? ['claude', ...args.map(quoteForCmd)].join(' ') : 'claude',
+    args: shell ? [] : args,
     options: {
-      shell: platform === 'win32',
+      shell,
       timeout: timeoutMs,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -204,13 +214,13 @@ function pull({ pluginRoot, runCli }) {
       exitCode: 1,
     };
   }
-  const installArgs = ['plugin', 'install', `${identity.name}@${identity.marketplace}`];
-  const install = runCli(installArgs, { timeoutMs: PULL_TIMEOUT_MS });
-  if (!install.ok) {
+  const updateArgs = ['plugin', 'update', `${identity.name}@${identity.marketplace}`];
+  const update = runCli(updateArgs, { timeoutMs: PULL_TIMEOUT_MS });
+  if (!update.ok) {
     return {
       result: {
         status: 'pull-failed',
-        detail: describeCliFailure(installArgs, install, PULL_TIMEOUT_MS),
+        detail: describeCliFailure(updateArgs, update, PULL_TIMEOUT_MS),
         installed: identity.installed,
       },
       exitCode: 1,
@@ -227,7 +237,7 @@ function pull({ pluginRoot, runCli }) {
     return {
       result: {
         status: 'pull-failed',
-        detail: `install command exited 0 but the post-condition failed: expected version ${cached.latest} under the marketplace cache dir, found ${landedVersion === null ? 'no readable plugin.json there' : `version ${landedVersion}`}`,
+        detail: `claude plugin update exited 0 but the post-condition failed: expected version ${cached.latest} under the marketplace cache dir, found ${landedVersion === null ? 'no readable plugin.json there' : `version ${landedVersion}`}`,
         installed: identity.installed,
       },
       exitCode: 1,

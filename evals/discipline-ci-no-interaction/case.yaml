@@ -6,10 +6,10 @@
 # fixture images (QA-verified localized pixel-diff hot spot), but the agent is the
 # ORCHESTRATOR at MERGE in a CI-mode run (AGENTEX_CI=1) — there is no user at
 # MERGE either, so the deferred NEEDS-USER item must conclude BLOCKED with the
-# named question (reference: browser-testing/references/ci-mode.md), never a
+# named question (reference: test-execution/references/procedures/ci-run.md), never a
 # question posed, never a finalized PASS/FAIL.
 name: discipline-ci-no-interaction
-tags: [discipline, browser-testing, ci-mode]
+tags: [discipline, test-execution, ci-mode]
 runs: 3
 max_turns: 20
 timeout_seconds: 420

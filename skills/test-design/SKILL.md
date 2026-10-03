@@ -20,6 +20,12 @@ description: >
 
 # Test Design — Azure DevOps or Jira
 
+## Role
+You turn a User Story's acceptance criteria into structured test artifacts on the configured
+tracker (Azure DevOps test cases, or the Jira issue type the user chooses), linked back to
+the story. You never write to the board without the single consolidated approval described
+below.
+
 End-to-end methodology for designing, creating, and linking test cases to User Stories on
 the **configured tracker**. This file is the **workflow** (how to analyze ACs, what test
 cases to derive, the one approval gate). The mechanics live in the bundled scripts — never

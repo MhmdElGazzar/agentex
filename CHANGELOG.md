@@ -2,7 +2,78 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.22.0] — 2026-10-01
+### Changed
+- **`browser-testing` is split into `test-execution` (the orchestrator) and `browser-driver`
+  (the browser driver).** `test-execution` runs the test (modes, environment, verdicts, Flake
+  rules, reports, CI verdict) and routes each spec step to its driver: prose → browser-driver,
+  `api:` → api-integration, `db:` → db-integration, `kb:` → ask-kb, `ui-check:` → ui-check.
+  `/execute-test` and every existing spec behave as before: same checkpoints, same
+  `executions/` tree, same session naming, same reports. The skill now leads with its rules and
+  loads each mode's procedure only when that mode starts (~2,400 tokens, was ~5,000).
+  `qa-executor` takes a new `DRIVERS` input.
+- **CI pipelines: the gate's path moved** to `<plugin-root>/skills/test-execution/scripts/ci_gate.js`.
+  The old `skills/browser-testing/scripts/ci_gate.js` still works as a forwarder that prints a
+  deprecation warning; it will be removed in a later minor release. Update your pipeline line.
+  If you pass `--settings …/browser-testing/templates/ci/ci-settings.json` explicitly, point it at
+  `…/test-execution/templates/ci/ci-settings.json`.
+### Added
+- **API / DB-only specs run without a browser.** A spec declares `Drivers: api` (or `api, db`) in
+  its header and then needs no browser, no `Target:`, and no `portalUrl`, locally and in CI.
+  `spec_drivers.js` resolves a run's drivers. `ci_preflight.js` / `preflight.js` take `--needs`:
+  playwright-cli, the browser binary and `portalUrl` gate only when a browser is needed; `api`
+  probes the environment's `api.baseUrl`, and `db` gates on `sqlcmd`, so an API or DB outage is
+  BLOCKED (exit 2), never exit 1. Specs without a `Drivers:` line resolve exactly as before.
+  New eval: `discipline-api-only-run-no-browser`.
+### Fixed
+- **Parallel dispatch no longer relies on a queue that does not exist.** Executors go out in waves
+  of at most 6. A spawn refused at the session's subagent limit is dispatched again, and a spec
+  that never got dispatched is recorded `notRun` (incomplete), never silently dropped.
+- **`qa-executor` reports BLOCKED.** It is now in the per-scenario outcome and the tally line
+  (`<n> pass / <m> fail / <b> blocked, …`), so blocked scenarios reach the CI verdict's blocked
+  count.
+- **CI mode's verdict step runs at the end of MERGE.** The CI procedure named a REPORT phase that
+  only sequential mode has.
+- **`ci_gate.test.js` marketplace-layout case passes on macOS.** The temp dir sits behind the
+  `/var` → `/private/var` symlink; the comparison now uses the real path.
+
+## [0.21.2] — 2026-10-01
+### Fixed
+- **The Setup Wizard's save-gate jumps you to the problem instead of just naming it.** When
+  `saveAndClose` finds a non-active environment that's missing its application URL or has no
+  test user, it used to show a toast and tell you to go open the environments page yourself —
+  easy to miss on a first pass through the wizard. It now switches straight to that environment
+  and the exact unfinished step (environment URL or test users). The active environment's
+  answers are safely captured first, so nothing you typed is lost by the jump.
+### Changed
+- **Nine more skills state their Role up front.** `api-integration`, `ask-kb`,
+  `azure-integration`, `bug-report-azure`, `db-integration`, `optimize-login`,
+  `task-estimation`, `test-design`, and `ui-check` now open with the same explicit
+  scope-and-boundary statement already used by `browser-testing`, `define-flow`, and
+  `extent-report`. No behavior change.
+
+## [0.21.1] — 2026-08-28
+### Fixed
+- **`/update-agentex`'s plugin self-update pull actually pulls now.** Shipped in 0.21.0,
+  `scripts/self_update.js` composed `claude plugin install <plugin>@<marketplace>` for
+  the `pull` verb — and the CLI's `install` no-ops on an already-installed plugin: it
+  printed "already installed" in ~2s, exited 0, and created no new versioned dir, so the
+  filesystem post-condition correctly refused the result and EVERY real-world pull ended
+  `pull-failed` — the feature degraded to inform-only (fail-closed held: no wrong success
+  was ever possible). The pull now composes `claude plugin update <plugin>@<marketplace>`
+  — the CLI's actual update verb, verified live 0.20.1 → 0.21.0 in ~16s, non-interactive,
+  with the new versioned dir landing beside the old one. The post-condition that caught
+  the defect, the exit codes (0/1/2), and the fail-closed order are all unchanged; the
+  update-agentex discipline evals now name `claude plugin update` as the pull mechanism.
+  Covered by the flipped pull-composition cases in `scripts/self_update.test.js`.
+- **The self-update CLI calls no longer emit Node's `DEP0190` DeprecationWarning on
+  Windows.** The win32 spawn passed an args array alongside `shell: true` (the deprecated
+  form); `buildCliCall` now composes ONE cmd-quoted command string with an empty args
+  array — contract untouched (one JSON line on stdout, stdin closed, hard timeouts, exit
+  0/1/2, no `process.exit()`, POSIX plain args) — pinned by the new win32 spawn-shape
+  tests in `scripts/self_update.test.js`, quoting included.
+
+## [0.21.0] — 2026-08-28
 ### Added
 - **Jira Cloud tracker support — every tracker flow now runs on Azure DevOps OR Jira
   Cloud.** A second adapter behind the 0.20.0 tracker interface
@@ -114,8 +185,12 @@ All notable changes to AgenTeX are documented here.
   attempt (`ci_preflight.js` — target reachability, environment resolution, secrets
   present by NAME, browser installed, plugin manifest; any failure exits 2 with a named
   `preflight-*` reason), a fresh headless session per attempt
-  (`claude --bare -p "/agentex:execute-test ci …" --permission-mode dontAsk` with the
-  shipped deny-by-default `templates/ci/ci-settings.json`), a per-attempt wall-clock
+  (`claude --bare -p "/agentex:execute-test ci …" --add-dir <plugin-root>
+  --permission-mode dontAsk` with the shipped deny-by-default
+  `templates/ci/ci-settings.json`; the `--add-dir` read grant on the self-resolved
+  plugin root keeps the plugin's own references and scripts readable in every install
+  layout — the settings allowlist reads only the consumer project), a per-attempt
+  wall-clock
   budget (default 60 min — on expiry the session's process tree is killed and the
   partial report stays on disk), automatic retries for BLOCKED outcomes only (default 3;
   never on exit 0/1, and never for the `unstable` reason — the Flake doctrine's

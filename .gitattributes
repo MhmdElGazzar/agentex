@@ -1,0 +1,5 @@
+# Normalize all text files to LF, regardless of the OS or editor that touches them.
+# This repo's history is LF-only; without this, tools that write CRLF (common on
+# Windows, and some sync/backup utilities) make every touched file show as fully
+# modified even when no content changed.
+* text=auto eol=lf

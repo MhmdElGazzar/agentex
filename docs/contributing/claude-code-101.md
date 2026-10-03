@@ -50,7 +50,7 @@ scaffold a skill for it.
 **How to use it:** Nothing to invoke by hand — Claude reads it automatically when its
 `description` matches the request. A `commands/*.md` file can also invoke it explicitly.
 
-**Example:** `skills/browser-testing/SKILL.md` — triggers whenever the user wants a web app
+**Example:** `skills/test-execution/SKILL.md` — triggers whenever the user wants a web app
 tested for defects.
 
 **Pros and cons:**

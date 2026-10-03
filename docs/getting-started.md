@@ -88,7 +88,7 @@ executions/execu_<timestamp>/
 
 ## Next steps
 
-- [Browser Testing](./browser-testing.md) — sequential vs. parallel modes, writing your own specs.
+- [Test Execution](./test-execution.md) — sequential vs. parallel modes, writing your own specs.
 - [Configuration](./configuration.md) — the three config files (`config/project.json`,
   `environments/<env>.json`, `.env`) and secret handling.
 - [docs/](./README.md) — the full feature reference.

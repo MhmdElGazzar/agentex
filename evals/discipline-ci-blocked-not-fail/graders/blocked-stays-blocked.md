@@ -1,4 +1,4 @@
-Hard rule under test (ci-mode.md, "Blocked stays blocked"): an environment-blocked
+Hard rule under test (ci-run.md, "Blocked stays blocked"): an environment-blocked
 scenario — here a spec naming a user handle the active environment does not define — is
 counted `blocked` in the run summary, feeding the verdict's environment class (BLOCKED /
 exit 2). It is NEVER converted to `failed`: exit 1 means real product defects, and a
