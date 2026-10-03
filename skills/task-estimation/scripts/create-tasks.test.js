@@ -772,17 +772,79 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     assert.strictEqual(r2.code, 0, JSON.stringify(r2.out));
   });
 
-  await test('jira: timetracking absent from the Sub-task create screen blocks BEFORE any write (field-not-on-type)', async () => {
+  await test('jira hours mode none: timetracking on neither screen → proceeds WITHOUT hours (estimate in the description), stated on the plan', async () => {
+    // Hours mode 'none': neither the create screen nor a sampled edit screen carries
+    // timetracking — the run proceeds WITHOUT hours, said on the plan, never blocked.
+    const noTT = { total: 4, fields: SUBTASK_META.fields.filter((x) => x.fieldId !== 'timetracking') };
+    const dir = jproj();
+    const f = fakeFetch(jroutes([
+      { match: '/issue/createmeta/PROJ/issuetypes/10002', json: noTT },
+      { method: 'POST', match: '/search/jql', bodyMatch: 'ORDER BY created DESC', json: { issues: [{ key: 'PROJ-77' }] } },
+      { match: '/issue/PROJ-77/editmeta', json: { fields: { summary: { name: 'Summary' }, labels: { name: 'Labels' } } } },
+    ]));
+    const { code, out } = await run(['--spec', jSpec(dir)], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.validation.hours.mode, 'none');
+    assert.match(out.validation.hours.message, /time tracking/i);
+    assert.match(out.validation.hours.message, /jira-boards\.md/, 'points at the how-to-enable reference');
+    assert.ok(out.plan.every((p) => p.step === 'create-task'), 'no set-hours steps');
+    const body = out.plan[0].request.body.fields;
+    assert.strictEqual(body.timetracking, undefined, 'hours are never sent to a screen that lacks the field');
+    assert.match(JSON.stringify(body.description), /Estimate: \d+h/, 'the estimate rides the description instead');
+    assert.ok(!f.calls.some(isJiraWrite), 'dry run writes nothing');
+  });
+
+  await test('jira hours mode edit-after-create: timetracking only on the edit screen → create without hours, then ONE update per task (planned + executed)', async () => {
+    const noTT = { total: 4, fields: SUBTASK_META.fields.filter((x) => x.fieldId !== 'timetracking') };
+    const extra = () => [
+      { match: '/issue/createmeta/PROJ/issuetypes/10002', json: noTT },
+      { method: 'POST', match: '/search/jql', bodyMatch: 'ORDER BY created DESC', json: { issues: [{ key: 'PROJ-77' }] } },
+      { match: '/issue/PROJ-77/editmeta', json: { fields: { timetracking: { name: 'Time tracking' }, summary: { name: 'Summary' } } } },
+    ];
+    const dir = jproj();
+    const plan = await run(['--spec', jSpec(dir)], { cwd: dir, fetch: fakeFetch(jroutes(extra())) });
+    assert.strictEqual(plan.code, 0, JSON.stringify(plan.out));
+    assert.strictEqual(plan.out.validation.hours.mode, 'edit-after-create');
+    assert.strictEqual(plan.out.validation.hours.probe, 'PROJ-77');
+    assert.deepStrictEqual(plan.out.plan.slice(0, 2).map((p) => p.step), ['create-task', 'set-hours']);
+    assert.strictEqual(plan.out.plan.length, 20);
+    assert.strictEqual(plan.out.plan[0].request.body.fields.timetracking, undefined);
+    assert.deepStrictEqual(plan.out.plan[1].request.body.fields.timetracking, { originalEstimate: '1h', remainingEstimate: '1h' });
+
+    const f = fakeFetch(jroutes(extra()));
+    const { code, out } = await run(['--spec', jSpec(dir), '--execute'], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    const writes = f.calls.filter(isJiraWrite);
+    assert.strictEqual(writes.length, 20);
+    assert.strictEqual(writes[0].method, 'POST');
+    assert.strictEqual(writes[1].method, 'PUT');
+    assert.match(writes[1].url, /\/issue\/PROJ-101$/, 'the update targets the key the create just returned');
+    assert.deepStrictEqual(JSON.parse(writes[1].body).fields.timetracking, { originalEstimate: '1h', remainingEstimate: '1h' });
+    assert.strictEqual(out.created.tasks.length, 10);
+  });
+
+  await test('jira hours mode none with NO sub-task to sample: proceeds without hours and says why (never a blind write)', async () => {
     const noTT = { total: 4, fields: SUBTASK_META.fields.filter((x) => x.fieldId !== 'timetracking') };
     const dir = jproj();
     const { code, out } = await run(['--spec', jSpec(dir)], {
-      cwd: dir, fetch: fakeFetch(jroutes([{ match: '/issue/createmeta/PROJ/issuetypes/10002', json: noTT }])),
+      cwd: dir, fetch: fakeFetch(jroutes([
+        { match: '/issue/createmeta/PROJ/issuetypes/10002', json: noTT },
+        { method: 'POST', match: '/search/jql', bodyMatch: 'ORDER BY created DESC', json: { issues: [] } },
+      ])),
     });
-    assert.strictEqual(code, 2);
-    const b = out.blocked.find((x) => x.reason === 'field-not-on-type' && x.field === 'timetracking');
-    assert.ok(b, JSON.stringify(out.blocked));
-    assert.match(b.message, /time tracking/i);
-    assert.match(b.message, /jira-boards\.md/, 'points at the how-to-enable reference');
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.validation.hours.mode, 'none');
+    assert.match(out.validation.hours.message, /no existing/i);
+  });
+
+  await test('jira hours mode create: timetracking on the create screen → hours inline, no probe, no set-hours step', async () => {
+    const dir = jproj();
+    const f = fakeFetch(jroutes());
+    const { code, out } = await run(['--spec', jSpec(dir)], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.validation.hours.mode, 'create');
+    assert.ok(out.plan.every((p) => p.step === 'create-task'));
+    assert.ok(!f.calls.some((c) => /editmeta/.test(c.url)), 'no edit-screen probe when the create screen has the field');
   });
 
   await test('jira --execute: one atomic sub-task create per task in story order; ledger + created keys/urls surfaced', async () => {

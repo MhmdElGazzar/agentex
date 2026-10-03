@@ -78,8 +78,15 @@ methodology, the same one-gate workflow. What differs is mechanical, and the scr
 
 - Each task is a **sub-task of the story** (`fields.parent` inline — one atomic create per
   task, like ADO's inline parent link).
-- Hours map to Jira **time tracking**: `timetracking.originalEstimate`/`remainingEstimate`
-  (e.g. `"2h"`). `Activity=Testing` maps to the label `testing`.
+- Hours map to Jira **time tracking** (`timetracking.originalEstimate`/`remainingEstimate`,
+  e.g. `"2h"`) only where Jira's API accepts them. Jira writes the field only when it is on
+  the screen, so the dry run reports `validation.hours.mode`:
+  - `create`: hours ride the create.
+  - `edit-after-create`: each create is followed by one `set-hours` update in the plan.
+  - `none`: no hours are written, and each description carries `Estimate: <n>h`.
+
+  Always show the mode and its `message` on the consolidated screen; the user approves it
+  with the rest. `Activity=Testing` maps to the label `testing`.
 - The assignee email resolves to an **accountId** (one user-search read at validation time;
   the resolution is shown on the consolidated screen). Unresolvable/ambiguous → blocks,
   never assigned blind.
@@ -92,11 +99,9 @@ methodology, the same one-gate workflow. What differs is mechanical, and the scr
   open sprint, the script blocks with the real sprint names — ask the user which sprint in
   the ONE bundle round and re-run with `--sprint "<name>"`, or set `jira.board` to steer
   discovery. Never pick silently.
-- **Missing project prerequisites** block before any write, with the fix in the message:
-  `no-open-sprint` (Kanban board, no started sprint, or an empty sprint) and
-  `field-not-on-type` for `timetracking`. Relay the fix and offer `--ids` for named
-  stories; never drop the hours or guess a sprint. The fixes are in the reference's
-  "Project prerequisites" section.
+- **No open sprint** blocks before any write with `no-open-sprint` (Kanban board, no
+  started sprint, or an empty sprint). Relay the fix and offer `--ids` for named stories;
+  never guess a sprint. The fixes are in the reference's "Project prerequisites" section.
 - **Story Points** come from a site-specific custom field discovered by display name; when
   none/ambiguous the JSON says so with `storyPoints: null` — estimate from the factor
   counts and name the `jira.storyPointsField` override to the user.

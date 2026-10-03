@@ -61,10 +61,17 @@ the fix.
   sprints. In a team-managed project turn on **Project settings → Features → Sprints**;
   in a company-managed project use a **Scrum** board. Then **start** a sprint that holds
   the stories. You can also skip sprints and estimate specific stories by key.
-- **Time tracking** (estimated hours on the `[Testing]` sub-tasks): time tracking must be
-  on for the site (**Settings → Work items → Time tracking**), and the sub-task type must
-  carry the **Time tracking** field (team-managed: **Project settings → Work types →
-  Subtask**).
+- **Time tracking** (estimated hours on the `[Testing]` sub-tasks): Jira lets an app
+  write hours only when the **Time tracking** field is on the sub-task's screen. AgenTeX
+  checks this on every run. If the field is on the create screen, the hours go in with
+  the create; if only on the edit screen, each sub-task is created and then updated with
+  its hours. If it is on neither, the sub-tasks are created **without hours**, each
+  description says `Estimate: <n>h`, and the approval screen tells you so before
+  anything is written. Writing real hours on such a project is **not supported**: a Jira
+  admin has to add the field (site: **Settings → Work items → Time tracking**;
+  team-managed: **Project settings → Work types → Subtask**; company-managed: the
+  sub-task's screens). Hours you see in the Jira UI may have been set by Automation for
+  Jira, which isn't limited by screens.
 - **A Bug type** (bug filing): add **Bug** to the project's work types if it isn't there.
 
 Menu names differ slightly between Jira versions ("Issues" vs "Work items").
@@ -142,8 +149,9 @@ per-write ledgers, secrets never printed — is identical to the ADO flows.
 - **`no "Story" sits in an open sprint`** — the board is Kanban, or no sprint is started,
   or the sprint is empty. See [What your Jira project needs](#what-your-jira-project-needs),
   or estimate specific stories by key instead.
-- **"field timetracking does not exist on this project's … create screen"** — turn time
-  tracking on and add the Time tracking field to the sub-task type (same section).
+- **"hours will NOT be written"** on the estimation approval screen — the Time tracking
+  field isn't on the sub-task's screens. Approve to create the sub-tasks without hours, or
+  ask a Jira admin to add the field (same section).
 - **"More than one tracker provider is configured"** — a config carrying both an `azure`
   and a `jira` block fails closed; keep exactly one provider block (the wizard enforces
   this on save).

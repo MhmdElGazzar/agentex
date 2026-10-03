@@ -160,6 +160,20 @@ const SUBTASK_FIELDS = {
     }
   });
 
+  await test('query {limit} asks for only that many and stops after the first page that reaches it', async () => {
+    let calls = 0;
+    const f = fakeFetch([{
+      method: 'POST', match: '/search/jql',
+      json: () => { calls++; return { issues: [{ key: `PROJ-${calls}` }], nextPageToken: `tok-${calls}` }; },
+    }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const res = await a.query('project = "PROJ"', { limit: 1 });
+    assert.strictEqual(calls, 1, 'one page, not the 10-page walk');
+    assert.strictEqual(JSON.parse(f.calls[0].body).maxResults, 1);
+    assert.deepStrictEqual(res.issues.map((i) => i.key), ['PROJ-1']);
+    assert.ok(!res.truncated);
+  });
+
   await test('query paginates via nextPageToken to the 10-page hard cap; consumers never see tokens', async () => {
     let calls = 0;
     const f = fakeFetch([{

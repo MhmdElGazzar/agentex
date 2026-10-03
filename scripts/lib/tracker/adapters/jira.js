@@ -304,16 +304,19 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
     // JQL search. The adapter owns pagination (nextPageToken loop, hard cap
     // SEARCH_MAX_PAGES with truncated:true) — consumers never see tokens.
-    async query(jql, { fields = ['summary', 'status', 'issuetype'] } = {}) {
+    // `limit` stops early (a sample read needs one issue, not every page).
+    async query(jql, { fields = ['summary', 'status', 'issuetype'], limit } = {}) {
       const u = api('search/jql');
       const issues = [];
       let nextPageToken;
       for (let page = 0; page < SEARCH_MAX_PAGES; page++) {
-        const body = { jql, fields, maxResults: SEARCH_PAGE_SIZE, ...(nextPageToken ? { nextPageToken } : {}) };
+        const pageSize = limit ? Math.min(SEARCH_PAGE_SIZE, limit - issues.length) : SEARCH_PAGE_SIZE;
+        const body = { jql, fields, maxResults: pageSize, ...(nextPageToken ? { nextPageToken } : {}) };
         const res = await request('query', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
         issues.push(...((res && res.issues) || []));
         nextPageToken = res && res.nextPageToken;
         if (!nextPageToken) return { issues };
+        if (limit && issues.length >= limit) return { issues: issues.slice(0, limit) };
       }
       return { issues, truncated: true };
     },
@@ -366,7 +369,8 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // Results vary by issue state and are NEVER cached (design §5.3).
     async listEditFields(id) {
       const res = await request('listEditFields', 'GET', api(`issue/${encodeURIComponent(id)}/editmeta`));
-      return Object.values((res && res.fields) || {}).map(normalizeFieldMeta);
+      // The map key IS the field id — authoritative even when a value omits `key`.
+      return Object.entries((res && res.fields) || {}).map(([id, f]) => normalizeFieldMeta({ ...f, fieldId: f.fieldId || f.key || id }));
     },
 
     // All fields of the site (Story Points / Sprint discovery by display name).

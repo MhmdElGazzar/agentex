@@ -364,6 +364,40 @@ async function jiraStoriesCmd(args, adapter) {
 // No validateOnly probe exists on Jira (capabilities.validateOnly: false): the
 // createmeta cache + required-field checks carry pre-gate validation alone,
 // and the JSON says so (validateOnly: 'unsupported-on-jira').
+// Hours fallback when the sub-task CREATE screen lacks timetracking. Editmeta
+// is per issue, so the newest existing sub-task of the type stands in for the
+// screen the new ones will get. Anything unknown resolves to 'none' — a write
+// that might be refused is never planned on a guess.
+const HOURS_DOC = 'see references/tracker/jira-boards.md, "Project prerequisites"';
+async function jiraHoursFallback(adapter, subtaskType) {
+  const none = (why) => ({
+    mode: 'none',
+    message: `hours will NOT be written: ${why}. The sub-tasks are created without time tracking and each ` +
+      `description carries "Estimate: <n>h". A Jira admin can put the "Time tracking" field on the "${subtaskType}" screen (${HOURS_DOC}).`,
+  });
+  let sample;
+  try {
+    const jql = `project = ${jqlQuote(adapter.config.project)} AND issuetype = ${jqlQuote(subtaskType)} ORDER BY created DESC`;
+    sample = ((await adapter.query(jql, { fields: ['summary'], limit: 1 })).issues || [])[0];
+  } catch (e) {
+    return none(`the "${subtaskType}" create screen has no time tracking and the edit-screen check could not run (${e.message})`);
+  }
+  if (!sample) return none(`the "${subtaskType}" create screen has no time tracking, and no existing "${subtaskType}" exists to check its edit screen`);
+  try {
+    const edit = await adapter.listEditFields(sample.key);
+    if (edit.some((f) => f.referenceName === 'timetracking')) {
+      return {
+        mode: 'edit-after-create', probe: sample.key,
+        message: `the "${subtaskType}" create screen has no time tracking but its edit screen does (checked on ${sample.key}) — ` +
+          'each sub-task is created, then updated once with its hours',
+      };
+    }
+  } catch (e) {
+    return none(`the "${subtaskType}" create screen has no time tracking and ${sample.key}'s edit screen could not be read (${e.message})`);
+  }
+  return none(`time tracking is on neither the "${subtaskType}" create screen nor its edit screen (checked on ${sample.key})`);
+}
+
 async function validateJira(adapter, spec, args, cwd) {
   const cfg = adapter.config;
   const blocked = [];
@@ -497,15 +531,20 @@ async function validateJira(adapter, spec, args, cwd) {
   validation.perStory = perStory;
 
   // 5) createmeta cache for the sub-task type: field-not-on-screen detection
-  //    BEFORE any write (e.g. timetracking disabled site-wide → a doc-pointed
-  //    block instead of a server 400).
+  //    BEFORE any write (a doc-pointed block instead of a server 400).
+  //    Hours are the exception: Jira's REST API only writes timetracking when
+  //    the field is on the screen, so the hours mode is discovered here —
+  //    'create' (inline), 'edit-after-create' (create, then one update), or
+  //    'none' (no hours written; the estimate rides the description). The
+  //    plan states the mode, so the user's one approval covers it.
   let cacheInfo = null;
+  let hours = null;
   if (subtaskType) {
     try {
       cacheInfo = await fieldCache.ensure(cwd, adapter, { types: [subtaskType], refresh: Boolean(args['refresh-fields']) });
       const fieldMap = (cacheInfo.cache.types[subtaskType] && cacheInfo.cache.types[subtaskType].fields) || {};
+      hours = fieldMap.timetracking ? { mode: 'create' } : await jiraHoursFallback(adapter, subtaskType);
       const needed = [
-        ['timetracking', 'time tracking is disabled site-wide or not on this create screen — hours cannot be written blind. Fix on Jira: turn time tracking on and put the "Time tracking" field on this type (see references/tracker/jira-boards.md, "Project prerequisites")'],
         ['labels', 'the Labels field is not on this create screen'],
         ['assignee', 'the Assignee field is not on this create screen'],
         ['parent', 'the Parent field is not on this create screen — a sub-task cannot be created without it'],
@@ -526,19 +565,30 @@ async function validateJira(adapter, spec, args, cwd) {
 
   validation.validateOnly = 'unsupported-on-jira';
   validation.notes = ["iteration/area have no Jira analog — sub-tasks ride their parent story's sprint"];
+  if (hours) validation.hours = hours;
 
   // The fields each create sends (adapter adds project/issuetype; the parent
-  // folds in via the relations seam): verbatim titles, hours → timetracking,
-  // Activity=Testing → label 'testing', assignee by accountId.
+  // folds in via the relations seam): verbatim titles, hours → timetracking
+  // when the create screen allows it (else the estimate rides the
+  // description), Activity=Testing → label 'testing', assignee by accountId.
+  const timetrackingFor = (task) =>
+    ({ originalEstimate: `${Number(task.estimate)}h`, remainingEstimate: `${Number(task.estimate)}h` });
+  const hoursInline = !hours || hours.mode === 'create';
   const fieldsFor = (entry, task) => ({
     summary: task.title,
-    timetracking: { originalEstimate: `${Number(task.estimate)}h`, remainingEstimate: `${Number(task.estimate)}h` },
+    ...(hoursInline
+      ? { timetracking: timetrackingFor(task) }
+      : { description: `Estimate: ${Number(task.estimate)}h` }),
     labels: [...JIRA_SUBTASK_LABELS],
     ...(accountId ? { assignee: { accountId } } : {}),
   });
+  // edit-after-create: one update per created sub-task, right after its create.
+  const followUpFor = hours && hours.mode === 'edit-after-create'
+    ? (entry, task) => ({ step: 'set-hours', fields: { timetracking: timetrackingFor(task) } })
+    : null;
 
   return {
-    blocked, validation, fieldsFor, cacheInfo, cacheStale: false,
+    blocked, validation, fieldsFor, followUpFor, cacheInfo, cacheStale: false,
     createType: subtaskType || 'Sub-task',
     parentRel: 'parent',
     describeCreate: (task, storyId) => `create "${task.title}" under story ${storyId} (POST /rest/api/3/issue — sub-task, fields.parent inline)`,
@@ -760,6 +810,8 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       ? await validateJira(adapter, spec, args, cwd)
       : await validate(adapter, spec, args, cwd);
     const { blocked, validation, fieldsFor, cacheInfo, cacheStale } = v;
+    // Jira only (edit-after-create hours): one update right after each create.
+    const followUpFor = v.followUpFor || null;
     const createType = v.createType || 'Task';
     const parentRel = v.parentRel || PARENT_LINK;
     const describeCreate = v.describeCreate ||
@@ -793,24 +845,40 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
           describe: `${d.method} ${d.url} (${parentRel} -> ${typeof storyId === 'number' ? `#${storyId}` : storyId} inline — atomic)`,
           request: d,
         });
+        if (followUpFor) {
+          const fu = followUpFor(entry, task);
+          const u = await adapter.updateWorkItem('<created key>', { fields: fu.fields }, { execute: false });
+          plan.push({ step: fu.step, story: storyId, title: task.title, describe: `${u.method} ${u.url} — right after the create above`, request: u });
+        }
       }
       return { code: 0, out: { ok: true, mode: 'plan', validation, plan, cache: cacheOut } };
     }
 
     // ---- WRITE PHASE (only past explicit --execute, i.e. past the user's one approval)
     const createdTasks = [];
-    const intents = flat.map(({ storyId, entry, task }) => ({
-      step: 'create-task',
-      describe: describeCreate(task, storyId),
-      run: async () => {
-        const r = await adapter.createWorkItem(createType, {
-          fields: fieldsFor(entry, task),
-          relations: [{ rel: parentRel, targetId: storyId }],
-        }, { execute: true });
-        createdTasks.push({ id: r.id, url: r.url, storyId, title: task.title });
-        return { id: r.id, url: r.url };
-      },
-    }));
+    const intents = flat.flatMap(({ storyId, entry, task }) => {
+      let createdId = null;
+      const create = {
+        step: 'create-task',
+        describe: describeCreate(task, storyId),
+        run: async () => {
+          const r = await adapter.createWorkItem(createType, {
+            fields: fieldsFor(entry, task),
+            relations: [{ rel: parentRel, targetId: storyId }],
+          }, { execute: true });
+          createdId = r.id;
+          createdTasks.push({ id: r.id, url: r.url, storyId, title: task.title });
+          return { id: r.id, url: r.url };
+        },
+      };
+      if (!followUpFor) return [create];
+      const fu = followUpFor(entry, task);
+      return [create, {
+        step: fu.step,
+        describe: `set the hours on "${task.title}" (PUT /rest/api/3/issue/<the key just created>)`,
+        run: async () => adapter.updateWorkItem(createdId, { fields: fu.fields }, { execute: true }),
+      }];
+    });
 
     const ledger = await new WritePlan(intents).execute();
     const allDone = ledger.every((l) => l.status === 'done');

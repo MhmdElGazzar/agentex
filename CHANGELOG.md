@@ -95,11 +95,13 @@ All notable changes to AgenTeX are documented here.
   wizard's answer writes one, and the no-tracker runtime error now names both providers'
   keys and the wizard.
 - **Jira project prerequisites are discovered at run time, with the fix.** A Kanban
-  board (no sprints), a sprint that isn't started, a sub-task type without the Time
-  tracking field, and a project without a Bug type each block before any write, and the
-  message says what to change on Jira. `/estimate-story --current-sprint` used to return
-  an empty story list in the first case; it now blocks with `no-open-sprint` and offers
-  `--ids`. The how-to-enable steps live in `references/tracker/jira-boards.md` ("Project
+  board (no sprints), a sprint that isn't started, and a project without a Bug type each
+  block before any write, and the message says what to change on Jira.
+  `/estimate-story --current-sprint` used to return an empty story list in the first
+  case; it now blocks with `no-open-sprint` and offers `--ids`. Hours follow what Jira's
+  API allows on the project: written with the create, written by one update right after
+  it when only the edit screen carries Time tracking, or not written at all (each
+  description says `Estimate: <n>h`, and the approval screen says so) when neither does. The how-to-enable steps live in `references/tracker/jira-boards.md` ("Project
   prerequisites") and `docs/jira.md` ("What your Jira project needs"). Found on a live
   Jira Cloud site.
 - **The two-tracker error is current.** A config with both an `azure` and a `jira` block

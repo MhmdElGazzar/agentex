@@ -30,7 +30,7 @@ Jira fields are flat ids, not ADO reference names. The scripts send and read:
 | Environment (Bug) | `environment` (ADF; only when the Bug screen has it) |
 | Assignee | `assignee: { accountId }` — **emails do not work**; the scripts resolve email → accountId via user search once per run and show the result on the consolidated screen |
 | Priority | `priority: { name }` — a NAME (`High`), not an ADO-style number; validated against the project's real names |
-| Estimates | `timetracking: { originalEstimate: "2h", remainingEstimate: "2h" }` — Jira duration format; only works when time tracking is on the create screen |
+| Estimates | `timetracking: { originalEstimate: "2h", remainingEstimate: "2h" }` — Jira duration format; the REST API writes it only when the field is on the screen (see "Project prerequisites" for the three hours modes) |
 | Labels | `labels: ["testing"]` (the estimation flow's Activity=Testing analog) |
 | Parent | `parent: { key }` — **sub-task (and epic) mechanics only**; scripts fold it inside the create, atomically |
 | Story Points | a site-specific custom field (`customfield_*`) — discovered by display name, pinned via `jira.storyPointsField` once confirmed, never guessed |
@@ -116,7 +116,7 @@ work around it (no guessed sprint, no hours dropped, no substitute issue type).
 | Flow needs | Discovered by | Blocked reason | Fix on Jira (admin) |
 |---|---|---|---|
 | An **open sprint** holding the stories (`/estimate-story` on the current sprint) | the `openSprints()` read comes back empty; a kanban/simple board also answers `400 The board does not support sprints` on the agile sprint route | `no-open-sprint` | Team-managed: **Project settings → Features → Sprints** on, then create and **start** a sprint holding the stories. Company-managed: use a **Scrum** board. Or skip sprints: `--ids <KEY,KEY>` estimates named stories |
-| **Time tracking** on the sub-task type (hours → `timetracking`) | the sub-task's per-issue-type createmeta has no `timetracking` field | `field-not-on-type` (`field: timetracking`) | Site-wide: **Settings → Work items (Issues) → Time tracking** must be on. Team-managed: **Project settings → Work types → \<sub-task type\>** → add the **Time tracking** field. Company-managed: add **Time tracking** to the sub-task's create screen. Re-run with `--refresh-fields` after the change |
+| **Time tracking** on the sub-task screen (hours → `timetracking`) | createmeta for the sub-task type; if absent, the editmeta of the newest existing sub-task of that type | not a block: `validation.hours.mode` = `create` / `edit-after-create` / `none`. With `none`, sub-tasks are created without hours and each description carries `Estimate: <n>h` | Jira's REST API writes `timetracking` only when the field is on the screen. Estimates visible in the UI may have been set by Automation for Jira, which bypasses screens. To get real hours: site-wide **Settings → Work items (Issues) → Time tracking** on, then team-managed: **Project settings → Work types → \<sub-task type\>** → add **Time tracking**; company-managed: add **Time tracking** to the sub-task's create (and edit) screen. Re-run with `--refresh-fields` |
 | A **Bug** issue type (bug filing) | createmeta lists the project's real types | `no-bug-type`, listing the real types | Team-managed: **Project settings → Work types → Add work type → Bug**. Company-managed: add Bug to the project's issue type scheme |
 
 Menu names drift across Jira Cloud UI versions ("Issues" ↔ "Work items", "Issue types" ↔
