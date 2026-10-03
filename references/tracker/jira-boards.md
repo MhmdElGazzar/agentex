@@ -107,6 +107,21 @@ available transitions for the issue and match the asked-for target by id or
 case-insensitive name — no match fails closed listing what actually exists. (On ADO the
 honest equivalent of a "transition" ask is a `System.State` field update.)
 
+## Project prerequisites
+
+A fresh Jira project often lacks what a flow needs. The scripts discover each gap at
+run time — before any write — and block with the fix. Relay that fix to the user; never
+work around it (no guessed sprint, no hours dropped, no substitute issue type).
+
+| Flow needs | Discovered by | Blocked reason | Fix on Jira (admin) |
+|---|---|---|---|
+| An **open sprint** holding the stories (`/estimate-story` on the current sprint) | the `openSprints()` read comes back empty; a kanban/simple board also answers `400 The board does not support sprints` on the agile sprint route | `no-open-sprint` | Team-managed: **Project settings → Features → Sprints** on, then create and **start** a sprint holding the stories. Company-managed: use a **Scrum** board. Or skip sprints: `--ids <KEY,KEY>` estimates named stories |
+| **Time tracking** on the sub-task type (hours → `timetracking`) | the sub-task's per-issue-type createmeta has no `timetracking` field | `field-not-on-type` (`field: timetracking`) | Site-wide: **Settings → Work items (Issues) → Time tracking** must be on. Team-managed: **Project settings → Work types → \<sub-task type\>** → add the **Time tracking** field. Company-managed: add **Time tracking** to the sub-task's create screen. Re-run with `--refresh-fields` after the change |
+| A **Bug** issue type (bug filing) | createmeta lists the project's real types | `no-bug-type`, listing the real types | Team-managed: **Project settings → Work types → Add work type → Bug**. Company-managed: add Bug to the project's issue type scheme |
+
+Menu names drift across Jira Cloud UI versions ("Issues" ↔ "Work items", "Issue types" ↔
+"Work types"); the fix is the same.
+
 ## Known limitations (capability flags — the honest gaps)
 
 | Flag | Jira | What the flows do about it |

@@ -304,6 +304,19 @@ async function jiraStoriesCmd(args, adapter) {
       }
     }
     keys = issues.map((i) => i.key);
+    // Runtime discovery of a missing project prerequisite: a kanban/simple board
+    // has no sprints, so the open-sprint read comes back empty — say why and how
+    // to fix it instead of an empty ok the agent could read as "nothing to do".
+    if (!keys.length) {
+      return { code: 2, out: { ok: false, mode: 'stories', blocked: [{
+        reason: 'no-open-sprint',
+        message: `no "${cfg.storyType}" sits in an open sprint of project ${cfg.project}` +
+          (wanted ? ` named "${wanted}"` : '') + ' — a kanban/simple board has no sprints, or no sprint is started, ' +
+          'or the sprint holds no stories. Fix on Jira: turn Sprints on (team-managed: Project settings → Features → Sprints; ' +
+          'company-managed: a Scrum board), then start a sprint holding the stories — or re-run with --ids <KEY,KEY> ' +
+          'to estimate named stories. See references/tracker/jira-boards.md, "Project prerequisites".',
+      }] } };
+    }
   } else {
     return { code: 2, out: { ok: false, error: { message: USAGE } } };
   }
@@ -492,7 +505,7 @@ async function validateJira(adapter, spec, args, cwd) {
       cacheInfo = await fieldCache.ensure(cwd, adapter, { types: [subtaskType], refresh: Boolean(args['refresh-fields']) });
       const fieldMap = (cacheInfo.cache.types[subtaskType] && cacheInfo.cache.types[subtaskType].fields) || {};
       const needed = [
-        ['timetracking', 'time tracking is disabled site-wide or not on this create screen — hours cannot be written blind (see docs/jira.md, Known limitations)'],
+        ['timetracking', 'time tracking is disabled site-wide or not on this create screen — hours cannot be written blind. Fix on Jira: turn time tracking on and put the "Time tracking" field on this type (see references/tracker/jira-boards.md, "Project prerequisites")'],
         ['labels', 'the Labels field is not on this create screen'],
         ['assignee', 'the Assignee field is not on this create screen'],
         ['parent', 'the Parent field is not on this create screen — a sub-task cannot be created without it'],

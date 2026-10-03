@@ -51,6 +51,24 @@ the same shape is:
 That's the whole setup — the same permission rule (`Bash(node:*)`) that covers the ADO
 flows covers every Jira flow; nothing new to allow.
 
+## What your Jira project needs
+
+A brand-new Jira project usually misses one of these. You don't have to check up front:
+each flow detects a missing piece at run time, before writing anything, and tells you
+the fix.
+
+- **Sprints** (for `/estimate-story` on the current sprint): a Kanban board has no
+  sprints. In a team-managed project turn on **Project settings → Features → Sprints**;
+  in a company-managed project use a **Scrum** board. Then **start** a sprint that holds
+  the stories. You can also skip sprints and estimate specific stories by key.
+- **Time tracking** (estimated hours on the `[Testing]` sub-tasks): time tracking must be
+  on for the site (**Settings → Work items → Time tracking**), and the sub-task type must
+  carry the **Time tracking** field (team-managed: **Project settings → Work types →
+  Subtask**).
+- **A Bug type** (bug filing): add **Bug** to the project's work types if it isn't there.
+
+Menu names differ slightly between Jira versions ("Issues" vs "Work items").
+
 ## What each flow does on Jira
 
 ### `/estimate-story` — QA effort as sub-tasks
@@ -121,6 +139,11 @@ per-write ledgers, secrets never printed — is identical to the ADO flows.
   (both are required; the token comes from id.atlassian.com API tokens).
 - **401/403 with a credential hint** — the hint names the env vars only (never values):
   regenerate the token, check the email matches the token's account.
+- **`no "Story" sits in an open sprint`** — the board is Kanban, or no sprint is started,
+  or the sprint is empty. See [What your Jira project needs](#what-your-jira-project-needs),
+  or estimate specific stories by key instead.
+- **"field timetracking does not exist on this project's … create screen"** — turn time
+  tracking on and add the Time tracking field to the sub-task type (same section).
 - **"More than one tracker provider is configured"** — a config carrying both an `azure`
   and a `jira` block fails closed; keep exactly one provider block (the wizard enforces
   this on save).

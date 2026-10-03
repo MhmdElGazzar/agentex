@@ -87,6 +87,11 @@ methodology, the same one-gate workflow. What differs is mechanical, and the scr
   open sprint, the script blocks with the real sprint names — ask the user which sprint in
   the ONE bundle round and re-run with `--sprint "<name>"`, or set `jira.board` to steer
   discovery. Never pick silently.
+- **Missing project prerequisites** block before any write, with the fix in the message:
+  `no-open-sprint` (Kanban board, no started sprint, or an empty sprint) and
+  `field-not-on-type` for `timetracking`. Relay the fix and offer `--ids` for named
+  stories; never drop the hours or guess a sprint. The fixes are in the reference's
+  "Project prerequisites" section.
 - **Story Points** come from a site-specific custom field discovered by display name; when
   none/ambiguous the JSON says so with `storyPoints: null` — estimate from the factor
   counts and name the `jira.storyPointsField` override to the user.

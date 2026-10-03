@@ -199,7 +199,7 @@ async function runJiraBug(adapter, spec, args, cwd) {
   if (issueTypes.length && !issueTypes.some((t) => t.name === 'Bug')) {
     blocked.push({
       reason: 'no-bug-type', options: issueTypes.map((t) => t.name),
-      message: `this project has no "Bug" issue type — real types: ${issueTypes.map((t) => t.name).join(', ')}`,
+      message: `this project has no "Bug" issue type — real types: ${issueTypes.map((t) => t.name).join(', ')}. Fix on Jira: add the Bug type to the project (see references/tracker/jira-boards.md, "Project prerequisites")`,
     });
   }
 

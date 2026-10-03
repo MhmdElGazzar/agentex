@@ -670,6 +670,17 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     assert.deepStrictEqual(out.stories.map((s) => s.id), ['PROJ-9']);
   });
 
+  await test('jira stories: NO open-sprint Story (kanban board / sprints off / nothing started) → blocked with the fix, never an empty ok', async () => {
+    const f = fakeFetch(jroutes([{ method: 'POST', match: '/search/jql', json: { issues: [] } }]));
+    const { code, out } = await run(['stories', '--current-sprint'], { cwd: jproj(), fetch: f });
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    const b = out.blocked.find((x) => x.reason === 'no-open-sprint');
+    assert.ok(b, JSON.stringify(out));
+    assert.match(b.message, /--ids/);
+    assert.match(b.message, /Sprints/);
+    assert.match(b.message, /jira-boards\.md/);
+  });
+
   await test('jira stories: a configured jira.board steers multi-sprint discovery through the agile API (O3)', async () => {
     const twoSprints = [
       JSTORY('PROJ-1', { sprints: [{ id: 7, name: 'Sprint 7', state: 'active' }] }),
@@ -771,6 +782,7 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     const b = out.blocked.find((x) => x.reason === 'field-not-on-type' && x.field === 'timetracking');
     assert.ok(b, JSON.stringify(out.blocked));
     assert.match(b.message, /time tracking/i);
+    assert.match(b.message, /jira-boards\.md/, 'points at the how-to-enable reference');
   });
 
   await test('jira --execute: one atomic sub-task create per task in story order; ledger + created keys/urls surfaced', async () => {

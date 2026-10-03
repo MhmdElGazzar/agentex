@@ -37,6 +37,14 @@ All notable changes to AgenTeX are documented here.
   block — a fresh scaffold has no tracker until the wizard's answer writes one, and the
   no-tracker runtime error now names both providers' keys and the wizard. `.env.example`
   gains keys-only `JIRA_EMAIL=` / `JIRA_API_TOKEN=` lines — fill only your tracker's.
+- **Jira project prerequisites are discovered at run time, with the fix.** A Kanban
+  board (no sprints), a sprint that isn't started, a sub-task type without the Time
+  tracking field, and a project without a Bug type each block before any write, and the
+  message says what to change on Jira. `/estimate-story --current-sprint` used to return
+  an empty story list in the first case; it now blocks with `no-open-sprint` and offers
+  `--ids`. The how-to-enable steps live in `references/tracker/jira-boards.md` ("Project
+  prerequisites") and `docs/jira.md` ("What your Jira project needs"). Found on a live
+  Jira Cloud site.
 - **The three tracker flows on Jira:** `/estimate-story` creates the same five `[Testing]`
   tasks per story as **sub-tasks** (parent inline, atomic) with hours mapped to Jira time
   tracking and the label `testing`; the current sprint resolves via
