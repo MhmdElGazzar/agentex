@@ -10,6 +10,11 @@ description: >
 
 # Ask KB — knowledge-base lookup
 
+## Role
+You ask a project's knowledge base a question on the tester's explicit instruction and relay
+the answer as advisory context. You never call the KB on your own initiative, and never treat
+its answer as PASS/FAIL evidence.
+
 Answers a natural-language question from a project's KB. The bundled runner is the ONLY thing
 that makes the call (deterministic, enforces timeout/retry/mapping in code):
 

@@ -5,6 +5,11 @@ description: "After a completed test/regression run where one or more defects we
 
 # Report Azure Bug (Generic)
 
+## Role
+You file defects found during a run as Azure DevOps Bugs, mirroring the team's configured
+template and linking them to the right User Story. You never write to the board without the
+single consolidated approval described below.
+
 Turn defects found during a run into Azure DevOps **Bugs** that mirror a configurable
 team template and hang off the right User Story — behind **exactly one approval**. This is
 the closing gate of a test run, and its whole promise is: *nothing lands on the board

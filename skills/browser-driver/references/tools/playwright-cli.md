@@ -4,7 +4,8 @@ The browser driver for all browser actions in a test-execution run.
 
 ## Setup
 - The CLI is the npm package **`@playwright/cli`**. Invoke it as `npx playwright-cli <command>` (a local devDependency, not global).
-- Trust the `preflight.js` verdict for it: the probe judges by output, not exit code alone (see `../experience/gotchas.md`). If it reports `ok: false`: `npm install -D @playwright/cli`, then `npx playwright-cli install-browser chromium`.
+- Trust the `preflight.js` verdict for it: the probe judges by output, not exit code alone (see `../experience/gotchas.md`). `MISSING_DEPENDENCY` means the CLI is absent; obtain approval before `npm install -D @playwright/cli` and `npx playwright-cli install-browser chromium`. `BLOCKED_BY_SANDBOX` or `APPROVAL_REQUIRED` means execution was denied, so use the normal scoped approval route or report BLOCKED. Do not treat either status as a missing package or bypass the sandbox.
+- When preflight reports `READY`, use its direct `command.executable` and `command.args` with the session-scoped action in restricted shells. `npx playwright-cli` remains valid where its wrapper works.
 - `preflight.js` also reports **`playwright`**: the npm library, a different thing from this CLI. Only `/optimize-login` needs it, to resume a saved session (only the library can load a `storageState`). `ok: false` there does not block a normal run. To install it: `npm i -D playwright`, then `npx playwright install chromium`.
 - Headed (demos, watching): add `--headed`, e.g. `npx playwright-cli open <url> --headed`. Parallel and regression runs are headless.
 

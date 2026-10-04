@@ -2897,18 +2897,26 @@ async function saveAndClose() {
   // Client-side gate before the batch save (the server re-validates everything
   // via planSave): every environment this save writes must be internally
   // complete — the review can only be reached through the active environment's
-  // pages, so the OTHER environments get their completeness check here.
+  // pages, so the OTHER environments get their completeness check here. A
+  // failure here means the user switched to a new environment (or opened one
+  // from the manager) without finishing another — jump them straight to the
+  // unfinished page instead of just naming it, or "open it yourself from the
+  // environments page" is easy to miss on a first pass through the wizard.
   const writes = dirtyEnvNames();
   for (const n of writes) {
     const a = envs[n].answers;
     let urlOk = false;
     try { const u = new URL(a['portalUrl'] || ''); urlOk = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
     if (!urlOk) {
-      showToast(L(`❌ بيئة «${n}»: رابط التطبيق ناقص أو غير صحيح — افتحها من صفحة إدارة البيئات وكمّلها`, `❌ Environment «${n}»: the application URL is missing or invalid — open it from the environments page and fill it in`), 'error');
+      showToast(L(`❌ بيئة «${n}»: رابط التطبيق ناقص أو غير صحيح — كمّلها هنا`, `❌ Environment «${n}»: the application URL is missing or invalid — finish it here`), 'error');
+      switchEnv(n);
+      goTo(schema.steps.findIndex(s => s.id === 'environment'));
       return;
     }
     if (!envs[n].users.some(u => String(u.handle || '').trim())) {
-      showToast(L(`❌ بيئة «${n}»: محتاجة مستخدم اختبار واحداً على الأقل — افتحها من صفحة إدارة البيئات`, `❌ Environment «${n}»: it needs at least one test user — open it from the environments page`), 'error');
+      showToast(L(`❌ بيئة «${n}»: محتاجة مستخدم اختبار واحداً على الأقل — كمّلها هنا`, `❌ Environment «${n}»: it needs at least one test user — finish it here`), 'error');
+      switchEnv(n);
+      goTo(schema.steps.findIndex(s => s.id === 'test-users'));
       return;
     }
   }

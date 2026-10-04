@@ -5,7 +5,7 @@
 |---|---|---|
 | Windows + current Node: the CLI prints its version, then dies on its own exit path with a libuv assertion (`UV_HANDLE_CLOSING`) | The exit code says broken; the tool works | Trust `preflight.js`: it reports `ok: true` with the note "version confirmed; known benign exit-crash on this stack". Do NOT re-run `npx playwright-cli --version` yourself, see the non-zero exit or the assertion text, and re-conclude "broken". Proceed with the run. |
 | `screenshot shot.png` (positional path) | Parsed as a CSS selector, and fails | Always `--filename=<path>` |
-| `playwright-cli requests` | The subcommand does not exist | A `run-code` listener (see techniques) |
+| `playwright-cli requests` is unavailable in the installed CLI | Older CLI version | Use a `run-code` listener (see techniques) |
 | Multi-line `run-code` | The shell mangles it | One line only |
 | The bare `playwright-cli` npm package | Deprecated | Install `@playwright/cli` |
 | A "success" message found in the DOM | May be static markup | Check computed visibility via `eval` |
