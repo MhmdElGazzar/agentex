@@ -1,5 +1,10 @@
 # Configuration
 
+These consumer-project files are shared by Claude, Codex, and GitHub Copilot Agent.
+`azure` and `AZURE_PAT` are **optional**: a project can run browser specs and produce
+reports without Azure DevOps. KB, API, DB, and Figma settings are needed only for specs
+that use those integrations.
+
 Project data falls into three kinds, each with one home:
 
 | Kind | Examples | Home |
@@ -98,6 +103,10 @@ to the installed version's conventions. Refactor/merge, not re-scaffold: your va
   from detected state.
 
 ## Permissions
+
+The permission example below is for **Claude Code only**. Codex and Copilot use their
+own host permission controls. Host/tool permission never replaces AgenTeX's approval
+for a persistent project or Azure write; see [Approvals](./approval-model.md).
 
 Plugin manifests can't ship permission rules. Copy the `permissions` block from
 [`settings.example.json`](../settings.example.json) into your project's

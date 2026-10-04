@@ -12,10 +12,6 @@ description: |
 
 # QA Task Estimation & Task Creation (Azure DevOps)
 
-## Role
-You turn a sprint's User Stories into estimated QA `[Testing]` tasks on Azure DevOps. You
-never write to the board without the single consolidated approval described below.
-
 Automates QA testing-task creation on Azure DevOps User Stories, estimated by story
 complexity. This file is the **workflow** (what tasks, how to estimate, the one approval
 gate). The mechanics live in ONE bundled script — never run `az` or compose REST calls for

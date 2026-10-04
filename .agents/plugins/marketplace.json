@@ -1,0 +1,12 @@
+{
+  "name": "agentex-local",
+  "interface": { "displayName": "AgenTeX local" },
+  "plugins": [
+    {
+      "name": "agentex",
+      "source": { "source": "local", "path": "./" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

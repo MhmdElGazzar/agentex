@@ -18,7 +18,8 @@ const SENTINEL_PAT = 'SENTINEL-PAT-a1b2c3d4e5f60718293a4b5c6d7e8f90';
 const SENTINEL_B64 = Buffer.from(':' + SENTINEL_PAT).toString('base64');
 
 // The tests own the PAT environment — the machine's real values must not leak in.
-for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AGENTEX_CI']) delete process.env[n];
+for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT',
+  'AZURE_URL', 'AZURE_PROJECT', 'AGENTEX_CI']) delete process.env[n];
 
 // Throwaway consumer project with an azure block + a sentinel PAT in .env.
 function proj({ org = 'exampleorg', project = 'Sample Project', envLines, azureExtra = {} } = {}) {
@@ -81,6 +82,16 @@ const PROJ = 'Sample%20Project';
     const f = fakeFetch([]);
     await createAdapter({ cwd: proj(), fetch: f }).getWorkItem(5, { expand: 'all' });
     assert.match(f.calls[0].url, /\$expand=all/);
+  });
+
+  await test('getWorkItem rejects empty, malformed, URL, and wrong-project URL inputs before fetch', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    for (const id of ['', 'abc', 'https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/7',
+      'https://dev.azure.com/other/Other/_workitems/edit/7', 0, -1, '7/../../8']) {
+      await assert.rejects(() => a.getWorkItem(id), /positive numeric work-item ID/);
+    }
+    assert.strictEqual(f.calls.length, 0);
   });
 
   await test('query() POSTs WIQL; findByTitle escapes quotes and returns ids', async () => {
@@ -320,6 +331,29 @@ const PROJ = 'Sample%20Project';
       assert.ok(!e.message.includes(SENTINEL_PAT) && !JSON.stringify({ ...e }).includes(SENTINEL_PAT));
       return true;
     });
+  });
+
+  await test('server echo of fake PAT or Basic header is redacted from errors and returned story content', async () => {
+    const f = fakeFetch([
+      { match: '/workitems/1', status: 500, text: JSON.stringify({ message: `echo ${SENTINEL_PAT} Basic ${SENTINEL_B64}` }) },
+      { match: '/workitems/2', json: { id: 2, fields: { 'System.Description': `echo ${SENTINEL_PAT} Basic ${SENTINEL_B64}` } } },
+    ]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await assert.rejects(() => a.getWorkItem(1), (e) => {
+      const safe = e.message + JSON.stringify({ ...e });
+      assert.ok(!safe.includes(SENTINEL_PAT) && !safe.includes(SENTINEL_B64));
+      assert.match(safe, /<redacted>/);
+      return true;
+    });
+    const story = await a.getWorkItem(2);
+    assert.ok(!JSON.stringify(story).includes(SENTINEL_PAT));
+    assert.ok(!JSON.stringify(story).includes(SENTINEL_B64));
+  });
+
+  await test('organization URL cannot carry embedded credentials or query tokens', async () => {
+    for (const org of ['https://user:secret@dev.azure.com/org', 'https://dev.azure.com/org?token=secret']) {
+      assert.throws(() => createAdapter({ cwd: proj({ org }), fetch: fakeFetch([]) }), /without credentials, query, or fragment/);
+    }
   });
 
   await test('401 carries credentialHint with env-var NAMES only — never the value', async () => {

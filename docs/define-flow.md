@@ -1,11 +1,17 @@
 # Define Flow
 
+Claude invokes this with `/define-flow`; Codex and GitHub Copilot Agent use
+`agentex-define-flow` through a natural request. The interaction is the same:
+observe the current page, propose an action, obtain approval, execute it in the **same**
+browser session, verify what actually happened with the user, then continue. The agent
+must not silently reload, reopen, or replace a session when continuity is lost.
+
 Writing a long test spec by hand means writing it blind: you describe fifteen steps from
 memory, run the whole thing, and only then discover step 7 was misunderstood. `/define-flow`
 removes that guesswork — the flow is **defined by doing it**. Claude leads a live session:
 it proposes each step, executes it in a real browser the moment you agree, and you confirm
 the actual result before the next step is even discussed. When you're done, the spec already
-passed once, step by step, while you watched.
+was confirmed step by step while you watched; a separate validation run supplies the test verdict.
 
 You never write spec text yourself — you only answer questions, confirm outcomes, and pick
 from choices Claude presents.
@@ -44,9 +50,9 @@ Here's what happens:
    normal spec file (Target, acceptance criteria, numbered scenarios marked as a stateful
    chain, notes) and proposes a name under your suite folder (default
    `test/suite1/<slug>.md`).
-6. **Prove it twice (optional)** — Claude offers to immediately re-run the fresh spec via
-   `/execute-test`. Every step already passed during definition; the fresh run proves the
-   spec stands on its own.
+6. **Validate it (optional)** — Claude offers to run the fresh spec via `/execute-test`.
+   Definition confirmed each observed step; the fresh run checks whether the saved spec
+   stands on its own and produces a formal result and evidence.
 
 Steps that reach beyond the browser (`api:` / `db:` / `kb:`) work here too — but only
 entries already defined in your `integration/` catalog, exactly as in test runs.
@@ -59,6 +65,11 @@ steps. Run definition sessions against a test environment you're responsible for
 
 ## Walkthrough: clarifying an existing spec
 
+Saving the generated spec is a separate boundary: the agent shows its final content and
+new destination, then waits for approval before saving. The existing spec remains untouched
+unless the user separately approves a cross-reference. Definition is authoring, not a
+substitute for a fresh validation run.
+
 Point the command at a spec file instead:
 
 > /define-flow test/suite1/checkout.md
@@ -66,8 +77,8 @@ Point the command at a spec file instead:
 Claude walks the spec step by step, executing each one live. Any step it finds unclear — an
 ambiguous target, a missing expected result — becomes a question to you; your confirmed
 answer replaces the unclear wording. The result is saved as a **new** spec file; your
-original is left untouched except for one note added at its top — "Defined flow available at
-`<path>`" — so the team can see which specs have a proven, defined counterpart.
+original is left untouched. A cross-reference note is optional and added only after a
+separate explicit request; no existing spec is silently edited.
 
 ## Quick reference
 

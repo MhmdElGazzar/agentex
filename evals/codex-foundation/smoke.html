@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AgenTeX local smoke</title></head>
+<body>
+  <h1>AgenTeX local smoke</h1>
+  <button id="reveal" type="button">Reveal confirmation</button>
+  <p id="confirmation" hidden>Confirmation visible</p>
+  <button id="increment" type="button">Increment count</button>
+  <span id="count">0</span>
+  <script>
+    document.getElementById('reveal').addEventListener('click', () => {
+      document.getElementById('confirmation').hidden = false;
+    });
+    document.getElementById('increment').addEventListener('click', () => {
+      const count = document.getElementById('count');
+      count.textContent = String(Number(count.textContent) + 1);
+    });
+  </script>
+</body>
+</html>

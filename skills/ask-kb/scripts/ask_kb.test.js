@@ -261,5 +261,69 @@ async function test(name, fn) {
     assert.strictEqual(r.json.result, 'OK');
   });
 
+  await test('empty and whitespace-only questions are blocked without a request', async () => {
+    const cwd = fixtureCwd2({ projectKb: { project: 'local', baseUrl: 'http://127.0.0.1:1' } });
+    for (const question of ['', '   ']) {
+      const r = await run(cwd, {}, ['--question', question]);
+      assert.strictEqual(r.code, 2);
+      assert.strictEqual(r.json.result, 'BLOCKED');
+      assert.match(r.json.reason, /question is required/);
+    }
+  });
+
+  await test('Arabic question passes unchanged and lookup does not mutate project files', async () => {
+    let seen;
+    const srv = await server((req, res, body) => {
+      seen = JSON.parse(body);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ success: true, answer: 'إجابة', sources: ['دليل'], hasContext: true }));
+    });
+    const cwd = fixtureCwd2({ projectKb: { project: 'local', baseUrl: `http://127.0.0.1:${srv.address().port}` } });
+    const before = fs.readFileSync(path.join(cwd, 'config', 'project.json'));
+    const r = await run(cwd, {}, ['--question', 'كيف يعمل تسجيل الدخول؟']);
+    srv.close();
+    assert.strictEqual(r.json.result, 'OK');
+    assert.strictEqual(r.json.answer, 'إجابة');
+    assert.deepStrictEqual(r.json.sources, ['دليل']);
+    assert.strictEqual(seen.question, 'كيف يعمل تسجيل الدخول؟');
+    assert.deepStrictEqual(fs.readFileSync(path.join(cwd, 'config', 'project.json')), before);
+    assert.ok(!fs.existsSync(path.join(cwd, 'executions')));
+  });
+
+  await test('backend failure is blocked and secret echo is redacted from output and log', async () => {
+    const secret = 'local-fixture-key';
+    const srv = await server((req, res) => {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: `backend error ${secret}` }));
+    });
+    const cwd = fixtureCwd2({ projectKb: { project: 'local', baseUrl: `http://127.0.0.1:${srv.address().port}`, retries: 0 } });
+    const r = await run(cwd, { KB_ASK_API_KEY: secret }, ['--question', 'Q', '--log', 'executions/ask-kb/last.log']);
+    srv.close();
+    assert.strictEqual(r.code, 2);
+    assert.strictEqual(r.json.result, 'BLOCKED');
+    assert.ok(!JSON.stringify(r.json).includes(secret));
+    assert.ok(!fs.readFileSync(path.join(cwd, 'executions', 'ask-kb', 'last.log'), 'utf8').includes(secret));
+  });
+
+  await test('KB log path cannot escape executions', async () => {
+    const cwd = fixtureCwd2({ projectKb: { project: 'local', baseUrl: 'http://127.0.0.1:1' } });
+    const r = await run(cwd, {}, ['--question', 'Q', '--log', 'config/project.json']);
+    assert.strictEqual(r.code, 2);
+    assert.match(r.json.reason, /log path/);
+  });
+
+  await test('Codex adapter uses the shared runner and preserves Claude command', async () => {
+    const root = path.resolve(__dirname, '..', '..', '..');
+    const adapter = fs.readFileSync(path.join(root, 'skills', 'agentex-ask-kb', 'SKILL.md'), 'utf8');
+    const shared = fs.readFileSync(path.join(root, 'skills', 'ask-kb', 'SKILL.md'), 'utf8');
+    const command = fs.readFileSync(path.join(root, 'commands', 'ask-kb.md'), 'utf8');
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, '.codex-plugin', 'plugin.json'), 'utf8'));
+    assert.strictEqual(manifest.skills, './skills/');
+    assert.match(adapter, /skills\/ask-kb\/SKILL\.md/);
+    assert.match(adapter, /scripts\/ask_kb\.js/);
+    assert.match(shared, /advisory/i);
+    assert.match(command, /ask-kb/);
+  });
+
   console.log(`\n${passed} passed`);
 })().catch(e => { console.error(e); process.exit(1); });

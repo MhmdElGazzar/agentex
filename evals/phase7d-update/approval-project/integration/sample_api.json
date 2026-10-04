@@ -1,0 +1,23 @@
+{
+  "name": "sample-api",
+  "description": "EXAMPLE — replace with your service. The requests below are the ONLY API calls the agent may execute; add one entry per call your tests need.",
+  "baseUrl": "${API_BASE_URL}",
+  "auth": { "type": "bearer", "tokenEnv": "API_TOKEN" },
+  "requests": [
+    {
+      "name": "get-todo",
+      "description": "Fetch a todo by id — verify a record exists / has expected fields",
+      "method": "GET",
+      "path": "/todos/{id}",
+      "params": ["id"]
+    },
+    {
+      "name": "create-todo",
+      "description": "Create a todo — example WRITE entry (seeding test data)",
+      "method": "POST",
+      "path": "/todos",
+      "params": ["title"],
+      "body": { "title": "{title}", "completed": false }
+    }
+  ]
+}

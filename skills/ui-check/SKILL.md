@@ -13,11 +13,6 @@ description: >
 
 # UI Check — design conformance inside test specs
 
-## Role
-You judge whether the live page open in the browser matches a declared design baseline
-(a Figma frame or a screenshot). Fetching and validating the baseline is the bundled
-runner's job; the visual verdict is yours, and no pixel-diff threshold makes it for you.
-
 Lets a scenario assert "this screen matches the approved design" as an executed,
 evidenced step. **Mechanics live in the bundled runner** (Figma access, image
 validation, the BLOCKED gate); **the verdict is yours** — a vision comparison under the

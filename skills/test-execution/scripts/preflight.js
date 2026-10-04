@@ -6,7 +6,8 @@
 // The agent decides what's required for the run at hand (sqlcmd only matters for db: steps, etc.)
 //
 // Probe posture (backlog/preflight-probe-false-negative): the playwright-cli probe
-// judges by OUTPUT, not exit code alone. On Windows + Node v24 a working
+// runs the installed package's bin with Node directly, without cmd.exe/npx.
+// It judges by OUTPUT, not exit code alone. On Windows + Node v24 a working
 // @playwright/cli prints its version and then dies on its own exit path with an
 // upstream libuv assertion (UV_HANDLE_CLOSING) — a benign exit-crash, not a broken
 // tool. When the version output is present AND the crash matches that known
@@ -14,6 +15,8 @@
 // reporting broken exactly as before. The exception is scoped to the
 // playwright-cli probe only, keyed to the known signature.
 const { spawnSync } = require('child_process');
+const fs = require('node:fs');
+const path = require('node:path');
 
 function probe(cmd, args) {
   try {
@@ -35,13 +38,18 @@ const CRASH_TEXT = /Assertion failed|UV_HANDLE_CLOSING/;
 
 // Pure judgment over a spawnSync-shaped result ({error, status, stdout, stderr}).
 // Exported for fixture-level tests — no live tool needed.
-function judgePlaywrightCliProbe(r) {
-  if (r.error) return { ok: false, error: r.error.message };
+function judgePlaywrightCliProbe(r, { sandboxed = false } = {}) {
+  if (r.error) {
+    const status = r.error.code === 'EPERM' || r.error.code === 'EACCES'
+      ? (sandboxed ? 'BLOCKED_BY_SANDBOX' : 'APPROVAL_REQUIRED') : 'BROKEN_EXECUTABLE';
+    return { ok: false, status, error: r.error.message };
+  }
   const stdout = r.stdout || '';
   const stderr = r.stderr || '';
   if (r.status === 0) {
-    const first = (stdout + stderr).trim().split('\n').find(l => l.trim()) || '';
-    return { ok: true, version: first.trim().slice(0, 120) };
+    const first = (stdout + '\n' + stderr).split(/\r?\n/).find(l => VERSION_LINE.test(l) && !CRASH_TEXT.test(l));
+    return first ? { ok: true, status: 'READY', version: first.trim().slice(0, 120) }
+      : { ok: false, status: 'BROKEN_EXECUTABLE', error: 'CLI exited successfully without version output' };
   }
   // Non-zero exit: trust the evidence the probe already has. A plausible version
   // line (outside the crash text) + the known benign signature = a usable tool.
@@ -50,21 +58,58 @@ function judgePlaywrightCliProbe(r) {
   if (versionLine && BENIGN_EXIT_CRASH.test(stdout + stderr)) {
     return {
       ok: true,
+      status: 'READY',
       version: versionLine.trim().slice(0, 120),
       note: 'version confirmed; known benign exit-crash on this stack',
     };
   }
-  return { ok: false, error: stderr.trim().split('\n')[0] || `exit ${r.status}` };
+  return { ok: false, status: 'BROKEN_EXECUTABLE', error: stderr.trim().split('\n')[0] || `exit ${r.status}` };
 }
 
-// The playwright-cli probe. AGENTEX_PWCLI_PROBE_CMD is a fixture-only test seam
-// (replaces the probed command so tests never need a live install).
-function probePlaywrightCli() {
-  const cmd = process.env.AGENTEX_PWCLI_PROBE_CMD || 'npx playwright-cli --version';
+function resolvePlaywrightCliEntry({ cwd = process.cwd(), env = process.env, platform = process.platform } = {}) {
   try {
-    const r = spawnSync(cmd, { encoding: 'utf8', timeout: 60000, shell: true });
-    return judgePlaywrightCliProbe(r);
-  } catch (e) { return { ok: false, error: e.message }; }
+    const pkgFile = require.resolve('@playwright/cli/package.json', { paths: [cwd] });
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
+    const entry = path.resolve(path.dirname(pkgFile), pkg.bin['playwright-cli']);
+    if (fs.existsSync(entry)) return entry;
+  } catch (error) { if (error.code !== 'MODULE_NOT_FOUND') throw error; }
+  for (const dir of (env.PATH || env.Path || '').split(path.delimiter).filter(Boolean)) {
+    const wrapper = platform === 'win32' ? path.join(dir, 'playwright-cli.cmd') : path.join(dir, 'playwright-cli');
+    if (!fs.existsSync(wrapper)) continue;
+    for (const pkgFile of [path.join(dir, 'node_modules', '@playwright', 'cli', 'package.json'),
+                           path.join(dir, '..', '@playwright', 'cli', 'package.json')]) {
+      if (!fs.existsSync(pkgFile)) continue;
+      const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
+      const entry = path.resolve(path.dirname(pkgFile), pkg.bin['playwright-cli']);
+      if (fs.existsSync(entry)) return entry;
+    }
+    if (platform !== 'win32') {
+      const entry = fs.realpathSync(wrapper);
+      if (path.extname(entry) === '.js') return entry;
+    }
+  }
+  return null;
+}
+
+// AGENTEX_PWCLI_PROBE_CMD is an existing fixture-only seam: a quoted Node path
+// and quoted JS file. It is parsed into argv; it never reaches a shell.
+function fixtureCommand(value) {
+  const match = /^"([^"]+)"\s+"([^"]+)"$/.exec(value);
+  if (!match) throw new Error('AGENTEX_PWCLI_PROBE_CMD must contain quoted executable and JS paths');
+  return { executable: match[1], args: [match[2], '--version'] };
+}
+
+function probePlaywrightCli({ cwd = process.cwd(), env = process.env, platform = process.platform,
+  spawn = spawnSync, resolveEntry = resolvePlaywrightCliEntry } = {}) {
+  try {
+    const command = env.AGENTEX_PWCLI_PROBE_CMD
+      ? fixtureCommand(env.AGENTEX_PWCLI_PROBE_CMD)
+      : { executable: process.execPath, args: [resolveEntry({ cwd, env, platform }), '--version'] };
+    if (!command.args[0]) return { ok: false, status: 'MISSING_DEPENDENCY', error: '@playwright/cli is not installed in the project or on PATH' };
+    const r = spawn(command.executable, command.args, { encoding: 'utf8', timeout: 60000, shell: false });
+    const judged = judgePlaywrightCliProbe(r, { sandboxed: Boolean(env.CODEX_SANDBOX) });
+    return judged.ok ? { ...judged, command: { executable: command.executable, args: command.args.slice(0, -1) } } : judged;
+  } catch (e) { return { ok: false, status: 'UNKNOWN_ENVIRONMENT_FAILURE', error: e.message }; }
 }
 
 // The playwright PACKAGE, resolved the way session.js resolves it — from the project, not
@@ -87,7 +132,7 @@ function probePlaywrightPackage(cwd = process.cwd()) {
   return { ok: false, error: 'not installed in this project — npm i -D playwright && npx playwright install chromium (needed only for /optimize-login session resume)' };
 }
 
-module.exports = { probe, judgePlaywrightCliProbe, probePlaywrightCli, probePlaywrightPackage };
+module.exports = { probe, judgePlaywrightCliProbe, resolvePlaywrightCliEntry, probePlaywrightCli, probePlaywrightPackage };
 
 // --needs <list> (from spec_drivers.js): without browser, the playwright probes are skipped
 // (the CLI probe can take up to 60s). Default: every probe, as before.

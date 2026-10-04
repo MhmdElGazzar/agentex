@@ -79,7 +79,14 @@ function pick(cwd, az, key, envName) {
 // No other guessing.
 function normalizeOrg(org) {
   const trimmed = String(org).trim().replace(/\/+$/, '');
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  const base = /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  let parsed;
+  try { parsed = new URL(base); }
+  catch { throw configError('azure.org must be a valid organization name or HTTP(S) base URL'); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw configError('azure.org must be an HTTP(S) base URL without credentials, query, or fragment');
+  }
+  return base;
 }
 
 // Resolve the consumer's non-secret ADO settings (invariant 7). Missing
@@ -129,6 +136,14 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
   const projSeg = encodeURIComponent(cfg.project);
 
   let patState = null; // { header, resolvedName } — resolved lazily, once
+  function redact(value) {
+    let out = String(value);
+    if (!patState) return out;
+    for (const secret of [patState.pat, patState.header]) {
+      if (secret) out = out.replaceAll(secret, '<redacted>');
+    }
+    return out;
+  }
   function auth(op, url) {
     if (!patState) {
       let resolvedName = null; let pat = null;
@@ -144,6 +159,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       patState = {
         header: 'Basic ' + Buffer.from(':' + pat).toString('base64'),
         resolvedName,
+        pat,
       };
     }
     return patState;
@@ -172,14 +188,14 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const msg = e && (e.name === 'TimeoutError' || e.name === 'AbortError')
         ? `request timed out after ${timeoutMs}ms`
         : (e && e.message) || String(e);
-      throw new TrackerError({ op, url: requestUrl, serverMessage: msg });
+      throw new TrackerError({ op, url: redact(requestUrl), serverMessage: redact(msg) });
     }
-    const text = await res.text();
+    const text = redact(await res.text());
     if (!res.ok) {
       let serverMessage = null;
       try { serverMessage = JSON.parse(text).message || null; } catch { /* not json */ }
       const err = new TrackerError({
-        op, status: res.status, url: requestUrl, serverMessage, body: text.slice(0, 500),
+        op, status: res.status, url: redact(requestUrl), serverMessage, body: text.slice(0, 500),
         credentialHint: res.status === 401 || res.status === 403
           ? { tried: [...PAT_ENV_NAMES], resolved: resolvedName }
           : undefined,
@@ -237,7 +253,11 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
     // ── READS (free, no gating) ────────────────────────────────────────────────
     async getWorkItem(id, { expand } = {}) {
-      const u = url(`wit/workitems/${id}`, expand ? { $expand: expand === true ? 'all' : expand } : {});
+      const numericId = Number(id);
+      if (!Number.isSafeInteger(numericId) || numericId <= 0) {
+        throw configError('getWorkItem needs a positive numeric work-item ID; URLs and other input are unsupported');
+      }
+      const u = url(`wit/workitems/${numericId}`, expand ? { $expand: expand === true ? 'all' : expand } : {});
       return request('getWorkItem', 'GET', u);
     },
 

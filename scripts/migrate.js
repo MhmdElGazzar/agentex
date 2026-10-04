@@ -27,6 +27,8 @@ const { execFileSync } = require('child_process');
 const scaffold = require('./lib/scaffold.js');
 const { loadProjectConfig } = require('./lib/project_config.js');
 const { compareVersions } = require('./lib/version.js');
+const { isReleaseVersion } = require('./lib/version.js');
+const { acquireUpdateLock } = require('./lib/update_lock.js');
 const { DEFAULT_ENV_NAME } = require('./wizard/engine.js');
 
 const pluginRoot = path.resolve(__dirname, '..');
@@ -37,6 +39,18 @@ const pluginRoot = path.resolve(__dirname, '..');
 const cliArgs = process.argv.slice(2);
 const flagArgs = cliArgs.filter(a => a.startsWith('--'));
 const projectRoot = path.resolve(cliArgs.find(a => !a.startsWith('--')) || process.cwd());
+let directGitPreflight = null;
+if (flagArgs.includes('--git-preflight-stdin')) {
+  try {
+    directGitPreflight = JSON.parse(fs.readFileSync(0, 'utf8'));
+    if (directGitPreflight.inside !== true || typeof directGitPreflight.root !== 'string' ||
+        typeof directGitPreflight.status !== 'string' || directGitPreflight.status.length > 1_000_000 ||
+        fs.realpathSync(directGitPreflight.root) !== fs.realpathSync(projectRoot) ||
+        !fs.existsSync(path.join(projectRoot, '.git'))) {
+      throw new Error('root/status mismatch');
+    }
+  } catch { console.error('[abort] invalid direct Git preflight; run git rev-parse and git status directly, then retry'); process.exit(2); }
+}
 
 function abort(reason) {
   console.error(`[abort] ${reason}`);
@@ -44,6 +58,11 @@ function abort(reason) {
 }
 
 function git(args) {
+  if (directGitPreflight) {
+    if (args[0] === 'rev-parse' && args[1] === '--is-inside-work-tree') return 'true\n';
+    if (args[0] === 'status' && args[1] === '--porcelain') return directGitPreflight.status;
+    throw new Error('unsupported direct Git preflight operation');
+  }
   return execFileSync('git', ['-C', projectRoot, '-c', 'core.quotepath=off', ...args],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
@@ -65,7 +84,17 @@ if (!insideRepo) {
 // ── Version gate fast paths (they write nothing, so they need no clean tree;
 //    the clean-tree guard below protects only actual migration work) ──────────
 const installed = scaffold.readPluginVersion(pluginRoot);
-const stamped = scaffold.readVersionStamp(projectRoot);   // null = legacy, infer from files
+if (!isReleaseVersion(installed)) abort('installed plugin has a malformed release version; refusing migration');
+const stampInfo = scaffold.inspectVersionStamp(projectRoot);
+if (stampInfo.kind === 'malformed') abort('project version stamp is malformed; refusing migration without rewriting it');
+const stamped = stampInfo.version;   // null = legacy, infer from files
+const projectConfigFile = path.join(projectRoot, 'config', 'project.json');
+if (fs.existsSync(projectConfigFile)) {
+  try {
+    const config = JSON.parse(fs.readFileSync(projectConfigFile, 'utf8'));
+    if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('expected a JSON object');
+  } catch { abort('config/project.json is malformed; fix it before migration (no project files were changed)'); }
+}
 if (stamped !== null) {
   const cmp = compareVersions(stamped, installed);
   if (cmp === 0) {
@@ -95,6 +124,13 @@ const untrackedOwned = statusLines
 if (untrackedOwned.length) {
   abort(`untracked file(s) in migration-owned paths (${untrackedOwned.join(', ')}) — commit or remove them first; git could not roll them back (files created by an interrupted migration count too: commit them, then re-run to finish)`);
 }
+
+let migrationLock;
+try { migrationLock = acquireUpdateLock('project', projectRoot); }
+catch (e) { abort(e.message); }
+process.on('exit', () => migrationLock.release());
+process.once('SIGINT', () => { migrationLock.release(); process.exit(130); });
+process.once('SIGTERM', () => { migrationLock.release(); process.exit(143); });
 
 // ── Report collector — house style, streamed as it happens ───────────────────
 const report = {
@@ -163,3 +199,4 @@ if (report.applied === 0) {
   console.log(`\nAgenTeX migration done: ${report.applied} migration(s) applied, ${report.flags} flag(s), ${report.manuals} manual item(s).`);
   console.log('verify with a normal test run, then commit the migration as one commit — git is the rollback.');
 }
+migrationLock.release();

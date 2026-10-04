@@ -1,0 +1,9 @@
+.env
+executions/
+# AgenTeX — never commit these: they hold live credentials
+test/.auth/
+.playwright-cli/
+# and this one is only a cache — ui-check re-fetches these design baselines
+test/.ui-baselines/
+# and this one is only a cache too — tracker field metadata, safe to delete, rebuilt on demand
+.agentex/cache/

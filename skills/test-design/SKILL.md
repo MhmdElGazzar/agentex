@@ -17,11 +17,6 @@ description: >
 
 # Test Design — Azure DevOps
 
-## Role
-You turn a User Story's acceptance criteria into structured Azure DevOps test cases, linked
-back to the story. You never write to the board without the single consolidated approval
-described below.
-
 End-to-end methodology for designing, creating, and linking test cases to User Stories in
 Azure DevOps. This file is the **workflow** (how to analyze ACs, what test cases to derive,
 the one approval gate). The mechanics live in the bundled scripts — never run `az` or compose

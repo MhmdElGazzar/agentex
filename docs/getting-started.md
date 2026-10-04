@@ -1,5 +1,9 @@
 # Getting Started
 
+This is the **Claude Code** setup guide. For other supported hosts, use
+[Codex](./codex.md) or [GitHub Copilot Agent](./copilot.md). The shared core and browser
+testing do not require Azure DevOps.
+
 New to Claude Code itself? Read [Using Claude Code](./using-claude-code.md) first — this page
 assumes you already know how to type a request and approve an action.
 
@@ -35,6 +39,11 @@ npx playwright-cli install-browser chromium
 ```
 /init-test
 ```
+
+Run this from your application project. The shared scaffold preserves existing user specs
+and an existing `AGENTS.md` byte-for-byte; if missing, it creates short project guidance.
+It also adds integration samples and a version stamp when appropriate. Azure fields may
+remain unset for ordinary browser testing.
 
 This creates a starting point in your project: sample test files in `test/suite1/` (editable
 examples — adapt them to your app), an empty `executions/` folder where run results will land,
@@ -75,6 +84,10 @@ executions/execu_<timestamp>/
 
 ## Quick reference
 
+Azure setup is optional. Only configure `azure` and `AZURE_PAT` for the separate story,
+task, Test Case, or Bug workflows. Host tool permission is not approval for those writes;
+see [Approvals](./approval-model.md).
+
 - Install: `/plugin marketplace add MhmdElGazzar/elgazzar-plugins` then
   `/plugin install agentex@elgazzar-plugins`
 - Browser driver: `npm install -D @playwright/cli && npx playwright-cli install-browser chromium`
@@ -85,6 +98,14 @@ executions/execu_<timestamp>/
 - After a plugin update: `/update-agentex` (migrates the project to the new conventions)
 
 ## Next steps
+
+If `/init-test` or `/execute-test` is not discovered, verify the Claude marketplace/plugin
+install and restart the Claude session. If a project reports a version/config mismatch, use
+`/update-agentex` to check plugin freshness and plan project migration; a migration needs a
+clean Git tree. For browser BLOCKED results, check the configured target, `@playwright/cli`
+preflight, and session availability before assuming an app defect. Reports are in the
+consumer project's `executions/` directory. Missing KB or Azure configuration affects only
+those optional workflows, not basic browser testing.
 
 - [Test Execution](./test-execution.md) — sequential vs. parallel modes, writing your own specs.
 - [Configuration](./configuration.md) — the three config files (`config/project.json`,

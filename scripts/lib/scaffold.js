@@ -23,6 +23,14 @@ const CLAUDE_MD_BULLET = [
 ].join('\n');
 
 const STAMP_REL = '.agentex/version.json';
+const AGENTS_MD = [
+  '# AgenTeX project guidance',
+  '',
+  'AgenTeX test specs live under `test/`; generated run artifacts live under `executions/`.',
+  'Do not read or search `executions/` for general context unless a specific run is requested.',
+  'Use the installed AgenTeX skills for test execution and project migration.',
+  '',
+].join('\n');
 
 const rel = (projectRoot, f) => path.relative(projectRoot, f).split(path.sep).join('/');
 
@@ -162,6 +170,13 @@ function ensureClaudeMdBullet(projectRoot, { dryRun = false } = {}) {
   return { kind: 'created', path: rel(projectRoot, claudeMd), note: 'created with executions/ guidance' };
 }
 
+function ensureAgentsMd(projectRoot, { dryRun = false } = {}) {
+  const file = path.join(projectRoot, 'AGENTS.md');
+  if (fs.existsSync(file)) return { kind: 'skipped', path: 'AGENTS.md', note: 'existing user guidance preserved byte-for-byte' };
+  if (!dryRun) fs.writeFileSync(file, AGENTS_MD, 'utf8');
+  return { kind: 'created', path: 'AGENTS.md', note: 'Codex guidance; existing user files are never edited' };
+}
+
 // ── Full scaffold — the exact set of actions /init-test performs ─────────────
 function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
   const actions = [];
@@ -242,6 +257,7 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
 
   // 5. CLAUDE.md guidance (append-only)
   actions.push(ensureClaudeMdBullet(projectRoot, { dryRun }));
+  actions.push(ensureAgentsMd(projectRoot, { dryRun }));
 
   return actions;
 }
@@ -322,10 +338,20 @@ function stampPath(projectRoot) {
 
 // Stamped version string, or null when missing/unreadable (a legacy project).
 function readVersionStamp(projectRoot) {
+  const inspected = inspectVersionStamp(projectRoot);
+  return inspected.kind === 'valid' ? inspected.version : null;
+}
+
+function inspectVersionStamp(projectRoot) {
+  const file = stampPath(projectRoot);
+  if (!fs.existsSync(file)) return { kind: 'missing', version: null };
   try {
-    const v = JSON.parse(fs.readFileSync(stampPath(projectRoot), 'utf8')).version;
-    return typeof v === 'string' && v ? v : null;
-  } catch { return null; }
+    const value = JSON.parse(fs.readFileSync(file, 'utf8')).version;
+    const { isReleaseVersion } = require('./version.js');
+    return isReleaseVersion(value)
+      ? { kind: 'valid', version: value }
+      : { kind: 'malformed', version: null };
+  } catch { return { kind: 'malformed', version: null }; }
 }
 
 function writeVersionStamp(projectRoot, version, { dryRun = false } = {}) {
@@ -347,6 +373,6 @@ module.exports = {
   hasSpecFiles, hasEnvFiles, scaffoldProject, hasLegacySignals,
   sampleEnvShapes, isPristineSampleEnv,
   gitignoreMissing, ensureGitignore,
-  claudeMdHasBullet, ensureClaudeMdBullet,
-  stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,
+  claudeMdHasBullet, ensureClaudeMdBullet, ensureAgentsMd,
+  stampPath, readVersionStamp, inspectVersionStamp, writeVersionStamp, readPluginVersion,
 };

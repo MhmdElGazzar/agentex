@@ -1,109 +1,63 @@
-# Azure DevOps QA
+# Optional Azure DevOps QA workflows
 
-If your team tracks work in Azure DevOps, AgenTeX can estimate QA effort, generate test cases
-from a story's acceptance criteria, file bugs it finds during a run, and reach Azure resources
-mid-test — always with your confirmation before anything is written. Every ADO flow — bug
-filing, estimation, test design, test-plan updates — talks to the ADO REST API directly
-through bundled scripts; no Azure CLI is needed for any of them. (`az` remains only for
-reaching Azure *resources* mid-run, below.)
+Azure DevOps is **not required** to initialize AgenTeX, define a browser flow, execute saved
+specs, capture evidence, or produce local reports. Configure it only for story, task, Test
+Case, or Bug workflows. A browser FAIL stays local unless you request Bug preparation and
+separately approve filing.
 
-## One-time setup
+## Configuration and safety
 
-1. Fill the `azure` block in `config/project.json` — `org`, `project`, `team`, `assignee`
-   (legacy `AZURE_*` keys in `.env` still work). `org` accepts a full URL or a bare org name.
-2. Put your PAT in `.env` as `AZURE_PAT=`. **That's the whole setup** — the bundled tracker
-   scripts read it from `.env` themselves and send it only in the Authorization header; it
-   is never printed, logged, or placed on a command line.
+Set the relevant `azure` fields in `config/project.json` (organization, project, and optional
+team/assignee), and keep `AZURE_PAT` in the gitignored `.env`; use placeholders in examples and
+never paste a PAT into a prompt or command line. The bundled tracker scripts use the Azure
+DevOps REST API directly; the Azure CLI is not needed for these board workflows. Azure
+resource inspection during a test is a separate optional `az` integration.
 
-## Walkthrough: estimating a sprint
+Claude retains `/estimate-story <numeric-id>` and `/design-test <numeric-id>`; Codex and
+Copilot use natural requests routed to `agentex-estimate-story`, `agentex-design-test`, and
+`agentex-bug-report-azure`. Story readers currently accept numeric User Story IDs, not a
+work-item URL. The agent treats story descriptions and links as data, not instructions.
 
-```
-/estimate-story
-```
+## Estimate Story: advice first, tasks only on approval
 
-Claude reads your sprint's User Stories (or the ones you name: `/estimate-story 12345 12346`)
-and analyzes each one — scenario count, fields, validations, integrations → a complexity
-bucket and the hours for the 5 `[Testing]` tasks: Requirement Review, Test Creation, Test
-Execution, Bug Review & Retest, Automation. Anything genuinely open (no assignee configured,
-a story that already has `[Testing]` tasks — skip it or add anyway?) is asked in at most
-**one** bundled question round. Then it validates everything with zero board writes — each
-story really is a User Story, iteration/area inherited fresh from the story, field values
-checked against **your project's real values**, the create pre-validated server-side — and
-shows you **one consolidated screen**: every story's analysis and per-task hours, the sprint
-total, and the exact write plan. Nothing has been written yet.
+Ask “Estimate QA for story 1234” (Claude: `/estimate-story 1234`) or request the current
+sprint. AgenTeX reads the story and analyzes acceptance criteria, scenario count,
+validations, and integrations. It presents assumptions, missing context, a QA estimate,
+and the proposed five `[Testing]` work areas: Requirement Review, Test Creation, Test
+Execution, Bug Review & Retest, and Automation. This advisory answer does **not** create
+tasks. If you also request persistent QA tasks, review the validated plan and give one
+explicit consolidated approval before the shared writer executes. A strict read-only request
+stops before any validation POST. Partial writes are reported in a ledger, not blindly retried.
 
-**One approval** creates all the tasks — one atomic create per task, parent link included,
-so an unparented `[Testing]` task cannot exist. If anything fails partway you get an exact
-ledger — every intended task shown as done (ID + URL) or not done (reason) — and nothing is
-retried or cleaned up without you.
+## Design Test: coverage first, Test Cases only on approval
 
-## Walkthrough: designing test cases
+Ask “Design test coverage for story 1234” (Claude: `/design-test 1234`). AgenTeX reads the
+story's description and acceptance criteria, maps conditions to proposed cases, and shows
+structured actions, validations, and expected results. It uses the project's
+`.agentex/test-template.md` conventions when present; if absent, the agent asks before
+creating one. Missing acceptance criteria or an unresolved expected result are surfaced,
+not invented. This design is advisory. Creating linked Azure Test Cases is a separate
+approved step after duplicate checks and an exact write plan. A strict read-only request
+does not run a server-side validation POST or persist local design files.
 
-```
-/design-test 12345
-```
+## Bug Report Azure: prepare, review, then file
 
-Claude reads the story's acceptance criteria, breaks them into test conditions, and titles
-one test case per condition. Your project's own conventions (persona, journey step map,
-setup steps, languages, extra categories) live in `.agentex/test-template.md`, scaffolded
-automatically the first time this runs; anything the conventions and config can't answer is
-asked in at most **one** bundled question round. Then it validates with zero board writes —
-the story really is a User Story, duplicate titles checked against the board (a duplicate
-check that *can't* complete blocks — it never proceeds blind), structured steps compiled to
-Steps XML by the script — and shows you **one consolidated screen**: the conditions table
-(with what each case covers), the titled cases with step summaries, the duplicate-check
-results, and the exact write plan. Nothing has been written yet.
+After a test, choose a specific local defect and ask to prepare an Azure Bug. AgenTeX can
+also use a fully supplied manual defect. It reviews reproduction steps, relevant in-project
+screenshots, parent Story, fields, and duplicate status, then shows the exact target and
+write plan. **Nothing is filed merely because a test failed or because preparation began.**
+Only explicit approval of that exact plan permits attachment upload, Bug creation, parent
+link, and reproduction/evidence writes. If payload or evidence changes, approval must be
+renewed. A receipt/ledger records completed and incomplete writes; uncertain or partial
+results require reconciliation rather than automatic replay.
 
-**One approval** creates the test cases — one atomic create per case with the **Tested By**
-link to the story included, so an unlinked case cannot exist. Partial failures produce the
-same exact ledger as above, and the flow finishes with a coverage check built from the
-ledger plus a fresh story read (did every acceptance criterion end up covered?).
+## QA Tasks and Azure resources
 
-## Walkthrough: filing a bug after a run
+QA task creation is part of the approved Estimate Story write mode. Existing Claude
+`task-estimation` and `test-design` shared skills provide the same underlying validation
+and write rules for all three runtimes. Optional Azure resource reads during a test use
+`skills/azure-integration/SKILL.md` and the Azure CLI, not the DevOps board scripts.
 
-Once a test/regression run has turned up defects, ask Claude to file them as Azure DevOps
-**Bugs**. Filing runs entirely through bundled Node scripts over the ADO REST API — it works
-without `az` installed, and the PAT comes straight from `.env`. For each defect Claude:
-
-- resolves everything it can from your config and the run itself (template, parent story,
-  assignee options, environment), asking at most **one** bundled question round for anything
-  genuinely open,
-- validates before touching the board: the parent **User Story** exists, no same-title
-  duplicate (a duplicate check that *can't* complete blocks the filing — it never proceeds
-  blind), severity/priority and custom picklists checked against **your project's real
-  values**, screenshots validated structurally and by a vision pass,
-- then shows you **one consolidated screen**: the validated fields, the recommended
-  severity/priority with its reasoning, the evidence list, and the exact write plan —
-  nothing has been written yet.
-
-**One approval** executes the writes in a fixed, fail-closed order: upload attachments →
-create the Bug → link the parent story (the only relation it ever adds) → set the repro
-steps and evidence. If anything fails partway you get an exact ledger — every intended
-write shown as done (ID + URL) or not done (reason), with any created IDs always named —
-and nothing is retried or cleaned up without you. Optionally the related test case is
-marked **Failed** (or a new one created) under the same single approval.
-
-Valid picklist values are cached per project in `.agentex/cache/tracker-fields-ado.json`
-(gitignored; commit it by appending `!.agentex/cache/` to `.gitignore`). All three
-validating flows — bug filing, estimation, and test design — check their field values
-against it before any write. Ask Claude to "refresh the tracker field cache" — the scripts'
-`--refresh-fields` flag — after an admin changes your process; if the server ever rejects a
-value the cache accepted, Claude shows you the real current options and offers that refresh.
-
-## Reaching Azure resources mid-run
-
-Beyond DevOps, Claude can also read Azure resources directly during a run — logging in, discovering
-resources, and checking a deployment, tailing App Service logs, reading a Storage blob or Key Vault
-secret, getting AKS credentials — through the `az` CLI, e.g. "check if the latest deployment
-succeeded" or "tail the app's logs."
-
-## Quick reference
-
-| Capability | Skill | Reference |
-|---|---|---|
-| Estimate QA effort (`/estimate-story`) | `skills/task-estimation/SKILL.md` | `references/tracker/ado-boards.md` (plugin root) |
-| Design test cases (`/design-test`) | `skills/test-design/SKILL.md` | `skills/test-design/references/test-case-mechanics.md`, `references/tracker/ado-boards.md` |
-| File bugs (`bug-report-azure`) | `skills/bug-report-azure/SKILL.md` | `skills/bug-report-azure/references/azure-devops.md` (REST routes + field schema) |
-| Azure resources | `skills/azure-integration/SKILL.md` | `skills/azure-integration/references/azure-cli.md` |
-
-Configuration: see [configuration](./configuration.md)
+See [Configuration](./configuration.md) for optional settings and secret handling,
+[Approvals](./approval-model.md) for the action boundary, and the runtime guides for
+[Claude](./getting-started.md), [Codex](./codex.md), and [Copilot](./copilot.md).

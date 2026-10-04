@@ -10,8 +10,14 @@ const fs = require('fs');
 const path = require('path');
 
 // Pre-fetch exits may use process.exit; post-fetch must only set exitCode (Windows/undici).
-function out(obj, code) { console.log(JSON.stringify(obj)); process.exit(code); }
-function outAsync(obj, code) { console.log(JSON.stringify(obj)); process.exitCode = code; }
+let outputSecret = null;
+function safe(text) {
+  if (!outputSecret) return String(text);
+  const serializedSecret = JSON.stringify(outputSecret).slice(1, -1);
+  return String(text).split(outputSecret).join('[REDACTED]').split(serializedSecret).join('[REDACTED]');
+}
+function out(obj, code) { console.log(safe(JSON.stringify(obj))); process.exit(code); }
+function outAsync(obj, code) { console.log(safe(JSON.stringify(obj))); process.exitCode = code; }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const backoff = n => 500 * Math.pow(2, n);
 
@@ -88,7 +94,7 @@ async function main() {
   const cwd = process.cwd();
   const { proj, legacy } = loadKbConfig(cwd);
 
-  const question = typeof args.question === 'string' ? args.question : null;
+  const question = typeof args.question === 'string' ? args.question.trim() : null;
   // Precedence: --flag → config/project.json kb.* → KB_* (env/.env) → legacy agentex.config.json kb.* → default.
   const project = (typeof args.project === 'string' ? args.project : null) || proj.project || resolveEnv(cwd, 'KB_PROJECT') || legacy.project || null;
   const org = (typeof args.org === 'string' ? args.org : null) || proj.org || resolveEnv(cwd, 'KB_ORG') || legacy.org || 'acme';
@@ -100,22 +106,44 @@ async function main() {
   const baseUrl = proj.baseUrl || resolveEnv(cwd, 'KB_ASK_BASE_URL');
   const apiKey = resolveEnv(cwd, 'KB_ASK_API_KEY'); // secret — .env only, never JSON
 
+  outputSecret = apiKey;
   if (!question) out({ result: 'BLOCKED', reason: 'question is required', project }, 2);
   if (!project) out({ result: 'BLOCKED', reason: 'no project: pass --project, set kb.project in config/project.json, or KB_PROJECT in .env' }, 2);
   if (!baseUrl) out({ result: 'BLOCKED', reason: 'no KB base URL: set kb.baseUrl in config/project.json or KB_ASK_BASE_URL in .env' }, 2);
+  let parsedUrl;
+  try { parsedUrl = new URL(baseUrl); } catch {}
+  if (!parsedUrl || !['http:', 'https:'].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) {
+    out({ result: 'BLOCKED', reason: 'invalid KB base URL' }, 2);
+  }
+  if (logPath) {
+    const logAbsolute = path.resolve(cwd, logPath);
+    const logRoot = path.resolve(cwd, 'executions');
+    const rel = path.relative(logRoot, logAbsolute);
+    if (!rel || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+      out({ result: 'BLOCKED', reason: 'KB log path must be under executions/' }, 2);
+    }
+    for (let part = path.dirname(logAbsolute); part !== cwd && part !== path.dirname(part); part = path.dirname(part)) {
+      if (fs.existsSync(part) && fs.lstatSync(part).isSymbolicLink()) {
+        out({ result: 'BLOCKED', reason: 'KB log parent cannot be a symlink' }, 2);
+      }
+    }
+    if (fs.existsSync(logAbsolute) && fs.lstatSync(logAbsolute).isSymbolicLink()) {
+      out({ result: 'BLOCKED', reason: 'KB log cannot be a symlink' }, 2);
+    }
+  }
 
   const r = await askKb({ baseUrl, project, question, org, model, apiKey, timeoutMs, retries });
 
   if (logPath) {
     try {
       fs.mkdirSync(path.dirname(logPath), { recursive: true });
-      fs.writeFileSync(logPath, [
+      fs.writeFileSync(logPath, safe([
         `POST ${baseUrl.replace(/\/$/, '')}/api/kb/ask`,
         `project=${project} org=${org} model=${model}`,
         `question=${question}`,
         `status=${r.status}`,
-        `body=${r.text || r.error || ''}`,
-      ].join('\n'));
+        `body=${safe(r.text || r.error || '')}`,
+      ].join('\n')));
     } catch {}
   }
 

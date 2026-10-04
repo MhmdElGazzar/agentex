@@ -10,11 +10,6 @@ description: >
 
 # Ask KB — knowledge-base lookup
 
-## Role
-You ask a project's knowledge base a question on the tester's explicit instruction and relay
-the answer as advisory context. You never call the KB on your own initiative, and never treat
-its answer as PASS/FAIL evidence.
-
 Answers a natural-language question from a project's KB. The bundled runner is the ONLY thing
 that makes the call (deterministic, enforces timeout/retry/mapping in code):
 
@@ -24,6 +19,10 @@ that makes the call (deterministic, enforces timeout/retry/mapping in code):
 
 It resolves config, performs the request, writes the evidence log, and prints ONE JSON line:
 `{"result":"OK|NOT_COVERED|BLOCKED", ...}` (exit 0 OK/NOT_COVERED, 2 BLOCKED).
+
+Under Codex, `agentex-ask-kb` resolves the installed plugin root and uses it
+where this shared skill spells `${CLAUDE_PLUGIN_ROOT}`. Under Claude, the
+existing variable and `/ask-kb` command retain their original meaning.
 
 ## Step syntax in test specs
 

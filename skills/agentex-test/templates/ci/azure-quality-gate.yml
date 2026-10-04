@@ -1,0 +1,86 @@
+# Inactive job template. The consumer owns its pipeline, plugin checkout,
+# trusted setup steps, Codex authentication, target environment, and retention.
+parameters:
+- name: agentexRoot
+  type: string
+- name: consumerRoot
+  type: string
+  default: '$(Build.SourcesDirectory)'
+- name: codexHome
+  type: string
+  default: '$(Agent.TempDirectory)/agentex-codex-$(System.JobId)'
+- name: specDir
+  type: string
+- name: environment
+  type: string
+  default: ''
+- name: concurrency
+  type: number
+  default: 2
+- name: workerTimeoutMs
+  type: number
+  default: 900000
+- name: flakyPolicy
+  type: string
+  default: review
+  values: [review, fail, allow]
+- name: jobTimeoutMinutes
+  type: number
+  default: 90
+- name: artifactName
+  type: string
+  default: agentex-quality
+- name: publishArtifacts
+  type: boolean
+  default: true
+- name: pool
+  type: object
+  default:
+    vmImage: windows-2022
+- name: setupSteps
+  type: stepList
+  default: []
+
+jobs:
+- job: AgentexQualityGate
+  displayName: AgenTeX Codex quality gate
+  timeoutInMinutes: ${{ parameters.jobTimeoutMinutes }}
+  pool: ${{ parameters.pool }}
+  variables:
+    AgentexCodexHome: ${{ parameters.codexHome }}
+  steps:
+  - checkout: self
+  - task: NodeTool@0
+    displayName: Use Node 22
+    inputs:
+      versionSpec: '22.x'
+  - ${{ each step in parameters.setupSteps }}:
+    - ${{ step }}
+  - task: CmdLine@2
+    name: RunGate
+    displayName: Execute and evaluate exact AgenTeX run
+    inputs:
+      script: node "${{ parameters.agentexRoot }}/skills/agentex-test/scripts/azure_quality_gate.js"
+      workingDirectory: ${{ parameters.consumerRoot }}
+    env:
+      AGENTEX_CONSUMER_ROOT: ${{ parameters.consumerRoot }}
+      AGENTEX_SPEC_DIR: ${{ parameters.specDir }}
+      AGENTEX_ENVIRONMENT: ${{ parameters.environment }}
+      AGENTEX_CONCURRENCY: ${{ parameters.concurrency }}
+      AGENTEX_WORKER_TIMEOUT_MS: ${{ parameters.workerTimeoutMs }}
+      AGENTEX_FLAKY_POLICY: ${{ parameters.flakyPolicy }}
+      AGENTEX_ARTIFACT_NAME: ${{ parameters.artifactName }}
+      AGENTEX_PUBLISH_ARTIFACTS: ${{ parameters.publishArtifacts }}
+      AGENT_TEMPDIRECTORY: $(Agent.TempDirectory)
+      BUILD_BUILDID: $(Build.BuildId)
+      SYSTEM_JOBID: $(System.JobId)
+      SYSTEM_JOBATTEMPT: $(System.JobAttempt)
+      AGENTEX_CI: '1'
+      CODEX_HOME: $(AgentexCodexHome)
+  - task: PublishBuildArtifacts@1
+    displayName: Publish verified AgenTeX allowlist
+    condition: and(always(), eq(variables['RunGate.AgentexArtifactReady'], 'true'))
+    inputs:
+      PathtoPublish: $(RunGate.AgentexArtifactPath)
+      ArtifactName: $(RunGate.AgentexArtifactName)
+      publishLocation: Container

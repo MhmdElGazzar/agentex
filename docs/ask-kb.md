@@ -1,5 +1,9 @@
 # Ask the Knowledge Base
 
+Ask KB is optional. Configure a project KB only if you want advisory requirement context;
+core browser testing works without it. Claude uses `/ask-kb`, while Codex and GitHub Copilot
+Agent route natural questions through `agentex-ask-kb`.
+
 If your project has a knowledge base, you can ask it questions in plain language mid-test — or
 any time, standalone — instead of digging through docs yourself. The answer is **advisory
 only**: it helps you understand a flow, but it never counts as pass/fail proof. The call is explicit — Claude never queries the KB on its own initiative.
@@ -33,7 +37,7 @@ or `kb:acme-store: <question>` inside a spec.
 
 | Variable | Purpose |
 |----------|---------|
-| `KB_ASK_BASE_URL` | KB Ask API host (host only, e.g. `http://localhost:3000`); fallback when not in `config/project.json` `kb.baseUrl`. |
+| `KB_ASK_BASE_URL` | KB Ask API host (host only, e.g. `https://kb.example.org`); fallback when not in `config/project.json` `kb.baseUrl`. |
 | `KB_PROJECT` | Default project id (e.g. `acme-store`); fallback when not in `config/project.json` `kb.project`; a `kb:<project>:` step overrides it. |
 | `KB_ASK_API_KEY` | Shared secret sent as `x-api-key` (required when the server has it set). |
 
@@ -41,7 +45,9 @@ or `kb:acme-store: <question>` inside a spec.
 - Sends `x-api-key` from `KB_ASK_API_KEY` when set (never logged).
 - A `401` is reported as `BLOCKED` (not retried); `429` responses honor `Retry-After`
   automatically.
-- The response's `cached` flag is surfaced; the API's default model is `sonnet`.
+- The response's `cached` flag is surfaced. An uncovered question returns `NOT_COVERED`,
+  not a guessed answer or a PASS/FAIL verdict. Keep API keys and secret values out of
+  questions, logs, and shared reports; the runner redacts configured secrets.
 
 **Reference:**
 - Skill: `skills/ask-kb/SKILL.md`

@@ -11,6 +11,11 @@ description: >
 
 # Define Flow — the flow is defined by doing it, not by writing it
 
+Under Codex, `agentex-define-flow` resolves the installed plugin root and uses it
+where this shared skill spells `${CLAUDE_PLUGIN_ROOT}`. Under Claude, the existing
+variable and `/define-flow` command retain their original meaning. A fresh
+validation run is `agentex-test` under Codex and `/execute-test` under Claude.
+
 ## Role
 
 You lead a **define-by-doing session**. The user has a flow in their head (or an unclear
@@ -131,7 +136,11 @@ When the user says the flow is complete:
    - **Notes** — stateful order, disposable data used, and each symbolically captured value
      (app-surfaced, and user-supplied fresh disposable data) with its inline example.
 2. Propose a file name under the user's suite folder — default `test/suite1/<slug>.md`, slug
-   derived from the flow's goal. Save only on the user's confirmation.
+   derived from the flow's goal. Save only on the user's confirmation. If it already
+   exists, preserve it and propose a new name. Use the shared
+   `skills/define-flow/scripts/save_spec.js --draft <draft> --output <test/path.md>`
+   guard to validate the spec and create it exclusively; never overwrite or bypass
+   a validation error. The draft and output paths are relative to the consumer root.
 3. Close the session's browser (`-s=<session> close` — only your own session, never
    `close-all`/`kill-all`), then clean the transient `.playwright-cli/` scratch — draft
    included — once the final spec is saved.

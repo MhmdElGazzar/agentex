@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "agentex",
+  "version": "0.22.0",
+  "description": "Agentic QA with browser testing, evidence, reports, and cataloged integrations.",
+  "author": {
+    "name": "Mohamed Elgazzar",
+    "email": "mhmd.elgazzar.sqe@gmail.com"
+  },
+  "repository": "https://github.com/MhmdElGazzar/agentex",
+  "license": "MIT",
+  "keywords": ["qa", "testing", "playwright", "browser", "agentic"]
+}

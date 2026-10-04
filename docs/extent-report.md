@@ -21,7 +21,7 @@ Generated at the end of a run (one test case or a full batch), via the extent-re
 by the deterministic script:
 
 ```bash
-node skills/extent-report/scripts/make_html_report.js
+node <agentex-root>/skills/extent-report/scripts/make_html_report.js <run-summary.json> <extent-report.html>
 ```
 
 The file is written next to `report.md` in the same execution directory.

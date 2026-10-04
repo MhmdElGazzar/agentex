@@ -1,0 +1,23 @@
+# Inactive, non-deploying consumer example. Copy into the consumer repository,
+# make the AgenTeX plugin available at agentexRoot, and provide trusted setup
+# steps for Codex CLI authentication and Playwright CLI/browser installation.
+trigger: none
+
+jobs:
+- template: azure-quality-gate.yml
+  parameters:
+    agentexRoot: '$(Build.SourcesDirectory)/agentex-plugin'
+    consumerRoot: '$(Build.SourcesDirectory)'
+    specDir: 'test/regression'
+    flakyPolicy: review
+    setupSteps: []
+
+# Demonstrates the downstream condition only. This job never deploys.
+- job: ReleaseEligibilityExample
+  dependsOn: AgentexQualityGate
+  condition: and(succeeded(), eq(dependencies.AgentexQualityGate.outputs['RunGate.AgentexReleaseEligible'], 'true'))
+  pool:
+    vmImage: windows-2022
+  steps:
+  - script: echo AgenTeX gate passed
+    displayName: Print eligibility only

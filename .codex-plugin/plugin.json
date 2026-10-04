@@ -1,0 +1,14 @@
+{
+  "name": "agentex",
+  "version": "0.22.0",
+  "description": "Agentic QA with browser testing, evidence, reports, and cataloged integrations.",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AgenTeX",
+    "shortDescription": "Agentic browser QA with evidence and reports",
+    "longDescription": "Initialize a test project and run browser scenarios through the shared AgenTeX skills and Playwright CLI.",
+    "developerName": "Mohamed Elgazzar",
+    "category": "Productivity",
+    "capabilities": ["Browser testing", "QA reports"]
+  }
+}
