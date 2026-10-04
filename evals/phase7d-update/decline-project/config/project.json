@@ -1,0 +1,5 @@
+{
+  "name": "Disposable AgenTeX update fixture",
+  "defaultEnvironment": "qc",
+  "azure": { "project": "KeepFixtureConfig" }
+}

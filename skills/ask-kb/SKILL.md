@@ -25,6 +25,10 @@ that makes the call (deterministic, enforces timeout/retry/mapping in code):
 It resolves config, performs the request, writes the evidence log, and prints ONE JSON line:
 `{"result":"OK|NOT_COVERED|BLOCKED", ...}` (exit 0 OK/NOT_COVERED, 2 BLOCKED).
 
+Under Codex, `agentex-ask-kb` resolves the installed plugin root and uses it
+where this shared skill spells `${CLAUDE_PLUGIN_ROOT}`. Under Claude, the
+existing variable and `/ask-kb` command retain their original meaning.
+
 ## Step syntax in test specs
 
     kb: <question>              # uses the default project from config/project.json (legacy agentex.config.json is a fallback)

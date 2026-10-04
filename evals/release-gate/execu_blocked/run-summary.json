@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "title": "Infrastructure-blocked gate fixture",
+  "date": "2026-01-01",
+  "run": {
+    "mode": "parallel",
+    "sessions": [
+      { "session": "pass-fixture", "spec": "fixture-pass.md" },
+      { "session": "blocked-fixture", "spec": "fixture-blocked.md" }
+    ]
+  },
+  "summary": { "passed": 1, "failed": 0, "blocked": 1, "total": 2 },
+  "testCases": [
+    { "name": "Passing fixture", "session": "pass-fixture", "status": "passed", "steps": [ { "desc": "Check", "status": "passed" } ] },
+    { "name": "Unavailable browser fixture", "session": "blocked-fixture", "status": "blocked", "steps": [ { "desc": "Launch browser", "status": "blocked" } ] }
+  ],
+  "defects": []
+}

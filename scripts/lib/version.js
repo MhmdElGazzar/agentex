@@ -20,4 +20,11 @@ function compareVersions(a, b) {
   return 0;
 }
 
-module.exports = { compareVersions };
+// Project/plugin release stamps are intentionally stricter than the historical
+// comparator (which retains its Claude-era semantics for existing callers).
+// A malformed stamp must never compare equal to a valid release by parseInt.
+function isReleaseVersion(value) {
+  return typeof value === 'string' && /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(value);
+}
+
+module.exports = { compareVersions, isReleaseVersion };

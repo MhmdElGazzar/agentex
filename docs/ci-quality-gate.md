@@ -1,5 +1,12 @@
 # CI Quality Gate
 
+This page documents the existing Claude-specific execute-and-verdict
+`ci_gate.js` flow and its unchanged public contract. Phase 5 also adds a
+provider-neutral **offline** gate for an already finalized v2 run; see
+[`release-gate.md`](../skills/test-execution/references/procedures/release-gate.md).
+The offline evaluator has its own decision and exit-code contract and does
+not launch Claude, Codex, or a browser.
+
 Run a full AgenTeX test suite from your CI/CD pipeline — headlessly, with zero user
 interaction — and gate the delivery on a dependable machine-readable verdict. The plugin
 provides the CI-invokable pieces (one entry-point script, a gating preflight, the verdict

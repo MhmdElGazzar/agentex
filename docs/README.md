@@ -1,18 +1,22 @@
 # AgenTeX Documentation
 
-Detailed docs for each capability. Start with the [project README](../README.md) for install and a
-quick tour.
+Start with the [project README](../README.md) for the multi-runtime Quick Start. Choose your
+host guide for installation and invocation; the capability guides describe shared behavior.
 
-| Doc | What it covers |
-|-----|----------------|
-| [Using Claude Code](./using-claude-code.md) | New to Claude Code itself? Start here — typing requests, slash commands, approving actions. |
-| [Getting Started](./getting-started.md) | Install → browser driver → `/init-test` → permissions → first run. |
-| [Test Execution](./test-execution.md) | The core flow — sequential vs. parallel modes, writing specs (browser, API, DB steps), output layout. |
-| [Define Flow](./define-flow.md) | `/define-flow` — build a spec by doing it: each step executed live and asserted before the next is defined; also walks existing specs to clarify them. |
-| [API & DB Steps](./api-db-steps.md) | Catalog-only `api:` / `db:` steps inside test scenarios. |
-| [Ask the Knowledge Base](./ask-kb.md) | `kb:` steps and the `/ask-kb` command (advisory only). |
-| [Optimize Login](./optimize-login.md) | Pay a web app's login cost once per session instead of once per test. |
-| [Azure DevOps QA](./azure-devops.md) | `/estimate-story`, `/design-test`, `bug-report-azure` bug filing, and Azure resource access. |
-| [Interactive HTML Report](./extent-report.md) | The standalone `extent-report.html` dashboard. |
-| [CI Quality Gate](./ci-quality-gate.md) | Invoke runs from your CI/CD pipeline: the `ci_gate.js` entry point, exit-code semantics (0/1/2), the public verdict JSON contract, pipeline templates, advisory vs blocking modes. |
-| [Configuration](./configuration.md) | Environment variables, permissions, and secret handling. |
+| Guide | What it covers |
+|---|---|
+| [Claude Code](./getting-started.md) | Marketplace install, `/init-test`, `/execute-test`, and Claude permissions. |
+| [Codex](./codex.md) | Codex plugin/skills, initialization, runs, updates, and troubleshooting. |
+| [GitHub Copilot Agent](./copilot.md) | VS Code package registration, eight skills, runs, updates, and troubleshooting. |
+| [Using Claude Code](./using-claude-code.md) | Claude interface basics: natural requests, slash commands, approvals. |
+| [Test Execution](./test-execution.md) | Sequential/parallel execution, specs, result semantics, and evidence. |
+| [Define Flow](./define-flow.md) | Guided live authoring and user-confirmed spec save. |
+| [API & DB Steps](./api-db-steps.md) | Catalog-only `api:` / `db:` steps. |
+| [Ask the Knowledge Base](./ask-kb.md) | Advisory `kb:` steps and standalone questions. |
+| [Azure DevOps QA](./azure-devops.md) | Optional estimation, design, task, and Bug workflows. |
+| [Approvals](./approval-model.md) | Tool permission versus approval for browser, project, and Azure writes. |
+| [Configuration](./configuration.md) | Environments, optional integrations, permissions, and secret handling. |
+| [Optimize Login](./optimize-login.md) | Save and reuse a browser login session. |
+| [UI Check](./ui-check.md) | Compare browser UI with a Figma or image baseline. |
+| [Interactive HTML Report](./extent-report.md) | Standalone `extent-report.html` dashboard. |
+| [CI Quality Gate](./ci-quality-gate.md) | Claude-specific CI entrypoint and provider-neutral offline evaluation. |

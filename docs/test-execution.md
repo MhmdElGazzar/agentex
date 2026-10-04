@@ -1,5 +1,9 @@
 # Test Execution
 
+This is shared AgenTeX behavior. Claude uses `/execute-test`; Codex and GitHub Copilot
+Agent use their installed `agentex-test` skills through natural-language requests. Azure
+DevOps is not required for these runs.
+
 This is the core of AgenTeX: instead of clicking through a web app by hand to test it, you
 describe what to test and Claude runs it for you — driving a real browser, calling your APIs,
 and checking your database — taking evidence, checking for errors, and reporting back what
@@ -55,6 +59,11 @@ instead of every run.
 
 ## Writing your own specs
 
+Across runtimes, parallel execution is explicitly scoped and bounded. Each spec owns a
+unique named session, results are aggregated deterministically, and cleanup closes only
+owned sessions. Copilot's assembled package contains the shared parallel coordinator;
+it does not need the AgenTeX source checkout for this mode.
+
 A spec is just a markdown file: a target, what "correct" looks like, and a numbered list of
 scenarios, written in plain language:
 
@@ -102,6 +111,24 @@ your project automatically. To add more coverage, drop another `.md` file next t
 `login.md`, `checkout.md`); in parallel mode each becomes its own session.
 
 ## Quick reference
+
+Results are **PASS** when expectations are observed, **FAIL** when the product contradicts
+them, and **BLOCKED** when an infrastructure or execution problem prevents a reliable
+product verdict. BLOCKED is not automatically a product defect; FAIL remains a local result
+unless an optional Azure Bug workflow is separately approved.
+
+In a parallel run, a worker crash, timeout, or missing `executor-result.json` makes that
+assignment **BLOCKED**; the coordinator does not infer PASS or silently switch the
+requested run to sequential execution. For `EPERM`, `MISSING_RESOURCE`, worker timeout,
+or missing-result signals, inspect
+`browser-sessions/<session>/logs/worker-stdout.log` and
+`browser-sessions/<session>/logs/worker-stderr.log` in the run directory. These logs keep
+sanitized process metadata and signal names, not raw model or tool transcripts. Codex
+hosts may restrict nested worker launch; see [Codex parallel runtime troubleshooting](./codex.md#parallel-runtime-limit-and-troubleshooting).
+
+Normal run outputs include `report.md`, machine-readable `run-summary.json`,
+`extent-report.html`, per-session `executor-result.json`, screenshots/logs and browser
+snapshots, plus `bugs/bug-list.md` and relevant defect evidence where applicable.
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|

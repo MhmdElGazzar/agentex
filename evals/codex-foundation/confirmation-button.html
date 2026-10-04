@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AgenTeX confirm gate fixture</title></head>
+<body>
+  <h1>AgenTeX confirm gate</h1>
+  <button id="confirm" type="button">Apply change</button>
+  <p id="applied" hidden>Change applied</p>
+  <script>
+    document.getElementById('confirm').addEventListener('click', () => {
+      document.getElementById('applied').hidden = false;
+    });
+  </script>
+</body>
+</html>

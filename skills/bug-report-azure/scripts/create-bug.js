@@ -45,6 +45,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const LIB = path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'tracker');
 const { resolveTracker, TrackerError } = require(path.join(LIB, 'index.js'));
 const fieldCache = require(path.join(LIB, 'cache.js'));
@@ -122,6 +123,34 @@ function buildReproHtml(spec, uploaded) {
 
 const REQUIRED = ['title', 'severity', 'priority', 'parentStoryId', 'assignedTo', 'summary', 'steps', 'expected', 'actual'];
 const PARENT_LINK = 'System.LinkTypes.Hierarchy-Reverse'; // the ONLY link this script creates
+
+// Codex's approval artifact binds one reviewed plan to the exact target,
+// normalized spec, evidence bytes, and write-affecting flags. The legacy
+// Claude invocation remains supported; the Codex entry skill requires this
+// extra guard on every execute.
+function approvalDigest(adapter, spec, args, fields, atts) {
+  const evidence = atts.map((file) => ({
+    file: path.resolve(file),
+    sha256: fs.existsSync(file) ? crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') : 'missing',
+  }));
+  return crypto.createHash('sha256').update(JSON.stringify({
+    target: { base: adapter.config.base, project: adapter.config.project },
+    spec, fields, evidence,
+    flags: { allowDuplicate: Boolean(args['allow-duplicate']), noScreenshots: Boolean(args['no-screenshots']), force: Boolean(args.force) },
+  })).digest('hex');
+}
+
+function evidencePathError(cwd, file) {
+  if (typeof file !== 'string' || !file || file.split(/[\\/]/).includes('..')) return 'path-traversal';
+  const root = fs.realpathSync(cwd);
+  let actual;
+  try { actual = fs.realpathSync(path.resolve(cwd, file)); }
+  catch { return 'not-found'; }
+  const rel = path.relative(root, actual);
+  if (!rel || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return 'outside-project';
+  if (!fs.statSync(actual).isFile()) return 'not-a-file';
+  return null;
+}
 
 // ---- validation phase (shared by dry run and the pre-write guard) ------------
 // Reads + local checks only — NOTHING here writes to the board.
@@ -209,7 +238,16 @@ async function validate(adapter, spec, args, cwd) {
 
   // 4) attachment structural checks + evidence policy
   const atts = spec.attachments || [];
-  validation.attachments = atts.map((a) => {
+  if (!Array.isArray(atts) || atts.some((a) => typeof a !== 'string')) {
+    blocked.push({ reason: 'attachment-invalid', message: 'spec.attachments must be an array of file paths' });
+  }
+  if (args['approved-plan'] && Array.isArray(atts)) {
+    for (const file of atts) {
+      const reason = evidencePathError(cwd, file);
+      if (reason) blocked.push({ reason: 'evidence-path-unsafe', file, detail: reason, message: `evidence path refused: ${reason}` });
+    }
+  }
+  validation.attachments = (Array.isArray(atts) ? atts.filter((a) => typeof a === 'string') : []).map((a) => {
     const c = structuralCheck(a);
     return { file: a, ok: c.ok, ...(c.fmt ? { format: c.fmt } : {}), ...(c.w ? { width: c.w, height: c.h } : {}), ...(c.reason ? { reason: c.reason } : {}) };
   });
@@ -220,7 +258,7 @@ async function validate(adapter, spec, args, cwd) {
       message: `${bad.length} attachment(s) failed the structural check (${bad.map((b) => `${b.file}: ${b.reason}`).join('; ')}) — fix/drop them or pass --force`,
     });
   }
-  if (atts.length === 0 && !args['no-screenshots']) {
+  if (Array.isArray(atts) && atts.length === 0 && !args['no-screenshots']) {
     blocked.push({
       reason: 'no-evidence',
       message: 'no screenshots attached — bugs carry evidence; pass --no-screenshots only as a deliberate, user-confirmed waiver',
@@ -317,6 +355,9 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       return { code: 2, out: { ok: false, mode, blocked, validation, ...(cacheOut ? { cache: cacheOut } : {}), ...(cacheStale ? { cacheStale: true } : {}) } };
     }
 
+    const digest = approvalDigest(adapter, spec, args, fields, atts);
+    const target = { organization: adapter.config.base, project: adapter.config.project };
+
     if (!args.execute) {
       // The PLAN: every intended write, in order, with its exact route — rendered
       // by the agent on the consolidated screen. Nothing has been written.
@@ -335,7 +376,30 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         addRelations: plannedUploads.map((u) => ({ rel: 'AttachedFile', url: u.url, attributes: { comment: u.name } })),
       }, { execute: false });
       plan.push({ step: 'set-repro-and-evidence', describe: `${dPatch.method} ${dPatch.url}`, request: dPatch });
-      return { code: 0, out: { ok: true, mode: 'plan', validation, plan, cache: cacheOut } };
+      return { code: 0, out: { ok: true, mode: 'plan', target, approvalDigest: digest, validation, plan, cache: cacheOut } };
+    }
+
+    let receiptFile = null;
+    if (args['approved-plan']) {
+      let approved;
+      try { approved = JSON.parse(fs.readFileSync(args['approved-plan'], 'utf8')); }
+      catch { return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'approval-plan-unreadable' }] } }; }
+      if (approved.ok !== true || approved.mode !== 'plan' || approved.approvalDigest !== digest ||
+          approved.target?.organization !== target.organization || approved.target?.project !== target.project ||
+          !Array.isArray(approved.plan)) {
+        return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'approval-plan-drift', message: 'prepared payload or target changed; prepare and approve a new plan' }] } };
+      }
+      const ledgerDir = path.join(cwd, '.agentex', 'bug-write-ledger');
+      fs.mkdirSync(ledgerDir, { recursive: true });
+      receiptFile = path.join(ledgerDir, `${digest}.json`);
+      try {
+        fs.writeFileSync(receiptFile, JSON.stringify({ approvalDigest: digest, target, state: 'in-flight', checkpoints: [] }), { flag: 'wx' });
+      } catch (e) {
+        if (e.code === 'EEXIST') {
+          return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'already-attempted', message: 'this approved plan already has a write receipt; reconcile it before any new attempt', receipt: receiptFile }] } };
+        }
+        throw e;
+      }
     }
 
     // ---- WRITE PHASE (only past explicit --execute, i.e. past the user's one approval)
@@ -381,8 +445,24 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       },
     ];
 
+    const checkpoints = [];
+    if (receiptFile) {
+      for (const intent of intents) {
+        const original = intent.run;
+        intent.run = async () => {
+          const result = await original();
+          checkpoints.push({ step: intent.step, status: 'done', ...(result.id !== undefined ? { id: result.id } : {}), ...(result.url ? { url: result.url } : {}) });
+          fs.writeFileSync(receiptFile, JSON.stringify({ approvalDigest: digest, target, state: 'in-flight', checkpoints }));
+          return result;
+        };
+      }
+    }
     const ledger = await new WritePlan(intents).execute();
     const allDone = ledger.every((l) => l.status === 'done');
+    if (receiptFile) {
+      try { fs.writeFileSync(receiptFile, JSON.stringify({ approvalDigest: digest, target, state: allDone ? 'complete' : 'needs-reconciliation', checkpoints, ledger, created: { bugId, url: bugUrl, attachments: uploaded } })); }
+      catch { /* the in-flight receipt still blocks a blind replay */ }
+    }
     return {
       code: allDone ? 0 : 1,
       out: {
@@ -391,6 +471,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         ledger,
         // Created IDs are ALWAYS surfaced, even when a later step threw.
         created: { ...(bugId ? { bugId, url: bugUrl } : {}), attachments: uploaded },
+        ...(receiptFile ? { receipt: receiptFile } : {}),
         ...(cacheOut ? { cache: cacheOut } : {}),
       },
     };

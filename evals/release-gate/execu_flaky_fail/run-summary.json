@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "title": "Flaky gate fixture",
+  "date": "2026-01-01",
+  "run": { "mode": "parallel", "sessions": [ { "session": "flaky-fixture", "spec": "fixture-flaky.md" } ] },
+  "summary": { "passed": 0, "failed": 0, "blocked": 0, "flaky": 1, "total": 1 },
+  "testCases": [
+    { "name": "Recovered infrastructure interruption", "session": "flaky-fixture", "status": "flaky", "steps": [ { "desc": "Retry once", "status": "flaky" } ] }
+  ],
+  "defects": []
+}

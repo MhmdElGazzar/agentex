@@ -25,7 +25,7 @@ function test(name, fn) {
   catch (e) { failures.push(name); console.error(`  FAIL - ${name}: ${e.message}`); }
 }
 
-const { judgePlaywrightCliProbe } = require('./preflight.js');
+const { judgePlaywrightCliProbe, probePlaywrightCli, resolvePlaywrightCliEntry } = require('./preflight.js');
 
 // The exact upstream signature observed in all three 0.20.0 live gate runs.
 const BENIGN_CRASH = 'Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\\win\\async.c, line 76';
@@ -58,7 +58,7 @@ test('version output but a DIFFERENT crash → broken (exception keyed to the kn
 
 test('healthy zero exit → ok with version and NO note (existing behavior untouched)', () => {
   const r = judgePlaywrightCliProbe({ status: 0, stdout: 'Version 0.1.18\n', stderr: '' });
-  assert.deepStrictEqual(r, { ok: true, version: 'Version 0.1.18' });
+  assert.deepStrictEqual(r, { ok: true, status: 'READY', version: 'Version 0.1.18' });
 });
 
 test('spawn-level error → broken (unchanged)', () => {
@@ -71,6 +71,66 @@ test('the version line is never taken from the assertion text itself', () => {
   // A crash line that happens to contain digits-dot-digits must not be read as a version.
   const r = judgePlaywrightCliProbe({ status: 134, stdout: '', stderr: 'Assertion failed at 1.2.3 — UV_HANDLE_CLOSING' });
   assert.strictEqual(r.ok, false);
+});
+
+test('direct CLI invocation succeeds even when a shell launcher would fail', () => {
+  let calls = 0;
+  const r = probePlaywrightCli({ env: {}, resolveEntry: () => 'C:/installed/playwright-cli.js',
+    spawn: (file, args, options) => {
+      calls++;
+      assert.strictEqual(file, process.execPath);
+      assert.deepStrictEqual(args, ['C:/installed/playwright-cli.js', '--version']);
+      assert.strictEqual(options.shell, false);
+      return { status: 0, stdout: '0.1.17\n', stderr: '' };
+    } });
+  assert.strictEqual(calls, 1);
+  assert.strictEqual(r.status, 'READY');
+});
+
+test('missing CLI is not treated as ready', () => {
+  const r = probePlaywrightCli({ env: {}, resolveEntry: () => null, spawn: () => { throw new Error('must not spawn'); } });
+  assert.strictEqual(r.status, 'MISSING_DEPENDENCY');
+});
+
+test('Windows .cmd wrapper resolves to the installed package JS, not cmd.exe', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-pwcli-wrapper-'));
+  const pkgDir = path.join(dir, 'node_modules', '@playwright', 'cli');
+  fs.mkdirSync(pkgDir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'playwright-cli.cmd'), '@echo off\n');
+  fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ bin: { 'playwright-cli': 'playwright-cli.js' } }));
+  fs.writeFileSync(path.join(pkgDir, 'playwright-cli.js'), '');
+  try {
+    assert.strictEqual(resolvePlaywrightCliEntry({ cwd: dir, env: { PATH: dir }, platform: 'win32' }), path.join(pkgDir, 'playwright-cli.js'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('restricted Codex EPERM is classified as sandbox block, not missing', () => {
+  const r = probePlaywrightCli({ env: { CODEX_SANDBOX: 'workspace-write' }, resolveEntry: () => 'cli.js',
+    spawn: () => ({ error: Object.assign(new Error('spawn EPERM'), { code: 'EPERM' }) }) });
+  assert.strictEqual(r.status, 'BLOCKED_BY_SANDBOX');
+});
+
+test('genuine non-sandbox EPERM requires approval, not installation', () => {
+  const r = probePlaywrightCli({ env: {}, resolveEntry: () => 'cli.js',
+    spawn: () => ({ error: Object.assign(new Error('spawn EPERM'), { code: 'EPERM' }) }) });
+  assert.strictEqual(r.status, 'APPROVAL_REQUIRED');
+});
+
+test('non-Windows direct invocation uses the same argument-array path', () => {
+  const r = probePlaywrightCli({ env: {}, platform: 'linux', resolveEntry: () => '/opt/cli.js',
+    spawn: (_file, args, options) => {
+      assert.deepStrictEqual(args, ['/opt/cli.js', '--version']);
+      assert.strictEqual(options.shell, false);
+      return { status: 0, stdout: '0.1.17\n' };
+    } });
+  assert.strictEqual(r.ok, true);
+});
+
+test('nonzero CLI exit propagates as broken executable', () => {
+  const r = probePlaywrightCli({ env: {}, resolveEntry: () => 'cli.js',
+    spawn: () => ({ status: 9, stdout: '', stderr: 'crashed\n' }) });
+  assert.strictEqual(r.status, 'BROKEN_EXECUTABLE');
+  assert.match(r.error, /crashed/);
 });
 
 // ---- end-to-end contract (fixture probe command, no live tool) --------------

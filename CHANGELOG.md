@@ -37,6 +37,31 @@ All notable changes to AgenTeX are documented here.
 - **`ci_gate.test.js` marketplace-layout case passes on macOS.** The temp dir sits behind the
   `/var` → `/private/var` symlink; the comparison now uses the real path.
 
+## [0.21.3] — 2026-10-01
+### Fixed
+- Release the validated multi-runtime repair under a new version so Codex installs use a
+  fresh cache path.
+- The Copilot package includes a generic spec-driven parallel host worker and coverage
+  checks that prevent a PASS when required spec steps were not executed. Real black-box
+  consumer validation completed with two PASS, one product FAIL, zero BLOCKED, and
+  overlapping workers at concurrency 2 without a consumer worker or Codex fallback.
+- Codex parallel workers retain sanitized stdout/stderr process diagnostics while
+  withholding raw model and tool transcripts. The coordinator preserves isolated sessions,
+  deterministic aggregation, and BLOCKED outcomes for workers that cannot complete.
+
+### Validation and host limitation
+- The full inclusive deterministic suite passed: 61 JavaScript test files, 310 tests,
+  310 passed, zero failed. Codex sequential execution, product failure classification,
+  parallel coordinator behavior, and sanitized diagnostics passed validation.
+- Codex live parallel execution was **blocked and is not fully certified in the tested
+  agent host**. Nested `codex` child-process launch can fail with `EPERM` before a PID is
+  created, including with an absolute executable path, while the same CLI succeeds from a
+  normal terminal. Workers may be BLOCKED or time out. The exact cause of the original
+  blocked run is not conclusively established; current evidence points to a host
+  nested-process limitation or instability, not a confirmed AgenTeX defect. AgenTeX does
+  not silently fall back to sequential execution. See
+  [Codex parallel runtime troubleshooting](./docs/codex.md#parallel-runtime-limit-and-troubleshooting).
+
 ## [0.21.2] — 2026-10-01
 ### Fixed
 - **The Setup Wizard's save-gate jumps you to the problem instead of just naming it.** When

@@ -1,0 +1,9 @@
+{
+  "name": "AgenTeX Phase 7B localhost ADO fixture",
+  "azure": {
+    "org": "http://127.0.0.1:12747",
+    "project": "MockProject",
+    "team": "MockTeam",
+    "assignee": "qa.tester@example.com"
+  }
+}

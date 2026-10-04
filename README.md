@@ -1,32 +1,36 @@
 # AgenTeX
 
-**Agentic QA for Claude Code — an agent plans, runs, and reports your tests so you don't click through them by hand.**
+**Agentic Test eXecution for Claude Code, OpenAI Codex, and GitHub Copilot Agent mode.**
 
 [![Version](https://img.shields.io/badge/version-0.22.0-blue.svg)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
-[![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-8A2BE2.svg)](https://docs.anthropic.com/en/docs/claude-code)
 [![Playwright](https://img.shields.io/badge/Playwright-CLI-2EAD33.svg?logo=playwright&logoColor=white)](https://www.npmjs.com/package/@playwright/cli)
-[![Azure DevOps](https://img.shields.io/badge/Azure%20DevOps-integration-0078D7.svg?logo=azuredevops&logoColor=white)](https://azure.microsoft.com/en-us/products/devops)
 
-AgenTeX (Agentic Test eXecution) takes manual test execution off your plate. Instead of clicking the
-same scenarios by hand, an agent plans them, drives a **real browser** via
-[`@playwright/cli`](https://www.npmjs.com/package/@playwright/cli), captures screenshot/log evidence,
-and produces a consolidated defect report — either **sequentially** (human-in-the-loop) or in
-**parallel** (autonomous, one session per spec file). It **never modifies your application code**.
+AgenTeX turns natural-language Markdown test specifications into real browser execution, evidence,
+PASS / FAIL / BLOCKED results, and reports. A shared AgenTeX Core supplies the QA rules and
+artifacts; thin runtime-specific entrypoints make it available in each supported host. It does
+not generate a conventional Playwright test suite or modify your application's code.
 
-## [Getting Started](./docs/getting-started.md)
+Azure DevOps is **optional**. You can initialize a project, define flows, run one test or a
+bounded parallel regression, and review screenshots and reports without Azure credentials.
+KB questions work when a KB is configured. Story estimation, Azure Test Case creation, QA task
+creation, and Azure Bug filing are separate, optional Azure-backed workflows.
 
-New here? **[Getting Started](./docs/getting-started.md)** walks you through install → browser driver
-→ `/init-test` → permissions → first run. The short version:
+## Quick Start
 
-```
-/plugin marketplace add MhmdElGazzar/elgazzar-plugins
-/plugin install agentex@elgazzar-plugins
-/init-test
-/execute-test https://example.com
-```
+1. Choose your host: [Claude Code](./docs/getting-started.md),
+   [Codex](./docs/codex.md), or [GitHub Copilot in VS Code Agent mode](./docs/copilot.md).
+   Follow that guide to install/register AgenTeX and make its capabilities available.
+2. In the application project, initialize AgenTeX. Add the browser dependency when prompted:
+   `npm install -D @playwright/cli` and `npx playwright-cli install-browser chromium`.
+3. Edit a sample Markdown spec under `test/suite1/`, or define a new flow with the agent.
+   Select the target URL/environment and the exact spec or bounded scenario to run.
+4. Ask your host to run that spec. Review `executions/execu_<timestamp>/report.md`,
+   `run-summary.json`, `extent-report.html`, and the session evidence.
 
-## Features — how each one works
+For example, ask: “Run `test/suite1/signup.md` against my configured QA environment.”
+Use “run these saved specs in parallel” only when you want a bounded multi-spec run.
+An Agent-mode host may ask you to approve the plan or browser actions before proceeding.
 
 | Feature | How it works | Docs |
 |---------|--------------|------|
@@ -41,34 +45,45 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 | **HTML report** | At the end of a run, generates a standalone, self-contained `extent-report.html` dashboard (donut chart, status cards, expandable per-test-case steps). | [extent-report](./docs/extent-report.md) |
 | **Configuration** | Three homes, one each: `config/project.json` (project settings), `environments/<env>.json` (targets, users, integrations), and a secrets-only `.env` — legacy keys-only `.env` projects still work untouched. After a plugin update, `/update-agentex` migrates a project to the new conventions, carrying your values. | [configuration](./docs/configuration.md) |
 
-See [docs/](./docs/) for the full reference on any feature.
+## Supported runtimes
 
-## Usage at a glance
+| Capability | Claude Code | Codex | GitHub Copilot Agent |
+|---|---|---|---|
+| Initialize AgenTeX | Yes | Yes | Yes |
+| Execute a saved test | Yes | Yes | Yes |
+| Sequential execution | Yes | Yes | Yes |
+| Bounded parallel execution | Yes | Coordinator supported; [live worker host caveat](./docs/codex.md#parallel-runtime-limit-and-troubleshooting) | Yes |
+| Define Flow | Yes | Yes | Yes |
+| Ask KB (configured) | Yes | Yes | Yes |
+| Estimate Story (Azure) | Yes | Yes | Yes |
+| Design Test (Azure) | Yes | Yes | Yes |
+| Bug Report Azure (approved) | Yes | Yes | Yes |
+| Update AgenTeX | Yes | Yes | Yes |
 
-```
-# Sequential (human-in-the-loop) — natural language:
-Test https://example.com — the signup form: happy path plus empty and bad-email cases.
+Claude retains its slash commands; Codex and Copilot normally route natural-language requests
+to installed skills. The three hosts share the core QA behavior but have different installation,
+permission, and update mechanisms. See the runtime guides above for exact usage.
 
-# Parallel (autonomous) — one subagent per spec file:
-Run a parallel regression against https://example.com from the specs in test/suite1/.
+## How a run works
 
-# Slash commands:
-/execute-test https://example.com
-/define-flow https://example.com     # build a spec step by step, executing each step live
-/estimate-story 12345 12346
-/design-test 12345
-/ask-kb acme-store: how does the checkout flow work?
-/update-agentex        # after a plugin update: migrate this project to the new conventions
-```
+`Markdown spec → driver execution → screenshots/logs → PASS / FAIL / BLOCKED → report`
 
-Every run writes to a timestamped `executions/execu_<timestamp>/` folder — `report.md`,
-`extent-report.html`, per-session logs/screenshots, and a merged bug list.
+A sequential run keeps you in the loop. An explicitly requested parallel run assigns each
+saved spec its own named browser session, runs at a bounded concurrency, combines results
+deterministically, and closes only its owned sessions. **FAIL** means observed behavior did not
+meet the test expectation; **BLOCKED** means an infrastructure or execution obstacle prevented
+a trustworthy product verdict. A failure does not automatically create an Azure Bug.
+
+See [Test Execution](./docs/test-execution.md) for spec examples and evidence layout,
+[Define Flow](./docs/define-flow.md) for guided spec authoring, and
+[Approvals](./docs/approval-model.md) for action boundaries. The [documentation index](./docs/README.md)
+covers configuration, optional integrations, and troubleshooting.
 
 ## Contributing
 
-New to the codebase? **[docs/contributing/](./docs/contributing/README.md)** teaches Claude
-Code concepts from zero, AgenTeX's architecture, and walks through adding a skill end to end.
-Open issues and PRs on the [GitHub repository](https://github.com/MhmdElGazzar/agentex).
+New to the codebase? [Contributing](./docs/contributing/README.md) explains the architecture
+and how to add a skill. Open issues and PRs on the
+[GitHub repository](https://github.com/MhmdElGazzar/agentex).
 
 ## Contributors
 
