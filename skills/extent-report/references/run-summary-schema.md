@@ -19,7 +19,7 @@ API** — consumers are not invited to build on it; additive evolution only (see
 
 ## "Required" semantics
 
-Required fields are a contract on the **capture side**: the browser-testing orchestrator's
+Required fields are a contract on the **capture side**: the test-execution orchestrator's
 instructions demand them, and behavioral evals enforce them. The **renderer never fails on
 absence** — a missing field means its section/chip/column is omitted and the rest of the
 report renders untouched. Only `title`, `date`, `summary`, `testCases` are renderer-required

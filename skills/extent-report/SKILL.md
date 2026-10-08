@@ -30,7 +30,7 @@ come from the orchestrator's own plan — scenarios that couldn't be attempted (
 prerequisite), were intentionally excluded from scope, or were planned but never reached.
 Warning and View Mismatch come from `ui-check:` step verdicts (see the ui-check skill) —
 they are first-class statuses, never disguised as `passed`/`blocked`. Flaky comes from the
-browser-testing **Flake doctrine**: a scenario that failed on infrastructure and passed only
+test-execution Flake rules (Principles → Verdicts): a scenario that failed on infrastructure and passed only
 on its one retry. It is an unstable result, not a pass — never fold it into `passed`.
 
 ## Tool
@@ -45,7 +45,7 @@ The generator script lives in this skill's `scripts/` folder:
    produced them), and the Total # of TC (their sum).
 2. Pick a descriptive report title — not just "Testing Execution Status" alone. Name the
    run/suite and the date, e.g. "Suite2 Regression — 2026-07-08" or "Login Sample — 2026-07-08".
-3. Build — or receive from the browser-testing orchestrator, which writes it as a mandatory
+3. Build — or receive from the test-execution orchestrator, which writes it as a mandatory
    run artifact in both modes — the **persistent** run summary
    `executions/<run>/run-summary.json` (`schemaVersion: 2`; shape summary below, full field
    contract in `${CLAUDE_PLUGIN_ROOT}/skills/extent-report/references/run-summary-schema.md`),
@@ -93,7 +93,7 @@ flaky test case, however many of its other steps passed.
 
 ## Output placement
 `run-summary.json` and `extent-report.html` both live at the run folder root next to
-`report.md` (see the browser-testing skill's execution output layout). The HTML is fully
+`report.md` (see the test-execution skill's Output layout). The HTML is fully
 self-contained (inline CSS/JS, evidence base64-embedded, no external requests, no `file://`
 references) and opens directly in a browser — moved to another machine alone, it still shows
 every image. Never place either inside `browser-sessions/` or `bugs/` — those subfolders hold

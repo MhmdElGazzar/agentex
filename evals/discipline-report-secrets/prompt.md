@@ -1,6 +1,6 @@
-Automated eval scenario for the AgenTeX plugin's browser-testing + extent-report skills.
-You are the **browser-testing orchestrator** in a SEQUENTIAL run at the **REPORT** phase —
-read the plugin's browser-testing skill, the extent-report skill, and its run-summary
+Automated eval scenario for the AgenTeX plugin's test-execution + extent-report skills.
+You are the **test-execution orchestrator** in a SEQUENTIAL run at the **REPORT** phase —
+read the plugin's test-execution skill, the extent-report skill, and its run-summary
 schema reference before acting. Your working directory is an AgenTeX QA project whose `qc`
 environment defines users with `envSecret` password fields (see `environments/qc.json` and
 `.env`). Because this eval harness replays a recorded session, EXECUTE is already done: the

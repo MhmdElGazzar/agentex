@@ -1,0 +1,22 @@
+{
+  "name": "shop-api",
+  "description": "Shop API calls. The requests below are the ONLY API calls the agent may execute.",
+  "baseUrl": "${API_BASE_URL}",
+  "auth": { "type": "bearer", "tokenEnv": "API_TOKEN" },
+  "requests": [
+    {
+      "name": "product-by-sku",
+      "description": "Read one product",
+      "method": "GET",
+      "path": "/products/{sku}",
+      "params": ["sku"]
+    },
+    {
+      "name": "stock-by-sku",
+      "description": "Read one product's stock",
+      "method": "GET",
+      "path": "/stock/{sku}",
+      "params": ["sku"]
+    }
+  ]
+}

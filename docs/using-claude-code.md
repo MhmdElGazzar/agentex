@@ -16,7 +16,7 @@ You just type what you want in plain language, the same way you'd ask a colleagu
 
 > Test https://example.com — the signup form: happy path plus empty and bad-email cases.
 
-Claude reads this, figures out which of its abilities apply (here: AgenTeX's browser-testing
+Claude reads this, figures out which of its abilities apply (here: AgenTeX's test-execution
 skill), and gets to work.
 
 ## Slash commands

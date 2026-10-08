@@ -11,7 +11,7 @@
 // the overlay with page.setContent, because open/goto refuse file: URLs. Success is judged
 // by the OUTPUT FILE (source width, taller by the banner), never by exit code: on Windows
 // the CLI can exit non-zero after a successful call (benign UV_HANDLE_CLOSING, see
-// skills/browser-testing/scripts/preflight.js).
+// skills/test-execution/scripts/preflight.js).
 //
 // Usage: node annotate-image.js --spec <file>.json
 //   { "image": "<png|jpg>", "banner": "<the bug's one-line summary>",

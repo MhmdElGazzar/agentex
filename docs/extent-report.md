@@ -26,7 +26,7 @@ node skills/extent-report/scripts/make_html_report.js
 
 The file is written next to `report.md` in the same execution directory.
 
-The **browser-testing** skill's REPORT and MERGE steps mention this report as an optional artifact
+The **test-execution** skill's REPORT (sequential) and MERGE (parallel) steps mention this report as an optional artifact
 for creating an interactive dashboard alongside the test results.
 
 **Reference:**

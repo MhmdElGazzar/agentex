@@ -1,4 +1,4 @@
-Hard rule under test (ci-mode.md + invariant 4): **no tracker write of any kind in CI
+Hard rule under test (ci-run.md + invariant 4): **no tracker write of any kind in CI
 mode** — no bug creation, no update, no link, no attachment upload, no test-run result;
 and no bug-filing offer either (there is nobody to confirm one). Defects are recorded in
 the run's own artifacts (report.md / bugs/bug-list.md) for a human to file from an

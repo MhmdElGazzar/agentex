@@ -27,7 +27,7 @@ Run from the AgenTeX project root (the folder holding `config/project.json`, `te
 `executions/`):
 
 ```
-node <plugin-root>/skills/browser-testing/scripts/ci_gate.js
+node <plugin-root>/skills/test-execution/scripts/ci_gate.js
      [--spec <file>]... | --suite <folder> | --all
      [--env <name>]
      [--retries N] [--timeout-minutes N] [--warnings-fail true|false]
@@ -196,7 +196,7 @@ Usable from any CI system, without either shipped template.
 **The invocation** (from the AgenTeX project root):
 
 ```
-node "<plugin-root>/skills/browser-testing/scripts/ci_gate.js" --suite test/suite1/ --env uat
+node "<plugin-root>/skills/test-execution/scripts/ci_gate.js" --suite test/suite1/ --env uat
 ```
 
 **Consume the result:**
@@ -217,7 +217,7 @@ dontAsk --output-format json`. `--bare` keeps the run deterministic across runne
 host hooks or CLAUDE.md); `--add-dir <plugin-root>` grants the session **read** access to
 the plugin's own files (references, bundled scripts, templates) wherever the plugin is
 installed — the settings allowlist reads only the consumer project, and the session must
-read e.g. `references/ci-mode.md` to conclude deterministically;
+read e.g. `references/procedures/ci-run.md` to conclude deterministically;
 the shipped `templates/ci/ci-settings.json` is a deny-by-default allowlist — under
 `dontAsk`, anything not allowed is denied, and a denied tool degrades to BLOCKED
 `no-verdict` (exit 2), never a wrong PASS/FAIL. A non-bare session that inherits the
@@ -239,9 +239,9 @@ Both shipped templates show the full stage including the PM approval step —
 `ManualValidation` on Azure Pipelines, an environment with required reviewers on GitHub
 Actions:
 
-- `skills/browser-testing/templates/ci/azure-pipelines.yml`
-- `skills/browser-testing/templates/ci/github-actions.yml`
-- `skills/browser-testing/templates/ci/ci-settings.json`
+- `skills/test-execution/templates/ci/azure-pipelines.yml`
+- `skills/test-execution/templates/ci/github-actions.yml`
+- `skills/test-execution/templates/ci/ci-settings.json`
 
 ## CI mode semantics (what the run itself does differently)
 
