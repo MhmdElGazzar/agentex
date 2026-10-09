@@ -2,7 +2,10 @@
 // testplan.js — test-case mechanics on the tracker layer: read test
 // plans/suites, find/validate a test case, create a new test case (only on the
 // user's explicit choice), and record a Failed outcome for an existing test
-// case associated with a bug.
+// case associated with a bug. Since skill-consolidation-foundation it also
+// ENSURES a plan / suite exists (find by exact name or requirement, or plan
+// its creation) and RECORDS any outcome on a test point (`record`; `fail`
+// stays as its exact alias).
 //
 // HOME: this script lives with the skill that owns test-case knowledge
 // (test-design). The bug-report-azure skill invokes it cross-skill for its
@@ -32,6 +35,17 @@
 //                [--allow-duplicate] [--refresh-fields] [--execute]
 //   fail         --plan <id> --testcase <id> --bug <id>
 //                [--comment "..."] [--run-name "..."] [--execute]
+//   record       --plan <id> --testcase <id> --outcome Passed|Failed|Blocked|NotApplicable
+//                [--bug <id>] [--comment "..."] [--run-name "..."] [--execute]
+//   ensure-plan  --name "<exact>" [--area <path>] [--iteration <path>] [--execute]
+//   ensure-suite --plan <id> (--type requirement --requirement <id> | --type static --name "<exact>")
+//                [--parent <suiteId>] [--execute]
+//
+// ensure-* are idempotent: an existing match is returned with ZERO writes;
+// otherwise the dry run plans the creation and --execute creates it and
+// re-reads it (missing on re-read fails closed). record skips (ZERO writes)
+// when the point already carries the requested outcome (and, with --bug, the
+// tested-by link already exists); `fail` never skips.
 //
 // Output: ONE JSON line; exit 0 = ok / plan ready, 1 = failed (ledger says
 // exactly what), 2 = blocked/refused before any write (invariant 9).
@@ -63,7 +77,15 @@ function parseArgs(argv) {
   return out;
 }
 
+// Kept byte-identical to 0.23.0 (the golden suite pins every bad-usage message
+// that embeds it; the design names no change here). The subcommands added
+// since — record, ensure-plan, ensure-suite — are documented in the header.
 const USAGE = 'usage: testplan.js <list-suites|list-cases|find-case|create-case|fail> [options]';
+
+const OUTCOMES = ['Passed', 'Failed', 'Blocked', 'NotApplicable'];
+const FAILING = ['Failed', 'Blocked'];
+const PLAN_NOTE =
+  'nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute';
 
 // Capability guard (Q11 upfront honesty): every subcommand here is test-plan/
 // test-run mechanics — on a tracker whose adapter declares testPlans: false
@@ -81,12 +103,130 @@ function guardTestPlans(adapter) {
 }
 
 // Per-suite TestPoint lookup; the global ?testCaseId shortcut 404s on many orgs.
+// Returns the neutral point (the shape `fail` has always printed); the raw
+// test point rides along non-enumerably for record's idempotency check.
 async function findPoint(adapter, planId, testCaseId) {
   for (const s of await adapter.listSuites(planId)) {
     const pt = await adapter.getPoint(planId, s.id, testCaseId);
-    if (pt) return { suiteId: s.id, suiteName: s.name, pointId: pt.id };
+    if (pt) {
+      const point = { suiteId: s.id, suiteName: s.name, pointId: pt.id };
+      Object.defineProperty(point, 'raw', { value: pt, enumerable: false });
+      return point;
+    }
   }
   return null;
+}
+
+// record / fail — one implementation. o: { plan, tc, bug|null, outcome,
+// comment, runName, idempotent, alias }. The plan steps, describe strings and
+// the "run … is left InProgress" note are fail's, with the outcome
+// substituted — Failed + a bug reproduces fail's exact text.
+async function recordOutcome(adapter, args, o) {
+  const { plan, tc, bug, outcome } = o;
+  const point = await findPoint(adapter, plan, tc);
+  if (!point) {
+    return {
+      code: 2,
+      out: { ok: false, mode: args.execute ? 'executed' : 'plan', blocked: [{ reason: 'no-test-point', message: `no test point for TC ${tc} in plan ${plan} — a ${outcome} result needs the case assigned to a suite there` }] },
+    };
+  }
+  if (o.idempotent) {
+    const current = point.raw && point.raw.results && point.raw.results.outcome;
+    if (current && String(current).toLowerCase() === outcome.toLowerCase()) {
+      let linked = true;
+      if (bug) {
+        const wi = await adapter.getWorkItem(tc, { expand: 'relations' });
+        linked = ((wi && wi.relations) || []).some((r) => r.rel === TESTED_BY_LINK && new RegExp(`/${bug}$`).test(String(r.url || '')));
+      }
+      if (linked) {
+        return { code: 0, out: { ok: true, mode: args.execute ? 'executed' : 'plan', unchanged: true, point, outcome, testCaseId: Number(tc), ...(bug ? { bugId: Number(bug) } : {}) } };
+      }
+    }
+  }
+  const step = `record-${outcome.toLowerCase()}-result`;
+  const result = (id) => ({ id, outcome, state: 'Completed', comment: o.comment, ...(bug ? { associatedBugs: [{ id: String(bug) }] } : {}) });
+  const runBody = {
+    name: o.runName,
+    plan: { id: String(plan) }, pointIds: [Number(point.pointId)], automated: false, state: 'InProgress',
+  };
+
+  if (!args.execute) {
+    const dRun = await adapter.createRun(runBody, { execute: false });
+    const dResult = await adapter.updateRunResults('{run-id}', [result('{result-id}')], { execute: false });
+    const dComplete = await adapter.updateRun('{run-id}', { state: 'Completed' }, { execute: false });
+    const planOut = [
+      { step: 'create-run', describe: `${dRun.method} ${dRun.url}`, request: dRun },
+      { step, describe: `${dResult.method} ${dResult.url}`, request: dResult },
+      { step: 'complete-run', describe: `${dComplete.method} ${dComplete.url}`, request: dComplete },
+    ];
+    if (bug) {
+      const dLink = await adapter.addRelation(tc, TESTED_BY_LINK, bug, { execute: false });
+      planOut.push({ step: 'link-tested-by', describe: `${dLink.method} ${dLink.url} (${TESTED_BY_LINK} TC #${tc} -> Bug #${bug})`, request: dLink });
+    }
+    return { code: 0, out: { ok: true, mode: 'plan', point, plan: planOut, ...(o.alias ? {} : { outcome, note: PLAN_NOTE }) } };
+  }
+
+  let runId = null; let resultId = null;
+  const manualNote = () => `run ${runId} is left InProgress — complete or delete it manually in Azure DevOps; nothing was retried`;
+  const intents = [
+    {
+      step: 'create-run',
+      describe: 'create a manual test run over the point (POST _apis/test/runs)',
+      run: async () => {
+        const r = await adapter.createRun(runBody, { execute: true });
+        runId = r.id;
+        return { id: r.id, url: r.url };
+      },
+    },
+    {
+      step,
+      describe: `mark the run result ${outcome}${bug ? ' + associate the bug' : ''} (PATCH _apis/test/Runs/{run}/results)`,
+      run: async () => {
+        try {
+          // Read the real result id first — PATCHing a guessed id could
+          // corrupt an unrelated record.
+          const results = await adapter.listRunResults(runId);
+          resultId = results[0] && results[0].id;
+          if (!resultId) throw new Error(`run ${runId} was created but no test result was found to mark ${outcome}`);
+          await adapter.updateRunResults(runId, [result(resultId)], { execute: true });
+        } catch (e) {
+          throw new Error(`${e.message} — ${manualNote()}`);
+        }
+        return { id: resultId };
+      },
+    },
+    {
+      step: 'complete-run',
+      describe: 'complete the run (PATCH _apis/test/runs/{run} state=Completed)',
+      run: async () => {
+        try { await adapter.updateRun(runId, { state: 'Completed' }, { execute: true }); }
+        catch (e) { throw new Error(`${e.message} — ${manualNote()}`); }
+        return { id: runId };
+      },
+    },
+  ];
+  if (bug) {
+    intents.push({
+      step: 'link-tested-by',
+      describe: `durable TC -> bug link (${TESTED_BY_LINK})`,
+      run: async () => {
+        await adapter.addRelation(tc, TESTED_BY_LINK, bug, { execute: true });
+        return { id: Number(tc) };
+      },
+    });
+  }
+  const ledger = await new WritePlan(intents).execute();
+  const allDone = ledger.every((l) => l.status === 'done');
+  return {
+    code: allDone ? 0 : 1,
+    out: {
+      ok: allDone, mode: 'executed', ledger, point,
+      ...(runId ? { run: { id: runId } } : {}),
+      ...(resultId ? { resultId } : {}),
+      testCaseId: Number(tc), ...(bug ? { bugId: Number(bug) } : {}),
+      ...(o.alias ? {} : { outcome }),
+    },
+  };
 }
 
 function trackerErrorOut(e) {
@@ -249,99 +389,120 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
     }
 
     if (cmd === 'fail') {
+      // The exact alias of record --outcome Failed --bug: the bug is required,
+      // the baseline defaults stay, and there is NO idempotent skip.
       const plan = need('plan'); const tc = need('testcase'); const bug = need('bug');
-      const comment = args.comment || `Failed during automated regression run; see Bug #${bug}.`;
       const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
+      return recordOutcome(adapter, args, {
+        plan, tc, bug, outcome: 'Failed', alias: true, idempotent: false,
+        comment: args.comment || `Failed during automated regression run; see Bug #${bug}.`,
+        runName: args['run-name'] || `Regression fail — TC ${tc} (Bug ${bug})`,
+      });
+    }
 
-      // Read phase: locate the test point (fail closed when there is none).
-      const point = await findPoint(adapter, plan, tc);
-      if (!point) {
+    if (cmd === 'record') {
+      const plan = need('plan'); const tc = need('testcase');
+      const outcome = args.outcome;
+      if (!OUTCOMES.includes(outcome)) {
+        return { code: 2, out: { ok: false, error: { message: `--outcome must be exactly one of ${OUTCOMES.join(', ')} (got ${JSON.stringify(outcome === true || outcome === undefined ? '' : outcome)}). ${USAGE}` } } };
+      }
+      if (args.bug === true) return { code: 2, out: { ok: false, error: { message: `--bug needs a bug id. ${USAGE}` } } };
+      const bug = args.bug !== undefined ? String(args.bug) : null;
+      if (bug && !FAILING.includes(outcome)) {
         return {
           code: 2,
-          out: { ok: false, mode: args.execute ? 'executed' : 'plan', blocked: [{ reason: 'no-test-point', message: `no test point for TC ${tc} in plan ${plan} — a Failed result needs the case assigned to a suite there` }] },
+          out: { ok: false, mode: args.execute ? 'executed' : 'plan', blocked: [{ reason: 'bug-with-non-failing-outcome', message: `--bug goes with a failing outcome (${FAILING.join(' or ')}), not ${outcome} — nothing was read or written` }] },
         };
       }
-      const runBody = {
-        name: args['run-name'] || `Regression fail — TC ${tc} (Bug ${bug})`,
-        plan: { id: String(plan) }, pointIds: [Number(point.pointId)], automated: false, state: 'InProgress',
-      };
+      const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
+      return recordOutcome(adapter, args, {
+        plan, tc, bug, outcome, alias: false, idempotent: true,
+        comment: args.comment || (bug ? `${outcome} during automated regression run; see Bug #${bug}.` : `${outcome} recorded by AgenTeX`),
+        runName: args['run-name'] || `${outcome} — TC ${tc}${bug ? ` (Bug ${bug})` : ''}`,
+      });
+    }
 
+    if (cmd === 'ensure-plan') {
+      const name = need('name');
+      const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
+      const mode = args.execute ? 'executed' : 'plan';
+      const { plans, truncated } = await adapter.listPlans();
+      const view = (p) => ({ id: p.id, name: p.name, rootSuiteId: p.rootSuite ? p.rootSuite.id : (p.rootSuiteId ?? null) });
+      const hits = plans.filter((p) => p.name === name);
+      if (hits.length === 1) return { code: 0, out: { ok: true, mode, exists: true, plan: view(hits[0]) } };
+      if (hits.length > 1) {
+        return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'ambiguous-plan', ids: hits.map((p) => p.id), message: `${hits.length} test plans are named "${name}" (ids ${hits.map((p) => p.id).join(', ')}) — pick one by id; nothing was written` }] } };
+      }
+      if (truncated) {
+        return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'cannot-prove-absent', message: `the plan list was cut at its page cap, so "${name}" cannot be proven absent — refusing to create a possible duplicate; nothing was written` }] } };
+      }
+      const spec = { name, ...(args.area ? { areaPath: String(args.area) } : {}), ...(args.iteration ? { iteration: String(args.iteration) } : {}) };
       if (!args.execute) {
-        const dRun = await adapter.createRun(runBody, { execute: false });
-        const dResult = await adapter.updateRunResults('{run-id}', [{ id: '{result-id}', outcome: 'Failed', state: 'Completed', comment, associatedBugs: [{ id: String(bug) }] }], { execute: false });
-        const dComplete = await adapter.updateRun('{run-id}', { state: 'Completed' }, { execute: false });
-        const dLink = await adapter.addRelation(tc, TESTED_BY_LINK, bug, { execute: false });
-        return {
-          code: 0,
-          out: {
-            ok: true, mode: 'plan', point,
-            plan: [
-              { step: 'create-run', describe: `${dRun.method} ${dRun.url}`, request: dRun },
-              { step: 'record-failed-result', describe: `${dResult.method} ${dResult.url}`, request: dResult },
-              { step: 'complete-run', describe: `${dComplete.method} ${dComplete.url}`, request: dComplete },
-              { step: 'link-tested-by', describe: `${dLink.method} ${dLink.url} (${TESTED_BY_LINK} TC #${tc} -> Bug #${bug})`, request: dLink },
-            ],
-          },
-        };
+        const d = await adapter.createPlan(spec, { execute: false });
+        return { code: 0, out: { ok: true, mode, exists: false, plan: [{ step: 'create-plan', describe: `${d.method} ${d.url}`, request: d }], note: PLAN_NOTE } };
       }
-
-      let runId = null; let resultId = null;
-      const manualNote = () => `run ${runId} is left InProgress — complete or delete it manually in Azure DevOps; nothing was retried`;
-      const ledger = await new WritePlan([
-        {
-          step: 'create-run',
-          describe: 'create a manual test run over the point (POST _apis/test/runs)',
-          run: async () => {
-            const r = await adapter.createRun(runBody, { execute: true });
-            runId = r.id;
-            return { id: r.id, url: r.url };
-          },
+      let created = null;
+      const ledger = await new WritePlan([{
+        step: 'create-plan',
+        describe: `create test plan "${name}" (POST _apis/testplan/plans), then re-read the plan list`,
+        run: async () => {
+          created = await adapter.createPlan(spec, { execute: true });
+          const after = await adapter.listPlans();
+          if (!after.plans.some((p) => String(p.id) === String(created.id) && p.name === name)) {
+            throw new Error(`test plan ${created.id} was created but is not listed on re-read — check it in the tracker; nothing was retried`);
+          }
+          return { id: created.id };
         },
-        {
-          step: 'record-failed-result',
-          describe: 'mark the run result Failed + associate the bug (PATCH _apis/test/Runs/{run}/results)',
-          run: async () => {
-            try {
-              // Read the real result id first — PATCHing a guessed id could
-              // corrupt an unrelated record.
-              const results = await adapter.listRunResults(runId);
-              resultId = results[0] && results[0].id;
-              if (!resultId) throw new Error(`run ${runId} was created but no test result was found to mark Failed`);
-              await adapter.updateRunResults(runId, [{ id: resultId, outcome: 'Failed', state: 'Completed', comment, associatedBugs: [{ id: String(bug) }] }], { execute: true });
-            } catch (e) {
-              throw new Error(`${e.message} — ${manualNote()}`);
-            }
-            return { id: resultId };
-          },
-        },
-        {
-          step: 'complete-run',
-          describe: 'complete the run (PATCH _apis/test/runs/{run} state=Completed)',
-          run: async () => {
-            try { await adapter.updateRun(runId, { state: 'Completed' }, { execute: true }); }
-            catch (e) { throw new Error(`${e.message} — ${manualNote()}`); }
-            return { id: runId };
-          },
-        },
-        {
-          step: 'link-tested-by',
-          describe: `durable TC -> bug link (${TESTED_BY_LINK})`,
-          run: async () => {
-            await adapter.addRelation(tc, TESTED_BY_LINK, bug, { execute: true });
-            return { id: Number(tc) };
-          },
-        },
-      ]).execute();
+      }]).execute();
       const allDone = ledger.every((l) => l.status === 'done');
-      return {
-        code: allDone ? 0 : 1,
-        out: {
-          ok: allDone, mode: 'executed', ledger, point,
-          ...(runId ? { run: { id: runId } } : {}),
-          ...(resultId ? { resultId } : {}),
-          testCaseId: Number(tc), bugId: Number(bug),
+      return { code: allDone ? 0 : 1, out: { ok: allDone, mode, exists: false, ledger, ...(created ? { created } : {}) } };
+    }
+
+    if (cmd === 'ensure-suite') {
+      const plan = need('plan');
+      const type = args.type;
+      if (type !== 'requirement' && type !== 'static') {
+        return { code: 2, out: { ok: false, error: { message: `--type must be requirement or static. ${USAGE}` } } };
+      }
+      const requirement = type === 'requirement' ? need('requirement') : null;
+      const name = type === 'static' ? need('name') : null;
+      const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
+      const mode = args.execute ? 'executed' : 'plan';
+      let parent = args.parent !== undefined && args.parent !== true ? String(args.parent) : null;
+      if (!parent) {
+        const p = await adapter.getPlan(plan);
+        parent = p && p.rootSuite ? String(p.rootSuite.id) : null;
+        if (!parent) return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'no-root-suite', message: `test plan ${plan} reported no root suite — pass --parent <suiteId>; nothing was written` }] } };
+      }
+      const matches = (x) => Boolean(x && x.parentSuite && String(x.parentSuite.id) === parent && (type === 'requirement'
+        ? x.suiteType === 'requirementTestSuite' && String(x.requirementId) === String(requirement)
+        : x.suiteType === 'staticTestSuite' && x.name === name));
+      const view = (x) => ({ id: x.id, name: x.name, suiteType: x.suiteType, parentId: x.parentSuite ? x.parentSuite.id : null, ...(x.requirementId !== undefined ? { requirementId: x.requirementId } : {}) });
+      const hits = (await adapter.listSuites(plan)).filter(matches);
+      if (hits.length === 1) return { code: 0, out: { ok: true, mode, exists: true, suite: view(hits[0]) } };
+      if (hits.length > 1) {
+        return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'ambiguous-suite', ids: hits.map((x) => x.id), message: `${hits.length} suites match under parent ${parent} (ids ${hits.map((x) => x.id).join(', ')}) — pick one by id; nothing was written` }] } };
+      }
+      const spec = { type, ...(type === 'requirement' ? { requirementId: requirement } : { name }), parent };
+      if (!args.execute) {
+        const d = await adapter.createSuite(plan, spec, { execute: false });
+        return { code: 0, out: { ok: true, mode, exists: false, plan: [{ step: 'create-suite', describe: `${d.method} ${d.url}`, request: d }], note: PLAN_NOTE } };
+      }
+      let created = null;
+      const ledger = await new WritePlan([{
+        step: 'create-suite',
+        describe: `create the ${type} suite under suite ${parent} (POST _apis/testplan/Plans/${plan}/suites), then re-read the suites`,
+        run: async () => {
+          created = await adapter.createSuite(plan, spec, { execute: true });
+          const after = await adapter.listSuites(plan);
+          if (!after.some((x) => String(x.id) === String(created.id) && matches(x))) {
+            throw new Error(`suite ${created.id} was created but is not listed under suite ${parent} on re-read — check it in the tracker; nothing was retried`);
+          }
+          return { id: created.id };
         },
-      };
+      }]).execute();
+      const allDone = ledger.every((l) => l.status === 'done');
+      return { code: allDone ? 0 : 1, out: { ok: allDone, mode, exists: false, ledger, ...(created ? { created } : {}) } };
     }
 
     return { code: 2, out: { ok: false, error: { message: USAGE } } };
