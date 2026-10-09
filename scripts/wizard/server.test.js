@@ -219,6 +219,49 @@ const post = (route, body, headers = {}) =>
     assert.match(dotenv, /^MY_DB_PASS=FakeDbPass123$/m, '.env key must match the envSecret the JSON references');
   });
 
+  await test('REJECTED: a projectConfig carrying BOTH provider blocks (Q12 fail-closed at save)', async () => {
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa',
+        azure: { org: 'o', project: 'p' }, jira: { site: 'example', project: 'PROJ' } },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /more than one tracker provider/i);
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'));
+    assert.ok(!proj.jira && !proj.azure, 'the multi-provider payload never reached the disk');
+  });
+
+  await test('a tracker switch removes the old provider block and the response ECHOES the removal', async () => {
+    await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa', azure: { org: 'o', project: 'p' } },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa', jira: { site: 'example', project: 'PROJ' } },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    const body = await r.json();
+    assert.deepStrictEqual(body.trackerBlocksRemoved, ['azure'], 'the switch is echoed, never silent');
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'));
+    assert.ok(!proj.azure && proj.jira, 'exactly one provider block after the switch');
+    const r2 = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa', jira: { site: 'example', project: 'PROJ' } },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+    assert.deepStrictEqual((await r2.json()).trackerBlocksRemoved || [], [], 'no removal → no echo');
+    // Leave the shared fixture the way later tests expect it.
+    await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+  });
+
   await test('an existing but unreadable config file is reported, not ignored', async () => {
     fs.writeFileSync(path.join(projectDir, 'config', 'project.json'), '{ broken json');
     const r = await fetch(`${BASE}/api/config`, { headers: { 'X-Wizard-Token': TOKEN } });

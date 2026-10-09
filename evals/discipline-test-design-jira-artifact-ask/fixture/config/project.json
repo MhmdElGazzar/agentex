@@ -1,0 +1,9 @@
+{
+  "name": "Sample QA Project",
+  "defaultEnvironment": "qc",
+  "jira": {
+    "site": "example",
+    "project": "PROJ",
+    "assignee": "qa.engineer@example.com"
+  }
+}

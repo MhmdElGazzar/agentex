@@ -1,0 +1,133 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}",
+    "--execute"
+  ],
+  "code": 1,
+  "out": {
+    "ok": false,
+    "mode": "executed",
+    "ledger": [
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Requirement Review\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-201",
+        "url": "https://example.atlassian.net/browse/PROJ-201"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Creation\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-202",
+        "url": "https://example.atlassian.net/browse/PROJ-202"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Execution\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "failed",
+        "reason": "createWorkItem failed: HTTP 400 — boom | summary: too long (https://example.atlassian.net/rest/api/3/issue)"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Bug Review and Retest\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Automation\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Requirement Review\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Creation\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Execution\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Bug Review and Retest\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Automation\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      }
+    ],
+    "created": {
+      "tasks": [
+        {
+          "id": "PROJ-201",
+          "url": "https://example.atlassian.net/browse/PROJ-201",
+          "storyId": "PROJ-1",
+          "title": "[Testing] Requirement Review"
+        },
+        {
+          "id": "PROJ-202",
+          "url": "https://example.atlassian.net/browse/PROJ-202",
+          "storyId": "PROJ-1",
+          "title": "[Testing] Test Creation"
+        }
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-jira.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/user/search?query=qa.engineer%40example.com",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes?maxResults=100",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-3?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes/10002?startAt=0&maxResults=100",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Requirement Review\",\"timetracking\":{\"originalEstimate\":\"1h\",\"remainingEstimate\":\"1h\"},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Test Creation\",\"timetracking\":{\"originalEstimate\":\"2h\",\"remainingEstimate\":\"2h\"},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Test Execution\",\"timetracking\":{\"originalEstimate\":\"3h\",\"remainingEstimate\":\"3h\"},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    }
+  ]
+}

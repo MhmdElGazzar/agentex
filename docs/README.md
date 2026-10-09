@@ -13,6 +13,7 @@ quick tour.
 | [Ask the Knowledge Base](./ask-kb.md) | `kb:` steps and the `/ask-kb` command (advisory only). |
 | [Optimize Login](./optimize-login.md) | Pay a web app's login cost once per session instead of once per test. |
 | [Azure DevOps QA](./azure-devops.md) | `/estimate-story`, `/design-test`, `bug-report-azure` bug filing, and Azure resource access. |
+| [Jira QA](./jira.md) | The same tracker flows on Jira Cloud — setup, per-flow behavior, and the honest capability gaps. |
 | [Interactive HTML Report](./extent-report.md) | The standalone `extent-report.html` dashboard. |
 | [CI Quality Gate](./ci-quality-gate.md) | Invoke runs from your CI/CD pipeline: the `ci_gate.js` entry point, exit-code semantics (0/1/2), the public verdict JSON contract, pipeline templates, advisory vs blocking modes. |
 | [Configuration](./configuration.md) | Environment variables, permissions, and secret handling. |

@@ -39,7 +39,9 @@ function fakeFetch(routes) {
       if (!call.url.includes(r.match)) continue;
       if (r.bodyMatch && !(typeof call.body === 'string' && call.body.includes(r.bodyMatch))) continue;
       const status = r.status || 200;
-      return { ok: status < 300, status, text: async () => (r.text !== undefined ? r.text : JSON.stringify(r.json || {})) };
+      // json may be a function of the calls so far — for read-after-write routes.
+      const json = typeof r.json === 'function' ? r.json(calls) : r.json;
+      return { ok: status < 300, status, text: async () => (r.text !== undefined ? r.text : JSON.stringify(json || {})) };
     }
     return { ok: true, status: 200, text: async () => '{}' };
   };
@@ -56,7 +58,11 @@ function createCaseRoutes(extra = []) {
     { method: 'POST', match: '/wiql', json: { workItems: [] } },
     { match: '/workitemtypes/Test%20Case/fields', json: TC_FIELDS },
     { method: 'POST', match: '/workitems/$Test%20Case', json: { id: 505 } },
-    { method: 'PATCH', match: '/testplan/suiteentry/4', json: {} },
+    { method: 'POST', match: '/test/Plans/3/suites/4/testcases/505', json: {} },
+    // Suite membership re-read: 505 shows up only after the add POST.
+    { match: '/test/Plans/3/suites/4/testcases', json: (calls) => ({
+      value: calls.some((c) => c.method === 'POST' && c.url.includes('/testcases/505')) ? [{ testCase: { id: '505' } }] : [],
+    }) },
   ];
 }
 
@@ -74,7 +80,7 @@ function failRoutes(extra = []) {
 }
 
 const isWrite = (c) =>
-  (c.method === 'POST' && (c.url.includes('/workitems/$') || c.url.includes('/test/runs'))) || c.method === 'PATCH';
+  (c.method === 'POST' && (c.url.includes('/workitems/$') || c.url.includes('/test/runs') || c.url.includes('/testcases/'))) || c.method === 'PATCH';
 
 (async () => {
   // ── reads ───────────────────────────────────────────────────────────────────
@@ -132,7 +138,7 @@ const isWrite = (c) =>
     assert.strictEqual(code, 0, JSON.stringify(out));
     assert.strictEqual(out.mode, 'plan');
     assert.deepStrictEqual(out.plan.map((p) => p.step), ['create-test-case', 'add-to-suite']);
-    assert.match(out.plan[1].describe, /suiteentry/);
+    assert.match(out.plan[1].describe, /POST .*\/test\/Plans\/3\/suites\/4\/testcases\//);
     assert.strictEqual(f.calls.filter(isWrite).length, 0);
   });
 
@@ -162,12 +168,12 @@ const isWrite = (c) =>
     assert.strictEqual(out.created.suiteId, '4');
     const writes = f.calls.filter(isWrite);
     assert.ok(writes[0].url.includes('$Test%20Case'), 'create first');
-    assert.ok(writes[1].url.includes('/testplan/suiteentry/4'), 'suite add second');
-    assert.deepStrictEqual(JSON.parse(writes[1].body), [{ id: 505 }]);
+    assert.ok(writes[1].url.includes('/test/Plans/3/suites/4/testcases/505?'), 'suite add second');
+    assert.ok(!f.calls.some((c) => c.url.includes('suiteentry')), 'never the suite-entries (reorder) route');
   });
 
   await test('SUITE-ADD FAILURE: exit 1, ledger names the orphan TC by id — never silent', async () => {
-    const f = fakeFetch(createCaseRoutes([{ method: 'PATCH', match: '/testplan/suiteentry/4', status: 404, text: JSON.stringify({ message: 'suite not found' }) }]));
+    const f = fakeFetch(createCaseRoutes([{ method: 'POST', match: '/suites/4/testcases/505', status: 404, text: JSON.stringify({ message: 'suite not found' }) }]));
     const { code, out } = await run(['create-case', '--plan', '3', '--suite', '4', '--title', 'New TC', '--execute'], { cwd: proj(), fetch: f });
     assert.strictEqual(code, 1);
     assert.strictEqual(out.ok, false, 'a TC outside its suite is a FAILURE, not a success');
@@ -177,6 +183,16 @@ const isWrite = (c) =>
     assert.strictEqual(byStep['add-to-suite'].status, 'failed');
     assert.match(byStep['add-to-suite'].reason, /suite not found/);
     assert.strictEqual(out.created.testCaseId, 505, 'the orphan is named in created');
+  });
+
+  await test('SUITE-ADD SILENT NO-OP (HTTP 200, case not in suite on re-read): exit 1, orphan named', async () => {
+    const f = fakeFetch(createCaseRoutes([{ match: '/test/Plans/3/suites/4/testcases', json: { value: [] } }]));
+    const { code, out } = await run(['create-case', '--plan', '3', '--suite', '4', '--title', 'New TC', '--execute'], { cwd: proj(), fetch: f });
+    assert.strictEqual(code, 1);
+    const byStep = Object.fromEntries(out.ledger.map((l) => [l.step, l]));
+    assert.strictEqual(byStep['add-to-suite'].status, 'failed');
+    assert.match(byStep['add-to-suite'].reason, /#505 was created but NOT added to suite 4.*not in suite 4 on re-read/);
+    assert.strictEqual(out.created.testCaseId, 505);
   });
 
   // ── fail ────────────────────────────────────────────────────────────────────
@@ -272,6 +288,23 @@ const isWrite = (c) =>
     assert.strictEqual(lines.length, 1);
     assert.strictEqual(JSON.parse(lines[0]).ok, false);
     assert.ok(!r.stdout.includes(SENTINEL_PAT) && !r.stderr.includes(SENTINEL_PAT));
+  });
+
+  await test('capability guard: a Jira-configured project exits 2 naming testPlans:false — before any network call', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-tp-'));
+    fs.mkdirSync(path.join(dir, 'config'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config', 'project.json'),
+      JSON.stringify({ jira: { site: 'example', project: 'PROJ' } }));
+    fs.writeFileSync(path.join(dir, '.env'), 'JIRA_EMAIL=qa@example.com\nJIRA_API_TOKEN=x\n');
+    const f = fakeFetch([]);
+    for (const argv of [['list-suites', '--plan', '3'], ['create-case', '--plan', '3', '--suite', '4', '--title', 't'], ['fail', '--plan', '3', '--testcase', '7', '--bug', '1']]) {
+      const { code, out } = await run(argv, { cwd: dir, fetch: f });
+      assert.strictEqual(code, 2, JSON.stringify(out));
+      assert.strictEqual(out.ok, false);
+      assert.match(out.error.message, /not supported on this tracker/i);
+      assert.match(out.error.message, /testPlans:\s*false/);
+    }
+    assert.strictEqual(f.calls.length, 0, 'refused upfront — nothing was sent');
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

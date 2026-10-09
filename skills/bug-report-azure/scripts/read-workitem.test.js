@@ -142,6 +142,58 @@ function fakeFetch(routes = []) {
     assert.ok(!r.stdout.includes(SENTINEL_PAT) && !r.stderr.includes(SENTINEL_PAT), 'PAT leaked');
   });
 
+  // ── Jira path (provider-neutral output — same shape either provider) ──────
+  const SENTINEL_JT = 'SENTINEL-JIRA-TOKEN-readwi-0011';
+  function jiraProj() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-rwi-'));
+    fs.mkdirSync(path.join(dir, 'config'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config', 'project.json'),
+      JSON.stringify({ jira: { site: 'example', project: 'PROJ' } }));
+    fs.writeFileSync(path.join(dir, '.env'), `JIRA_EMAIL=qa@example.com\nJIRA_API_TOKEN=${SENTINEL_JT}\n`);
+    return dir;
+  }
+
+  await test('show on a Jira project: the same neutral summary shape, renderedFields surfaced', async () => {
+    const f = fakeFetch([{
+      match: '/rest/api/3/issue/PROJ-7',
+      json: {
+        id: '10007', key: 'PROJ-7',
+        fields: { issuetype: { name: 'Story' }, summary: 'Checkout story', status: { name: 'In Progress' } },
+        renderedFields: { description: '<p>rendered HTML</p>' },
+      },
+    }]);
+    const { code, out } = await run(['show', '--id', 'PROJ-7'], { cwd: jiraProj(), fetch: f });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.workItem.id, 'PROJ-7');
+    assert.strictEqual(out.workItem.type, 'Story');
+    assert.strictEqual(out.workItem.title, 'Checkout story');
+    assert.strictEqual(out.workItem.state, 'In Progress');
+    assert.strictEqual(out.workItem.url, 'https://example.atlassian.net/browse/PROJ-7');
+    assert.strictEqual(out.workItem.renderedFields.description, '<p>rendered HTML</p>',
+      'the server-rendered HTML is the read path\'s rich-text surface');
+    assert.ok(!JSON.stringify(out).includes(SENTINEL_JT));
+  });
+
+  await test('show on Jira: a 404 is a clean not-found failure, exit 1', async () => {
+    const f = fakeFetch([{ match: '/rest/api/3/issue/PROJ-999', status: 404, json: { errorMessages: ['Issue does not exist'] } }]);
+    const { code, out } = await run(['show', '--id', 'PROJ-999'], { cwd: jiraProj(), fetch: f });
+    assert.strictEqual(code, 1);
+    assert.strictEqual(out.error.status, 404);
+  });
+
+  await test('find on Jira: exact-summary keys via search/jql (a near-title is filtered out)', async () => {
+    const f = fakeFetch([{
+      method: 'POST', match: '/search/jql',
+      json: { issues: [
+        { key: 'PROJ-11', fields: { summary: 'Payment fails' } },
+        { key: 'PROJ-12', fields: { summary: 'Payment fails sometimes' } },
+      ] },
+    }]);
+    const { code, out } = await run(['find', '--type', 'Bug', '--title', 'Payment fails'], { cwd: jiraProj(), fetch: f });
+    assert.strictEqual(code, 0);
+    assert.deepStrictEqual(out.ids, ['PROJ-11']);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

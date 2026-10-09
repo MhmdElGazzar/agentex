@@ -164,6 +164,37 @@ function fakeAdapter({ bug = BUG_FIELDS, tc = TC_FIELDS, base = 'https://dev.azu
     assert.deepStrictEqual(a.calls, ['Bug']);
   });
 
+  await test('per-provider additivity: tracker-fields-jira.json is built BESIDE the ado file without touching it (Phase-3 pin)', async () => {
+    const dir = proj();
+    await cache.ensure(dir, fakeAdapter(), { types: ['Bug'] });
+    const adoFile = path.join(dir, '.agentex', 'cache', 'tracker-fields-ado.json');
+    const adoBefore = fs.readFileSync(adoFile, 'utf8');
+    const jiraAdapter = {
+      name: 'jira',
+      config: { base: 'https://example.atlassian.net', project: 'PROJ', apiVersion: '3' },
+      calls: [],
+      async listFields(type) {
+        jiraAdapter.calls.push(type);
+        return [
+          { referenceName: 'summary', name: 'Summary', alwaysRequired: true },
+          { referenceName: 'timetracking', name: 'Time tracking', alwaysRequired: false },
+        ];
+      },
+    };
+    const r = await cache.ensure(dir, jiraAdapter, { types: ['Sub-task'] });
+    assert.strictEqual(r.rebuilt, true);
+    const jiraFile = path.join(dir, '.agentex', 'cache', 'tracker-fields-jira.json');
+    assert.strictEqual(r.file, jiraFile, 'the jira cache goes to its own per-provider file');
+    const disk = JSON.parse(fs.readFileSync(jiraFile, 'utf8'));
+    assert.strictEqual(disk.provider, 'jira');
+    assert.strictEqual(disk.org, 'https://example.atlassian.net');
+    assert.deepStrictEqual(disk.types['Sub-task'].fields.summary, { required: true });
+    assert.strictEqual(fs.readFileSync(adoFile, 'utf8'), adoBefore, 'the ado cache file is byte-untouched');
+    // and reading each provider's cache back stays a cache hit for that provider
+    const again = await cache.ensure(dir, jiraAdapter, { types: ['Sub-task'] });
+    assert.strictEqual(again.rebuilt, false);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

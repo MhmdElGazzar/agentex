@@ -204,8 +204,17 @@ server = http.createServer((req, res) => {
       }
 
       try {
-        // Write config/project.json
+        // Provider-switch echo (Q12 / D14 consent pattern): a save that REMOVES
+        // a provider block the existing config carried is a tracker switch —
+        // announced on the review step, echoed here, never silent. `.env` is
+        // never edited by a switch (secrets are only ever written, not removed).
         const projDir = path.join(projectRoot, 'config');
+        const prevProj = safeReadJSON(path.join(projDir, 'project.json'));
+        const hasBlock = (obj, p) => !!(obj && obj[p] && typeof obj[p] === 'object' && Object.keys(obj[p]).length > 0);
+        const trackerBlocksRemoved = ['azure', 'jira']
+          .filter(p => hasBlock(prevProj, p) && !hasBlock(projectConfig, p));
+
+        // Write config/project.json
         fs.mkdirSync(projDir, { recursive: true });
         fs.writeFileSync(
           path.join(projDir, 'project.json'),
@@ -213,6 +222,9 @@ server = http.createServer((req, res) => {
           'utf8'
         );
         const written = ['config/project.json'];
+        for (const p of trackerBlocksRemoved) {
+          console.log(`[setup-wizard] 🔁 removed the ${p} block from config/project.json — tracker switched (user-reviewed); .env keys stay untouched`);
+        }
 
         // Write every environment in the payload
         const envDirOut = path.join(projectRoot, 'environments');
@@ -272,6 +284,7 @@ server = http.createServer((req, res) => {
           renamed,
           deleted,
           reconciled: plan.reconcile.map(n => `environments/${n}.json`),
+          ...(trackerBlocksRemoved.length ? { trackerBlocksRemoved } : {}),
         });
       } catch(e) {
         respondJSON(res, 500, { ok: false, error: e.message });

@@ -1,12 +1,6 @@
 {
   "name": "my-project",
   "defaultEnvironment": "qc",
-  "azure": {
-    "org": "",
-    "project": "",
-    "team": "",
-    "assignee": ""
-  },
   "kb": {
     "baseUrl": "",
     "project": ""

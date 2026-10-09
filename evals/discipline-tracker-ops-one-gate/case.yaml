@@ -1,0 +1,17 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# The tracker-ops one-gate rule (design WP-6 / F-1): an ad-hoc write batch (here a
+# transition + a comment on the same issue) reaches EXACTLY ONE approval covering the
+# whole batch — plans rendered together, no --execute before the approval, no per-write
+# approval drip. Fixture: jira-configured project with both dry runs pre-baked (no
+# live tracker).
+name: discipline-tracker-ops-one-gate
+tags: [discipline, tracker-ops, jira]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'JIRA_EMAIL=\nJIRA_API_TOKEN=\n' > .env

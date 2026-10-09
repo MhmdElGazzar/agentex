@@ -39,7 +39,9 @@ function fakeFetch(routes = []) {
     for (const r of routes) {
       if ((r.method || 'GET') === (opts.method || 'GET') && String(url).includes(r.match)) {
         const status = r.status || 200;
-        const text = r.text !== undefined ? r.text : JSON.stringify(r.json !== undefined ? r.json : {});
+        // json may be a function of the calls so far — for read-after-write routes.
+        const json = typeof r.json === 'function' ? r.json(calls) : r.json;
+        const text = r.text !== undefined ? r.text : JSON.stringify(json !== undefined ? json : {});
         return { ok: status >= 200 && status < 300, status, text: async () => text };
       }
     }
@@ -217,13 +219,45 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(Buffer.compare(call.body, fs.readFileSync(png)), 0, 'raw bytes travel as the body');
   });
 
-  await test('addCaseToSuite PATCHes the pinned suite-entries route with body [{id}]', async () => {
-    const f = fakeFetch([{ method: 'PATCH', match: '/testplan/suiteentry/', json: {} }]);
-    await createAdapter({ cwd: proj(), fetch: f }).addCaseToSuite(3, 4, 505, { execute: true });
-    const call = f.calls[0];
-    assert.ok(call.url.includes(`${BASE}/${PROJ}/_apis/testplan/suiteentry/4?`), call.url);
-    assert.match(call.url, /api-version=7\.1-preview\.2/, 'suite entries is a -preview endpoint');
-    assert.deepStrictEqual(JSON.parse(call.body), [{ id: 505 }]);
+  // Suite membership as the legacy GET returns it; flips once the add POST was sent.
+  const suiteCases = (present, addedAfterPost = []) => (calls) => {
+    const posted = calls.some((c) => c.method === 'POST' && c.url.includes('/testcases/'));
+    return { value: [...present, ...(posted ? addedAfterPost : [])].map((id) => ({ testCase: { id: String(id) } })) };
+  };
+
+  await test('addCaseToSuite POSTs the legacy testcases route with the ids in the path', async () => {
+    const f = fakeFetch([{ match: '/test/Plans/3/suites/4/testcases', json: suiteCases([], [505]) }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).addCaseToSuite(3, 4, 505, { execute: true });
+    const post = f.calls.find((c) => c.method === 'POST');
+    assert.ok(post.url.includes(`${BASE}/${PROJ}/_apis/test/Plans/3/suites/4/testcases/505?`), post.url);
+    assert.match(post.url, /api-version=7\.1(&|$)/, 'GA api-version, no -preview suffix');
+    assert.ok(!f.calls.some((c) => c.url.includes('suiteentry')), 'never the suite-entries (reorder) route');
+    assert.deepStrictEqual(r, { ids: [505], added: [505], alreadyPresent: [], suiteId: 4, planId: 3 });
+  });
+
+  await test('addCaseToSuite is idempotent: ids already in the suite are skipped, none left = no POST', async () => {
+    const f = fakeFetch([{ match: '/suites/4/testcases', json: suiteCases([505, 506], [507]) }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const r = await a.addCaseToSuite(3, 4, [505, 507], { execute: true });
+    assert.ok(f.calls.find((c) => c.method === 'POST').url.includes('/testcases/507?'), 'only the missing id is posted');
+    assert.deepStrictEqual(r.added, [507]);
+    assert.deepStrictEqual(r.alreadyPresent, [505]);
+    const f2 = fakeFetch([{ match: '/suites/4/testcases', json: suiteCases([505]) }]);
+    const r2 = await createAdapter({ cwd: proj(), fetch: f2 }).addCaseToSuite(3, 4, 505, { execute: true });
+    assert.strictEqual(f2.calls.filter((c) => c.method === 'POST').length, 0);
+    assert.deepStrictEqual(r2.added, []);
+  });
+
+  await test('addCaseToSuite FAILS CLOSED when the re-read does not show the case (HTTP 200, nothing added)', async () => {
+    const f = fakeFetch([{ match: '/suites/4/testcases', json: suiteCases([], []) }]);
+    await assert.rejects(
+      () => createAdapter({ cwd: proj(), fetch: f }).addCaseToSuite(3, 4, 505, { execute: true }),
+      (e) => {
+        assert.ok(e instanceof TrackerError);
+        assert.strictEqual(e.op, 'addCaseToSuite');
+        assert.match(e.message, /test case\(s\) 505 are not in suite 4 on re-read/);
+        return true;
+      });
   });
 
   await test('test-run writes: createRun / updateRunResults / updateRun routes + methods', async () => {
@@ -380,6 +414,11 @@ const PROJ = 'Sample%20Project';
   });
 
   // ── capability flags ────────────────────────────────────────────────────────
+  await test('webUrl is exposed on the adapter (consumers drop their ADO-shaped local helpers)', async () => {
+    const a = createAdapter({ cwd: proj(), fetch: fakeFetch([]) });
+    assert.strictEqual(a.webUrl(4711), `${BASE}/${PROJ}/_workitems/edit/4711`);
+  });
+
   await test('capability flags describe ADO honestly (Phase-3 seam)', async () => {
     const a = createAdapter({ cwd: proj(), fetch: fakeFetch([]) });
     assert.strictEqual(a.name, 'ado');
@@ -481,6 +520,118 @@ const PROJ = 'Sample%20Project';
     const a = createAdapter({ cwd: proj(), fetch: f });
     const r = await a.createWorkItem('Bug', { fields: { 'System.Title': 't' } }, { execute: true });
     assert.strictEqual(r.id, 4711);
+  });
+
+  // ── neutral reads (additive): getStory / listChildren / listSprintStories ──
+  // Flow-free by contract: no CLI text, no estimation wording, no story-type rule.
+  const { iterationWiql } = require('./ado.js');
+  const FLOW_WORDS = ['--', 're-run', 'bundled', 'config/project.json'];
+  const assertFlowFree = (r) => {
+    const s = JSON.stringify(r);
+    for (const w of FLOW_WORDS) assert.ok(!s.includes(w), `result carries flow text "${w}": ${s}`);
+  };
+  const WI_7 = { id: 7, fields: { 'System.WorkItemType': 'User Story', 'System.Title': 'Seven', 'System.State': 'Active' },
+    relations: [
+      { rel: 'System.LinkTypes.Hierarchy-Forward', url: `${BASE}/_apis/wit/workItems/71` },
+      { rel: 'System.LinkTypes.Hierarchy-Reverse', url: `${BASE}/_apis/wit/workItems/1` },
+      { rel: 'System.LinkTypes.Hierarchy-Forward', url: `${BASE}/_apis/wit/workItems/not-numeric` },
+      { rel: 'System.LinkTypes.Hierarchy-Forward', url: `${BASE}/_apis/wit/workItems/72` },
+    ] };
+
+  await test('PINNED: iterationWiql(p, t, "User Story") is byte-identical to the 319619c current-sprint WIQL', async () => {
+    assert.strictEqual(iterationWiql("O'Neil Project", "QA 'A' Team", 'User Story'),
+      "SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='User Story' AND [System.TeamProject]='O''Neil Project'" +
+      " AND [System.IterationPath] = @CurrentIteration('[O''Neil Project]\\QA ''A'' Team') ORDER BY [System.Id]");
+    assert.ok(iterationWiql('P', 'T', "It's").includes("[System.WorkItemType]='It''s'"), 'the work item type is a quoted parameter');
+  });
+
+  await test('getStory: exactly ONE request, identical to getWorkItem(ref, {expand:"all"}); neutral shape + raw', async () => {
+    const f1 = fakeFetch([{ match: '/workitems/7?', json: WI_7 }]);
+    await createAdapter({ cwd: proj(), fetch: f1 }).getWorkItem(7, { expand: 'all' });
+    const f2 = fakeFetch([{ match: '/workitems/7?', json: WI_7 }]);
+    const s = await createAdapter({ cwd: proj(), fetch: f2 }).getStory(7);
+    assert.deepStrictEqual(f2.calls.map((c) => [c.method, c.url, c.body]), f1.calls.map((c) => [c.method, c.url, c.body]));
+    assert.deepStrictEqual(Object.keys(s), ['id', 'type', 'title', 'state', 'url', 'raw']);
+    assert.strictEqual(s.id, 7);
+    assert.strictEqual(s.type, 'User Story');
+    assert.strictEqual(s.title, 'Seven');
+    assert.strictEqual(s.state, 'Active');
+    assert.strictEqual(s.url, `${BASE}/${PROJ}/_workitems/edit/7`);
+    assert.deepStrictEqual(s.raw, WI_7);
+  });
+
+  await test('getStory is TOTAL on an empty body (raw null, nulls, never a shape throw); transport errors propagate UNWRAPPED', async () => {
+    const s = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/7?', text: '' }]) }).getStory(7);
+    assert.strictEqual(s.raw, null);
+    assert.strictEqual(s.type, null); assert.strictEqual(s.title, null); assert.strictEqual(s.state, null);
+    assert.strictEqual(s.id, 7, 'an empty body falls back to the ref');
+    const noId = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/7?', json: { fields: {} } }]) }).getStory(7);
+    assert.strictEqual(noId.id, undefined, 'a body is taken verbatim: id is wi.id, never substituted');
+    assert.strictEqual(noId.url, `${BASE}/${PROJ}/_workitems/edit/undefined`);
+    const a = createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/7?', status: 404, text: JSON.stringify({ message: 'gone' }) }]) });
+    let direct; try { await a.getWorkItem(7, { expand: 'all' }); } catch (e) { direct = e; }
+    let viaStory; try { await a.getStory(7); } catch (e) { viaStory = e; }
+    assert.ok(viaStory instanceof TrackerError, 'the TrackerError itself, not a wrapper');
+    assert.strictEqual(viaStory.message, direct.message);
+  });
+
+  await test('listChildren: one GET per Hierarchy-Forward relation, in relation order, non-numeric URLs skipped, no expand, unfiltered', async () => {
+    const f = fakeFetch([
+      { match: '/workitems/7?', json: WI_7 },
+      { match: '/workitems/71?', json: { id: 71, fields: { 'System.Title': '[Testing] A', 'System.State': 'New' } } },
+      { match: '/workitems/72?', json: { id: 72, fields: {} } },
+    ]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const s = await a.getStory(7);
+    const before = f.calls.length;
+    const kids = await a.listChildren(s);
+    const reads = f.calls.slice(before);
+    assert.deepStrictEqual(reads.map((c) => c.url.replace(/\?.*/, '')), [`${BASE}/${PROJ}/_apis/wit/workitems/71`, `${BASE}/${PROJ}/_apis/wit/workitems/72`]);
+    assert.ok(reads.every((c) => c.method === 'GET' && !c.url.includes('$expand')), 'child reads carry no expand');
+    assert.deepStrictEqual(kids, [{ id: 71, title: '[Testing] A', state: 'New' }, { id: 72, title: '', state: null }]);
+  });
+
+  await test('listChildren: a failed child read REJECTS with the unwrapped error; a null raw throws the 319619c TypeError', async () => {
+    const a = createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/71?', status: 500, text: 'boom' }]) });
+    await assert.rejects(a.listChildren({ id: 7, raw: WI_7 }), (e) => e instanceof TrackerError && /HTTP 500/.test(e.message));
+    await assert.rejects(a.listChildren({ id: 7, raw: null }), (e) => e instanceof TypeError && e.message === "Cannot read properties of null (reading 'relations')");
+  });
+
+  await test('listSprintStories: no team -> team-required with ZERO requests', async () => {
+    const f = fakeFetch([]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listSprintStories({ storyType: 'User Story', team: null });
+    assert.deepStrictEqual(r, { ok: false, condition: 'team-required', data: {} });
+    assert.strictEqual(f.calls.length, 0);
+    assertFlowFree(r);
+  });
+
+  await test('listSprintStories: exactly ONE POST wit/wiql whose body is {query: iterationWiql(...)}; refs in order, null ids dropped; sprint null', async () => {
+    const f = fakeFetch([{ method: 'POST', match: '/wiql', json: { workItems: [{ id: 3 }, { id: null }, {}, { id: 1 }] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listSprintStories({ storyType: 'User Story', team: "QA 'A' Team" });
+    assert.strictEqual(f.calls.length, 1, 'no team-iteration GET — the macro resolves server-side');
+    assert.strictEqual(f.calls[0].method, 'POST');
+    assert.ok(f.calls[0].url.startsWith(`${BASE}/${PROJ}/_apis/wit/wiql?`), f.calls[0].url);
+    assert.strictEqual(f.calls[0].body, JSON.stringify({ query: iterationWiql('Sample Project', "QA 'A' Team", 'User Story') }));
+    assert.deepStrictEqual(r, { ok: true, sprint: null, refs: [3, 1] });
+    assertFlowFree(r);
+  });
+
+  await test('listSprintStories: an array response works; an empty result is {ok:true, refs:[]}; a 401 propagates unwrapped', async () => {
+    const r1 = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ method: 'POST', match: '/wiql', json: [{ id: 5 }] }]) })
+      .listSprintStories({ storyType: 'User Story', team: 'T' });
+    assert.deepStrictEqual(r1.refs, [5]);
+    const r2 = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ method: 'POST', match: '/wiql', json: { workItems: [] } }]) })
+      .listSprintStories({ storyType: 'User Story', team: 'T' });
+    assert.deepStrictEqual(r2, { ok: true, sprint: null, refs: [] });
+    const a = createAdapter({ cwd: proj(), fetch: fakeFetch([{ method: 'POST', match: '/wiql', status: 401, text: 'no' }]) });
+    await assert.rejects(a.listSprintStories({ storyType: 'User Story', team: 'T' }),
+      (e) => e instanceof TrackerError && e.status === 401 && Boolean(e.credentialHint));
+  });
+
+  await test('listSprintStories: storyType is a REQUIRED caller parameter (no adapter default)', async () => {
+    const f = fakeFetch([]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listSprintStories({ team: 'T' }), /storyType/);
+    assert.strictEqual(f.calls.length, 0);
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

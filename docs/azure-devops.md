@@ -5,7 +5,8 @@ from a story's acceptance criteria, file bugs it finds during a run, and reach A
 mid-test — always with your confirmation before anything is written. Every ADO flow — bug
 filing, estimation, test design, test-plan updates — talks to the ADO REST API directly
 through bundled scripts; no Azure CLI is needed for any of them. (`az` remains only for
-reaching Azure *resources* mid-run, below.)
+reaching Azure *resources* mid-run, below.) Using **Jira** instead? The same flows run on
+Jira Cloud — see [jira.md](./jira.md).
 
 ## One-time setup
 

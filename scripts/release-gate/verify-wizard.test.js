@@ -18,6 +18,11 @@ const CLI = path.join(__dirname, 'verify-wizard.js');
 
 const ANSWERS = {
   name: 'gate-sample',
+  // The gate persona must now answer the REQUIRED tracker select (Q12) or the
+  // wizard refuses to advance; the answer itself is persisted:false in the
+  // schema — its effect is the provider block, verified through the azure.*
+  // answers, so the verifier checks nothing on disk for it.
+  tracker: 'azure',
   'login.mode': 'session',
   'figma.fileKey': 'FileKey123',
   'figma.tokenEnvVar': 'FIGMA_TOKEN',
@@ -86,6 +91,15 @@ function editJson(file, fn) {
     assert.deepStrictEqual(r.findings, []);
     assert.strictEqual(r.ok, true);
     assert.ok(r.checked >= 15, `checked ${r.checked} placements`);
+  });
+
+  await test('a persisted:false schema field (the tracker select) is counted but never demanded on disk', async () => {
+    const dir = goodProject();
+    // config/project.json carries NO `tracker` key — by design (the provider
+    // block IS the selection). The verifier must not flag the answer.
+    const r = verifyWizard({ dir, answersFile: withAnswers(dir, { ...ANSWERS, tracker: 'azure' }) });
+    assert.deepStrictEqual(r.findings.filter((f) => f.startsWith('tracker')), []);
+    assert.strictEqual(r.ok, true);
   });
 
   await test('a secret value leaked into a JSON config file → finding names the key, never the value', async () => {

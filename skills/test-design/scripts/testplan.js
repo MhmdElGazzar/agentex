@@ -65,6 +65,21 @@ function parseArgs(argv) {
 
 const USAGE = 'usage: testplan.js <list-suites|list-cases|find-case|create-case|fail> [options]';
 
+// Capability guard (Q11 upfront honesty): every subcommand here is test-plan/
+// test-run mechanics — on a tracker whose adapter declares testPlans: false
+// (Jira), the honest answer is one refusal line BEFORE any request, never an
+// attempt. The /design-test skill's Jira path owns what to offer instead.
+function guardTestPlans(adapter) {
+  if (adapter.capabilities && adapter.capabilities.testPlans === false) {
+    const e = new Error(
+      `not supported on this tracker (testPlans: false) — ${adapter.name} has no test-plan/suite API, ` +
+      'so there is nothing testplan.js could read or write here');
+    e.exitCode = 2;
+    throw e;
+  }
+  return adapter;
+}
+
 // Per-suite TestPoint lookup; the global ?testCaseId shortcut 404s on many orgs.
 async function findPoint(adapter, planId, testCaseId) {
   for (const s of await adapter.listSuites(planId)) {
@@ -95,14 +110,14 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
   try {
     if (cmd === 'list-suites') {
       const plan = need('plan');
-      const adapter = resolveTracker(cwd, { fetch });
+      const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
       const suites = await adapter.listSuites(plan);
       return { code: 0, out: { ok: true, planId: plan, suites: suites.map((s) => ({ id: s.id, name: s.name, suiteType: s.suiteType })) } };
     }
 
     if (cmd === 'list-cases') {
       const plan = need('plan');
-      const adapter = resolveTracker(cwd, { fetch });
+      const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
       const suites = args.suite
         ? [{ id: args.suite, name: '(given)' }]
         : await adapter.listSuites(plan);
@@ -126,7 +141,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
 
     if (cmd === 'find-case') {
       const plan = need('plan'); const tc = need('testcase');
-      const adapter = resolveTracker(cwd, { fetch });
+      const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
       const wi = await adapter.getWorkItem(tc);
       const type = wi && wi.fields && wi.fields['System.WorkItemType'];
       if (type !== 'Test Case') {
@@ -146,7 +161,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
 
     if (cmd === 'create-case') {
       const plan = need('plan'); const suite = need('suite'); const title = need('title');
-      const adapter = resolveTracker(cwd, { fetch });
+      const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
       const area = args.area || adapter.config.areaPath || null;
       const blocked = [];
       const validation = {};
@@ -210,7 +225,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         },
         {
           step: 'add-to-suite',
-          describe: `add the Test Case to suite ${suite} (PATCH _apis/testplan/suiteentry/${suite})`,
+          describe: `add the Test Case to suite ${suite} (POST _apis/test/Plans/${plan}/suites/${suite}/testcases, membership re-read)`,
           run: async () => {
             try {
               await adapter.addCaseToSuite(plan, suite, tcId, { execute: true });
@@ -236,7 +251,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
     if (cmd === 'fail') {
       const plan = need('plan'); const tc = need('testcase'); const bug = need('bug');
       const comment = args.comment || `Failed during automated regression run; see Bug #${bug}.`;
-      const adapter = resolveTracker(cwd, { fetch });
+      const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
 
       // Read phase: locate the test point (fail closed when there is none).
       const point = await findPoint(adapter, plan, tc);

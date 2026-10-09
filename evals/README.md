@@ -52,9 +52,9 @@ two-line footers in the prompt.
 | case | result |
 |---|---|
 | trigger-test-execution | Not yet run under this name (renamed from trigger-browser-testing when the skill split). Previous baseline as trigger-browser-testing: PASS — invoked `agentex:browser-testing` + `agentex:init-test`; re-checked 2026-08-17 on installed 0.16.1 with define-flow present (discovery competition, 1 rep, score 1.0): still fires for the defect-hunt scenario |
-| trigger-test-design | PASS — invoked `agentex:design-test`. The skill (incl. its description) was rewritten for the script-backed one-gate flow in the tracker-agnostic Phase 2; the re-run on the installed rebuilt version is pending the release run |
-| trigger-task-estimation | PASS — invoked `agentex:task-estimation`. The skill (incl. its description) was rewritten for the script-backed one-gate flow in the tracker-agnostic Phase 2; the re-run on the installed rebuilt version is pending the release run |
-| trigger-bug-report-azure | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): invoked `agentex:bug-report-azure`; its plan described the rebuilt one-gate flow (phase-A reads, dry-run, single consolidated approval). Closes the standing FAIL: v0.12.0 had the skill undiscoverable (frontmatter parse bug); the skill was rewritten for the REST one-gate flow in tracker-agnostic Phase 1 |
+| trigger-test-design | PASS — invoked `agentex:design-test`. The skill (incl. its description) was rewritten for the script-backed one-gate flow in the tracker-agnostic Phase 2; the re-run on the installed rebuilt version is pending the release run. Description broadened again 2026-08-28 (jira-confluence-integration: Jira phrasing now triggers it) — MUST be re-run on the installed build at the release run |
+| trigger-task-estimation | PASS — invoked `agentex:task-estimation`. The skill (incl. its description) was rewritten for the script-backed one-gate flow in the tracker-agnostic Phase 2; the re-run on the installed rebuilt version is pending the release run. Description broadened again 2026-08-28 (jira-confluence-integration: Jira phrasing now triggers it) — MUST be re-run on the installed build at the release run |
+| trigger-bug-report-azure | PASS — run 2026-08-26 on installed 0.19.0 (1 rep, score 1.0): invoked `agentex:bug-report-azure`; its plan described the rebuilt one-gate flow (phase-A reads, dry-run, single consolidated approval). Closes the standing FAIL: v0.12.0 had the skill undiscoverable (frontmatter parse bug); the skill was rewritten for the REST one-gate flow in tracker-agnostic Phase 1. Description broadened 2026-08-28 (jira-confluence-integration: "file these as Jira bugs" phrasing now triggers it) — MUST be re-run on the installed build at the release run |
 | negative-general-coding | PASS — no agentex skill fired |
 | discipline-api-only-run-no-browser | Not yet run (new with the test-execution / browser-driver split) |
 | negative-ask-kb-uninvited | PASS — browser skills fired, ask-kb did not |
@@ -89,6 +89,10 @@ two-line footers in the prompt.
 | discipline-run-summary-persists | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
 | discipline-run-timing-captured | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
 | discipline-report-secrets | authored 2026-08-28 (extent-report-enrichment; sentinel-secret .env fixture), pending the release run on the installed build |
+| discipline-test-design-jira-artifact-ask | authored 2026-08-28 (jira-confluence-integration; the Q11 artifact ask — pre-baked story + issue-type discovery fixture, no live tracker), pending the release run on the installed build |
+| discipline-tracker-selection-fail-closed | authored 2026-08-28 (jira-confluence-integration; the Q12 rule — dual azure+jira config fixture, fully offline: resolveTracker refuses before any network), pending the release run on the installed build |
+| trigger-tracker-ops | authored 2026-08-28 (jira-confluence-integration, WP-6), pending the release run on the installed build |
+| discipline-tracker-ops-one-gate | authored 2026-08-28 (jira-confluence-integration, WP-6; pre-baked transition + comment dry-run plans, no live tracker), pending the release run on the installed build |
 
 ## define-flow validation lanes
 

@@ -1,0 +1,190 @@
+# Jira Cloud boards — shared tracker knowledge (REST v3)
+
+Provider knowledge shared by the **task-estimation**, **test-design**, and **bug-report-azure**
+skills (and the ad-hoc **tracker-ops** surface). Every flow runs through bundled Node scripts
+on the tracker layer (`scripts/lib/tracker/` — Jira Cloud REST v3 over built-in fetch);
+nothing here is a CLI command. Read this when interpreting a script's JSON, composing a spec
+file, or explaining a board state to the user. The ADO twin is `ado-boards.md`.
+
+## Configuration and credentials
+
+Non-secret settings live in the `jira` block of the consumer's `config/project.json`:
+`site` (bare name → `https://<name>.atlassian.net`, or a full URL used as-is), `project`
+(the KEY, e.g. `PROJ`), optional `board`, `assignee` (comma-separated emails), and the
+documented overrides `storyType` (default `Story`), `subtaskType`, `bugLinkType`,
+`storyPointsField`, `acceptanceCriteriaField`. Credentials are `JIRA_EMAIL` +
+`JIRA_API_TOKEN` in `.env` (an API token from id.atlassian.com) — the scripts read them
+themselves and send `Basic base64(email:token)` in the Authorization header only. Never
+read, print, or pass either value; the email is credential material too.
+
+## Field names and identities
+
+Jira fields are flat ids, not ADO reference names. The scripts send and read:
+
+| Meaning | Jira field |
+|---|---|
+| Title | `summary` |
+| State | `status` (read-only — state CHANGES go through transitions) |
+| Type | `issuetype` |
+| Description | `description` (ADF on write; read `renderedFields.description` — HTML) |
+| Environment (Bug) | `environment` (ADF; only when the Bug screen has it) |
+| Assignee | `assignee: { accountId }` — **emails do not work**; the scripts resolve email → accountId via user search once per run and show the result on the consolidated screen |
+| Priority | `priority: { name }` — a NAME (`High`), not an ADO-style number; validated against the project's real names |
+| Estimates | `timetracking: { originalEstimate: "2h", remainingEstimate: "2h" }` — Jira duration format; the REST API writes it only when the field is on the screen (see "Project prerequisites" for the three hours modes) |
+| Labels | `labels: ["testing"]` (the estimation flow's Activity=Testing analog) |
+| Parent | `parent: { key }` — **sub-task (and epic) mechanics only**; scripts fold it inside the create, atomically |
+| Story Points | a site-specific custom field (`customfield_*`) — discovered by display name, pinned via `jira.storyPointsField` once confirmed, never guessed |
+| Severity | not a standard Jira field — a severity-like CUSTOM field is used only when the project's Bug screen has one; otherwise severity is omitted and the plan says so |
+
+Valid values are project-specific: the scripts validate against the field cache
+(`.agentex/cache/tracker-fields-jira.json`, built from **per-issue-type createmeta** routes)
+and return the real `allowedValues` on a mismatch. Corrections are for the run only; the
+consumer's config is never rewritten.
+
+## Rich text is ADF — write structured, read rendered
+
+Jira v3 bodies (description, environment, comments) are Atlassian Document Format. The
+scripts own all composition (`scripts/lib/tracker/adf.js`): plain strings map
+deterministically (blank line = new paragraph, single newline = hard break, no markdown),
+and structured bodies (bug repro, test-artifact step lists) are built from spec data.
+**Never hand-compose ADF JSON.** On reads, every `getWorkItem` requests
+`expand=renderedFields`: interpret `renderedFields.<field>` (server-rendered HTML — the
+same shape ADO reads have) instead of parsing raw ADF.
+
+## JQL and the current sprint
+
+JQL search runs through `POST /rest/api/3/search/jql` (the legacy `/search` endpoint is
+**removed** — 410) with adapter-owned pagination. Escaping is adapter-owned too: values are
+always double-quoted with `\` and `"` escaped — never concatenate raw values into JQL.
+
+The current sprint resolves dynamically via the pinned composition in the task-estimation
+Jira strategy (`skills/task-estimation/scripts/strategies/jira.js`):
+
+```
+project = "<KEY>" AND issuetype = "<storyType>" AND sprint in openSprints() ORDER BY key
+```
+
+> ⚠️ `openSprints()` can span several sprints (multi-board projects). The script then
+> blocks with the real sprint names — ask the user which sprint in the ONE bundled round
+> and re-run with `--sprint "<name>"`, or set `jira.board` in `config/project.json` so the
+> agile API (board → active sprint) steers it. Never pick silently.
+
+There is no iteration/area on Jira: sub-tasks ride their parent story's sprint — the plan
+states this explicitly.
+
+## Links, parents, and directions
+
+- **Sub-task → parent** is `fields.parent` inside the create/update — the only relation the
+  issue body can express. The scripts fold `rel: 'parent'` into it atomically.
+- **Everything else is an issue link** (`POST /rest/api/3/issueLink`), a separate write that
+  is planned and ledgered on its own. Link types are per-site — read them live
+  (`issueLinkType`), recommend `Relates`, and let the user choose (`jira.bugLinkType` pins
+  the bug→story choice once made). The acting item is the OUTWARD side by default; an
+  explicit `direction: inward` option flips it — never guess a direction.
+- **There is no Tested-By link** (`relations.testedBy: false`) — test artifacts link back to
+  their story with the chosen issue link type, explicitly, never as a silent substitute.
+
+## Attachments (write order inverts)
+
+Jira attaches files to an **existing** issue (`POST /rest/api/3/issue/{key}/attachments`) —
+there is no unparented upload. Bug filing therefore writes **create → attach ×N → link**
+(ADO uploads first, then relates); the inversion is visible in the plan the user approves,
+and a partial failure still names the created key and exactly which attachments landed.
+The scripts own the multipart mechanics (built-in FormData/Blob, `X-Atlassian-Token:
+no-check`, no manual Content-Type) — never compose an upload by hand.
+
+## Existing children (before adding sub-tasks)
+
+A story's sub-tasks come back inline on the story read (`fields.subtasks`, summaries
+included — no per-child reads). `create-tasks.js` reports `existingTestingTasks`
+(sub-tasks titled `[Testing]…`); the dry run **blocks** on them unless `--allow-existing`
+is passed after the user explicitly chooses "add anyway". A read without a subtasks list
+blocks too — fail closed, never create blind.
+
+## Transitions (state changes)
+
+Jira state changes are **transitions**, not field updates: the scripts read the REAL
+available transitions for the issue and match the asked-for target by id or
+case-insensitive name — no match fails closed listing what actually exists. (On ADO the
+honest equivalent of a "transition" ask is a `System.State` field update.)
+
+## Project prerequisites
+
+A fresh Jira project often lacks what a flow needs. The scripts discover each gap at
+run time — before any write — and block with the fix. Relay that fix to the user; never
+work around it (no guessed sprint, no hours dropped, no substitute issue type).
+
+| Flow needs | Discovered by | Blocked reason | Fix on Jira (admin) |
+|---|---|---|---|
+| An **open sprint** holding the stories (`/estimate-story` on the current sprint) | the `openSprints()` read comes back empty; a kanban/simple board also answers `400 The board does not support sprints` on the agile sprint route | `no-open-sprint` | Team-managed: **Project settings → Features → Sprints** on, then create and **start** a sprint holding the stories. Company-managed: use a **Scrum** board. Or skip sprints: `--ids <KEY,KEY>` estimates named stories |
+| **Time tracking** on the sub-task screen (hours → `timetracking`) | createmeta for the sub-task type; if absent, the editmeta of the newest existing sub-task of that type | not a block: `validation.hours.mode` = `create` / `edit-after-create` / `none`. With `none`, sub-tasks are created without hours and each description carries `Estimate: <n>h` | Jira's REST API writes `timetracking` only when the field is on the screen. Estimates visible in the UI may have been set by Automation for Jira, which bypasses screens. To get real hours: site-wide **Settings → Work items (Issues) → Time tracking** on, then team-managed: **Project settings → Work types → \<sub-task type\>** → add **Time tracking**; company-managed: add **Time tracking** to the sub-task's create (and edit) screen. Re-run with `--refresh-fields` |
+| A **Bug** issue type (bug filing) | createmeta lists the project's real types | `no-bug-type`, listing the real types | Team-managed: **Project settings → Work types → Add work type → Bug**. Company-managed: add Bug to the project's issue type scheme |
+
+Menu names drift across Jira Cloud UI versions ("Issues" ↔ "Work items", "Issue types" ↔
+"Work types"); the fix is the same.
+
+## Known limitations (capability flags — the honest gaps)
+
+| Flag | Jira | What the flows do about it |
+|---|---|---|
+| `testPlans` / `testRuns` | `false` — no test-plan/suite/run APIs | `testplan.js` refuses upfront (exit 2, one line); bug filing offers only what exists: skip (default) or link an existing `/design-test` artifact — explicitly chosen (Q11) |
+| `relations.testedBy` | `false` | artifacts link via a chosen issue link type, on the screen |
+| `validateOnly` | `false` — no server-side create dry-run | the createmeta cache + required-field checks carry pre-gate validation; the plan notes `validateOnly: 'unsupported-on-jira'` |
+| `deleteWorkItem` | `false` — Jira Cloud's only issue delete is **permanent** | never offered; a delete ask gets the upfront "not supported on this tracker" answer (portal cleanup is the user's call) |
+| native Test Case type | none | `/design-test` informs the user and asks what to create (Q11) before writing anything |
+
+## Estimation flow (/estimate-story)
+
+The Jira side of the `task-estimation` skill. The template is **verbatim** — the same five
+`[Testing]` titles, the same estimation methodology, the same one-gate workflow. What differs
+is mechanical, and the script owns it; the rules below sit on top of the skill body.
+
+**Configuration.** Resolved from the `jira` block of `config/project.json` — no `.env`
+fallback for non-secrets (see "Configuration and credentials" above). Never bake a site,
+project, board, or email into anything; a missing value joins the ONE bundled question round.
+
+| Setting | Source |
+|---|---|
+| Site / Project key | `jira.site` / `jira.project` — the script resolves them itself |
+| Board (optional) | `jira.board` — steers sprint discovery on multi-sprint projects |
+| Sub-task type (optional) | `jira.subtaskType` — pins the type when the project has several |
+| Story Points field (optional) | `jira.storyPointsField` — pins the site's custom field once confirmed |
+| Default assignee | `jira.assignee` (emails) → ask |
+| Auth | `JIRA_EMAIL` + `JIRA_API_TOKEN` in `.env`. The script reads them itself and sends them only in the Authorization header. **Never** read, print, or pass them. |
+
+A `--sprint` or corrected value is for the run only — never rewrite the user's config.
+
+**Mechanics and rules:**
+
+- Never run `acli` for board operations — `create-tasks.js` talks to Jira REST itself.
+- Each task is a **sub-task of the story** (`fields.parent` inline — one atomic create per
+  task, like ADO's inline parent link).
+- The testing-activity marker (ADO's `Activity=Testing`) is the label `testing`.
+- Hours map to Jira **time tracking** (`timetracking.originalEstimate`/`remainingEstimate`,
+  e.g. `"2h"`) only where Jira's API accepts them. Jira writes the field only when it is on
+  the screen, so the dry run reports `validation.hours.mode`:
+  - `create`: hours ride the create.
+  - `edit-after-create`: each create is followed by one `set-hours` update in the plan.
+  - `none`: no hours are written, and each description carries `Estimate: <n>h`.
+
+  Always show the mode and its `message` on the consolidated screen; the user approves it
+  with the rest.
+- The assignee email resolves to an **accountId** (one user-search read at validation time,
+  reported as `validation.assigneeAccountId`; the resolution is shown on the consolidated
+  screen). Unresolvable/ambiguous → blocks (`assignee-not-found` / `assignee-ambiguous`),
+  never assigned blind.
+- **No iteration/area on Jira** — sub-tasks ride their parent story's sprint; the plan says
+  this explicitly (`validation.notes`).
+- **Sub-task type**: exactly one sub-task type in the project → used; several → the choice
+  joins the ONE Phase-B bundle (real options listed) and `jira.subtaskType` pins it
+  thereafter — confirmed once, never guessed.
+- **Current sprint** resolves via `sprint in openSprints()` (the JQL above). When that spans
+  more than one open sprint, the script blocks with the real sprint names — ask the user
+  which sprint in the ONE bundle round and re-run with `--sprint "<name>"`, or set
+  `jira.board` to steer discovery. Never pick silently.
+- **No open sprint** blocks before any write with `no-open-sprint` (Kanban board, no started
+  sprint, or an empty sprint). Relay the fix and offer `--ids` for named stories; never guess
+  a sprint. The fixes are in "Project prerequisites" above.
+- **Story Points** come from a site-specific custom field discovered by display name; when
+  none/ambiguous the JSON says so with `storyPoints: null` (and a `storyPointsNote`) —
+  estimate from the factor counts and name the `jira.storyPointsField` override to the user.
