@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [0.23.0] — 2026-10-03
+## [0.23.0] — 2026-10-09
 ### Added
 - **Jira Cloud tracker support — every tracker flow now runs on Azure DevOps OR Jira
   Cloud.** A second adapter behind the 0.20.0 tracker interface
