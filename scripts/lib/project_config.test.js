@@ -351,7 +351,14 @@ test('pin: rules.js TITLE_PREFIX is the prefix the getter enforces', () => {
   assert.ok(D.testingTasks.every((t) => t.title.startsWith('[Testing] ')));
 });
 
-test('pin: the default qaRecords paths appear literally ONLY in project_config.js (one constant, mechanical rename)', () => {
+// The only files allowed to MIRROR the default paths — each because a reader
+// (or the scaffold) must see them — and the test that compares each mirror with
+// STRUCTURED_DEFAULTS.qaRecords, so a rename that misses a mirror fails there.
+const QA_PATH_MIRRORS = {
+  'references/tracker/qa-records.md': 'scripts/references.test.js (the default-path table)',
+};
+
+test('pin: the default qaRecords paths appear literally ONLY in project_config.js and the pinned mirrors (one constant, mechanical rename)', () => {
   const root = path.join(__dirname, '..', '..');
   const { spawnSync } = require('node:child_process'); // test-side only
   const ls = spawnSync('git', ['ls-files', '-co', '--exclude-standard'], { cwd: root, encoding: 'utf8' });
@@ -359,7 +366,7 @@ test('pin: the default qaRecords paths appear literally ONLY in project_config.j
   const needles = Object.values(D.qaRecords);
   const hits = [];
   for (const rel of ls.stdout.trim().split(/\r?\n/)) {
-    if (rel === 'scripts/lib/project_config.js') continue;
+    if (rel === 'scripts/lib/project_config.js' || QA_PATH_MIRRORS[rel]) continue;
     let text; try { text = fs.readFileSync(path.join(root, rel), 'utf8'); } catch { continue; }
     for (const n of needles) if (text.includes(n)) hits.push(`${rel}: ${n}`);
   }

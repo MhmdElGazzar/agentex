@@ -28,6 +28,7 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const DORMANT = {
   'question-format.md': 'Phase 1 (test-design / bug-report-azure overrides) and Phase 2 (requirement analysis)',
   'tracker/task-lifecycle.md': 'Phase 1 (test-execution lifecycle hooks)',
+  'tracker/qa-records.md': 'Phase 1 (test-execution: rechecks, environment blockers, the retest-close check) and Phase 2 (requirement analysis: pending questions, the read-thread procedure)',
 };
 
 function walk(dir, pred, out = []) {
@@ -135,6 +136,59 @@ test('jira-boards.md: a "JQL gotchas" section; Known limitations links capabilit
   for (const re of [/project = /, /10 pages/, /[Ss]ub-tasks/, /--out/, /batch/]) assert.match(sec, re);
   const lim = (md.split(/^## Known limitations.*$/m)[1] || '').split(/^## /m)[0];
   assert.match(lim, /capabilities\.md/);
+});
+
+// ---- qa-records.md (the QA watchlist reference) ----
+const { STRUCTURED_DEFAULTS } = require('./lib/project_config.js');
+const QA_KINDS = Object.keys(STRUCTURED_DEFAULTS.qaRecords);
+const section = (md, re) => {
+  const parts = md.split(/^## /m);
+  const hit = parts.find((p) => re.test(p.split('\n')[0]));
+  return hit === undefined ? '' : hit;
+};
+
+test('qa-records.md: the default-path table equals STRUCTURED_DEFAULTS.qaRecords exactly (the doc mirrors the one constant)', () => {
+  const md = read('references/tracker/qa-records.md');
+  const rows = {};
+  for (const m of md.matchAll(/^\| `(\w+)` \| `([^`]+)` \|/gm)) {
+    if (QA_KINDS.includes(m[1])) {
+      assert.ok(!(m[1] in rows), `${m[1]} appears twice in a path table`);
+      rows[m[1]] = m[2];
+    }
+  }
+  assert.deepStrictEqual(rows, { ...STRUCTURED_DEFAULTS.qaRecords });
+});
+
+test('qa-records.md: the four kinds, the QA watchlist, formats, lazy + committed, the read-thread procedure, the helper', () => {
+  const md = read('references/tracker/qa-records.md');
+  assert.match(md, /QA watchlist/);
+  const kinds = section(md, /kinds/i);
+  for (const k of QA_KINDS) assert.ok(kinds.includes(`\`${k}\``), `kind ${k} is described`);
+  const fmt = section(md, /format/i);
+  assert.ok(fmt, 'a file-format section');
+  assert.match(fmt, /<!-- agentex:qa-records kind=/);
+  assert.match(fmt, /- \[ \] /);
+  assert.match(fmt, /- \[x\] /);
+  assert.match(fmt, /\.jsonl/);
+  assert.match(fmt, /lazily|lazy/i);
+  assert.match(fmt, /commit/i);
+  assert.match(fmt, /\.gitignore|gitignore/i);
+  assert.match(fmt, /id line/i, 'never hand-edit an entry\'s id line');
+  const thread = section(md, /read-thread/i);
+  assert.ok(thread, 'a read-thread procedure section');
+  for (let n = 1; n <= 4; n++) assert.match(thread, new RegExp(`^${n}\\. `, 'm'), `step ${n}`);
+  assert.match(thread, /comments --id/);
+  assert.match(thread, /--out/);
+  assert.match(thread, /relations --id/);
+  assert.match(thread, /by date/i);
+  assert.match(thread, /decisive/i);
+  assert.match(thread, /vague/i);
+  assert.match(thread, /silence/i);
+  assert.ok(thread.includes('question-format.md'), 'vague replies get a follow-up per question-format.md');
+  const helper = section(md, /helper/i);
+  for (const sub of ['append', 'list', 'resolve']) assert.match(helper, new RegExp(`qa-records\\.js"? ${sub}`), `helper example: ${sub}`);
+  assert.ok(md.includes('${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js'), 'called through the plugin root');
+  assert.ok(fs.existsSync(path.join(ROOT, 'scripts', 'qa-records.js')));
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
