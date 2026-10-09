@@ -21,7 +21,8 @@ All notable changes to AgenTeX are documented here.
   for secrets, left the step BLOCKED with "not set". These names now resolve like every other
   secret, from the environment and then `.env`, and the BLOCKED reason names both places.
   The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
-  three new cases in `run_api.test.js`.
+  three new cases in `run_api.test.js`. Thanks to @MarwahZain, whose PR #9 flagged the
+  inconsistent `API_TOKEN` handling (closed with credit, not merged).
 
 ## [0.23.0] — 2026-10-09
 ### Added
