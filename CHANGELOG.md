@@ -120,6 +120,17 @@ All notable changes to AgenTeX are documented here.
   adopted (CLI dependency, no attachment upload, no custom-field writes) — no code was
   lifted; the semantics were. Both PRs were closed with credit, not merged.
 
+## [0.22.1] — 2026-10-03
+### Fixed
+- **`/design-test` (and `bug-report-azure`'s create-case) add the new Test Case to its suite.**
+  The suite add used `PATCH _apis/testplan/suiteentry/{suiteId}`, which ADO Services answers
+  with HTTP 404. So every `testplan.js create-case --execute` created the Test Case and then
+  failed at the add-to-suite step, leaving the case outside its suite. The ledger reported
+  the failure. The add now uses `POST _apis/test/Plans/{plan}/suites/{suite}/testcases/{ids}`.
+  It skips cases already in the suite, then re-reads the suite and fails the step if a
+  requested case isn't there, so an HTTP 200 that adds nothing can't pass as success.
+  Verified live against a throwaway suite.
+
 ## [0.22.0] — 2026-10-01
 ### Changed
 - **`browser-testing` is split into `test-execution` (the orchestrator) and `browser-driver`

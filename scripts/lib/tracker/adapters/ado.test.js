@@ -39,7 +39,9 @@ function fakeFetch(routes = []) {
     for (const r of routes) {
       if ((r.method || 'GET') === (opts.method || 'GET') && String(url).includes(r.match)) {
         const status = r.status || 200;
-        const text = r.text !== undefined ? r.text : JSON.stringify(r.json !== undefined ? r.json : {});
+        // json may be a function of the calls so far — for read-after-write routes.
+        const json = typeof r.json === 'function' ? r.json(calls) : r.json;
+        const text = r.text !== undefined ? r.text : JSON.stringify(json !== undefined ? json : {});
         return { ok: status >= 200 && status < 300, status, text: async () => text };
       }
     }
@@ -217,13 +219,45 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(Buffer.compare(call.body, fs.readFileSync(png)), 0, 'raw bytes travel as the body');
   });
 
-  await test('addCaseToSuite PATCHes the pinned suite-entries route with body [{id}]', async () => {
-    const f = fakeFetch([{ method: 'PATCH', match: '/testplan/suiteentry/', json: {} }]);
-    await createAdapter({ cwd: proj(), fetch: f }).addCaseToSuite(3, 4, 505, { execute: true });
-    const call = f.calls[0];
-    assert.ok(call.url.includes(`${BASE}/${PROJ}/_apis/testplan/suiteentry/4?`), call.url);
-    assert.match(call.url, /api-version=7\.1-preview\.2/, 'suite entries is a -preview endpoint');
-    assert.deepStrictEqual(JSON.parse(call.body), [{ id: 505 }]);
+  // Suite membership as the legacy GET returns it; flips once the add POST was sent.
+  const suiteCases = (present, addedAfterPost = []) => (calls) => {
+    const posted = calls.some((c) => c.method === 'POST' && c.url.includes('/testcases/'));
+    return { value: [...present, ...(posted ? addedAfterPost : [])].map((id) => ({ testCase: { id: String(id) } })) };
+  };
+
+  await test('addCaseToSuite POSTs the legacy testcases route with the ids in the path', async () => {
+    const f = fakeFetch([{ match: '/test/Plans/3/suites/4/testcases', json: suiteCases([], [505]) }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).addCaseToSuite(3, 4, 505, { execute: true });
+    const post = f.calls.find((c) => c.method === 'POST');
+    assert.ok(post.url.includes(`${BASE}/${PROJ}/_apis/test/Plans/3/suites/4/testcases/505?`), post.url);
+    assert.match(post.url, /api-version=7\.1(&|$)/, 'GA api-version, no -preview suffix');
+    assert.ok(!f.calls.some((c) => c.url.includes('suiteentry')), 'never the suite-entries (reorder) route');
+    assert.deepStrictEqual(r, { ids: [505], added: [505], alreadyPresent: [], suiteId: 4, planId: 3 });
+  });
+
+  await test('addCaseToSuite is idempotent: ids already in the suite are skipped, none left = no POST', async () => {
+    const f = fakeFetch([{ match: '/suites/4/testcases', json: suiteCases([505, 506], [507]) }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const r = await a.addCaseToSuite(3, 4, [505, 507], { execute: true });
+    assert.ok(f.calls.find((c) => c.method === 'POST').url.includes('/testcases/507?'), 'only the missing id is posted');
+    assert.deepStrictEqual(r.added, [507]);
+    assert.deepStrictEqual(r.alreadyPresent, [505]);
+    const f2 = fakeFetch([{ match: '/suites/4/testcases', json: suiteCases([505]) }]);
+    const r2 = await createAdapter({ cwd: proj(), fetch: f2 }).addCaseToSuite(3, 4, 505, { execute: true });
+    assert.strictEqual(f2.calls.filter((c) => c.method === 'POST').length, 0);
+    assert.deepStrictEqual(r2.added, []);
+  });
+
+  await test('addCaseToSuite FAILS CLOSED when the re-read does not show the case (HTTP 200, nothing added)', async () => {
+    const f = fakeFetch([{ match: '/suites/4/testcases', json: suiteCases([], []) }]);
+    await assert.rejects(
+      () => createAdapter({ cwd: proj(), fetch: f }).addCaseToSuite(3, 4, 505, { execute: true }),
+      (e) => {
+        assert.ok(e instanceof TrackerError);
+        assert.strictEqual(e.op, 'addCaseToSuite');
+        assert.match(e.message, /test case\(s\) 505 are not in suite 4 on re-read/);
+        return true;
+      });
   });
 
   await test('test-run writes: createRun / updateRunResults / updateRun routes + methods', async () => {

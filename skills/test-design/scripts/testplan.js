@@ -225,7 +225,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         },
         {
           step: 'add-to-suite',
-          describe: `add the Test Case to suite ${suite} (PATCH _apis/testplan/suiteentry/${suite})`,
+          describe: `add the Test Case to suite ${suite} (POST _apis/test/Plans/${plan}/suites/${suite}/testcases, membership re-read)`,
           run: async () => {
             try {
               await adapter.addCaseToSuite(plan, suite, tcId, { execute: true });
