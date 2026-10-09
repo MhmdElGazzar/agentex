@@ -14,6 +14,18 @@ All notable changes to AgenTeX are documented here.
   two fixes, the raw screenshot is attached and the consolidated screen says why —
   annotation never blocks a filing or adds a question. Covered by
   `skills/bug-report-azure/scripts/annotate-image.test.js`.
+- **The extent report opens with the run's verdict.** On a `schemaVersion: 2` run summary,
+  `make_html_report.js` now renders a PASSED / FAILED / BLOCKED banner computed by the CI
+  gate's own mapping and policy (`write_verdict.js` `computeVerdict` + `resolvePolicy`, now
+  exported), so the dashboard can never read PASSED while the gate says FAIL on the same
+  counts; `verdict.json` stays authoritative, since run-level reasons (needs-user, timeout, …)
+  never reach the report. Under it, one line names every non-zero failed / blocked / view
+  mismatch / warning / flaky / not-run count, beside a pass rate of (Passed + Flaky) ÷
+  (Passed + Flaky + Failed). Each test-case card gains a step-count chip (steps · pass ·
+  issues) after its pill and duration, an **Issues only** checkbox hides passed and N/A
+  cards, and print styles switch to a light palette with every card expanded. The legacy
+  (no `schemaVersion`) output is byte-identical, and the release-gate name→pill window is
+  untouched. Covered by six new cases in `make_html_report.test.js`.
 ### Fixed
 - **`api:` steps read catalog secrets from `.env`.** `run_api.js` resolved a catalog's own
   env-var names (`${API_BASE_URL}` in `baseUrl`, `auth.tokenEnv`, `auth.userEnv` /
@@ -23,6 +35,13 @@ All notable changes to AgenTeX are documented here.
   The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
   three new cases in `run_api.test.js`. Thanks to @MarwahZain, whose PR #9 flagged the
   inconsistent `API_TOKEN` handling (closed with credit, not merged).
+### Credits
+- The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
+  and print styles were harvested from community **PR #6** by @YoussefAbdellah2023. Its
+  parallel v2/v3 generator files were not adopted: they forked the pre-`schemaVersion: 2`
+  renderer and lacked flaky / warning / view-mismatch statuses, timing, evidence and defects,
+  so the ideas were rebuilt inside `make_html_report.js` instead. Closed with credit, not
+  merged.
 
 ## [0.23.0] — 2026-10-09
 ### Added

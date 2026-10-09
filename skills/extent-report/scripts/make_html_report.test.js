@@ -385,5 +385,98 @@ test('v2: gate pin — verifyReports holds ok:true over the enriched markup (nam
   assert.strictEqual(res.ok, true, 'release-gate reporting lane holds on enriched markup');
 });
 
+// ---------------------------------------------------------------------------
+// Verdict banner, pass rate, per-card step counts, "Issues only" and print styles
+// (ideas harvested from community PR #6). The banner must agree with the CI gate's
+// own mapping (test-execution/scripts/write_verdict.js), never a second opinion.
+// ---------------------------------------------------------------------------
+
+const { computeVerdict, DEFAULTS } = require(path.join(__dirname, '..', '..', 'test-execution', 'scripts', 'write_verdict.js'));
+
+// Render from a clean project dir (no config/project.json) and without any inherited
+// AGENTEX_CI_POLICY, so the banner sees exactly the policy the test sets up.
+function renderInProject(data, { ci, envPolicy } = {}) {
+  const proj = tmpRunDir();
+  if (ci) {
+    fs.mkdirSync(path.join(proj, 'config'), { recursive: true });
+    fs.writeFileSync(path.join(proj, 'config', 'project.json'), JSON.stringify({ ci }));
+  }
+  const env = { ...process.env };
+  delete env.AGENTEX_CI_POLICY;
+  if (envPolicy) env.AGENTEX_CI_POLICY = JSON.stringify(envPolicy);
+  const inFile = path.join(proj, 'run-summary.json');
+  const outFile = path.join(proj, 'extent-report.html');
+  fs.writeFileSync(inFile, JSON.stringify(data));
+  execFileSync(process.execPath, [SCRIPT, inFile, outFile], { encoding: 'utf8', cwd: proj, env });
+  return fs.readFileSync(outFile, 'utf8');
+}
+function withCounts(counts) {
+  const data = v2Base();
+  data.summary = { total: 0, passed: 0, failed: 0, blocked: 0, naDescoped: 0, notRun: 0, ...counts };
+  data.summary.total = Object.values(counts).reduce((a, b) => a + b, 0);
+  return data;
+}
+function bannerLabel(html) {
+  const m = html.match(/<span class="verdict-label"[^>]*>([A-Z]+)<\/span>/);
+  return m && m[1];
+}
+const LABEL_OF = { FAIL: 'FAILED', BLOCKED: 'BLOCKED', PASS: 'PASSED' };
+
+test('banner: agrees with the CI gate mapping for every status mix (default policy)', () => {
+  const mixes = [
+    { passed: 3 }, { passed: 2, failed: 1 }, { passed: 2, blocked: 1 },
+    { passed: 2, viewMismatch: 1 }, { passed: 2, notRun: 1 }, { passed: 2, warnings: 1 },
+    { passed: 2, flaky: 1 }, { passed: 1, failed: 1, blocked: 1 }, { naDescoped: 2 },
+  ];
+  for (const mix of mixes) {
+    const counts = Object.fromEntries(['passed', 'failed', 'blocked', 'warnings', 'viewMismatch', 'flaky', 'naDescoped', 'notRun']
+      .map((k) => [k, mix[k] || 0]));
+    const expected = LABEL_OF[computeVerdict(counts, [], DEFAULTS).verdict];
+    assert.strictEqual(bannerLabel(renderInProject(withCounts(mix))), expected, `mix ${JSON.stringify(mix)}`);
+  }
+});
+
+test('banner: follows the project ci policy — warnings stop failing when warningsFailGate is false', () => {
+  const data = withCounts({ passed: 2, warnings: 1 });
+  assert.strictEqual(bannerLabel(renderInProject(data)), 'FAILED', 'default policy: a warning fails the gate');
+  assert.strictEqual(bannerLabel(renderInProject(data, { ci: { warningsFailGate: false } })), 'PASSED', 'config ci block');
+  assert.strictEqual(bannerLabel(renderInProject(data, { envPolicy: { warningsFailGate: false } })), 'PASSED', 'AGENTEX_CI_POLICY');
+});
+
+test('banner: the summary line names every non-passing count; a clean run says how many passed', () => {
+  const html = renderInProject(withCounts({ passed: 3, failed: 1, blocked: 1 }));
+  assert.match(html, />1 failed<\/b> · <b[^>]*>1 blocked<\/b> of 5 test cases\./, 'issue line');
+  const clean = renderInProject(withCounts({ passed: 3, naDescoped: 1 }));
+  assert.ok(clean.includes('3 of 4 test cases passed · 1 N/A - de-scoped.'), 'clean line');
+});
+
+test('banner: pass rate = (passed + flaky) ÷ (passed + flaky + failed); nothing decided renders a dash', () => {
+  assert.match(renderInProject(withCounts({ passed: 3, failed: 1, blocked: 1 })), /Pass rate <b>75%<\/b>/, 'blocked excluded');
+  assert.match(renderInProject(withCounts({ passed: 2, flaky: 1, failed: 1 })), /Pass rate <b>75%<\/b>/, 'flaky counts as a pass');
+  assert.match(renderInProject(withCounts({ blocked: 2 })), /Pass rate <b>—<\/b>/, 'no pass/fail decision');
+});
+
+test('cards: step counts sit after the pill; passed and N/A cards are tagged for "Issues only"', () => {
+  const data = v2Base();
+  data.testCases[1].steps.push({ desc: 'Reload', status: 'passed', note: '' });
+  const html = render(data);
+  assert.match(html, /<span class="tc-status"><span class="pill"[^>]*>Failed<\/span><\/span><span class="tc-time">9s<\/span><span class="tc-counts">2 steps · <span[^>]*>1 pass<\/span> · <span[^>]*>1 issue<\/span><\/span>/,
+    'counts chip after the pill and the duration chip');
+  assert.ok(html.includes('<div class="tc-card tc-ok" style="border-left-color:#2E9E4F">'), 'passed card tagged tc-ok');
+  assert.ok(html.includes(`<div class="tc-card" style="border-left-color:#D6293E">`), 'failed card not tagged');
+  assert.ok(html.includes('class="issues-toggle"'), 'Issues only toggle rendered');
+  assert.ok(html.includes('.ext-report.issues-only .tc-card.tc-ok { display: none; }'), 'toggle hides only tc-ok cards');
+});
+
+test('print: v2 carries print styles that expand every card; legacy gains none of the new markup', () => {
+  const html = render(v2Base());
+  assert.ok(html.includes('@media print'), 'print styles');
+  assert.ok(html.includes('.tc-body { display: block !important; }'), 'cards expand when printed');
+  const legacy = render(OLD_STYLE);
+  for (const marker of ['class="verdict', 'tc-counts', 'issues-toggle', 'tc-ok', '@media print']) {
+    assert.ok(!legacy.includes(marker), `legacy render has no ${marker}`);
+  }
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;

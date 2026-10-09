@@ -75,8 +75,10 @@ Open issues and PRs on the [GitHub repository](https://github.com/MhmdElGazzar/a
 - **Mohamed Elgazzar** — creator & maintainer
 - **Marwah Zain**
 - [**@mabdel130**](https://github.com/mabdel130) — `extent-report` skill (PR #1)
-- **YoussefKhalilTester**
+- [**@YoussefAbdellah2023**](https://github.com/YoussefAbdellah2023) — `extent-report` v2/v3, Jira and Figma integration work (PRs #5, #6, #7, #8, #11, #13, #14)
 - **Hager-Helmy**
+- [**@MahmoudElSharkawy**](https://github.com/MahmoudElSharkawy) — annotated screenshots on filed Azure bugs (PR #20)
+- [**@abdo-mohamed-ezzat**](https://github.com/abdo-mohamed-ezzat) — session login reuse (PR #17), multi-context flows RFC (#18)
 
 ## License
 

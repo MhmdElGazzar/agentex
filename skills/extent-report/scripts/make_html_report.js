@@ -357,11 +357,48 @@ function toggleTC(i) {
       </div>`;
   }
 
+  // ---- verdict banner (idea harvested from community PR #6) ----
+  // The SAME mapping and policy as the CI gate (test-execution's write_verdict.js), so
+  // the dashboard can never read PASSED while verdict.json says FAIL. Run-level reasons
+  // (needs-user, timeout, …) reach only verdict.json, which stays authoritative.
+  const wv = require(path.join(__dirname, '..', '..', 'test-execution', 'scripts', 'write_verdict.js'));
+  const counts = Object.fromEntries(wv.COUNT_KEYS.map((k) => [k, Number(summary[k]) || 0]));
+  let policy = wv.DEFAULTS;
+  try { policy = wv.resolvePolicy(process.cwd(), {}); } catch { /* defaults apply */ }
+  const { verdict } = wv.computeVerdict(counts, [], policy);
+  const VERDICT_META = {
+    FAIL: { label: 'FAILED', color: COLORS.failed },
+    BLOCKED: { label: 'BLOCKED', color: COLORS.blocked },
+    PASS: { label: 'PASSED', color: COLORS.passed },
+  };
+  const vMeta = VERDICT_META[verdict];
+  const ISSUE_KEYS = [['failed', 'failed', 'failed'], ['blocked', 'blocked', 'blocked'],
+    ['viewMismatch', 'viewMismatch', 'view mismatch'], ['warnings', 'warning', 'warning'],
+    ['flaky', 'flaky', 'flaky'], ['notRun', 'notRun', 'not run']];
+  const issueBits = ISSUE_KEYS.filter(([k]) => counts[k] > 0)
+    .map(([k, colorKey, word]) => `<b style="color:${COLORS[colorKey]}">${counts[k]} ${word}</b>`);
+  const verdictLine = issueBits.length
+    ? `${issueBits.join(' · ')} of ${summary.total || 0} test cases.`
+    : `${counts.passed} of ${summary.total || 0} test cases passed${counts.naDescoped ? ` · ${counts.naDescoped} N/A - de-scoped` : ''}.`;
+  // Pass rate counts only scenarios that reached a pass/fail decision; flaky passed on
+  // its retry, so it counts as a pass here (it is still called out in the line above).
+  const decided = counts.passed + counts.flaky + counts.failed;
+  const passRate = decided ? `${Math.round(((counts.passed + counts.flaky) / decided) * 100)}%` : '—';
+  const verdictHtml = `
+  <div class="verdict" style="border-color:${vMeta.color}66;border-left-color:${vMeta.color}">
+    <div class="verdict-top">
+      <span class="verdict-label" style="color:${vMeta.color}">${vMeta.label}</span>
+      <span class="verdict-rate" title="Pass rate = (Passed + Flaky) ÷ (Passed + Flaky + Failed). Blocked, warning, view-mismatch, N/A and not-run scenarios are excluded.">Pass rate <b>${passRate}</b></span>
+    </div>
+    <div class="verdict-line">${verdictLine}</div>
+  </div>`;
+
   // ---- test case rows (enriched) ----
   // The name→pill header markup is byte-identical to the v1 card header; the duration
-  // chip APPENDS after the pill, so the release-gate checker's name→pill window is
-  // untouched by construction. Images and all heavy content go in the body.
+  // and step-count chips APPEND after the pill, so the release-gate checker's name→pill
+  // window is untouched by construction. Images and all heavy content go in the body.
   const anyStepDur = testCases.some((tc) => (tc.steps || []).some((s) => typeof s.durationMs === 'number'));
+  const STEP_ISSUES = ['failed', 'blocked', 'warning', 'viewMismatch', 'flaky'];
   const extraColspan = anyStepDur ? 4 : 3;
   let rowsHtml = '';
   testCases.forEach((tc, i) => {
@@ -386,6 +423,12 @@ function toggleTC(i) {
     }).join('');
 
     const durChip = typeof tc.durationMs === 'number' ? `<span class="tc-time">${fmtDur(tc.durationMs)}</span>` : '';
+    const steps = tc.steps || [];
+    const nPass = steps.filter((s) => s.status === 'passed').length;
+    const nIssues = steps.filter((s) => STEP_ISSUES.includes(s.status)).length;
+    const countsChip = steps.length ? `<span class="tc-counts">${steps.length} step${steps.length === 1 ? '' : 's'} · <span${nPass ? ` style="color:${COLORS.passed}"` : ''}>${nPass} pass</span> · <span${nIssues ? ` style="color:${COLORS.failed}"` : ''}>${nIssues} issue${nIssues === 1 ? '' : 's'}</span></span>` : '';
+    // "Issues only" hides passed and N/A cards; everything else is something to look at.
+    const okClass = (tc.status === 'passed' || tc.status === 'na') ? ' tc-ok' : '';
     const timingLine = (tc.startedAt || tc.endedAt) ? `
       <div class="tc-meta">Started ${esc(tc.startedAt || '—')} · Ended ${esc(tc.endedAt || '—')}${tc.session ? ` · Session ${esc(tc.session)}` : ''}</div>` : '';
     const blockedLine = tc.blockedBy ? `
@@ -412,12 +455,12 @@ function toggleTC(i) {
       </div>`).join('');
 
     rowsHtml += `
-  <div class="tc-card" style="border-left-color:${rollupColor(tc.status)}">
+  <div class="tc-card${okClass}" style="border-left-color:${rollupColor(tc.status)}">
     <div class="tc-header" onclick="toggleTC(${i})">
       <span class="chevron" id="chev-${i}">&#9656;</span>
       <span class="tc-name">${esc(tc.name)}</span>
       <span class="tc-spec">${esc(tc.spec || '')}</span>
-      <span class="tc-status">${statusPill(tc.status)}</span>${durChip}
+      <span class="tc-status">${statusPill(tc.status)}</span>${durChip}${countsChip}
     </div>
     <div class="tc-body" id="body-${i}" style="display:none;">${timingLine}${blockedLine}
       <table class="step-table">
@@ -540,6 +583,23 @@ function toggleTC(i) {
 .defect-body { padding: 0 14px 12px; font-size: 12px; }
 .defect-body ol { margin: 6px 0; padding-left: 20px; color: var(--text-dim); }
 .defect-ea { margin: 4px 0; }
+.verdict { background: var(--bg-card); border: 1px solid var(--border); border-left: 5px solid #555; border-radius: 8px; padding: 14px 18px; margin-bottom: 18px; }
+.verdict-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.verdict-label { font-size: 20px; font-weight: 800; letter-spacing: 0.06em; }
+.verdict-rate { font-size: 12px; color: var(--text-dim); cursor: help; }
+.verdict-rate b { font-size: 16px; color: var(--text-main); margin-left: 4px; }
+.verdict-line { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+.tc-counts { font-size: 10.5px; color: var(--text-dim); white-space: nowrap; }
+.issues-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); margin-bottom: 10px; cursor: pointer; user-select: none; }
+.ext-report.issues-only .tc-card.tc-ok { display: none; }
+@media print {
+  body { background: #fff !important; padding: 0 !important; }
+  .ext-report { --bg-sidebar: #f4f6f4; --bg-main: #fff; --bg-card: #fff; --text-main: #111; --text-dim: #555; --border: #ccc; border-radius: 0; }
+  .ext-sidebar svg text { fill: #111; }
+  .issues-toggle, .chevron { display: none; }
+  .tc-body { display: block !important; }
+  .verdict, .tc-card { break-inside: avoid; }
+}
 </style>
 <div class="ext-sidebar">
   <h1>AgenTeX Report</h1>
@@ -549,7 +609,7 @@ function toggleTC(i) {
 </div>
 <div class="ext-main">
   <h2>${esc(title)}</h2>
-  <div class="date">${esc(date)}</div>${contextHtml}
+  <div class="date">${esc(date)}</div>${verdictHtml}${contextHtml}
   <div class="summary-row">
     <div class="stat-cards">
       <div class="stat-card"><div class="n">${summary.total || 0}</div><div class="l">TOTAL TC</div></div>
@@ -562,7 +622,8 @@ function toggleTC(i) {
       <div class="stat-card" style="border-color:${COLORS.naDescoped}66"><div class="n" style="color:${COLORS.naDescoped}">${summary.naDescoped || 0}</div><div class="l">N/A - DE-SCOPED</div></div>
       <div class="stat-card" style="border-color:${COLORS.notRun}66"><div class="n" style="color:${COLORS.notRun}">${summary.notRun || 0}</div><div class="l">NOT RUN</div></div>
     </div>
-  </div>
+  </div>${testCases.length ? `
+  <label class="issues-toggle"><input type="checkbox" onchange="this.closest('.ext-report').classList.toggle('issues-only', this.checked)"> Issues only</label>` : ''}
   ${rowsHtml}${defectsHtml}
 </div>
 </div>
