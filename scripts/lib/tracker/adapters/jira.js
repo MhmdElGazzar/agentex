@@ -189,6 +189,26 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     return credState;
   }
 
+  // Jira Cloud answers rejected Basic credentials on most routes by serving the
+  // request ANONYMOUSLY, so a wrong email/token pair surfaces as "404 — does not
+  // exist or you do not have permission". On a 404 the adapter asks /myself
+  // once: a 401 there means the credentials are the real cause.
+  let credsRejected; // undefined = not probed yet
+  async function credentialsRejected() {
+    if (credsRejected === undefined) {
+      try {
+        const res = await doFetch(api('myself'), {
+          method: 'GET', headers: { Authorization: auth().header, Accept: 'application/json' },
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        credsRejected = res.status === 401;
+      } catch {
+        credsRejected = false; // probe unreachable: keep the original error
+      }
+    }
+    return credsRejected;
+  }
+
   async function request(op, method, requestUrl, { body, contentType, extraHeaders } = {}) {
     const { header } = auth();
     const headers = { Authorization: header, Accept: 'application/json', ...(extraHeaders || {}) };
@@ -207,12 +227,18 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     }
     const text = await res.text();
     if (!res.ok) {
+      const credentialHint = { tried: ['JIRA_API_TOKEN'], resolved: 'JIRA_API_TOKEN', emailVar: 'JIRA_EMAIL' };
+      if (res.status === 404 && await credentialsRejected()) {
+        throw new TrackerError({
+          op, status: 401, url: requestUrl, credentialHint,
+          serverMessage: 'Jira rejected the credentials (GET /myself → 401), so it answered anonymously with a 404 — ' +
+            'check that JIRA_EMAIL and JIRA_API_TOKEN in .env belong to the same Atlassian account and that the token is not revoked',
+        });
+      }
       throw new TrackerError({
         op, status: res.status, url: requestUrl,
         serverMessage: serverMessageFrom(text), body: text.slice(0, 500),
-        credentialHint: res.status === 401 || res.status === 403
-          ? { tried: ['JIRA_API_TOKEN'], resolved: 'JIRA_API_TOKEN', emailVar: 'JIRA_EMAIL' }
-          : undefined,
+        credentialHint: res.status === 401 || res.status === 403 ? credentialHint : undefined,
       });
     }
     if (!text.trim()) return null;

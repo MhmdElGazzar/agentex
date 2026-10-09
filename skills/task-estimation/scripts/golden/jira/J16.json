@@ -38,6 +38,11 @@
     },
     {
       "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/myself",
+      "body": null
+    },
+    {
+      "method": "GET",
       "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-3?expand=renderedFields%2Cnames",
       "body": null
     }

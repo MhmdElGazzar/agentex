@@ -146,6 +146,10 @@ per-write ledgers, secrets never printed — is identical to the ADO flows.
   (both are required; the token comes from id.atlassian.com API tokens).
 - **401/403 with a credential hint** — the hint names the env vars only (never values):
   regenerate the token, check the email matches the token's account.
+- **"Jira rejected the credentials (GET /myself → 401), so it answered anonymously with a
+  404"** — Jira doesn't refuse a wrong email/token pair on most routes; it answers as an
+  anonymous user, which can't see any issue. Put the email of the account that created
+  the token in `JIRA_EMAIL`.
 - **`no "Story" sits in an open sprint`** — the board is Kanban, or no sprint is started,
   or the sprint is empty. See [What your Jira project needs](#what-your-jira-project-needs),
   or estimate specific stories by key instead.

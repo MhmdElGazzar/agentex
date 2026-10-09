@@ -90,6 +90,11 @@ All notable changes to AgenTeX are documented here.
   skills' descriptions broadened so Jira phrasing triggers them (skill ids unchanged).
 
 ### Changed
+- **Wrong Jira credentials no longer look like a missing issue.** Jira answers a wrong
+  email/token pair anonymously, so every read came back "404 — does not exist or you do
+  not have permission". On a 404 the adapter now checks `GET /myself` once; a 401 there
+  is reported as a credentials error naming `JIRA_EMAIL` and `JIRA_API_TOKEN`. A real
+  missing issue still reports 404. Found on a live Jira Cloud site.
 - **Fresh scaffolds carry no tracker.** `templates/config/project.json` no longer
   pre-carries an `azure` placeholder block — a fresh scaffold has no tracker until the
   wizard's answer writes one, and the no-tracker runtime error now names both providers'

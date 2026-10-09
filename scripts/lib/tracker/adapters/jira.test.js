@@ -136,6 +136,41 @@ const SUBTASK_FIELDS = {
     });
   });
 
+  await test('a 404 under REJECTED credentials (Jira falls back to anonymous) surfaces as a credentials error, not "not found"', async () => {
+    const f = fakeFetch([
+      { match: '/rest/api/3/myself', status: 401, text: '' },
+      { match: '/rest/api/3/issue/PROJ-1', status: 404, text: JSON.stringify({ errorMessages: ['Issue does not exist or you do not have permission to see it.'] }) },
+    ]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await assert.rejects(() => a.getWorkItem('PROJ-1'), (e) => {
+      assert.ok(e instanceof TrackerError);
+      assert.strictEqual(e.status, 401, 'the real cause, not the anonymous 404');
+      assert.match(e.message, /JIRA_EMAIL/);
+      assert.match(e.message, /JIRA_API_TOKEN/);
+      assert.match(e.message, /same Atlassian account/i);
+      assert.strictEqual(e.credentialHint.emailVar, 'JIRA_EMAIL');
+      const s = JSON.stringify({ m: e.message, h: e.credentialHint });
+      assert.ok(!s.includes(SENTINEL_TOKEN) && !s.includes(SENTINEL_EMAIL), 'names only, never values');
+      return true;
+    });
+    // the probe runs once per adapter — a second 404 does not re-probe
+    await assert.rejects(() => a.getWorkItem('PROJ-1'));
+    assert.strictEqual(f.calls.filter((c) => c.url.includes('/myself')).length, 1);
+  });
+
+  await test('a 404 under ACCEPTED credentials stays a plain 404 (the item really is missing or hidden)', async () => {
+    const f = fakeFetch([
+      { match: '/rest/api/3/myself', json: { accountId: 'abc' } },
+      { match: '/rest/api/3/issue/PROJ-1', status: 404, text: JSON.stringify({ errorMessages: ['gone'] }) },
+    ]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await assert.rejects(() => a.getWorkItem('PROJ-1'), (e) => {
+      assert.strictEqual(e.status, 404);
+      assert.strictEqual(e.credentialHint, undefined);
+      return true;
+    });
+  });
+
   // ── reads ───────────────────────────────────────────────────────────────────
   await test('getWorkItem always requests expand=renderedFields,names (the read-path ADF answer)', async () => {
     const f = fakeFetch([{ match: '/rest/api/3/issue/PROJ-7', json: { key: 'PROJ-7', fields: {}, renderedFields: {} } }]);
