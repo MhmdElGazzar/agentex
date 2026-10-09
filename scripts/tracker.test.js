@@ -1,6 +1,7 @@
 'use strict';
-// Unit tests for the tracker-ops skill's workitem.js (design WP-6 / F-1).
-// Run: node skills/tracker-ops/scripts/workitem.test.js
+// Unit tests for the plugin-root tracker CLI, scripts/tracker.js (moved from
+// skills/tracker-ops/scripts/ — skill-consolidation-foundation WP-2).
+// Run: node scripts/tracker.test.js
 // Fully offline: fetch is INJECTED — a scripted fake with call recording.
 // No network, no tracker, no CLI. spawnSync appears ONLY here (test-side) to
 // pin the one-JSON-line CLI contract; the delivered script spawns nothing.
@@ -9,7 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { run } = require('./workitem.js');
+const { run } = require('./tracker.js');
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -266,7 +267,7 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
   // ── CLI contract: exactly one JSON line, bad usage exits 2 ─────────────────
   await test('CLI with no args: exit 2, exactly ONE JSON line on stdout', async () => {
     const dir = jproj();
-    const r = spawnSync(process.execPath, [path.join(__dirname, 'workitem.js')], {
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'tracker.js')], {
       cwd: dir, encoding: 'utf8', env: { ...process.env },
     });
     assert.strictEqual(r.status, 2, r.stderr);
@@ -277,9 +278,9 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
 
   // ── structural pins ────────────────────────────────────────────────────────
   await test('no child_process and no process.exit in the delivered script (structural source read)', async () => {
-    const src = fs.readFileSync(path.join(__dirname, 'workitem.js'), 'utf8');
-    assert.ok(!/child_process|spawnSync|execSync/.test(src), 'workitem.js must not spawn processes');
-    assert.ok(!src.includes('process.exit('), 'workitem.js must not force-exit (exit-drain doctrine)');
+    const src = fs.readFileSync(path.join(__dirname, 'tracker.js'), 'utf8');
+    assert.ok(!/child_process|spawnSync|execSync/.test(src), 'tracker.js must not spawn processes');
+    assert.ok(!src.includes('process.exit('), 'tracker.js must not force-exit (exit-drain doctrine)');
   });
 
   // ── sentinel sweep: credentials in ZERO bytes of any output ────────────────

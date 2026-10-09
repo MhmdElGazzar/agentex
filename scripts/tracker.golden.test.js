@@ -24,9 +24,9 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { run } = require('./workitem.js');
+const { run } = require('./tracker.js');
 
-const GOLDEN_DIR = path.join(__dirname, 'golden');
+const GOLDEN_DIR = path.join(__dirname, 'golden', 'tracker');
 const RECORD = process.env.GOLDEN_RECORD === '1';
 
 let passed = 0; const failures = []; const recorded = [];

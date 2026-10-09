@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// workitem.js — the tracker-ops skill's ad-hoc work-item surface (design WP-6 /
-// F-1, option A): show / search / create / update / transition / comment / link
+// tracker.js — the plugin's ONE tracker CLI (moved from skills/tracker-ops/scripts/
+// in skill-consolidation-foundation WP-2; tracker-ops and later skills call it
+// via ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.js): show / search / create / update / transition / comment / link
 // on WHICHEVER tracker the project configures (azure or jira block — resolved
 // by scripts/lib/tracker/, never per-run). Everything goes through the tracker
 // layer's REST adapters over Node's built-in fetch — no az, no acli, no
@@ -17,13 +18,13 @@
 // one level down.
 //
 // Usage:
-//   node workitem.js show --id <id> [--expand all]
-//   node workitem.js search --query "<jql|wiql>"            (the configured provider's query language)
-//   node workitem.js create --type <type> --spec <file.json>            [--execute]
-//   node workitem.js update --id <id> --spec <file.json>                [--execute]
-//   node workitem.js transition --id <id> --to <state-name-or-id>       [--execute]
-//   node workitem.js comment --id <id> --body "<text>"                  [--execute]
-//   node workitem.js link --id <id> --type <linkType> --target <id> [--direction inward] [--execute]
+//   node tracker.js show --id <id> [--expand all]
+//   node tracker.js search --query "<jql|wiql>"            (the configured provider's query language)
+//   node tracker.js create --type <type> --spec <file.json>            [--execute]
+//   node tracker.js update --id <id> --spec <file.json>                [--execute]
+//   node tracker.js transition --id <id> --to <state-name-or-id>       [--execute]
+//   node tracker.js comment --id <id> --body "<text>"                  [--execute]
+//   node tracker.js link --id <id> --type <linkType> --target <id> [--direction inward] [--execute]
 //
 // Spec shapes: create -> { fields: {...}, relations?: [{rel, targetId}] };
 //              update -> { fields: {...}, addRelations?: [{rel, targetId}] }.
@@ -37,8 +38,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { resolveTracker, TrackerError } = require(
-  path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'tracker', 'index.js'));
+const { resolveTracker, TrackerError } = require(path.join(__dirname, 'lib', 'tracker', 'index.js'));
 
 // ---- CLI arg parser: --key value / --key=value / --flag ----------------------
 function parseArgs(argv) {
@@ -59,7 +59,7 @@ function parseArgs(argv) {
 }
 
 const USAGE =
-  'usage: workitem.js show --id <id> [--expand all] | search --query "<jql|wiql>" | ' +
+  'usage: tracker.js show --id <id> [--expand all] | search --query "<jql|wiql>" | ' +
   'create --type <type> --spec <file.json> [--execute] | update --id <id> --spec <file.json> [--execute] | ' +
   'transition --id <id> --to <name-or-id> [--execute] | comment --id <id> --body "<text>" [--execute] | ' +
   'link --id <id> --type <linkType> --target <id> [--direction inward] [--execute]';
