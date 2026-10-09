@@ -45,39 +45,14 @@
 const REQUIRED_MEMBERS = ['provider', 'parseIds', 'openStoriesRead', 'currentSprint',
   'readStory', 'testingChildren', 'storyRow', 'validate'];
 
-function refusal(message) {
-  const e = new Error(message);
-  e.exitCode = 2;
-  return e;
-}
+// The fail-closed lookup itself is the shared scripts/lib/tracker/registry.js
+// (extracted when the tracker CLI became its second consumer); this module
+// keeps its own contract (REQUIRED_MEMBERS), its label, and its map.
+const path = require('node:path');
+const generic = require(path.join(__dirname, '..', '..', '..', '..', 'scripts', 'lib', 'tracker', 'registry.js'));
 
 function createRegistry(map) {
-  const providers = () => Object.keys(map);
-  const nothing = 'Refusing rather than falling back to another provider\'s behavior; nothing was read or written.';
-  return {
-    providers,
-    get(name) {
-      const strategy = Object.prototype.hasOwnProperty.call(map, name) ? map[name] : undefined;
-      if (!strategy) {
-        throw refusal(
-          `No task-estimation strategy is registered for tracker provider '${name}' — providers with one: ` +
-          `${providers().join(', ') || 'none'}. ${nothing}`);
-      }
-      const missing = REQUIRED_MEMBERS.filter((m) =>
-        (m === 'provider' ? typeof strategy[m] !== 'string' : typeof strategy[m] !== 'function'));
-      if (missing.length) {
-        throw refusal(
-          `The task-estimation strategy registered for tracker provider '${name}' is missing required member(s): ` +
-          `${missing.join(', ')}. ${nothing}`);
-      }
-      if (strategy.provider !== name) {
-        throw refusal(
-          `The task-estimation strategy registered under '${name}' declares provider '${strategy.provider}' — ` +
-          `a strategy must be registered under its own provider. ${nothing}`);
-      }
-      return strategy;
-    },
-  };
+  return generic.createRegistry({ label: 'task-estimation strategy', requiredMembers: REQUIRED_MEMBERS, map });
 }
 
 const ado = require('./ado.js');
