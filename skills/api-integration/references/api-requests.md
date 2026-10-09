@@ -57,7 +57,8 @@ curl -sS -w "\nHTTP_STATUS:%{http_code}\n" \
 
 Rules:
 - Resolve `baseUrl` / auth from the env-var **names** in the file (`${API_BASE_URL}`,
-  `tokenEnv`) — pass them as shell variables; **never echo their values** and never write the
+  `tokenEnv`) — the values live in the project's `.env`, so load it in the same command
+  (`set -a; . ./.env; set +a; curl …`) and pass them as shell variables; **never echo their values** and never write the
   Authorization header value into the report (the raw log keeps headers you *send* out of it —
   log response status/headers/body only; if you must log the command, redact the token).
 - When the project defines `environments/<env>.json` with an `api` block, its
