@@ -131,5 +131,44 @@ test('every builder output wrapped in doc() is a valid { type: doc, version: 1 }
   })(d);
 });
 
+// ── read path + mention (skill-consolidation-foundation WP-6) ────────────────
+const adf = require('./adf.js');
+
+test('toPlainText inverts toAdf: paragraphs -> blank line, hardBreak -> newline, text literal', () => {
+  for (const s of ['one line', 'line one\nline two', 'para one\n\npara two\nwith break', 'مرحبا — résumé <b> & "q"']) {
+    assert.strictEqual(adf.toPlainText(toAdf(s)), s);
+  }
+});
+
+test('toPlainText walks marks, mentions, emoji, lists, headings, code and links', () => {
+  const d = doc(
+    heading(2, 'Title'),
+    { type: 'paragraph', content: [
+      { type: 'mention', attrs: { id: 'acc-1', text: '@Sam Tester' } },
+      { type: 'text', text: ' please ' },
+      strong('check'),
+      { type: 'text', text: ' ' },
+      { type: 'emoji', attrs: { shortName: ':smile:', text: '😄' } },
+      { type: 'text', text: ' ' },
+      { type: 'inlineCard', attrs: { url: 'https://example.com/x' } },
+    ] },
+    bulletList(['a', 'b']),
+    orderedList(['first']),
+    codeBlock('x = 1'),
+  );
+  assert.strictEqual(adf.toPlainText(d), 'Title\n\n@Sam Tester please check 😄 https://example.com/x\n\n- a\n- b\n\n- first\n\nx = 1');
+});
+
+test('toPlainText is total: null, a bare string, an unknown node type', () => {
+  assert.strictEqual(adf.toPlainText(null), '');
+  assert.strictEqual(adf.toPlainText('already plain'), 'already plain');
+  assert.strictEqual(adf.toPlainText({ type: 'doc', version: 1, content: [{ type: 'mysteryNode', content: [{ type: 'text', text: 'kept' }] }] }), 'kept');
+});
+
+test('mention(id, text): the ADF mention node Jira renders as a real @-mention', () => {
+  assert.deepStrictEqual(adf.mention('5b10ac8d82e05b22cc7d4ef5', '@Sam Tester'),
+    { type: 'mention', attrs: { id: '5b10ac8d82e05b22cc7d4ef5', text: '@Sam Tester' } });
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;

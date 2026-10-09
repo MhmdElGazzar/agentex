@@ -15,8 +15,13 @@
 //     already hold. Nothing in the flows starts from HTML, so no converter
 //     exists or is needed.
 //
-// Read path note: consumers never parse ADF back — every getWorkItem requests
-// expand=renderedFields and reads Jira's own HTML rendering instead.
+// Read path note: work-item reads request expand=renderedFields and read Jira's
+// own HTML rendering. The ONE place ADF is read back is the comment thread
+// (adapter.listComments), which has no rendered form per comment:
+// toPlainText(doc) walks it deterministically — the inverse of toAdf for plain
+// text (paragraphs -> blank line, hardBreak -> newline), mentions as their
+// "@Name" text, lists as "- " lines. mention(id, text) builds the node a
+// discussion post prepends for a real @-mention.
 
 const text = (t) => ({ type: 'text', text: String(t) });
 const inline = (v) => (typeof v === 'object' && v !== null ? v : text(v));
@@ -75,4 +80,44 @@ function strong(t) {
   return { type: 'text', text: String(t), marks: [{ type: 'strong' }] };
 }
 
-module.exports = { toAdf, doc, paragraph, heading, orderedList, bulletList, codeBlock, strong };
+/** An inline mention node (Jira renders it as a real @-mention and notifies). */
+function mention(id, displayText) {
+  return { type: 'mention', attrs: { id: String(id), text: String(displayText) } };
+}
+
+const INLINE = new Set(['text', 'hardBreak', 'mention', 'emoji', 'inlineCard', 'date', 'status']);
+
+function inlineText(node) {
+  if (!node || typeof node !== 'object') return '';
+  const a = node.attrs || {};
+  switch (node.type) {
+    case 'text': return String(node.text ?? '');
+    case 'hardBreak': return '\n';
+    case 'mention': return String(a.text ?? (a.id ? `@${a.id}` : ''));
+    case 'emoji': return String(a.text ?? a.shortName ?? '');
+    case 'inlineCard': return String(a.url ?? '');
+    case 'status': return String(a.text ?? '');
+    case 'date': return String(a.timestamp ?? '');
+    default: return nodeText(node);
+  }
+}
+
+// A node's text: inline children concatenate; block children join with a blank line.
+function nodeText(node) {
+  const kids = Array.isArray(node.content) ? node.content : [];
+  if (node.type === 'bulletList' || node.type === 'orderedList') {
+    return kids.map((li) => `- ${(Array.isArray(li.content) ? li.content : []).map(nodeText).join('\n')}`).join('\n');
+  }
+  if (kids.every((k) => k && INLINE.has(k.type))) return kids.map(inlineText).join('');
+  return kids.map((k) => (k && INLINE.has(k.type) ? inlineText(k) : nodeText(k))).filter((t) => t !== '').join('\n\n');
+}
+
+/** ADF doc (or any node) -> plain text. Total: null -> '', a string passes through. */
+function toPlainText(docOrNode) {
+  if (docOrNode === null || docOrNode === undefined) return '';
+  if (typeof docOrNode === 'string') return docOrNode;
+  if (typeof docOrNode !== 'object') return String(docOrNode);
+  return nodeText(docOrNode);
+}
+
+module.exports = { toAdf, doc, paragraph, heading, orderedList, bulletList, codeBlock, strong, mention, toPlainText };
