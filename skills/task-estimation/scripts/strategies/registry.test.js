@@ -95,6 +95,113 @@ const refusal = (fn) => { try { fn(); } catch (e) { return e; } throw new Error(
     }
   });
 
+  // ── fail-closed through the spine (create-tasks.js run) ─────────────────────
+  const os = require('node:os');
+  const { run } = require('../create-tasks.js');
+  for (const k of Object.keys(process.env)) {
+    if (k.startsWith('AZURE_') || k.startsWith('JIRA_') || k === 'AGENTEX_CI') delete process.env[k];
+  }
+  const project = (config, env) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-reg-'));
+    fs.mkdirSync(path.join(dir, 'config'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config', 'project.json'), JSON.stringify(config));
+    fs.writeFileSync(path.join(dir, '.env'), env);
+    fs.writeFileSync(path.join(dir, 'spec.json'), JSON.stringify({
+      assignee: 'qa.engineer@example.com',
+      stories: [{ id: 'PROJ-1', tasks: [{ title: '[Testing] Requirement Review', estimate: 1 }] }],
+    }));
+    return dir;
+  };
+  const jiraProject = () => project({ jira: { site: 'example', project: 'PROJ', assignee: 'qa.engineer@example.com' } },
+    'JIRA_EMAIL=qa.engineer@example.com\nJIRA_API_TOKEN=SENTINEL-reg-token\n');
+  const adoProject = () => project({ azure: { org: 'exampleorg', project: 'Sample Project', team: 'Sample Team', assignee: 'qa.engineer@example.com' } },
+    'AZURE_PAT=SENTINEL-reg-pat\n');
+  const recordingFetch = () => {
+    const calls = [];
+    const fn = async (url, opts = {}) => { calls.push({ url: String(url), method: opts.method || 'GET' }); return { ok: true, status: 200, text: async () => '{}' }; };
+    fn.calls = calls;
+    return fn;
+  };
+  const RUNS = [['stories', '--current-sprint'], ['stories', '--ids', 'PROJ-1'], ['--spec', '{SPEC}'], ['--spec', '{SPEC}', '--execute']];
+  const runWith = async (dir, argv, registry, extra = {}) => {
+    const f = recordingFetch();
+    const r = await run(argv.map((a) => a.replace('{SPEC}', path.join(dir, 'spec.json'))), { cwd: dir, fetch: f, registry, ...extra });
+    return { ...r, calls: f.calls };
+  };
+
+  await test('FAIL-CLOSED: a Jira project with an ADO-only registry -> exit 2 naming jira, listing ado, ZERO requests (stories and --spec)', async () => {
+    const dir = jiraProject();
+    const ado = defaultRegistry.get('ado');
+    for (const argv of RUNS) {
+      const { code, out, calls } = await runWith(dir, argv, createRegistry({ ado }));
+      assert.strictEqual(code, 2, `${argv.join(' ')}: ${JSON.stringify(out)}`);
+      assert.strictEqual(out.ok, false);
+      assert.match(out.error.message, /provider 'jira'/);
+      assert.match(out.error.message, /providers with one: ado\./);
+      assert.strictEqual(calls.length, 0, `${argv.join(' ')}: nothing may be read — ${JSON.stringify(calls)}`);
+    }
+  });
+
+  await test('FAIL-CLOSED (mirror): an ADO project with a Jira-only registry -> exit 2, ZERO requests', async () => {
+    const dir = adoProject();
+    const jira = defaultRegistry.get('jira');
+    for (const argv of RUNS) {
+      const { code, out, calls } = await runWith(dir, argv, createRegistry({ jira }));
+      assert.strictEqual(code, 2, JSON.stringify(out));
+      assert.match(out.error.message, /provider 'ado'/);
+      assert.match(out.error.message, /providers with one: jira\./);
+      assert.strictEqual(calls.length, 0);
+    }
+  });
+
+  await test('FAIL-CLOSED: an incomplete or mis-keyed strategy is refused by run (exit 2, zero requests)', async () => {
+    const dir = adoProject();
+    const r1 = await runWith(dir, ['--spec', '{SPEC}'], createRegistry({ ado: { ...defaultRegistry.get('ado'), validate: undefined } }));
+    assert.strictEqual(r1.code, 2);
+    assert.match(r1.out.error.message, /missing required member\(s\): validate/);
+    assert.strictEqual(r1.calls.length, 0);
+    const r2 = await runWith(dir, ['stories', '--current-sprint'], createRegistry({ ado: defaultRegistry.get('jira') }));
+    assert.strictEqual(r2.code, 2);
+    assert.match(r2.out.error.message, /declares provider 'jira'/);
+    assert.strictEqual(r2.calls.length, 0);
+  });
+
+  await test('NO DEFAULTS: a validation missing a provider value fails the run (exit 1) before any write', async () => {
+    const dir = adoProject();
+    const writes = [];
+    const adapter = {
+      name: 'acme', config: {}, capabilities: {},
+      createWorkItem: async (...a) => { writes.push(a); return { method: 'POST', url: 'x' }; },
+      updateWorkItem: async (...a) => { writes.push(a); return { method: 'PUT', url: 'x' }; },
+    };
+    const acme = stub('acme');
+    acme.validate = async () => ({
+      blocked: [], validation: { perStory: [{ id: 1 }] }, cacheInfo: null, cacheStale: false,
+      fieldsFor: () => ({}), describeCreate: () => 'x', followUp: null, // createType and parentRel omitted
+    });
+    for (const argv of [['--spec', '{SPEC}'], ['--spec', '{SPEC}', '--execute']]) {
+      const { code, out } = await runWith(dir, argv, createRegistry({ acme }), { resolveTracker: () => adapter });
+      assert.strictEqual(code, 1, JSON.stringify(out));
+      assert.match(out.error.message, /missing: createType, parentRel/);
+    }
+    assert.strictEqual(writes.length, 0, 'never a default create type / relation, never a write');
+  });
+
+  // ── structural decoupling of the spine (source read) ────────────────────────
+  await test('create-tasks.js holds no provider dispatch, provider literal, or provider dialect', async () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'create-tasks.js'), 'utf8');
+    assert.ok(!/adapter\.name\s*[!=]==/.test(src), 'no adapter.name comparison');
+    for (const lit of ["'jira'", "'ado'", "'azure'", '"jira"', '"ado"', '"azure"']) assert.ok(!src.includes(lit), `no ${lit} literal`);
+    for (const tok of ['System.', 'Microsoft.VSTS.', '@CurrentIteration', 'openSprints', 'SELECT ', "'User Story'", 'timetracking', 'accountId', 'subtasks']) {
+      assert.ok(!src.includes(tok), `no ${tok}`);
+    }
+    for (const m of src.matchAll(/require\(([^)]*)\)/g)) {
+      assert.ok(!/adapters/.test(m[1]), `no require of an adapter module: ${m[1]}`);
+      assert.ok(!/cache\.js/.test(m[1]), `no require of the field cache: ${m[1]}`);
+    }
+    assert.ok(!/child_process|spawnSync|execSync/.test(src) && !src.includes('process.exit('), 'exit-drain doctrine');
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
