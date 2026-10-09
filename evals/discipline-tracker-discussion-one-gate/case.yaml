@@ -1,0 +1,16 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# The tracker-ops discussion rule (skill-consolidation-foundation R10): an Azure DevOps
+# discussion reply with a mention is shown to the user as the EXACT rendered body from
+# the dry-run plan (the real mention anchor and who it resolved to) and posted only after
+# ONE approval. Fixture: azure-configured project with the dry run pre-baked.
+name: discipline-tracker-discussion-one-gate
+tags: [discipline, tracker-ops, ado]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'AZURE_PAT=\n' > .env

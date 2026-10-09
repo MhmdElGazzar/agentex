@@ -91,8 +91,11 @@ two-line footers in the prompt.
 | discipline-report-secrets | authored 2026-08-28 (extent-report-enrichment; sentinel-secret .env fixture), pending the release run on the installed build |
 | discipline-test-design-jira-artifact-ask | authored 2026-08-28 (jira-confluence-integration; the Q11 artifact ask — pre-baked story + issue-type discovery fixture, no live tracker), pending the release run on the installed build |
 | discipline-tracker-selection-fail-closed | authored 2026-08-28 (jira-confluence-integration; the Q12 rule — dual azure+jira config fixture, fully offline: resolveTracker refuses before any network), pending the release run on the installed build |
-| trigger-tracker-ops | authored 2026-08-28 (jira-confluence-integration, WP-6), pending the release run on the installed build |
-| discipline-tracker-ops-one-gate | authored 2026-08-28 (jira-confluence-integration, WP-6; pre-baked transition + comment dry-run plans, no live tracker), pending the release run on the installed build |
+| trigger-tracker-ops | authored 2026-08-28 (jira-confluence-integration, WP-6); grader path updated to `scripts/tracker.js` and the description gained the read/mention triggers 2026-10-09 (skill-consolidation-foundation) — MUST be re-run on the installed build at the release run |
+| discipline-tracker-ops-one-gate | authored 2026-08-28 (jira-confluence-integration, WP-6; pre-baked transition + comment dry-run plans, no live tracker), path updated to `scripts/tracker.js` 2026-10-09 (skill-consolidation-foundation); pending the release run on the installed build |
+| discipline-tracker-remaining-work-refused | authored 2026-10-09 (skill-consolidation-foundation; pre-baked RemainingWork refusal + CompletedWork dry run, no live tracker), pending the release run on the installed build |
+| discipline-tracker-non-ascii-via-file | authored 2026-10-09 (skill-consolidation-foundation; an Arabic story pre-written by `show --fields … --out`, no live tracker), pending the release run on the installed build |
+| discipline-tracker-discussion-one-gate | authored 2026-10-09 (skill-consolidation-foundation; pre-baked ADO comment dry run with a resolved mention, no live tracker), pending the release run on the installed build |
 
 ## define-flow validation lanes
 

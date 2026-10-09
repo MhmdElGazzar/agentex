@@ -925,6 +925,24 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     } finally { delete process.env.AGENTEX_CI; }
   });
 
+  await test('tracker-ops SKILL.md: frontmatter parses; calls the plugin-root CLI; the ADO-comments gap is gone; the matrix is linked', async () => {
+    const md = fs.readFileSync(path.join(__dirname, '..', 'skills', 'tracker-ops', 'SKILL.md'), 'utf8');
+    const fm = md.match(/^---\n([\s\S]*?)\n---\n/);
+    assert.ok(fm, 'frontmatter block');
+    assert.match(fm[1], /^name: tracker-ops$/m);
+    const desc = fm[1].split(/^description: >\n/m)[1];
+    assert.ok(desc, 'folded description');
+    const flat = desc.split('\n').map((l) => l.trim()).join(' ').trim();
+    assert.ok(flat.length > 100 && flat.length <= 1024, `description length ${flat.length}`);
+    for (const ex of ['show me the comments on story 42', 'list the [Testing] tasks under this story', "what's in next sprint", "pull these 300 items' fields", 'reply on the story and mention the PO']) {
+      assert.ok(flat.includes(ex), `trigger example "${ex}"`);
+    }
+    assert.ok(md.includes('node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.js <subcommand>'));
+    assert.ok(!/not wired/i.test(md) && !/Comments on ADO/i.test(md), 'the "Comments on ADO: not wired" gap is removed');
+    assert.ok(md.includes('references/tracker/capabilities.md'));
+    for (const sub of ['batch', 'comments', 'relations', 'iterations', '--out', '--mention', '--discussion']) assert.ok(md.includes(sub), sub);
+  });
+
   // ── sentinel sweep: credentials in ZERO bytes of any output ────────────────
   await test('sentinel credentials absent from every mode\'s output on both providers', async () => {
     const outs = [];

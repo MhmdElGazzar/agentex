@@ -1,0 +1,1 @@
+{"ok":false,"mode":"plan","blocked":[{"reason":"remaining-work-refused","field":"Microsoft.VSTS.Scheduling.RemainingWork","message":"Microsoft.VSTS.Scheduling.RemainingWork is refused on Azure DevOps — the server rejects remaining-work updates (TF401320). Record completed work instead (Microsoft.VSTS.Scheduling.CompletedWork, confirmed by the user); nothing was sent."}]}

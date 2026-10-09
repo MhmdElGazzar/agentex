@@ -1,0 +1,16 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# The tracker-ops non-ASCII rule (skill-consolidation-foundation R10): text the agent
+# will analyse is read with `show --fields … --out <file>` and the Read tool — never
+# through a pipe, which can drop non-ASCII characters. Fixture: an Arabic story already
+# written to a file by the bundled script (no live tracker).
+name: discipline-tracker-non-ascii-via-file
+tags: [discipline, tracker-ops, ado, encoding]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'AZURE_PAT=\n' > .env
