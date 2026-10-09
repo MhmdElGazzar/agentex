@@ -200,6 +200,52 @@ const CLI = path.join(__dirname, 'gate-ledger.js');
     assert.strictEqual(bad.status, 2, 'unknown command → exit 2');
   });
 
+  // ════ kind 'associated' — suite entries (skill-consolidation-foundation WP-14) ════
+  const suiteEntry = (id, extra = {}) => ({ step: 'suite-add', describe: `add TC ${id} to the gate suite`, kind: 'associated', type: 'suite-entry', id, planId: 3, suiteId: 4, ...extra });
+
+  await test('associated entries keep planId/suiteId; terminal only when removed (or descriptor-only + not-attempted)', async () => {
+    const file = ledgerIn(tmp(), 'live');
+    const e = recordEntry(file, suiteEntry(77));
+    assert.deepStrictEqual([e.kind, e.type, e.id, e.status, e.disposition, e.planId, e.suiteId], ['associated', 'suite-entry', 77, 'done', 'pending', 3, 4]);
+    let c = checkLedger(file);
+    assert.strictEqual(c.exitCode, 1, 'a pending association fails the gate');
+    assert.deepStrictEqual(c.nonTerminal.map((x) => [x.kind, x.id]), [['associated', 77]]);
+    assert.strictEqual(c.associationsRemoved, 0);
+    setDisposition(file, { id: 77, kind: 'associated', disposition: 'removed' });
+    c = checkLedger(file);
+    assert.strictEqual(c.exitCode, 0, JSON.stringify(c));
+    assert.strictEqual(c.associationsRemoved, 1);
+    assert.strictEqual(c.associations, 1);
+    const s = ledgerIn(tmp(), 'sentinel');
+    recordEntry(s, suiteEntry(78));
+    assert.strictEqual(checkLedger(s).exitCode, 0, 'descriptor-only + not-attempted is terminal');
+  });
+
+  await test('removed is not a terminal disposition for a created entry; deleted is not one for an association', async () => {
+    const file = ledgerIn(tmp(), 'live');
+    recordEntry(file, { step: 'fixture-story', describe: 'd', type: 'User Story', id: 5 });
+    recordEntry(file, suiteEntry(6));
+    setDisposition(file, { id: 5, kind: 'created', disposition: 'removed' });
+    setDisposition(file, { id: 6, kind: 'associated', disposition: 'deleted' });
+    const c = checkLedger(file);
+    assert.strictEqual(c.exitCode, 1);
+    assert.deepStrictEqual(c.nonTerminal.map((x) => x.id).sort(), [5, 6]);
+  });
+
+  await test('setDisposition kind filter: one id as a created/reused row AND a suite entry — each addressed separately', async () => {
+    const file = ledgerIn(tmp(), 'live');
+    recordEntry(file, { step: 'pool-case', describe: 'reused pool TC', kind: 'reused', type: 'Test Case', id: 77 });
+    recordEntry(file, suiteEntry(77));
+    setDisposition(file, { id: 77, kind: 'associated', disposition: 'removed' });
+    const l = readLedger(file);
+    assert.strictEqual(l.entries[0].disposition, 'pending', 'the reused row is untouched');
+    assert.strictEqual(l.entries[1].disposition, 'removed');
+    assert.throws(() => setDisposition(file, { id: 77, kind: 'created', disposition: 'deleted' }), /kind created/);
+    const r = spawnSync(process.execPath, [CLI, 'disposition', file, '--id', '77', '--kind', 'reused', '--disposition', 'not-attempted'], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(readLedger(file).entries[0].disposition, 'not-attempted');
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

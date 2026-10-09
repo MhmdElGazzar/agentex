@@ -10,7 +10,15 @@
 // for sentinel-mode writes that stopped at the execute:false descriptor — chosen
 // over "done + not-attempted" so an entry is self-describing: nothing with
 // status 'descriptor-only' ever existed on the board, so no deletion is owed.
-// disposition: 'deleted' | 'undeletable-standard' | 'pending' | 'not-attempted'.
+// disposition: 'deleted' | 'undeletable-standard' | 'removed' | 'pending' | 'not-attempted'.
+//
+// kind: 'created' — a work item the gate created (owed a delete);
+//       'associated' — a suite entry the gate added to an EXISTING test case
+//         (the suite-membership check, skill-consolidation-foundation R9):
+//         { type: 'suite-entry', id: <test case>, planId, suiteId }, recorded
+//         BEFORE the add request (write-ahead) and owed an association removal
+//         — never a work-item delete. Terminal only when 'removed' (or
+//         descriptor-only + not-attempted in sentinel mode).
 //
 // TERMINAL-DISPOSITION RULE (decision 4): every kind:'created' entry must end
 // 'deleted' or 'undeletable-standard' — except entries that never put anything
@@ -87,23 +95,30 @@ function recordEntry(file, entry) {
 // (several Test Cases from one /design-test) each get their own disposition.
 // step is the fallback ONLY for id-less entries (e.g. sentinel descriptor-only
 // rows), so step addressing can never silently land on the wrong board item.
-function setDisposition(file, { id, step, disposition, reason }) {
-  const allowed = ['deleted', 'undeletable-standard', 'pending', 'not-attempted'];
+// The optional kind filter separates rows that share an id: a pooled test case
+// can be both a reused row and a suite entry ('associated').
+function setDisposition(file, { id, step, disposition, reason, kind }) {
+  const allowed = ['deleted', 'undeletable-standard', 'removed', 'pending', 'not-attempted'];
   if (!allowed.includes(disposition)) throw usageError(`disposition must be one of ${allowed.join('|')}`);
   const ledger = readLedger(file);
   const byId = id !== undefined && id !== null;
+  const kindOk = (e) => kind === undefined || e.kind === kind;
   const entry = byId
-    ? ledger.entries.find((e) => e.id === Number(id))
-    : ledger.entries.find((e) => (e.id === undefined || e.id === null) && e.step === step);
-  if (!entry) throw usageError(`no ledger entry matches ${byId ? `id ${id}` : `id-less step ${step}`}`);
+    ? ledger.entries.find((e) => e.id === Number(id) && kindOk(e))
+    : ledger.entries.find((e) => (e.id === undefined || e.id === null) && e.step === step && kindOk(e));
+  if (!entry) throw usageError(`no ledger entry matches ${byId ? `id ${id}` : `id-less step ${step}`}${kind !== undefined ? ` of kind ${kind}` : ''}`);
   entry.disposition = disposition;
   if (reason !== undefined) entry.reason = reason;
   writeLedger(file, ledger);
   return entry;
 }
 
-// Is this created entry allowed to rest where it is? (terminal-disposition rule)
+// Is this created/associated entry allowed to rest where it is? (terminal-disposition rule)
 function isTerminal(entry) {
+  if (entry.kind === 'associated') {
+    if (entry.disposition === 'removed') return true;
+    return entry.status === 'descriptor-only' && entry.disposition === 'not-attempted';
+  }
   if (entry.disposition === 'deleted' || entry.disposition === 'undeletable-standard') return true;
   // Nothing ever reached the board — no deletion owed:
   if (entry.status === 'descriptor-only' && entry.disposition === 'not-attempted') return true;
@@ -114,8 +129,9 @@ function isTerminal(entry) {
 function checkLedger(ledgerOrFile) {
   const ledger = typeof ledgerOrFile === 'string' ? readLedger(ledgerOrFile) : ledgerOrFile;
   const created = ledger.entries.filter((e) => e.kind === 'created');
-  const nonTerminal = created.filter((e) => !isTerminal(e))
-    .map((e) => ({ step: e.step, type: e.type, id: e.id, status: e.status, disposition: e.disposition }));
+  const associated = ledger.entries.filter((e) => e.kind === 'associated');
+  const nonTerminal = [...created, ...associated].filter((e) => !isTerminal(e))
+    .map((e) => ({ step: e.step, kind: e.kind, type: e.type, id: e.id, status: e.status, disposition: e.disposition }));
   const undeletableStandard = created.filter((e) => e.disposition === 'undeletable-standard')
     .map((e) => ({ step: e.step, type: e.type, id: e.id }));
   const exitCode = nonTerminal.length ? 1 : (undeletableStandard.length ? 3 : 0);
@@ -125,6 +141,8 @@ function checkLedger(ledgerOrFile) {
     mode: ledger.mode,
     created: created.length,
     deleted: created.filter((e) => e.disposition === 'deleted').length,
+    associations: associated.length,
+    associationsRemoved: associated.filter((e) => e.disposition === 'removed').length,
     undeletableStandard,
     nonTerminal,
   };
@@ -158,7 +176,7 @@ function usageError(message) {
 // ── CLI ─────────────────────────────────────────────────────────────────────
 // node gate-ledger.js open <ledger> --mode live|sentinel
 // node gate-ledger.js record <ledger> --step s --describe d [--type t] [--id n] [--status s] [--disposition d] [--reason r]
-// node gate-ledger.js disposition <ledger> (--id n | --step s) --disposition d [--reason r]
+// node gate-ledger.js disposition <ledger> (--id n | --step s) [--kind k] --disposition d [--reason r]
 // node gate-ledger.js check <ledger>
 // node gate-ledger.js finalize <ledger> [--runs-dir dir]
 function parseFlags(argv) {

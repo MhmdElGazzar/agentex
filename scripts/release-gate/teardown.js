@@ -2,7 +2,14 @@
 // Release-gate teardown orchestrator (design: release-e2e-gate, decision 3/4).
 //
 // Reads the gate ledger from the throwaway project and settles every created
-// entry into a terminal disposition:
+// and associated entry into a terminal disposition:
+//   - associated suite entries (the suite-membership check) come FIRST — they
+//     are not Test Cases: live, each suite's entries are removed as
+//     ASSOCIATIONS via the tracker lib's removeCaseFromSuite (fail-closed on
+//     re-read) → `removed`, a failure → `pending` + reason → gate FAIL;
+//     sentinel, the removal descriptor is composed and asserted to be a DELETE
+//     on the testplan TestCase route with no destroy and no work-item route.
+//     No work item is ever deleted or destroyed for a suite entry;
 //   - Test Cases are NEVER delete-attempted: ADO offers no standard
 //     (recycle-bin) delete for test artifacts — they are classified
 //     `undeletable-standard` and always surfaced as a waivable finding.
@@ -46,12 +53,36 @@ async function runTeardown({ dir, adapter, runsDir, envFromDir } = {}) {
   const mode = ledger.mode;
   const a = adapter || createAdapter({ cwd: dir });
 
+  // Associated suite entries first, grouped per plan/suite.
+  const groups = new Map();
+  for (const entry of ledger.entries.filter((e) => e.kind === 'associated' && e.disposition !== 'removed')) {
+    const k = `${entry.planId}/${entry.suiteId}`;
+    if (!groups.has(k)) groups.set(k, { planId: entry.planId, suiteId: entry.suiteId, ids: [] });
+    groups.get(k).ids.push(entry.id);
+  }
+  for (const g of groups.values()) {
+    if (mode === 'live') {
+      try {
+        await a.removeCaseFromSuite(g.planId, g.suiteId, g.ids, { execute: true });
+        for (const id of g.ids) gl.setDisposition(ledgerFile, { id, kind: 'associated', disposition: 'removed' });
+      } catch (e) {
+        for (const id of g.ids) gl.setDisposition(ledgerFile, { id, kind: 'associated', disposition: 'pending', reason: `association removal failed: ${e.message}` });
+      }
+    } else {
+      const d = await a.removeCaseFromSuite(g.planId, g.suiteId, g.ids, { execute: false });
+      const u = String(d && d.url).toLowerCase();
+      if (!d || d.method !== 'DELETE' || !u.includes('/_apis/testplan/plans/') || !u.includes('/testcase?') || u.includes('destroy') || u.includes('/wit/workitems')) {
+        throw new Error(`composed suite-entry removal descriptor for suite ${g.suiteId} is not an association-only DELETE on the TestCase route — structurally forbidden`);
+      }
+    }
+  }
+
   for (const entry of ledger.entries.filter((e) => e.kind === 'created')) {
     if (entry.disposition === 'deleted' || entry.disposition === 'undeletable-standard') continue;
     // Disposition updates are keyed by id when the entry has one — duplicate
     // step names with distinct ids each get their own disposition; step is
     // the fallback only for id-less entries (sentinel descriptor-only rows).
-    const addr = entry.id !== undefined && entry.id !== null ? { id: entry.id } : { step: entry.step };
+    const addr = { ...(entry.id !== undefined && entry.id !== null ? { id: entry.id } : { step: entry.step }), kind: 'created' };
     if (entry.type === 'Test Case') {
       gl.setDisposition(ledgerFile, { ...addr, disposition: 'undeletable-standard', reason: TEST_CASE_REASON });
       continue;
@@ -60,9 +91,9 @@ async function runTeardown({ dir, adapter, runsDir, envFromDir } = {}) {
       if (entry.status === 'done' && entry.id !== undefined && entry.id !== null) {
         try {
           await a.deleteWorkItem(entry.id, { execute: true });
-          gl.setDisposition(ledgerFile, { id: entry.id, disposition: 'deleted' });
+          gl.setDisposition(ledgerFile, { id: entry.id, kind: 'created', disposition: 'deleted' });
         } catch (e) {
-          gl.setDisposition(ledgerFile, { id: entry.id, disposition: 'pending', reason: `delete failed: ${e.message}` });
+          gl.setDisposition(ledgerFile, { id: entry.id, kind: 'created', disposition: 'pending', reason: `delete failed: ${e.message}` });
         }
       }
       // status 'failed' with no id: nothing reached the board — terminal per the check.
