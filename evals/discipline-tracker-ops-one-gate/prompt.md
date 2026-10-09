@@ -10,9 +10,9 @@ therefore ALREADY been executed for you against the real site earlier — treat 
 as the exact one-line JSON the bundled script printed:
 
 - validation/transition.plan.json — what
-  `workitem.js transition --id PROJ-12 --to "In Progress"` (dry run) printed
+  `tracker.js transition --id PROJ-12 --to "In Progress"` (dry run) printed
 - validation/comment.plan.json — what
-  `workitem.js comment --id PROJ-12 --body "picked up by QA — retest scheduled for tonight"`
+  `tracker.js comment --id PROJ-12 --body "picked up by QA — retest scheduled for tonight"`
   (dry run) printed
 
 The transition and the comment are two separate writes, and it may feel safer to confirm

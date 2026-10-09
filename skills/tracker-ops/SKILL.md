@@ -25,7 +25,7 @@ tracker (the `azure` or `jira` block in `config/project.json`) and reads credent
 `.env` itself, Authorization-header-only:
 
 ```
-node ${CLAUDE_PLUGIN_ROOT}/skills/tracker-ops/scripts/workitem.js <subcommand> …
+node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.js <subcommand> …
 ```
 
 | Subcommand | What it does | Kind |

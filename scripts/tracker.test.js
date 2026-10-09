@@ -283,6 +283,38 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     assert.ok(!src.includes('process.exit('), 'tracker.js must not force-exit (exit-drain doctrine)');
   });
 
+  // ── the move (WP-2): one CLI, no trace of the old path ──────────────────────
+  await test('no reference to the old skill-local CLI path anywhere in the plugin outside CHANGELOG.md', async () => {
+    const root = path.join(__dirname, '..');
+    // Tracked files when git is available (test-side spawn only); else a walk
+    // that skips the untracked/private trees.
+    let files;
+    const ls = spawnSync('git', ['ls-files', '-co', '--exclude-standard'], { cwd: root, encoding: 'utf8' });
+    if (ls.status === 0 && ls.stdout.trim()) files = ls.stdout.trim().split(/\r?\n/);
+    else {
+      const SKIP = new Set(['.git', 'node_modules', '.claude', '.planning', 'graphify-out', 'non-consolidated-skills']);
+      files = [];
+      const walk = (rel) => {
+        for (const e of fs.readdirSync(path.join(root, rel), { withFileTypes: true })) {
+          if (SKIP.has(e.name)) continue;
+          const r = rel ? `${rel}/${e.name}` : e.name;
+          if (e.isDirectory()) walk(r); else files.push(r);
+        }
+      };
+      walk('');
+    }
+    // The old name, composed so this file never contains it literally.
+    // read-<old name> (bug-report-azure's own read entry) is a different script.
+    const OLD = new RegExp('(^|[^\\w-])' + 'work' + 'item\\.js');
+    const hits = [];
+    for (const rel of files) {
+      if (rel === 'CHANGELOG.md' || !/\.(js|md|json|ya?ml|html)$/.test(rel)) continue;
+      let text; try { text = fs.readFileSync(path.join(root, rel), 'utf8'); } catch { continue; }
+      text.split(/\r?\n/).forEach((line, i) => { if (OLD.test(line)) hits.push(`${rel}:${i + 1}`); });
+    }
+    assert.deepStrictEqual(hits, [], `old path still referenced at: ${hits.join(', ')}`);
+  });
+
   // ── sentinel sweep: credentials in ZERO bytes of any output ────────────────
   await test('sentinel credentials absent from every mode\'s output on both providers', async () => {
     const outs = [];

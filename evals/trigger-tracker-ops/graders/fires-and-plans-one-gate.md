@@ -5,7 +5,7 @@ skill's territory. The skill must fire from its description alone.
 Score 1.0 iff:
 - SKILLS_INVOKED includes `agentex:tracker-ops` (alone, or alongside genuinely relevant
   reads — invoking the bug-filing/estimation/test-design skills for this ask is a miss).
-- PLANNED_NEXT describes routing the operations through the bundled workitem.js script as
+- PLANNED_NEXT describes routing the operations through the bundled scripts/tracker.js script as
   dry runs first (a transition plan + a comment plan) with the user's ONE approval before
   any --execute — not hand-composed REST, not az/acli, not an immediate write.
 

@@ -2,6 +2,16 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Changed
+- **The tracker work-item CLI moved to the plugin root: `scripts/tracker.js`** (was
+  `skills/tracker-ops/scripts/workitem.js`; no shim at the old path). It is now the
+  plugin's one tracker CLI that every skill calls as
+  `${CLAUDE_PLUGIN_ROOT}/scripts/tracker.js`; `tracker-ops` is a SKILL.md-only skill.
+  Subcommands, flags, output and exit codes are unchanged apart from the script name in
+  the usage text — pinned by a golden suite recorded from the 0.23.0 script before the
+  move.
+
 ## [0.23.0] — 2026-10-09
 ### Added
 - **Jira Cloud tracker support — every tracker flow now runs on Azure DevOps OR Jira
