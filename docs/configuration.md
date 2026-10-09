@@ -48,7 +48,21 @@ Fill them in:
 | `figma.fileKey` / `.token` | Figma design source for `ui-check:` steps (see [ui-check.md](./ui-check.md)) — the file key from your Figma URL, plus the token as `{ "envSecret": "FIGMA_TOKEN" }`. Environment-independent: the design is the same truth for qa/uat/live. |
 | `viewports` | Optional named-viewport overrides for `ui-check:` steps, e.g. `{ "mobile": "414x896" }` (plugin defaults: desktop `1440x900`, tablet `768x1024`, mobile `390x844`). Read if present — no scaffold needed. |
 | `login.mode` | How a run gets in: `"session"` = reuse the login `/optimize-login` saved (`test/.auth/<app>-<env>-state.json`); `"fresh"` = drive the login UI every run. Absent or unreadable → `fresh` (nothing to reuse, and a run never creates a saved session you did not ask for). Projects scaffolded by an older wizard say `"per-test"` — the same as `"fresh"`, and nothing rewrites it. |
+| `testingTasks` | The `[Testing]` tasks for a story, one entry per stage: `requirementReview`, `testCreation`, `testExecution`, `bugRetest`, `automation`, each `{ "stage", "title", "enabled" }`. Scaffolded with the five standard titles, all enabled. List only what you change, for example `[{ "stage": "automation", "enabled": false }]`. The stages you leave out keep their defaults, and a title must start with `[Testing] `. |
+| `testDesign` | `approval`: `"consolidated"` (one approval for the whole run, the default) or `"per-story"`; `independentCoverageCheck`: `false` by default. |
+| `estimation` | `modelPath` / `historyPath`: project-relative files for QA effort estimation, under `.agentex/` by default. |
+| `qaRecords` | Where the **QA watchlist** lives: one file per kind (`pendingQuestions`, `pendingRechecks`, `envIssues`, `deferredConditions`). By default these are Markdown files in a `qa-watchlist/` folder at the project root. Each file is created the first time something is recorded, never by `/init-test`. **Commit them**: they hold decisions. Paths must be project-relative and end in `.md` or `.jsonl`. See [qa-records.md](../references/tracker/qa-records.md). |
+| `azure.workflow` / `jira.workflow` | Your tracker's state names for the `[Testing]` lifecycle (`devDoneStates`, `inTestState`, `qaStates`, `terminalStates`, `taskActiveState`, `taskClosedState`, `testCaseReadyState`, `closeOut.state` / `.assignee`, …), inside the **configured** tracker's block only. Every state is empty by default. An empty state means that step is not configured: the agent says so and skips it, and never guesses a state. See [task-lifecycle.md](../references/tracker/task-lifecycle.md). |
+| `azure.reproSummaryRow` / `jira.reproSummaryRow` | Optional: `false` drops the summary row from a filed bug's repro steps. Absent means `true`. Not scaffolded. |
 | `ci` | Optional CI gate policy (see [ci-quality-gate.md](./ci-quality-gate.md)), read if present — no scaffold needed: `{ "warningsFailGate": true, "retries": 3, "timeoutMinutes": 60, "flakyFailsGate": false }` (the built-in defaults). `warningsFailGate` — warnings fail the gate (exit 1); `retries` — automatic retries for BLOCKED outcomes only; `timeoutMinutes` — per-attempt wall-clock budget; `flakyFailsGate` — FLAKY concludes BLOCKED (exit 2, never auto-retried). `ci_gate.js` CLI flags override per pipeline (flags > config > defaults). |
+
+The plugin-owned blocks above (`testingTasks`, `testDesign`, `estimation`, `qaRecords`,
+`<tracker>.workflow`, `<tracker>.reproSummaryRow`) are read with their real types and merged
+key by key over the defaults. A malformed value is a config error (exit 2) that names the
+key and the accepted values. An unknown key inside one of these blocks is an error too, so
+a typo can't silently keep a default. `/init-test` and the setup wizard write the blocks for
+a new project, and `/update-agentex` adds any that are missing to an existing one. Neither
+ever rewrites a block you already have.
 
 ## `environments/<env>.json`
 
