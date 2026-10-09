@@ -43,7 +43,7 @@ failed or partial execution whose ledger is authoritative.
 - Use only values returned by runtime context or explicitly supplied by the user/run. Never
   infer a required severity, priority, parent, assignee, category, or test-case decision.
 - Duplicate discovery fails closed and still reads every direct Bug child of the selected
-  parent across all states. Intent-aware context presents a deterministic review ordering:
+  parent across all states, plus the project-wide Bug mirror (step 4). Intent-aware context presents a deterministic review ordering:
   25 candidates by default plus every normalized exact-title match. Ranking, omission, and
   candidate presence are never duplicate verdicts or automatic blocks. Treat that shortlist
   as the default semantic decision surface. Never invoke `--duplicate-view all` merely to be
@@ -166,6 +166,17 @@ result, then run `context --intent <intent.json>`. The top-level `duplicateCandi
 intent-ranked list for semantic review and retains each candidate's ID, title, state, and
 reproduction summary. `duplicateReview` reports the review ID, strategy/view, default size,
 total/shown/omitted counts, truncation, exact-title pin count, and shortlist IDs.
+
+Candidates come from two places, ranked together. The selected parent's direct Bug
+children are always read in full. The **project-wide Bug mirror** adds Bugs under other
+stories: a local copy in `.agentex/cache/tracker-bugs-ado.json`, brought up to date on every
+call by one read of the Bugs changed since the last sync. Its scope is the project (under
+`azure.areaPath` when set), Bugs changed in the last `azure.bugCacheDays` days (default
+365; `0` turns it off). A mirrored candidate carries `source: "project"` and its `parentId`,
+and `duplicateReview.projectWideCandidates` counts them. When one matches, name its story
+on the approval screen: the defect may already be filed under a different story. A sync
+that cannot complete blocks the filing (`dup-check-failed`), like any duplicate-check
+failure. An edit to a project Bug that is not shortlisted does not make the review stale.
 
 The Top-25 view is the default semantic decision surface unless additional normalized
 exact-title candidates are pinned. Closed and Resolved Bugs remain eligible, and state is

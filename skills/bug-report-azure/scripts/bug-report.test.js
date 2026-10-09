@@ -39,6 +39,9 @@ function project(overrides = {}) {
     azure: {
       org: 'exampleorg', project: 'Sample Project', assignee: 'qa.engineer@example.com',
       environment: 'QA', bugTemplateId: 99, testPlanId: 3,
+      // The project-wide Bug mirror is off in the parent-scoped fixtures; the
+      // "project-wide" tests below turn it on.
+      bugCacheDays: 0,
       ...overrides,
     },
   }));
@@ -265,6 +268,34 @@ async function prepareIntentFile(dir, fetch, intentFile, plan = planPath(dir)) {
 
 async function prepare(dir, fetch, testCase, overrides = {}) {
   return prepareIntentFile(dir, fetch, intent(dir, testCase, overrides));
+}
+
+// ── project-wide Bug mirror (bug-cache.js) ─────────────────────────────────────
+function projectBug(id, title, parent, repro) {
+  return { id, fields: {
+    'System.Id': id, 'System.WorkItemType': 'Bug', 'System.Title': title, 'System.State': 'Active',
+    'System.Parent': parent, 'System.ChangedDate': new Date().toISOString(),
+    ...(repro ? { 'Microsoft.VSTS.TCM.ReproSteps': repro } : {}),
+  } };
+}
+
+// The mirror's WIQL (it alone filters on ChangedDate) lists the board; the batch reads it.
+function projectBugRoutes(board, { wiqlStatus } = {}) {
+  return [
+    {
+      method: 'POST', match: '/wit/wiql', bodyMatch: 'System.ChangedDate',
+      respond: async () => (wiqlStatus
+        ? { status: wiqlStatus, text: JSON.stringify({ message: 'WIQL service unavailable' }) }
+        : { json: { workItems: [...board.keys()].map((id) => ({ id })) } }),
+    },
+    {
+      method: 'POST', match: '/wit/workitemsbatch',
+      respond: async (call) => {
+        const value = JSON.parse(call.body).ids.filter((id) => board.has(id)).map((id) => board.get(id));
+        return { json: { count: value.length, value } };
+      },
+    },
+  ];
 }
 
 (async () => {
@@ -1353,6 +1384,57 @@ async function prepare(dir, fetch, testCase, overrides = {}) {
     assert.strictEqual(fetch.calls.filter((call) => call.method === 'PATCH' && call.url.includes('/test/Runs/88/results')).length, 1);
     assert.strictEqual(fetch.calls.filter((call) => call.method === 'PATCH' && call.url.includes('/test/runs/88?')).length, 0);
     assert.ok(!/_apis|System\.|Microsoft\.VSTS|Custom\.|json-patch/i.test(JSON.stringify(executed.out)), JSON.stringify(executed.out));
+  });
+
+  await test('project-wide: a Bug under another story is a ranked candidate with its parent', async () => {
+    const dir = project({ bugCacheDays: 365 });
+    const board = new Map([
+      [9001, projectBug(9001, 'Payment fails at checkout with HTTP 500', 555, 'Click Pay; an HTTP 500 page is shown')],
+      [9002, projectBug(9002, 'Logout button misaligned on mobile', 556)],
+    ]);
+    const fetch = fakeFetch(projectBugRoutes(board));
+    const reviewed = await review(dir, fetch, intent(dir));
+    assert.strictEqual(reviewed.code, 0, JSON.stringify(reviewed.out));
+    const top = reviewed.out.duplicateCandidates[0];
+    assert.strictEqual(top.id, 9001);
+    assert.strictEqual(top.source, 'project');
+    assert.strictEqual(top.parentId, 555);
+    assert.strictEqual(top.url, 'https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/9001');
+    assert.strictEqual(reviewed.out.duplicateReview.projectWideCandidates, 2);
+    assert.ok(fs.existsSync(path.join(dir, '.agentex', 'cache', 'tracker-bugs-ado.json')));
+    assert.strictEqual(actualWrites(fetch.calls).length, 0);
+  });
+
+  await test('project-wide: a failed mirror sync fails the duplicate check closed', async () => {
+    const dir = project({ bugCacheDays: 365 });
+    const fetch = fakeFetch(projectBugRoutes(new Map(), { wiqlStatus: 503 }));
+    const reviewed = await review(dir, fetch, intent(dir));
+    assert.strictEqual(reviewed.code, 2, JSON.stringify(reviewed.out));
+    assert.strictEqual(reviewed.out.blocked[0].reason, 'dup-check-failed');
+    assert.match(reviewed.out.blocked[0].message, /project-wide duplicate check failed/);
+    assert.strictEqual(actualWrites(fetch.calls).length, 0);
+  });
+
+  await test('project-wide: an unrelated Bug edit keeps the review fresh; a new same-title Bug stales it', async () => {
+    const dir = project({ bugCacheDays: 365 });
+    const board = new Map([[9001, projectBug(9001, 'Payment fails at checkout with HTTP 500', 555)]]);
+    for (let id = 9100; id < 9130; id++) board.set(id, projectBug(id, `Unrelated report layout glitch number ${id}`, 600));
+    const fetch = fakeFetch(projectBugRoutes(board));
+    const intentFile = intent(dir);
+    const reviewed = await review(dir, fetch, intentFile);
+    assert.strictEqual(reviewed.code, 0, JSON.stringify(reviewed.out));
+    const shortlisted = new Set(reviewed.out.duplicateReview.shortlistCandidateIds);
+    const outside = [...board.keys()].find((id) => !shortlisted.has(id));
+    assert.ok(outside, 'the fixture leaves at least one project Bug outside the shortlist');
+    board.set(outside, projectBug(outside, 'Unrelated report layout glitch, retitled', 600));
+    const fresh = await run(['prepare', '--intent', intentFile, '--duplicate-review', reviewed.out.duplicateReview.reviewId, '--plan', planPath(dir)], { cwd: dir, fetch });
+    assert.strictEqual(fresh.code, 0, JSON.stringify(fresh.out));
+
+    board.set(9200, projectBug(9200, 'Payment fails at checkout', 557));
+    const stale = await run(['prepare', '--intent', intentFile, '--duplicate-review', reviewed.out.duplicateReview.reviewId, '--plan', planPath(dir)], { cwd: dir, fetch });
+    assert.strictEqual(stale.code, 2, JSON.stringify(stale.out));
+    assert.strictEqual(stale.out.blocked[0].reason, 'duplicate-review-stale');
+    assert.ok(stale.out.duplicateCandidates.some((candidate) => candidate.id === 9200));
   });
 
   await test('a Jira-configured project is refused before any request', async () => {

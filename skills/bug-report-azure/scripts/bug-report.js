@@ -28,6 +28,7 @@ const { resolveTracker, TrackerError } = require(path.join(TRACKER_LIB, 'index.j
 const fieldCache = require(path.join(TRACKER_LIB, 'cache.js'));
 const createBug = require('./create-bug.js');
 const { checkFiles } = require('./check-image.js');
+const bugCache = require('./bug-cache.js');
 const {
   rankDuplicateCandidates,
   projectShortlist,
@@ -459,7 +460,12 @@ function compareCandidateIds(left, right) {
 }
 
 function duplicateReviewDigest(runtime, intent, shortlistCandidateIds) {
+  // Every parent-scoped candidate binds the receipt. A project-wide candidate binds it
+  // only while shortlisted, so an edit to an unrelated Bug elsewhere in the project does
+  // not make the review stale; one that moves into the shortlist does.
+  const shortlisted = new Set(shortlistCandidateIds);
   const candidates = (runtime.duplicateCandidates || [])
+    .filter((candidate) => candidate.source !== 'project' || shortlisted.has(candidate.id))
     .map(canonicalDuplicateCandidate)
     .sort(compareCandidateIds);
   return artifactDigest({
@@ -500,8 +506,14 @@ function buildDuplicateReview(runtime, intent, { view = 'shortlist' } = {}) {
       pinnedExactTitleCount: shortlist.pinnedExactTitleCount,
       shortlistCandidateIds,
       lowSignal: Boolean(ranking.diagnostics && ranking.diagnostics.lowSignal),
+      ...projectWideCount(runtime),
     },
   };
+}
+
+function projectWideCount(runtime) {
+  const n = (runtime.duplicateCandidates || []).filter((candidate) => candidate.source === 'project').length;
+  return n ? { projectWideCandidates: n } : {};
 }
 
 function pendingDuplicateReview(runtime) {
@@ -606,10 +618,41 @@ async function loadRuntime(cwd, fetch, { parentStoryId, refreshFields = false } 
     }
   }
 
+  // Project-wide recall: Bugs under OTHER stories, from the local mirror brought up to
+  // date by one delta read. A failed sync fails the duplicate check closed.
+  let projectCandidates = [];
+  try {
+    const synced = await bugCache.sync(cwd, adapter, {
+      toEntry: (wi) => compactCandidate(wi, wi && wi.id),
+    });
+    const parentIds = new Set(parentCandidates.map((candidate) => positiveId(candidate.id)));
+    projectCandidates = synced.bugs
+      .filter((bug) => !parentIds.has(bug.id))
+      .map((bug) => projectCandidate(adapter, bug));
+  } catch (e) {
+    blocked.push({
+      reason: 'dup-check-failed',
+      message: `project-wide duplicate check failed — refusing to file blind (fails closed): ${safeFailureMessage(e)}`,
+    });
+  }
+
   return {
     adapter, cacheInfo, fieldMap, blocked, template, templateFields,
     templateDefaults: templateDefaults(templateFields), parent, parentFields,
-    duplicateCandidates: parentCandidates,
+    duplicateCandidates: [...parentCandidates, ...projectCandidates],
+  };
+}
+
+// A mirrored Bug as a review candidate. `source: 'project'` marks it as found outside
+// the selected parent; parentId says which story it hangs under.
+function projectCandidate(adapter, bug) {
+  const { changedDate, parentId, ...rest } = bug;
+  return {
+    ...rest,
+    type: 'Bug',
+    ...(!rest.url && typeof adapter.webUrl === 'function' ? { url: adapter.webUrl(bug.id) } : {}),
+    source: 'project',
+    parentId: parentId || null,
   };
 }
 
