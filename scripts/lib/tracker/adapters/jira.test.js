@@ -1031,7 +1031,7 @@ const SUBTASK_FIELDS = {
   await test('test-plan create ops are honest refusals on Jira naming testPlans (zero requests)', async () => {
     const f = fakeFetch([]);
     const a = createAdapter({ cwd: proj(), fetch: f });
-    for (const [m, args] of [['listPlans', []], ['getPlan', [1]], ['createPlan', [{ name: 'x' }, { execute: false }]], ['createSuite', [1, { type: 'static', name: 'x', parent: 1 }, { execute: false }]]]) {
+    for (const [m, args] of [['listPlans', []], ['getPlan', [1]], ['createPlan', [{ name: 'x' }, { execute: false }]], ['createSuite', [1, { type: 'static', name: 'x', parent: 1 }, { execute: false }]], ['removeCaseFromSuite', [1, 2, [3], { execute: false }]]]) {
       await assert.rejects(a[m](...args), (e) => e instanceof TrackerError && /capabilities\.testPlans: false/.test(e.message), m);
     }
     assert.strictEqual(f.calls.length, 0);

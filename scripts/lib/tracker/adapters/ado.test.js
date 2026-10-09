@@ -911,6 +911,50 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(f.calls.length, 1);
   });
 
+  // ════ removeCaseFromSuite (release gate only, WP-14) ════
+  const members = (ids) => ({ value: ids.map((id) => ({ workItem: { id, name: `TC ${id}` } })) });
+  await test('removeCaseFromSuite: dry run = DELETE testplan/.../TestCase?testCaseIds=… descriptor; association only, no destroy', async () => {
+    const f = fake2([]);
+    const d = await createAdapter({ cwd: proj(), fetch: f }).removeCaseFromSuite(3, 4, [77, '78'], { execute: false });
+    assert.strictEqual(d.method, 'DELETE');
+    assert.strictEqual(d.url, `${BASE}/${PROJ}/_apis/testplan/Plans/3/Suites/4/TestCase?testCaseIds=77%2C78&api-version=7.1`);
+    assert.ok(!/destroy/i.test(JSON.stringify(d)) && !/wit\/workitems/i.test(d.url));
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('removeCaseFromSuite --execute: reads members, removes only members (idempotent), re-reads; never DELETEs a work item', async () => {
+    let removed = false;
+    const f = fake2([
+      { method: 'DELETE', match: '/testplan/Plans/3/Suites/4/TestCase', respond: () => { removed = true; return { text: '' }; } },
+      { match: '/testplan/Plans/3/Suites/4/TestCase', respond: () => ({ json: members(removed ? [90] : [77, 90]) }) },
+    ]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).removeCaseFromSuite(3, 4, [77, 78], { execute: true });
+    assert.deepStrictEqual(r, { ids: [77, 78], removed: [77], notMembers: [78], planId: 3, suiteId: 4 });
+    assert.deepStrictEqual(f.calls.map((c) => c.method), ['GET', 'DELETE', 'GET']);
+    assert.match(f.calls[1].url, /TestCase\?testCaseIds=77&api-version/);
+    assert.ok(!f.calls.some((c) => c.method === 'DELETE' && /wit\/workitems/i.test(c.url)), 'a work item is never deleted');
+    assert.ok(!f.calls.some((c) => /destroy/i.test(c.url)));
+    const g = fake2([{ match: '/TestCase', json: members([90]) }]);
+    const r2 = await createAdapter({ cwd: proj(), fetch: g }).removeCaseFromSuite(3, 4, [77], { execute: true });
+    assert.deepStrictEqual(r2.removed, []);
+    assert.deepStrictEqual(g.calls.map((c) => c.method), ['GET'], 'nothing to remove -> no DELETE');
+  });
+
+  await test('removeCaseFromSuite fails closed when a case is still a member on re-read; CI choke point refuses execute', async () => {
+    const f = fake2([
+      { method: 'DELETE', match: '/TestCase', text: '' },
+      { match: '/TestCase', json: members([77]) },
+    ]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).removeCaseFromSuite(3, 4, [77], { execute: true }),
+      (e) => e instanceof TrackerError && /77/.test(e.message) && /re-read/.test(e.message));
+    process.env.AGENTEX_CI = '1';
+    try {
+      const g = fake2([]);
+      await assert.rejects(createAdapter({ cwd: proj(), fetch: g }).removeCaseFromSuite(3, 4, [77], { execute: true }), (e) => e.reason === 'ci-mode');
+      assert.strictEqual(g.calls.length, 0);
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

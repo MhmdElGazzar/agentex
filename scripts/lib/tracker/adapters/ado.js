@@ -654,6 +654,39 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return { id: res && res.id, name: res && res.name, suiteType: res && res.suiteType };
     },
 
+    // Release gate only: remove test cases FROM A SUITE (the association) —
+    // DELETE testplan/Plans/{p}/Suites/{s}/TestCase?testCaseIds=…. The work
+    // items themselves are never deleted and nothing here can destroy one.
+    // Idempotent: ids that are not members are skipped (no DELETE when none
+    // is). Fails closed: after the DELETE the suite is re-read (testplan
+    // route), and any id still a member throws.
+    async removeCaseFromSuite(planId, suiteId, caseIds, { execute = false } = {}) {
+      const ids = intIds(caseIds, 'removeCaseFromSuite');
+      const route = `testplan/Plans/${planId}/Suites/${suiteId}/TestCase`;
+      const del = (list) => url(route, { testCaseIds: list.join(',') });
+      if (!execute) return descriptor('removeCaseFromSuite', 'DELETE', del(ids));
+      assertCiWritesAllowed('removeCaseFromSuite');
+      const memberIds = async () => {
+        const res = await request('removeCaseFromSuite', 'GET', url(route));
+        return new Set(((res && res.value) || []).map((e) => Number((e.workItem || e).id)));
+      };
+      const before = await memberIds();
+      const toRemove = ids.filter((id) => before.has(id));
+      if (toRemove.length) {
+        const u = del(toRemove);
+        await request('removeCaseFromSuite', 'DELETE', u);
+        const after = await memberIds();
+        const still = toRemove.filter((id) => after.has(id));
+        if (still.length) {
+          throw new TrackerError({
+            op: 'removeCaseFromSuite', url: u,
+            serverMessage: `the request succeeded but test case(s) ${still.join(', ')} are still in suite ${suiteId} on re-read`,
+          });
+        }
+      }
+      return { ids, removed: toRemove, notMembers: ids.filter((id) => !before.has(id)), planId: Number(planId), suiteId: Number(suiteId) };
+    },
+
     async createRun(body, { execute = false } = {}) {
       const u = url('test/runs');
       if (!execute) return descriptor('createRun', 'POST', u, { body, contentType: 'application/json' });

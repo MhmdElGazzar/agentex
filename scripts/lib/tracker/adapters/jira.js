@@ -738,6 +738,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     listSuiteCases: unsupported('listSuiteCases', 'testPlans'),
     getPoint: unsupported('getPoint', 'testPlans'),
     addCaseToSuite: unsupported('addCaseToSuite', 'testPlans'),
+    removeCaseFromSuite: unsupported('removeCaseFromSuite', 'testPlans'),
     listRunResults: unsupported('listRunResults', 'testRuns'),
     createRun: unsupported('createRun', 'testRuns'),
     updateRunResults: unsupported('updateRunResults', 'testRuns'),
