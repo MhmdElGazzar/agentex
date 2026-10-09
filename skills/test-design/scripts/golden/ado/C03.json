@@ -1,0 +1,68 @@
+{
+  "argv": [
+    "create-case",
+    "--plan",
+    "3",
+    "--suite",
+    "4",
+    "--title",
+    "Checkout — totals include tax",
+    "--execute"
+  ],
+  "code": 1,
+  "out": {
+    "ok": false,
+    "mode": "executed",
+    "ledger": [
+      {
+        "step": "create-test-case",
+        "describe": "create Test Case \"Checkout — totals include tax\" (POST _apis/wit/workitems/$Test Case)",
+        "status": "done",
+        "id": 505,
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/505"
+      },
+      {
+        "step": "add-to-suite",
+        "describe": "add the Test Case to suite 4 (POST _apis/test/Plans/3/suites/4/testcases, membership re-read)",
+        "status": "failed",
+        "reason": "Test Case #505 was created but NOT added to suite 4: addCaseToSuite failed: HTTP 404 — suite not found (https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/Plans/3/suites/4/testcases/505?api-version=7.1) — add it manually or ask again; nothing was retried"
+      }
+    ],
+    "created": {
+      "testCaseId": 505,
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/505"
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>"
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1",
+      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='Test Case' AND [System.TeamProject]='Sample Project' AND [System.Title]='Checkout — totals include tax'\"}"
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Test%20Case/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Test%20Case?api-version=7.1",
+      "body": "[{\"op\":\"add\",\"path\":\"/fields/System.Title\",\"value\":\"Checkout — totals include tax\"},{\"op\":\"add\",\"path\":\"/fields/System.AreaPath\",\"value\":\"Sample Project\\\\QA\"}]"
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/Plans/3/suites/4/testcases?api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/Plans/3/suites/4/testcases/505?api-version=7.1",
+      "body": null
+    }
+  ]
+}

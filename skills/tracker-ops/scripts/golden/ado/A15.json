@@ -1,0 +1,46 @@
+{
+  "argv": [
+    "update",
+    "--id",
+    "42",
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "plan": [
+      {
+        "step": "update",
+        "describe": "PATCH https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+        "request": {
+          "op": "updateWorkItem",
+          "method": "PATCH",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "Renamed"
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Related",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/7"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "note": "nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
+  },
+  "requests": []
+}

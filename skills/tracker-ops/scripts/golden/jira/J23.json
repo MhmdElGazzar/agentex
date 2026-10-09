@@ -1,0 +1,44 @@
+{
+  "argv": [
+    "link",
+    "--id",
+    "PROJ-1",
+    "--type",
+    "Relates",
+    "--target",
+    "PROJ-2"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "plan": [
+      {
+        "step": "link",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issueLink",
+        "request": {
+          "op": "addRelation",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issueLink",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "type": {
+              "name": "Relates"
+            },
+            "outwardIssue": {
+              "key": "PROJ-1"
+            },
+            "inwardIssue": {
+              "key": "PROJ-2"
+            }
+          }
+        }
+      }
+    ],
+    "note": "nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
+  },
+  "requests": []
+}

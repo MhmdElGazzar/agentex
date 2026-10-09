@@ -1,0 +1,119 @@
+{
+  "argv": [
+    "search",
+    "--query",
+    "project = \"PROJ\""
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "provider": "jira",
+    "queryLanguage": "jql",
+    "count": 10,
+    "results": [
+      {
+        "id": "PROJ-1",
+        "title": "Item 1",
+        "url": "https://example.atlassian.net/browse/PROJ-1"
+      },
+      {
+        "id": "PROJ-2",
+        "title": "Item 2",
+        "url": "https://example.atlassian.net/browse/PROJ-2"
+      },
+      {
+        "id": "PROJ-3",
+        "title": "Item 3",
+        "url": "https://example.atlassian.net/browse/PROJ-3"
+      },
+      {
+        "id": "PROJ-4",
+        "title": "Item 4",
+        "url": "https://example.atlassian.net/browse/PROJ-4"
+      },
+      {
+        "id": "PROJ-5",
+        "title": "Item 5",
+        "url": "https://example.atlassian.net/browse/PROJ-5"
+      },
+      {
+        "id": "PROJ-6",
+        "title": "Item 6",
+        "url": "https://example.atlassian.net/browse/PROJ-6"
+      },
+      {
+        "id": "PROJ-7",
+        "title": "Item 7",
+        "url": "https://example.atlassian.net/browse/PROJ-7"
+      },
+      {
+        "id": "PROJ-8",
+        "title": "Item 8",
+        "url": "https://example.atlassian.net/browse/PROJ-8"
+      },
+      {
+        "id": "PROJ-9",
+        "title": "Item 9",
+        "url": "https://example.atlassian.net/browse/PROJ-9"
+      },
+      {
+        "id": "PROJ-10",
+        "title": "Item 10",
+        "url": "https://example.atlassian.net/browse/PROJ-10"
+      }
+    ],
+    "truncated": true
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100,\"nextPageToken\":\"tok-1\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100,\"nextPageToken\":\"tok-2\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100,\"nextPageToken\":\"tok-3\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100,\"nextPageToken\":\"tok-4\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100,\"nextPageToken\":\"tok-5\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100,\"nextPageToken\":\"tok-6\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100,\"nextPageToken\":\"tok-7\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100,\"nextPageToken\":\"tok-8\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100,\"nextPageToken\":\"tok-9\"}"
+    }
+  ]
+}

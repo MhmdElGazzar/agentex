@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "transition",
+    "--id",
+    "42",
+    "--to",
+    "Resolved",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "result": {
+      "id": 42,
+      "rev": 4,
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/42"
+    },
+    "note": "this tracker has no transition API — the honest equivalent is a State-field update (System.State = \"Resolved\") via updateWorkItem, shown below"
+  },
+  "requests": [
+    {
+      "method": "PATCH",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+      "body": "[{\"op\":\"add\",\"path\":\"/fields/System.State\",\"value\":\"Resolved\"}]"
+    }
+  ]
+}

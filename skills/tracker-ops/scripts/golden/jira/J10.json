@@ -1,0 +1,69 @@
+{
+  "argv": [
+    "create",
+    "--type",
+    "Task",
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "plan": [
+      {
+        "step": "create",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Task"
+              },
+              "summary": "Ad-hoc task",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "line one"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "second paragraph — تجربة"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "parent": {
+                "key": "PROJ-1"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "note": "nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
+  },
+  "requests": []
+}

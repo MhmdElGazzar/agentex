@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "comment",
+    "--id",
+    "42",
+    "--body",
+    "retested — passes"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "unsupported-op",
+        "message": "comment is not supported on this tracker (capabilities.comments: undefined) — no comment API is wired for provider \"ado\""
+      }
+    ]
+  },
+  "requests": []
+}

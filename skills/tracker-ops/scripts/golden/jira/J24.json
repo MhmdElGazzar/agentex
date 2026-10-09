@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "link",
+    "--id",
+    "PROJ-1",
+    "--type",
+    "Relates",
+    "--target",
+    "PROJ-2",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "result": {
+      "id": "PROJ-1",
+      "relType": "Relates",
+      "targetId": "PROJ-2"
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issueLink",
+      "body": "{\"type\":{\"name\":\"Relates\"},\"outwardIssue\":{\"key\":\"PROJ-1\"},\"inwardIssue\":{\"key\":\"PROJ-2\"}}"
+    }
+  ]
+}

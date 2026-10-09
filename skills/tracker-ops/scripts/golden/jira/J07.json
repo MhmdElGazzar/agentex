@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "show",
+    "--id",
+    "PROJ-404"
+  ],
+  "code": 1,
+  "out": {
+    "mode": "plan",
+    "ok": false,
+    "error": {
+      "message": "getWorkItem failed: HTTP 404 — Issue does not exist or you do not have permission to see it. (https://example.atlassian.net/rest/api/3/issue/PROJ-404?expand=renderedFields%2Cnames)",
+      "op": "getWorkItem",
+      "status": 404,
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-404?expand=renderedFields%2Cnames",
+      "serverMessage": "Issue does not exist or you do not have permission to see it."
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-404?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/myself",
+      "body": null
+    }
+  ]
+}

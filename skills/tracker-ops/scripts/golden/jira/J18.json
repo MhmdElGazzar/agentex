@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "transition",
+    "--id",
+    "PROJ-1",
+    "--to",
+    "Nonexistent"
+  ],
+  "code": 1,
+  "out": {
+    "mode": "plan",
+    "ok": false,
+    "error": {
+      "message": "transition failed: request failed — no transition matches \"Nonexistent\" — available: In Progress (id 11 → In Progress), Done (id 21 → Done) (https://example.atlassian.net/rest/api/3/issue/PROJ-1/transitions)",
+      "op": "transition",
+      "status": null,
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1/transitions",
+      "serverMessage": "no transition matches \"Nonexistent\" — available: In Progress (id 11 → In Progress), Done (id 21 → Done)"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1/transitions",
+      "body": null
+    }
+  ]
+}

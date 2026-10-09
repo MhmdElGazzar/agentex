@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "fail",
+    "--plan",
+    "3",
+    "--testcase",
+    "77"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "error": {
+      "message": "--bug is required. usage: testplan.js <list-suites|list-cases|find-case|create-case|fail> [options]"
+    }
+  },
+  "requests": []
+}

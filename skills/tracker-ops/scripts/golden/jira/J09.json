@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "show",
+    "--id",
+    "PROJ-1"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "Jira credentials are incomplete — looked for JIRA_EMAIL and JIRA_API_TOKEN in the environment and in .env and found only JIRA_EMAIL. Add both to the project's .env (the /init-test wizard writes them; the token comes from id.atlassian.com API tokens)."
+    }
+  },
+  "requests": []
+}

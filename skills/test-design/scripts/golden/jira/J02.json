@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "create-case",
+    "--plan",
+    "3",
+    "--suite",
+    "4",
+    "--title",
+    "Checkout — totals include tax"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "error": {
+      "message": "not supported on this tracker (testPlans: false) — jira has no test-plan/suite API, so there is nothing testplan.js could read or write here"
+    }
+  },
+  "requests": []
+}

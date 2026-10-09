@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "create-case",
+    "--plan",
+    "3",
+    "--suite",
+    "4",
+    "--title",
+    "Checkout — totals include tax",
+    "--execute"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "executed",
+    "blocked": [
+      {
+        "reason": "dup-check-failed",
+        "message": "duplicate check failed — refusing to create blind (fails closed): query failed: HTTP 500 (https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1)"
+      }
+    ],
+    "validation": {},
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>"
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1",
+      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='Test Case' AND [System.TeamProject]='Sample Project' AND [System.Title]='Checkout — totals include tax'\"}"
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Test%20Case/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    }
+  ]
+}

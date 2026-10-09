@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "link",
+    "--id",
+    "PROJ-1",
+    "--type",
+    "Relates"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "--id, --type and --target are required. usage: workitem.js show --id <id> [--expand all] | search --query \"<jql|wiql>\" | create --type <type> --spec <file.json> [--execute] | update --id <id> --spec <file.json> [--execute] | transition --id <id> --to <name-or-id> [--execute] | comment --id <id> --body \"<text>\" [--execute] | link --id <id> --type <linkType> --target <id> [--direction inward] [--execute]"
+    }
+  },
+  "requests": []
+}

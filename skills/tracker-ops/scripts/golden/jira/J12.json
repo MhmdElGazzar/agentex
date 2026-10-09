@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "create",
+    "--type",
+    "Task",
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "createWorkItem: links are separate operations on Jira — plan an addRelation intent for rel \"Relates\" (only rel \"parent\" folds into the issue body, as fields.parent)."
+    }
+  },
+  "requests": []
+}

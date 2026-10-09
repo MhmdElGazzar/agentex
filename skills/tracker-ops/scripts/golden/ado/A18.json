@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "update",
+    "--id",
+    "42",
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "could not read spec: Expected property name or '}' in JSON at position 2 (line 1 column 3)"
+    }
+  },
+  "requests": []
+}

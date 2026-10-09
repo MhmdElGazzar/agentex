@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "fail",
+    "--plan",
+    "3",
+    "--testcase",
+    "77",
+    "--bug",
+    "4711",
+    "--execute"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "error": {
+      "message": "not supported on this tracker (testPlans: false) — jira has no test-plan/suite API, so there is nothing testplan.js could read or write here"
+    }
+  },
+  "requests": []
+}

@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "update",
+    "--id",
+    "PROJ-1",
+    "--spec",
+    "{SPEC}",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "result": {
+      "id": "PROJ-1",
+      "url": "https://example.atlassian.net/browse/PROJ-1"
+    }
+  },
+  "requests": [
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1",
+      "body": "{\"fields\":{\"summary\":\"Renamed\"}}"
+    }
+  ]
+}

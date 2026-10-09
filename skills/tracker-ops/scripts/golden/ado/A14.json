@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "create",
+    "--type",
+    "Task",
+    "--spec",
+    "{SPEC}",
+    "--execute"
+  ],
+  "code": 1,
+  "out": {
+    "mode": "executed",
+    "ok": false,
+    "error": {
+      "message": "createWorkItem failed: HTTP 400 — TF401320: Rule Error for field Title. (https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1)",
+      "op": "createWorkItem",
+      "status": 400,
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+      "serverMessage": "TF401320: Rule Error for field Title."
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+      "body": "[{\"op\":\"add\",\"path\":\"/fields/System.Title\",\"value\":\"Ad-hoc task\"},{\"op\":\"add\",\"path\":\"/fields/System.Description\",\"value\":\"Ä — résumé — تجربة\"},{\"op\":\"add\",\"path\":\"/relations/-\",\"value\":{\"rel\":\"System.LinkTypes.Hierarchy-Reverse\",\"url\":\"https://dev.azure.com/exampleorg/_apis/wit/workItems/42\"}}]"
+    }
+  ]
+}

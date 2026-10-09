@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "show",
+    "--id",
+    "42"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "No Azure DevOps PAT found — looked for AZURE_PAT, AZURE_DEVOPS_EXT_PAT, AZURE_DEVOPS_PAT in the environment and in .env. Add AZURE_PAT to the project's .env (the /init-test wizard writes it)."
+    }
+  },
+  "requests": []
+}

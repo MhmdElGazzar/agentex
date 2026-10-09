@@ -1,0 +1,43 @@
+{
+  "argv": [
+    "link",
+    "--id",
+    "42",
+    "--type",
+    "System.LinkTypes.Related",
+    "--target",
+    "7"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "plan": [
+      {
+        "step": "link",
+        "describe": "PATCH https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+        "request": {
+          "op": "updateWorkItem",
+          "method": "PATCH",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Related",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/7"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "note": "nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
+  },
+  "requests": []
+}

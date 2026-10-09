@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "show",
+    "--id",
+    "PROJ-1"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "provider": "jira",
+    "workItem": {
+      "id": "PROJ-1",
+      "type": "Story",
+      "title": "Checkout totals",
+      "state": "To Do",
+      "url": "https://example.atlassian.net/browse/PROJ-1",
+      "fields": {
+        "issuetype": {
+          "name": "Story"
+        },
+        "summary": "Checkout totals",
+        "status": {
+          "name": "To Do"
+        }
+      },
+      "renderedFields": {
+        "description": "<p>Totals include tax</p>"
+      }
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames",
+      "body": null
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "create",
+    "--type",
+    "Task",
+    "--spec",
+    "{SPEC}",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "result": {
+      "id": "PROJ-2",
+      "url": "https://example.atlassian.net/browse/PROJ-2"
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Task\"},\"summary\":\"Ad-hoc task\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"line one\"}]},{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"second paragraph — تجربة\"}]}]},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    }
+  ]
+}

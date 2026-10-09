@@ -1,0 +1,33 @@
+{
+  "argv": [
+    "search",
+    "--query",
+    "project = \"PROJ\" AND status = \"To Do\""
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "provider": "jira",
+    "queryLanguage": "jql",
+    "count": 2,
+    "results": [
+      {
+        "id": "PROJ-1",
+        "title": "Checkout totals",
+        "url": "https://example.atlassian.net/browse/PROJ-1"
+      },
+      {
+        "id": "PROJ-2",
+        "title": null,
+        "url": "https://example.atlassian.net/browse/PROJ-2"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND status = \\\"To Do\\\"\",\"fields\":[\"summary\",\"status\",\"issuetype\"],\"maxResults\":100}"
+    }
+  ]
+}

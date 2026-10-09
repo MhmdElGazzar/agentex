@@ -1,0 +1,52 @@
+{
+  "argv": [
+    "transition",
+    "--id",
+    "PROJ-1",
+    "--to",
+    "done"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "plan": [
+      {
+        "step": "transition",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue/PROJ-1/transitions",
+        "request": {
+          "op": "transition",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1/transitions",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "transition": {
+              "id": "21"
+            }
+          },
+          "transition": {
+            "id": "21",
+            "name": "Done",
+            "to": "Done"
+          }
+        },
+        "transition": {
+          "id": "21",
+          "name": "Done",
+          "to": "Done"
+        }
+      }
+    ],
+    "note": "nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1/transitions",
+      "body": null
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "link",
+    "--id",
+    "PROJ-1",
+    "--type",
+    "Blocks",
+    "--target",
+    "PROJ-2",
+    "--direction",
+    "inward",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "result": {
+      "id": "PROJ-1",
+      "relType": "Blocks",
+      "targetId": "PROJ-2"
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issueLink",
+      "body": "{\"type\":{\"name\":\"Blocks\"},\"outwardIssue\":{\"key\":\"PROJ-2\"},\"inwardIssue\":{\"key\":\"PROJ-1\"}}"
+    }
+  ]
+}

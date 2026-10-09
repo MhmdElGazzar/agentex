@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "comment",
+    "--id",
+    "PROJ-1",
+    "--body",
+    "retested on qc — passes <ok> & \"quoted\"\nsecond line",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "result": {
+      "id": "9001",
+      "issue": "PROJ-1"
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1/comment",
+      "body": "{\"body\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"retested on qc — passes <ok> & \\\"quoted\\\"\"},{\"type\":\"hardBreak\"},{\"type\":\"text\",\"text\":\"second line\"}]}]}}"
+    }
+  ]
+}
