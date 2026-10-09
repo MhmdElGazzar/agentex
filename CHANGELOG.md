@@ -108,6 +108,9 @@ All notable changes to AgenTeX are documented here.
   still fails closed, but the message no longer calls provider selection "not supported
   yet": it says a project uses one tracker and points at the `/init-test` tracker
   question.
+- Task estimation's script now routes Azure DevOps and Jira through per-provider
+  estimation strategies behind a fail-closed registry. The change is internal, and output
+  is byte-identical on both trackers.
 
 ### Credits
 - The Jira operation semantics and field mappings were harvested from community **PR #4** ([Testing] task → Sub-task with parent;
