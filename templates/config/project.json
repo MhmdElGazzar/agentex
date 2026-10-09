@@ -21,5 +21,23 @@
       "hint": "كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)",
       "hintEn": "The shared test-account password — written as-is into the environment file (not a real secret)" },
     { "key": "otp", "label": "OTP الافتراضي", "labelEn": "Default OTP", "default": "0000" }
-  ]
+  ],
+  "testingTasks": [
+    { "stage": "requirementReview", "title": "[Testing] Requirement Review", "enabled": true },
+    { "stage": "testCreation", "title": "[Testing] Test Creation", "enabled": true },
+    { "stage": "testExecution", "title": "[Testing] Test Execution", "enabled": true },
+    { "stage": "bugRetest", "title": "[Testing] Bug Review and Retest", "enabled": true },
+    { "stage": "automation", "title": "[Testing] Automation", "enabled": true }
+  ],
+  "testDesign": { "approval": "consolidated", "independentCoverageCheck": false },
+  "estimation": {
+    "modelPath": ".agentex/task-estimation.json",
+    "historyPath": ".agentex/estimation-history.jsonl"
+  },
+  "qaRecords": {
+    "pendingQuestions": "qa-watchlist/awaiting-answers.md",
+    "pendingRechecks": "qa-watchlist/awaiting-retest.md",
+    "envIssues": "qa-watchlist/environment-blockers.md",
+    "deferredConditions": "qa-watchlist/deferred-conditions.md"
+  }
 }

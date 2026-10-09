@@ -125,5 +125,49 @@ test('sampleEnvShapes covers the current template plus every shipped revision', 
     'current template included');
 });
 
+// ---- the QA watchlist (skill-consolidation-foundation R6) ----
+// The QA-record files hold user decisions: they are committed, so no scaffolded
+// ignore entry may cover them, and they are created lazily by qa-records.js —
+// never by the scaffold. The paths come from the one constant.
+const { STRUCTURED_DEFAULTS } = require('./project_config.js');
+const QA_PATHS = Object.values(STRUCTURED_DEFAULTS.qaRecords);
+
+test('the scaffolded .gitignore covers none of the default QA watchlist paths (git check-ignore)', () => {
+  const { spawnSync } = require('node:child_process'); // test-side only
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  const gi = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8');
+  assert.ok(gi.includes('.env'), 'the scaffold wrote its ignore block');
+  const init = spawnSync('git', ['init', '-q'], { cwd: dir, encoding: 'utf8' });
+  if (init.status !== 0) { console.log('    (skipped: git unavailable)'); return; }
+  const folder = `${path.posix.dirname(QA_PATHS[0])}/`;
+  for (const p of [...QA_PATHS, folder]) {
+    const r = spawnSync('git', ['check-ignore', '--no-index', '-v', p], { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(r.status, 1, `${p} is ignored by: ${r.stdout.trim()}`);
+  }
+  for (const e of scaffold.gitignoreMissing(proj())) {
+    for (const p of QA_PATHS) assert.ok(!p.startsWith(e.entry.replace(/^\//, '')), `${e.entry} would cover ${p}`);
+  }
+});
+
+test('the scaffold creates no QA watchlist file or folder (they are created lazily on first append)', () => {
+  const dir = proj();
+  const actions = scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  for (const p of QA_PATHS) assert.ok(!fs.existsSync(path.join(dir, p)), `${p} must not be scaffolded`);
+  assert.ok(!fs.existsSync(path.join(dir, path.dirname(QA_PATHS[0]))), 'nor its folder');
+  assert.ok(!actions.some((a) => QA_PATHS.some((p) => a.path.startsWith(path.posix.dirname(p)))));
+});
+
+test('the scaffolded config/project.json carries the four plugin blocks, equal to STRUCTURED_DEFAULTS; no provider block', () => {
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  const cfg = readJson(dir, 'config/project.json');
+  for (const k of ['testingTasks', 'testDesign', 'estimation', 'qaRecords']) {
+    assert.deepStrictEqual(cfg[k], STRUCTURED_DEFAULTS[k], `${k} equals the default`);
+  }
+  assert.ok(!('azure' in cfg) && !('jira' in cfg), 'the template carries no provider block (the wizard writes the chosen one)');
+  assert.ok(!('workflow' in cfg) && !('reproSummaryRow' in cfg), 'provider-block keys are never top-level');
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;

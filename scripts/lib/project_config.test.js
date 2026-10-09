@@ -356,7 +356,14 @@ test('pin: rules.js TITLE_PREFIX is the prefix the getter enforces', () => {
 // STRUCTURED_DEFAULTS.qaRecords, so a rename that misses a mirror fails there.
 const QA_PATH_MIRRORS = {
   'references/tracker/qa-records.md': 'scripts/references.test.js (the default-path table)',
+  'templates/config/project.json': 'scripts/lib/project_config.test.js (the template\'s plugin blocks equal the defaults)',
 };
+
+test('pin: templates/config/project.json\'s plugin blocks equal STRUCTURED_DEFAULTS (fresh /init-test = the defaults)', () => {
+  const tpl = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8'));
+  for (const k of ['testingTasks', 'testDesign', 'estimation', 'qaRecords']) assert.deepStrictEqual(tpl[k], D[k], k);
+  assert.deepStrictEqual(withPluginConfigBlocks(tpl), tpl, 'nothing left for the wizard save or m12 to seed on a fresh scaffold');
+});
 
 test('pin: the default qaRecords paths appear literally ONLY in project_config.js and the pinned mirrors (one constant, mechanical rename)', () => {
   const root = path.join(__dirname, '..', '..');
