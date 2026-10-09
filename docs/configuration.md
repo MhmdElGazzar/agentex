@@ -59,6 +59,7 @@ Fill them in:
 | `users` | Test accounts keyed by a descriptive handle (`valid_user`, `expired_user`, …) that specs refer to ("login as expired_user"). Fields free-form: `phone`, `role`, `idNumber`, `password`, `notes`, … A user without `password` uses `defaults.password`. |
 | `db` | `server`, `port`, `name`, `user`, `password` — for cataloged `db:` steps. |
 | `api` | `baseUrl`, `token` — for cataloged `api:` steps. |
+| `mobile` | `platformName`, `automationName`, `app` (or `appPackage`+`appActivity` / `bundleId`), `deviceName`, `platformVersion`, optional `udid` — the Appium target for [mobile testing](./mobile-testing.md). Optional; browser-only projects can omit it entirely. |
 
 Selecting the environment at run time: "run on uat" / `env: uat` in a spec →
 `environments/uat.json`; otherwise `defaultEnvironment`. Naming an environment
@@ -111,7 +112,7 @@ Plugin manifests can't ship permission rules. Copy the `permissions` block from
 run actually issues — `playwright-cli` and the plugin's bundled `node` scripts (which now
 carry every tracker flow: bug filing, estimation, test design, test-plan updates — no `az`
 prompt can occur there) — puts `curl` / `sqlcmd` and the destructive `az` operations
-behind a prompt, and denies reads of `.env`/key material plus edits to your
+behind a prompt, gates the read-only `adb`/`xcrun simctl` commands the same way, prompts before destructive `adb`/`xcrun` actions (uninstall, reboot, erase), and denies reads of `.env`/key material plus edits to your
 application's source.
 
 Two of those entries need your attention rather than a blind copy, and the file's
