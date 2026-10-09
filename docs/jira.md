@@ -111,6 +111,9 @@ priority **names**; a severity-like **custom** field is used only when your Bug 
 one — otherwise severity is omitted and the plan says so. The bug links to its story via
 the configured/chosen issue link type. A partial failure names the created key, which
 attachments landed, and the link state — nothing is retried or cleaned up silently.
+When the project has playwright-cli, each screenshot is attached with an annotated copy
+ahead of it (red box and label on the defect, a one-line summary banner), exactly as on
+Azure DevOps.
 
 ### Field validation & the cache
 

@@ -172,10 +172,12 @@ touches the board.
      (`Expected "X" — actual "Y"`); optionally one `"ok": true` green box on something
      correct. Use only the summary/expected/actual and on-screen text — invent nothing. Run
      `node annotate-image.js --spec <file>.json`, Read the image it names, and fix a
-     misplaced box at most twice. Attach its `annotated` path instead of the raw file — the
-     ATTACH list shows that copy and the text it burns in. On a non-zero exit, or a box
-     still off after two fixes, attach the raw screenshot with a one-line reason on the
-     consolidated screen: never install, never ask, never seek a separate OK.
+     misplaced box at most twice. Attach its `annotated` path **followed by** the raw file
+     (`attachments: [annotated, raw]`) — the overlay can hide what is under it, so the raw
+     capture always travels with it; the ATTACH list shows both and the text the copy burns
+     in. On a non-zero exit, or a box still off after two fixes, attach the raw screenshot
+     alone with a one-line reason on the consolidated screen: never install, never ask,
+     never seek a separate OK.
 4. **Severity + priority recommendation** from the observed impact in this run (the user
    still decides — the recommendation and its one-line reasoning go on the consolidated
    screen, where approving the screen approves the values):

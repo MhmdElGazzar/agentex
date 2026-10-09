@@ -72,9 +72,9 @@ without `az` installed, and the PAT comes straight from `.env`. For each defect 
 - validates before touching the board: the parent **User Story** exists, no same-title
   duplicate (a duplicate check that *can't* complete blocks the filing — it never proceeds
   blind), severity/priority and custom picklists checked against **your project's real
-  values**, screenshots validated structurally and by a vision pass, then attached as an
-  annotated copy (red box and label on the defect, a one-line summary banner) when the
-  project has playwright-cli,
+  values**, screenshots validated structurally and by a vision pass, then attached with an
+  annotated copy ahead of each (red box and label on the defect, a one-line summary
+  banner) when the project has playwright-cli,
 - then shows you **one consolidated screen**: the validated fields, the recommended
   severity/priority with its reasoning, the evidence list, and the exact write plan —
   nothing has been written yet.
