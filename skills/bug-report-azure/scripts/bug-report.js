@@ -1625,6 +1625,25 @@ function trackerErrorOut(error, mode) {
   };
 }
 
+// This operation is Azure DevOps-shaped (Bug templates, parent/child relations, test
+// plans). On another tracker it refuses before any read; Jira filing goes through
+// create-bug.js directly (SKILL.md, "On Jira").
+function unsupportedTracker(adapter) {
+  if (adapter && adapter.name === 'ado') return null;
+  const name = (adapter && adapter.name) || 'this tracker';
+  return {
+    code: 2,
+    out: {
+      ok: false, mode: 'blocked',
+      blocked: [{
+        reason: 'unsupported-tracker',
+        message: `bug-report.js files Azure DevOps Bugs only; the configured tracker is ${name} — file through create-bug.js (SKILL.md, "On Jira")`,
+      }],
+      nothingWritten: true,
+    },
+  };
+}
+
 async function run(argv, {
   cwd = process.cwd(), fetch, now = () => new Date().toISOString(),
 } = {}) {
@@ -1632,6 +1651,10 @@ async function run(argv, {
   const rest = argv.slice(1);
   const opts = { cwd, fetch, now, writePhaseStarted: false };
   try {
+    if (cmd === 'context' || cmd === 'prepare' || cmd === 'execute') {
+      const refused = unsupportedTracker(resolveTracker(cwd, { fetch }));
+      if (refused) return refused;
+    }
     if (cmd === 'context') {
       const args = parseArgs(rest);
       const duplicateView = args['duplicate-view'] || 'shortlist';

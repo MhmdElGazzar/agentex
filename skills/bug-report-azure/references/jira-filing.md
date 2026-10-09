@@ -1,0 +1,228 @@
+# Filing Bugs on a Jira-configured project
+
+`bug-report.js` (the context/prepare/execute operation in SKILL.md) files Azure DevOps Bugs
+only and refuses a Jira config upfront (`unsupported-tracker`). On Jira, file through the
+lower-level scripts below — the same one-gate, fail-closed discipline, unchanged from
+0.23.0. Read this file only when the project's tracker is Jira.
+
+## Tooling: bundled scripts over the tracker REST API
+
+Every lookup, validation, and write goes through bundled Node scripts built on the
+plugin's tracker layer (`scripts/lib/tracker/` — direct REST over Node's built-in fetch;
+ADO or Jira Cloud v3, picked from the project's config by the scripts themselves).
+**Never run `az` or `acli` for any part of bug filing, and never compose REST calls
+yourself** — the scripts own transport, auth, and validation; you own judgment and the
+user conversation.
+
+- `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js` — validate a bug
+  spec (dry run) and, behind `--execute`, run the fail-closed write sequence with a ledger.
+- `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/read-workitem.js` — read-only:
+  `show --id <id> [--expand all]` (template bug, story validation), `find --type --title`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js` — test-plan mechanics
+  (cross-skill, owned by test-design): `list-suites` / `list-cases` / `find-case` /
+  `create-case` / `fail`. Same dry-run default and ledger discipline. **ADO only** — on a
+  Jira-configured project it refuses upfront (exit 2, `testPlans:false`).
+- `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/check-image.js` — structural
+  screenshot validation (Pass 1 of the evidence gate; local, no tracker access).
+- `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/annotate-image.js` — draws the
+  defect box, label and summary banner onto a copy of a screenshot (local, no tracker
+  access; renders through the project's playwright-cli).
+- `${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md` — the shared Jira knowledge
+  (field ids, ADF, link semantics, known limitations); `ado-boards.md` is the ADO twin.
+
+Each script prints **one JSON line** and exits 0/1/2. Dry run is the default; nothing is
+written without `--execute`. You render the plan and the ledger for the user — the scripts
+never talk to them.
+
+### Field/picklist cache & the refresh path
+
+Valid picklist values (severity, priority, `Custom.*` fields) vary per project. The
+scripts build a per-project metadata cache on first use —
+`.agentex/cache/tracker-fields-ado.json` on ADO, `tracker-fields-jira.json` on Jira
+(gitignored; committing it is an explicit opt-in: add a `!.agentex/cache/` line to
+`.gitignore`) — and validate every supplied value against the **project's real values**
+before the gate. When the user asks to refresh (or the server rejects a value the cache
+accepted), re-run the validating script with `--refresh-fields`; a stale-cache rejection
+comes back with the real current options and `cacheStale: true` — surface those options,
+never substitute a value silently.
+
+## On Jira (design §5.7 — same gate, inverted write order)
+
+The workflow, gate, ledger, and evidence discipline are identical; these are the Jira
+deltas, all owned by `create-bug.js`:
+
+- **The write order inverts around the attachment step**: Jira attaches to an *existing*
+  issue, so `--execute` runs **create Bug → attach ×N → link story** (ADO uploads first,
+  then relates). The inversion is visible in the plan the user approves, and a partial
+  failure still names the created key and exactly which attachments landed.
+- **Severity (explicit ask-don't-substitute line)**: Severity is not a standard Jira field.
+  A severity-like **custom** field is used only when the project's Bug screen has one
+  (cache discovery by name). When it is **absent**, severity is **omitted** from the Jira
+  spec and the consolidated screen says so — priority (a NAME, e.g. `High`, validated
+  against the project's real names) still carries the impact recommendation. Never invent
+  a severity field.
+- **Bug→story link**: Jira has no parent link for a Bug under a story, so the link is an
+  **issue link**. `jira.bugLinkType` pins the type; when unset, the choice joins the ONE
+  Phase-B bundle with the site's real options read live (`Relates` recommended). The chosen
+  link always appears on the consolidated screen — never invented, never silent.
+- **Test-case actions (explicit inform-first lines)**: Jira has no test-plan/run APIs and
+  no Tested-By link (`testPlans`/`testRuns: false`). Inform the user of that gap **upfront**
+  and offer only what exists: **skip (default)**, or — if the project created test
+  artifacts via `/design-test` — **link the bug to that artifact** with the same
+  issue-link mechanism, explicitly chosen on the screen; never a silent substitute. Do not
+  invoke `testplan.js` against a Jira config (it refuses with exit 2).
+- No server-side `validateOnly` exists on Jira — the createmeta cache + required-field
+  checks carry pre-gate validation; the dry-run JSON says
+  `validateOnly: 'unsupported-on-jira'` so the screen is honest about what was proven.
+- Spec keys on Jira: `parentStoryId` takes the issue KEY (e.g. `PROJ-9`), and an optional
+  `linkType` carries the bundle's choice when `jira.bugLinkType` is unset. Area/iteration
+  and test-plan keys have no Jira meaning and are ignored.
+
+## Hard constraints (never violate — these are the point of the skill)
+
+1. **Write nothing on the tracker beyond what the user explicitly approved on the one
+   consolidated screen** — the bug, its single parent/story link, the validated
+   attachments, and the explicitly chosen test-case action. Nothing else, ever.
+2. **Reads and validation run freely; writes only behind the one approval.** Exactly ONE
+   approval interaction sits between the user's filing request and the board writes.
+3. **One link type only:** on ADO, User Story → (parent) → Bug
+   (`System.LinkTypes.Hierarchy-Reverse`); on Jira, exactly the ONE configured/chosen issue
+   link type to the story. No related / duplicate / any other extra link. Never edit the
+   User Story itself.
+4. **Never edit a Test Plan / Suite / Test Case** except the two explicit, user-chosen
+   actions: record a *Failed outcome* on an existing case, or create a new case.
+5. **The duplicate check fails CLOSED.** If it cannot complete, the filing blocks — it
+   never proceeds on a dup-check failure. A found duplicate is surfaced and needs the
+   user's explicit go-ahead (`--allow-duplicate`).
+6. **Never infer or auto-fill required fields** (severity, priority, parent story,
+   assignee). Recommend with reasoning where the skill says so; the user's choice wins.
+7. **Every partial failure is reported as a FAILURE with the exact ledger** — every
+   intended write shown as done (ID + URL) or not-done (reason). Created work-item IDs are
+   always reported, even when a later step threw. **No auto-retry, no cleanup writes** —
+   remediation is the user's call on the board.
+8. **Never rewrite the consumer's config.** An invalid config-supplied value blocks the
+   run and is corrected *for this run only*.
+
+## Workflow — three phases, one gate
+
+### Phase A — collect & read (no user interaction, no writes)
+
+1. **Defects:** take them from the run's report. The user's ask usually names which to
+   file; if it is genuinely ambiguous, that question joins the Phase-B bundle — it never
+   stands alone.
+2. **Resolve from config + run context** (ask for nothing that is already known):
+   - Template: `{{TEMPLATE_BUG_ID}}` →
+     `node read-workitem.js show --id {{TEMPLATE_BUG_ID}} --expand all` to mirror its shape.
+   - Parent story: from the ask or the run's story context; validate via
+     `node read-workitem.js show --id <storyId>` — it must exist and be a **User Story**.
+   - Assignee options (`azure.assignee`), environment/category (`azure.*` or the run's
+     environment), test-plan intent (`azure.testPlanId`).
+3. **Screenshot evidence (two passes, unchanged discipline):**
+   - Pass 1 — structural: `node check-image.js --dir <screenshots-folder>` drops
+     corrupt / 0×0 / too-small / likely-blank images.
+   - Pass 2 — content relevance (your vision): Read each surviving image and judge it
+     against this bug's summary/expected/actual. An unrelated or unsupportive screenshot
+     is flagged (Phase-B bundle), never silently attached.
+   - Annotate (never blocks, never asks): for each screenshot you will attach, write
+     `{"image", "banner", "boxes": [{"x", "y", "width", "height", "label", "ok"?}]}` beside
+     the bug spec (e.g. `bug-1-<shot>.json`; box values in % of the image). `banner` is the
+     bug's summary; one red box goes on the defect, labelled from expected/actual
+     (`Expected "X" — actual "Y"`); optionally one `"ok": true` green box on something
+     correct. Use only the summary/expected/actual and on-screen text — invent nothing. Run
+     `node annotate-image.js --spec <file>.json`, Read the image it names, and fix a
+     misplaced box at most twice. Attach its `annotated` path **followed by** the raw file
+     (`attachments: [annotated, raw]`) — the overlay can hide what is under it, so the raw
+     capture always travels with it; the ATTACH list shows both and the text the copy burns
+     in. On a non-zero exit, or a box still off after two fixes, attach the raw screenshot
+     alone with a one-line reason on the consolidated screen: never install, never ask,
+     never seek a separate OK.
+4. **Severity + priority recommendation** from the observed impact in this run (the user
+   still decides — the recommendation and its one-line reasoning go on the consolidated
+   screen, where approving the screen approves the values):
+
+| Observed impact in the run | Recommended Severity | Recommended Priority |
+|---|---|---|
+| Blocks the flow, no workaround (can't advance / pay / issue) | `1 - Critical` | `1` |
+| Wrong/missing data in an issued artifact, or broken core path w/ workaround | `2 - High` | `1` or `2` |
+| Localized functional error, visible but non-blocking | `3 - Medium` | `2` or `3` |
+| Minor cosmetic / edge polish | `4 - Low` | `3` or `4` |
+
+### Phase B — ONE bundled input round, only if needed
+
+Everything still unresolved after Phase A is asked in **one** `AskUserQuestion` carrying
+all open questions at once — never a series of separate questions:
+
+- severity + priority, only when the impact is too ambiguous for a confident
+  recommendation (recommended option first, alternatives listed);
+- assignee (configured options + "other"), only when config gives none or several with no
+  steer;
+- parent story ID, only when unresolvable from the ask/run;
+- test-case decision: link-existing / create-new / skip, only when unresolvable;
+- evidence exceptions (a screenshot flagged irrelevant in Pass 2).
+
+When config + run context answer everything, **skip Phase B entirely** — the happy path
+has exactly one interaction: the approval.
+
+### Phase C — validate, one screen, one approval, write
+
+1. **Dry-run validation** (build one spec JSON per issue — shape below):
+   ```
+   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json
+   ```
+   This runs the whole gate: parent is a User Story, duplicate check (fails closed),
+   cache-based picklist validation, attachment structural re-check, and a server-side
+   `validateOnly` create. Exit 2 = blocked: surface the reasons (they include the valid
+   options), get the correction — a failure-path round, not part of the happy path — and
+   re-run the dry run. If a test-case action was chosen, dry-run it too
+   (`testplan.js create-case …` / `testplan.js fail …` without `--execute`).
+2. **Render THE consolidated screen** from the plan JSON — one message covering:
+   template choice · parent story (id, title, state — validated) · severity + priority
+   with the one-line reasoning · assignee · test-case decision · the ATTACH/REJECT list
+   with reasons · **the exact write plan** (every intended write, in order, with its
+   target route) · the explicit note that **nothing has been written yet**.
+3. **One approval.** On the user's "yes":
+   ```
+   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json --execute
+   node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js create-case --plan <plan> --suite <suite> --title "<t>" --execute   # only if chosen
+   node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js fail --plan <plan> --testcase <tc> --bug <bugId> --execute          # only if chosen
+   ```
+   On anything else: stop — zero writes. The write order inside `--execute` is fixed and
+   fail-closed — on ADO: re-validate → upload attachments → create Bug → link parent →
+   one json-patch setting ReproSteps + evidence relations; on Jira: re-validate → create
+   Bug → attach ×N → link story (the On Jira section). First failure stops the sequence.
+4. **Render the ledger.** Report every intended write as done (ID + URL) or not-done
+   (reason), straight from the ledger JSON. A partial failure is reported as a **failure**
+   with the exact board state — e.g. *"Bug #4711 was created (…/edit/4711) but the parent
+   link was not added: <server message>. Nothing was retried; remediation is your call on
+   the board."* Never soften a partial write into a success. If the failure JSON carries
+   `cacheStale: true`, show the real options it contains and offer `--refresh-fields`.
+
+## Spec JSON shape (for create-bug.js)
+
+```json
+{
+  "title": "Concise defect statement",
+  "severity": "2 - High",
+  "priority": 1,
+  "parentStoryId": 0,
+  "assignedTo": "{{ASSIGNEE_EMAIL}}",
+  "summary": "One-line summary shown in the Repro header",
+  "steps": ["Step 1", "Step 2", "Step 3"],
+  "expected": "What should happen",
+  "actual": "What actually happened",
+  "environment": "{{ENVIRONMENT}}",
+  "bugCategory": "{{BUG_CATEGORY}}",
+  "areaPath": "{{AREA_PATH}}",
+  "iterationPath": "{{ITERATION_PATH}}",
+  "testConfig": "Windows 11 / Chrome",
+  "timestamp": "1/1/2026 3:00 PM",
+  "attachments": ["executions/.../screenshots/ERROR.png"]
+}
+```
+
+- `severity` / `priority` come from the gate (recommendation approved or user's pick) and
+  are validated against the **project's** picklists — the script never invents them.
+- `areaPath` / `iterationPath` default to the parent story's when omitted.
+- Flags: `--allow-duplicate` (after the user's explicit go-ahead), `--no-screenshots`
+  (deliberate, user-confirmed evidence waiver), `--force` (attachment structural-check
+  override), `--refresh-fields` (rebuild the field cache).

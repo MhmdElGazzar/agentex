@@ -1355,6 +1355,22 @@ async function prepare(dir, fetch, testCase, overrides = {}) {
     assert.ok(!/_apis|System\.|Microsoft\.VSTS|Custom\.|json-patch/i.test(JSON.stringify(executed.out)), JSON.stringify(executed.out));
   });
 
+  await test('a Jira-configured project is refused before any request', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-br-'));
+    fs.mkdirSync(path.join(dir, 'config'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config', 'project.json'), JSON.stringify({
+      jira: { site: 'example', project: 'PROJ', assignee: 'qa.engineer@example.com' },
+    }));
+    for (const argv of [['context', '--parent', 'PROJ-9', '--emit-intent'], ['execute', '--plan', 'missing.json']]) {
+      const fetch = fakeFetch();
+      const result = await run(argv, { cwd: dir, fetch });
+      assert.strictEqual(result.code, 2, JSON.stringify(result.out));
+      assert.strictEqual(result.out.blocked[0].reason, 'unsupported-tracker');
+      assert.strictEqual(result.out.nothingWritten, true);
+      assert.strictEqual(fetch.calls.length, 0);
+    }
+  });
+
   await test('create-new validates the suite and reuses the existing testplan owner', async () => {
     // addCaseToSuite POSTs test/Plans/{p}/suites/{s}/testcases/{ids} and re-reads the suite
     // (0.22.1: PATCH testplan/suiteentry is a live 404). Membership flips after the POST.

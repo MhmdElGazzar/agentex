@@ -1,9 +1,18 @@
 ---
 name: bug-report-azure
-description: File defects found by a completed test or regression run as Azure DevOps Bugs. Use for selecting run findings, writing useful reproduction details, classifying severity/priority/category, checking evidence and duplicates, and filing behind one consolidated approval.
+description: "File defects found by a completed test or regression run as tracker Bugs — Azure DevOps or Jira Cloud (\"file these as Jira bugs\" works the same). Use for selecting run findings, writing useful reproduction details, classifying severity/priority/category, annotating and checking screenshot evidence, checking duplicates, and filing behind one consolidated approval."
 ---
 
 # Report Azure Bugs
+
+## Role
+You file defects found during a run as Bugs on the configured tracker, under the right
+User Story, behind exactly one consolidated approval. You never write to the board
+without it.
+
+**On Jira:** this workflow's operation refuses a Jira config (`unsupported-tracker`). Read
+`${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/references/jira-filing.md` and follow it
+instead; everything below is the Azure DevOps path.
 
 Turn confirmed run findings into useful Bugs under the correct User Stories. The agent
 owns defect judgment and the user conversation. The bundled operation owns Azure
@@ -20,7 +29,9 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js execute
 ```
 
 Do not read project secrets, inspect raw template fields, compose Azure requests, or call
-the low-level bug/test-plan scripts during normal filing. The operation prints one JSON
+the low-level bug/test-plan scripts during normal filing. The local evidence helpers are
+the exception: `annotate-image.js` (step 1) runs before `prepare`, which re-checks every
+file structurally itself. The operation prints one JSON
 result: exit 0 is ready/success, exit 2 is blocked before a board write, and exit 1 is a
 failed or partial execution whose ledger is authoritative.
 
@@ -75,6 +86,19 @@ For each selected finding, derive from the run evidence:
 View candidate images and decide whether each one actually supports this defect. Record
 both the attach list and rejected files with reasons. Structural validity is checked again
 by `prepare`; `likely-blank` is a warning for your visual judgment, not an automatic reject.
+
+Annotate each screenshot you will attach (never blocks, never asks). Write
+`{"image", "banner", "boxes": [{"x", "y", "width", "height", "label", "ok"?}]}` beside the
+intent (e.g. `bug-1-<shot>.json`; box values in % of the image). `banner` is the Bug's
+summary; one red box goes on the defect, labelled from expected/actual
+(`Expected "X" — actual "Y"`); optionally one `"ok": true` green box on something correct.
+Use only the summary/expected/actual and on-screen text — invent nothing. Run
+`node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/annotate-image.js --spec <file>.json`,
+Read the image it names, and fix a misplaced box at most twice. In the intent's attach list,
+put its `annotated` path **followed by** the raw file — the overlay can hide what is under
+it, so the raw capture always travels with it, and the approval screen shows both. On a
+non-zero exit, or a box still off after two fixes, attach the raw screenshot alone and give
+a one-line reason on the approval screen: never install, never ask, never seek a separate OK.
 
 ### 2. Retrieve bootstrap context
 
