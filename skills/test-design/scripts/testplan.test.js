@@ -290,6 +290,23 @@ const isWrite = (c) =>
     assert.ok(!r.stdout.includes(SENTINEL_PAT) && !r.stderr.includes(SENTINEL_PAT));
   });
 
+  await test('capability guard: a Jira-configured project exits 2 naming testPlans:false — before any network call', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-tp-'));
+    fs.mkdirSync(path.join(dir, 'config'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config', 'project.json'),
+      JSON.stringify({ jira: { site: 'example', project: 'PROJ' } }));
+    fs.writeFileSync(path.join(dir, '.env'), 'JIRA_EMAIL=qa@example.com\nJIRA_API_TOKEN=x\n');
+    const f = fakeFetch([]);
+    for (const argv of [['list-suites', '--plan', '3'], ['create-case', '--plan', '3', '--suite', '4', '--title', 't'], ['fail', '--plan', '3', '--testcase', '7', '--bug', '1']]) {
+      const { code, out } = await run(argv, { cwd: dir, fetch: f });
+      assert.strictEqual(code, 2, JSON.stringify(out));
+      assert.strictEqual(out.ok, false);
+      assert.match(out.error.message, /not supported on this tracker/i);
+      assert.match(out.error.message, /testPlans:\s*false/);
+    }
+    assert.strictEqual(f.calls.length, 0, 'refused upfront — nothing was sent');
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

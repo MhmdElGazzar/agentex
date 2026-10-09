@@ -146,9 +146,9 @@ test('mergeExtracted takes extracted users when there are none yet, and fills em
 });
 
 // ── schema shape: pages map one-to-one to config files, grouped by file ───
-test('schema has 10 numbered steps and no ai-import step', () => {
+test('schema has 11 numbered steps and no ai-import step', () => {
   const schema = require('./schema.json');
-  assert.strictEqual(schema.steps.length, 10);
+  assert.strictEqual(schema.steps.length, 11);
   assert.ok(!schema.steps.some(s => s.id === 'ai-import'), 'ai-import must not be a numbered step');
   assert.ok(!schema.steps.some(s => s.type === 'ai-extract'), 'no ai-extract step type in the flow');
   assert.strictEqual(schema.steps[schema.steps.length - 1].type, 'review', 'review stays last');
@@ -662,6 +662,101 @@ test('validateConfigs/validateEnvConfig refuse an envSecret that is not a valid 
     { portalUrl: 'https://ok.example', users: { u: { apiKey: { envSecret: 'USER_U_APIKEY' } } },
       defaults: { pin: { envSecret: 'DEFAULT_PIN' } } }, 'qa');
   assert.deepStrictEqual(ok, []);
+});
+
+// ── Q12 tracker selection (Jira design §5.9) ───────────────────────────────
+test('schema: tracker is a REQUIRED select on the first page with NO default (never a silent default)', () => {
+  delete require.cache[require.resolve('./schema.json')];
+  const schema = require('./schema.json');
+  const basics = schema.steps.find(s => s.id === 'project-basics');
+  const tracker = (basics.fields || []).find(f => f.key === 'tracker');
+  assert.ok(tracker, 'the tracker field lives on project-basics');
+  assert.strictEqual(tracker.type, 'select');
+  assert.strictEqual(tracker.required, true);
+  assert.ok(!('default' in tracker), 'Q12: no default — the user must pick explicitly');
+  assert.deepStrictEqual(tracker.options.map(o => o.value).sort(), ['azure', 'jira', 'none']);
+  assert.strictEqual(tracker.persisted, false,
+    'the tracker answer is never persisted — the provider block IS the selection');
+});
+
+test('schema: azure-devops and jira steps are when-gated on the tracker answer (O8)', () => {
+  const schema = require('./schema.json');
+  const azure = schema.steps.find(s => s.id === 'azure-devops');
+  const jiraStep = schema.steps.find(s => s.id === 'jira');
+  assert.deepStrictEqual(azure.when, { key: 'tracker', equals: 'azure' });
+  assert.ok(jiraStep, 'a jira step exists');
+  assert.deepStrictEqual(jiraStep.when, { key: 'tracker', equals: 'jira' });
+  assert.strictEqual(jiraStep.target, 'config/project.json');
+  const keys = jiraStep.fields.map(f => f.key);
+  assert.deepStrictEqual(keys, ['jira.site', 'jira.project', 'jira.board', 'jira.assignee', 'jira.email', 'jira.apiToken']);
+  const email = jiraStep.fields.find(f => f.key === 'jira.email');
+  assert.strictEqual(email.secret, true, 'O9: secret is a routing flag — the email goes to .env');
+  assert.strictEqual(email.envKey, 'JIRA_EMAIL');
+  const token = jiraStep.fields.find(f => f.key === 'jira.apiToken');
+  assert.strictEqual(token.secret, true);
+  assert.strictEqual(token.envKey, 'JIRA_API_TOKEN');
+});
+
+test('stepApplies gates a when-carrying step on its answer; validate() skips gated-away steps', () => {
+  const { stepApplies } = require('./engine.js');
+  const steps = [
+    { id: 'basics', fields: [{ key: 'tracker', label: 'Tracker', required: true }] },
+    { id: 'azure-devops', when: { key: 'tracker', equals: 'azure' }, fields: [{ key: 'azure.org', label: 'Org', required: true }] },
+    { id: 'jira', when: { key: 'tracker', equals: 'jira' }, fields: [{ key: 'jira.site', label: 'Site', required: true }] },
+  ];
+  assert.strictEqual(stepApplies(steps[0], {}), true, 'no when → always applies');
+  assert.strictEqual(stepApplies(steps[1], { tracker: 'azure' }), true);
+  assert.strictEqual(stepApplies(steps[1], { tracker: 'jira' }), false);
+  assert.strictEqual(stepApplies(steps[1], {}), false, 'unanswered gate → hidden');
+  const errs = validate({ tracker: 'jira', 'jira.site': 'example' }, steps);
+  assert.deepStrictEqual(errs, [], 'the azure step\'s required field is not enforced when gated away');
+  assert.match(validate({ tracker: 'azure' }, steps).join(), /Org/, 'the visible step still validates');
+});
+
+test('buildConfigs keyed off the tracker answer emits EXACTLY one provider block — stale answers never leak', () => {
+  // The user filled azure answers, then switched the tracker to jira mid-wizard:
+  const answers = {
+    name: 'demo', tracker: 'jira',
+    'azure.org': 'staleorg', 'azure.project': 'Stale Proj', 'azure.team': 'T',
+    'jira.site': 'example', 'jira.project': 'PROJ', 'jira.board': '42', 'jira.assignee': 'qa@example.com',
+  };
+  const { projectConfig } = buildConfigs(answers, []);
+  assert.ok(!('azure' in projectConfig), 'the abandoned provider\'s stale answers never reach the save');
+  assert.deepStrictEqual(projectConfig.jira,
+    { site: 'example', project: 'PROJ', board: '42', assignee: 'qa@example.com' });
+  // the switch back:
+  const back = buildConfigs({ ...answers, tracker: 'azure' }, []);
+  assert.ok(!('jira' in back.projectConfig));
+  assert.deepStrictEqual(back.projectConfig.azure,
+    { org: 'staleorg', project: 'Stale Proj', team: 'T', assignee: '' },
+    'the azure block keeps its historical shape');
+  // none: no provider block at all
+  const none = buildConfigs({ ...answers, tracker: 'none' }, []);
+  assert.ok(!('azure' in none.projectConfig) && !('jira' in none.projectConfig));
+  // the tracker answer itself is NOT persisted (the block is the selection)
+  for (const p of [projectConfig, back.projectConfig, none.projectConfig]) {
+    assert.ok(!('tracker' in p), 'no second authority beside resolveTracker');
+  }
+});
+
+test('buildConfigs without a tracker answer keeps the historical answer-emptiness behavior (legacy callers)', () => {
+  const r = buildConfigs({ name: 'd', 'azure.org': 'o', 'azure.project': 'p' }, []);
+  assert.deepStrictEqual(r.projectConfig.azure, { org: 'o', project: 'p', team: '', assignee: '' });
+  assert.ok(!('jira' in r.projectConfig));
+});
+
+test('validateConfigs and planSave REJECT a multi-provider projectConfig with the resolveTracker wording', () => {
+  const multi = { name: 'd', defaultEnvironment: 'qa',
+    azure: { org: 'o', project: 'p' }, jira: { site: 's', project: 'PROJ' } };
+  const e1 = validateConfigs(multi, cfgOk(), 'qa');
+  assert.match(e1.join(), /more than one tracker provider/i);
+  assert.match(e1.join(), /azure, jira/);
+  assert.match(e1.join(), /fails closed|exactly one provider block/i);
+  const e2 = planSave({ projectConfig: multi, environments: { qa: cfgOk() }, ops: {} }, disk(['qa']));
+  assert.match(e2.errors.join(), /more than one tracker provider/i);
+  // one provider (either) stays valid; empty blocks don't count as configured
+  assert.deepStrictEqual(validateConfigs({ name: 'd', jira: { site: 's', project: 'PROJ' } }, cfgOk(), 'qa'), []);
+  assert.deepStrictEqual(validateConfigs({ name: 'd', azure: { org: 'o' }, jira: {} }, cfgOk(), 'qa'), []);
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

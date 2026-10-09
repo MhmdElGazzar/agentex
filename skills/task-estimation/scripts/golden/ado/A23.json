@@ -1,0 +1,74 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}",
+    "--allow-existing"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "children-check-failed",
+        "story": 102,
+        "message": "the existing-children check on #102 could not complete — refusing to create blind (fails closed): getWorkItem failed: HTTP 500 (https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/555?api-version=7.1)"
+      }
+    ],
+    "validation": {
+      "assignee": "qa.engineer@example.com",
+      "perStory": [
+        {
+          "id": 102,
+          "tasks": 5,
+          "type": "User Story",
+          "title": "Story 102",
+          "state": "Active",
+          "iterationPath": "Sample Project\\Sprint 9",
+          "areaPath": "Sample Project\\Team Area",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/102"
+        }
+      ],
+      "fields": [
+        {
+          "field": "Microsoft.VSTS.Common.Activity",
+          "value": "Testing",
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.OriginalEstimate",
+          "value": 1,
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.RemainingWork",
+          "value": 1,
+          "ok": true
+        }
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/102?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/555?api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Task/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    }
+  ]
+}

@@ -26,26 +26,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const pc = require(path.join(__dirname, '..', '..', 'project_config.js'));
+// The shared error class lives in ../errors.js (one home, O1); re-exported
+// below unchanged so existing `require('./ado.js').TrackerError` keeps working.
+const { TrackerError } = require('../errors.js');
 
 const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
 const REDACTED_AUTH = '<Basic ***, not printed>';
-
-// What every adapter method throws on failure — never a raw fetch error, never
-// anything containing the PAT. 401/403 add credentialHint (env-var NAMES only).
-class TrackerError extends Error {
-  constructor({ op, status, url, serverMessage, body, credentialHint }) {
-    const head = status ? `HTTP ${status}` : 'request failed';
-    super(`${op} failed: ${head}${serverMessage ? ` — ${serverMessage}` : ''} (${url})`);
-    this.name = 'TrackerError';
-    this.op = op;
-    this.status = status ?? null;
-    this.url = url;
-    this.serverMessage = serverMessage || null;
-    this.body = body || '';
-    if (credentialHint) this.credentialHint = credentialHint;
-  }
-}
 
 function configError(message) {
   const e = new Error(message);
@@ -111,6 +98,29 @@ function resolveConfig(cwd) {
     testPlanId: pick(cwd, az, 'testPlanId', 'AZURE_TEST_PLAN_ID'),
     apiVersion: pick(cwd, az, 'apiVersion', 'AZURE_API_VERSION') || '7.1',
   };
+}
+
+// WIQL string escaping: inside a single-quoted WIQL literal, ' doubles.
+const wiqlEsc = (s) => String(s).replace(/'/g, "''");
+
+// The read-only child relation (listChildren walks it; nothing here writes it).
+const CHILD_LINK = 'System.LinkTypes.Hierarchy-Forward';
+
+// PINNED: the current-sprint WIQL — the @CurrentIteration macro WITH the team
+// argument, '[<project>]\<team>', on the project-scoped wiql route (the macro
+// needs the TEAM name, not just the project). The work item type is the
+// caller's parameter, placed where the query has always carried it — never a
+// post-read filter and never an adapter default. listSprintStories issues it;
+// task-estimation's ADO strategy re-exports it (as currentIterationWiql) for
+// its pinned test.
+function iterationWiql(project, team, workItemType) {
+  return (
+    'SELECT [System.Id] FROM workitems' +
+    ` WHERE [System.WorkItemType]='${wiqlEsc(workItemType)}'` +
+    ` AND [System.TeamProject]='${wiqlEsc(project)}'` +
+    ` AND [System.IterationPath] = @CurrentIteration('[${wiqlEsc(project)}]\\${wiqlEsc(team)}')` +
+    ' ORDER BY [System.Id]'
+  );
 }
 
 // Bounded body summary for dry-run descriptors — big values truncated so a plan
@@ -224,6 +234,9 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     name: 'ado',
     cwd,
     config: cfg,
+    // Exposed so consumers use adapter.webUrl(id) instead of composing an
+    // ADO-shaped URL locally (the one latent provider leak in Phase-2 consumers).
+    webUrl,
     capabilities: {
       validateOnly: true,               // server-side dry-run of a create
       attachments: true,                // binary upload API exists
@@ -284,6 +297,61 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     async listRunResults(runId) {
       const res = await request('listRunResults', 'GET', url(`test/Runs/${runId}/results`));
       return (res && res.value) || [];
+    },
+
+    // ── NEUTRAL READS (additive, flow-free) ───────────────────────────────────
+    // Provider-neutral shapes for consumer flows: no CLI text, no flow wording,
+    // no story-type rule (the caller passes the type). Each issues exactly the
+    // requests a direct getWorkItem/query call would; transport errors
+    // propagate unwrapped (the same TrackerError object).
+
+    // NeutralStory { id, type, title, state, url, raw } — ONE request,
+    // getWorkItem(ref, {expand:'all'}). id is wi.id verbatim. TOTAL on an empty body: raw null,
+    // fields read as {} — never a throw for shape reasons.
+    async getStory(ref) {
+      const raw = await this.getWorkItem(ref, { expand: 'all' });
+      const f = (raw && raw.fields) || {};
+      const id = raw ? raw.id : ref; // wi.id verbatim; the ref only stands in for an empty body
+      return {
+        id,
+        type: f['System.WorkItemType'] || null,
+        title: f['System.Title'] || null,
+        state: f['System.State'] || null,
+        url: webUrl(id),
+        raw,
+      };
+    },
+
+    // NeutralChild[] { id, title ('' when absent), state (null when absent) } —
+    // ALL children, unfiltered, in relation order: one sequential GET (no
+    // expand) per Hierarchy-Forward relation on story.raw; relations whose URL
+    // has no trailing /<digits> are skipped. A failed child read rejects with
+    // the unwrapped error. Reads story.raw.relations as-is (a null raw throws).
+    async listChildren(story) {
+      const rels = (story.raw.relations || []).filter((r) => r.rel === CHILD_LINK);
+      const children = [];
+      for (const r of rels) {
+        const m = String(r.url || '').match(/\/(\d+)$/);
+        if (!m) continue;
+        const child = await this.getWorkItem(m[1]);
+        const f = (child && child.fields) || {};
+        children.push({ id: child ? child.id : Number(m[1]), title: f['System.Title'] || '', state: f['System.State'] || null });
+      }
+      return children;
+    },
+
+    // SprintStories — the team's current iteration, as refs. opts.storyType is
+    // REQUIRED (it is part of the query text); opts.team is the caller's.
+    //   { ok: false, condition: 'team-required', data: {} } — no team, ZERO requests
+    //   { ok: true, sprint: null, refs: [id, …] } — ONE POST wit/wiql; refs in
+    //     query order (may be empty). sprint is always null: @CurrentIteration
+    //     resolves server-side, and naming it would cost an extra request.
+    async listSprintStories({ storyType, team } = {}) {
+      if (!storyType) throw new Error('listSprintStories needs opts.storyType (the work item type that counts as a story)');
+      if (!team) return { ok: false, condition: 'team-required', data: {} };
+      const res = await this.query(iterationWiql(cfg.project, team, storyType));
+      const rows = Array.isArray(res) ? res : (res && res.workItems) || [];
+      return { ok: true, sprint: null, refs: rows.map((w) => w.id).filter((id) => id !== undefined && id !== null) };
     },
 
     // ── WRITES (each takes {execute}; execute:false returns the descriptor) ──
@@ -409,4 +477,4 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
   };
 }
 
-module.exports = { createAdapter, resolveConfig, normalizeOrg, TrackerError, PAT_ENV_NAMES };
+module.exports = { createAdapter, resolveConfig, normalizeOrg, iterationWiql, TrackerError, PAT_ENV_NAMES };

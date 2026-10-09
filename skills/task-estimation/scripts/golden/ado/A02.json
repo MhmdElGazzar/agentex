@@ -1,0 +1,87 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint",
+    "--team",
+    "QA 'A' Team"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "stories",
+    "count": 3,
+    "stories": [
+      {
+        "id": 101,
+        "type": "User Story",
+        "title": "Story 101",
+        "state": "Active",
+        "storyPoints": 3,
+        "iterationPath": "Sample Project\\Sprint 9",
+        "areaPath": "Sample Project\\Team Area",
+        "url": "https://dev.azure.com/exampleorg/O'Neil%20Project/_workitems/edit/101",
+        "existingTestingTasks": []
+      },
+      {
+        "id": 102,
+        "type": "User Story",
+        "title": "Story 102",
+        "state": "Active",
+        "storyPoints": 3,
+        "iterationPath": "Sample Project\\Sprint 9",
+        "areaPath": "Sample Project\\Team Area",
+        "url": "https://dev.azure.com/exampleorg/O'Neil%20Project/_workitems/edit/102",
+        "existingTestingTasks": [
+          {
+            "id": 555,
+            "title": "[Testing] Test Execution",
+            "state": "Active"
+          }
+        ]
+      },
+      {
+        "id": 103,
+        "type": "User Story",
+        "title": "Story 103",
+        "state": "Active",
+        "storyPoints": null,
+        "iterationPath": "Sample Project\\Sprint 9",
+        "areaPath": null,
+        "url": "https://dev.azure.com/exampleorg/O'Neil%20Project/_workitems/edit/103",
+        "existingTestingTasks": []
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/O'Neil%20Project/_apis/wit/wiql?api-version=7.1",
+      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='User Story' AND [System.TeamProject]='O''Neil Project' AND [System.IterationPath] = @CurrentIteration('[O''Neil Project]\\\\QA ''A'' Team') ORDER BY [System.Id]\"}"
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/O'Neil%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/O'Neil%20Project/_apis/wit/workitems/102?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/O'Neil%20Project/_apis/wit/workitems/555?api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/O'Neil%20Project/_apis/wit/workitems/556?api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/O'Neil%20Project/_apis/wit/workitems/103?$expand=all&api-version=7.1",
+      "body": null
+    }
+  ]
+}

@@ -39,7 +39,9 @@ npx playwright-cli install-browser chromium
 This creates a starting point in your project: sample test files in `test/suite1/` (editable
 examples — adapt them to your app), an empty `executions/` folder where run results will land,
 plus `config/project.json`, a sample `environments/qc.json`, and a secrets-only `.env` ready for
-you to fill in.
+you to fill in. The wizard also asks **which work tracker the project uses** — Azure DevOps,
+Jira Cloud, or none — and configures only that one (see [azure-devops.md](./azure-devops.md) /
+[jira.md](./jira.md)).
 
 ## 4. Set permissions
 

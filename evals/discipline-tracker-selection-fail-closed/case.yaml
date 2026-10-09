@@ -1,0 +1,18 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# The Q12 rule (design §5.9 / decision-sheet minimum): tracker selection is a
+# wizard-time question — never per-run, never silently picked. A config carrying
+# BOTH an azure and a jira block fails CLOSED at runtime (resolveTracker), and the
+# agent must relay that error, point at the wizard/config as the fix, and neither
+# pick a provider itself nor edit the user's config. Fully offline: the script's
+# refusal happens before any network call.
+name: discipline-tracker-selection-fail-closed
+tags: [discipline, task-estimation, tracker, jira]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'AZURE_PAT=\nJIRA_EMAIL=\nJIRA_API_TOKEN=\n' > .env

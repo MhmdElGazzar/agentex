@@ -1,50 +1,56 @@
 #!/usr/bin/env node
-// create-tasks.js — the task-estimation flow's mechanics: read the sprint's
-// User Stories (or explicitly named ones), then validate EVERYTHING first
-// (zero board writes) and — only behind --execute — create the [Testing] tasks,
-// one atomic create per task with the parent link inline, behind an exact
-// per-write ledger.
+// create-tasks.js — the task-estimation flow's mechanics, provider-neutral:
+// read the sprint's stories (or explicitly named ones), then validate
+// EVERYTHING first (zero board writes) and — only behind --execute — create the
+// [Testing] tasks, one atomic create per task with the parent relation inline,
+// behind an exact per-write ledger.
 //
-// Built on the tracker layer (scripts/lib/tracker/): direct ADO REST over
-// Node's built-in fetch. No az CLI, no process spawning, zero npm dependencies.
-// The PAT is read from .env by the adapter (AZURE_PAT, legacy
-// AZURE_DEVOPS_EXT_PAT / AZURE_DEVOPS_PAT) and sent only in the Authorization
-// header — never printed, logged, or placed on a command line (invariant 5).
+// THE SPINE. Everything tracker-specific — which work item type is a story, the
+// sprint read, the existing-children scan, field validation, field
+// composition, the create type and parent relation, follow-up writes, describe
+// text, how a ref is written in a message — lives in the configured provider's
+// estimation strategy (./strategies/<provider>.js), looked up in a fail-closed
+// registry (./strategies/index.js) by the resolved adapter's name. A provider
+// with no registered strategy is refused (exit 2) before any request; nothing
+// here falls back to another provider's behavior (invariant 10).
+//
+// Built on the tracker layer (scripts/lib/tracker/): REST over Node's built-in
+// fetch. No CLI, no process spawning, zero npm dependencies. Credentials are
+// read from .env by the adapter and sent only in the Authorization header —
+// never printed, logged, or placed on a command line (invariant 5).
 //
 // READS (free, no gating — `stories` has no --execute surface at all):
-//   node create-tasks.js stories --current-sprint [--team "<name>"] [--full]
-//   node create-tasks.js stories --ids 12345,12346 [--full]
-//     --current-sprint composes WIQL with @CurrentIteration('[<project>]\<team>')
-//     (the macro needs the TEAM name, not just the project); --team is a
-//     run-only override — the consumer's config is never rewritten (invariant 11).
-//     Per story: id/title/state/storyPoints/iterationPath/areaPath/url,
-//     existingTestingTasks (children titled [Testing]…), and with --full the
-//     description + acceptance-criteria HTML for the agent's factor analysis.
+//   node create-tasks.js stories --current-sprint [--team "<name>"] [--sprint "<name>"] [--full]
+//   node create-tasks.js stories --ids <ID,ID> [--full]
+//     The strategy resolves the current sprint (run-only overrides such as
+//     --team / --sprint never rewrite the consumer's config, invariant 11) and
+//     reports a sprint read it cannot resolve as a blocked/error result.
+//     Per story: the strategy's row — id/title/state/storyPoints/url, the
+//     provider's placement facts, existingTestingTasks (children titled
+//     [Testing]…), and with --full the description + acceptance-criteria HTML
+//     for the agent's factor analysis.
 //
 // DRY RUN (default) — the validation gate behind the skill's ONE approval:
 //   node create-tasks.js --spec <file.json> [--allow-existing] [--refresh-fields]
-//     Per story: exists and IS a User Story (fails closed); iteration/area are
-//     re-read fresh from the story — never trusted from the spec; existing
-//     [Testing] children block without --allow-existing, and a children check
-//     that cannot complete blocks too (fails CLOSED). Structural: every task
-//     title starts with "[Testing] ", every estimate is a finite number > 0,
-//     the assignee comes from the spec or a single-valued azure.assignee —
-//     never invented. Field values are validated against the project's field
-//     cache (.agentex/cache/tracker-fields-ado.json, Task type merged in
-//     additively, --refresh-fields rebuilds), then ONE representative
-//     server-side validateOnly create proves field shape + assignee identity.
-//     If the server rejects what the cache accepted, the REAL current
-//     allowedValues are re-fetched live and returned with cacheStale:true.
+//     The strategy validates (reads + local checks only): each story exists and
+//     IS a story (fails closed); placement is re-read from the story, never
+//     trusted from the spec; existing [Testing] children block without
+//     --allow-existing, and a children check that cannot complete blocks too
+//     (fails CLOSED). Structural: every task title starts with "[Testing] ",
+//     every estimate is a finite number > 0, the assignee comes from the spec or
+//     a single configured value — never invented. Field values are checked
+//     against the project's field cache (--refresh-fields rebuilds it). The
+//     plan lists every intended write in order with its exact route.
 //
-// --execute — one WritePlan of the story-ordered task intents, one atomic
-//   create per task (fields + the inline parent relation — an unparented
-//   [Testing] task cannot exist). First failure stops; the ledger reports every
-//   intended task as done (id + url) or not-done (reason); created IDs are in
-//   the JSON even when a later step throws. No auto-retry, no cleanup writes.
+// --execute — one WritePlan of the story-ordered task intents (each create,
+//   plus the strategy's follow-up step right after it when it has one). First
+//   failure stops; the ledger reports every intended write as done (id + url)
+//   or not-done (reason); created IDs are in the JSON even when a later step
+//   throws. No auto-retry, no cleanup writes.
 //
 // Spec JSON shape (written by the agent to the OS temp dir):
 //   { "assignee": "qa.engineer@example.com",
-//     "stories": [ { "id": 12345, "complexity": "Simple",
+//     "stories": [ { "id": <story id>, "complexity": "Simple",
 //                    "tasks": [ { "title": "[Testing] Requirement Review", "estimate": 1 }, … ] } ] }
 //
 // Output: ONE JSON line (invariant 9). Exit codes:
@@ -56,35 +62,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const LIB = path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'tracker');
-const { resolveTracker, TrackerError } = require(path.join(LIB, 'index.js'));
-const fieldCache = require(path.join(LIB, 'cache.js'));
+const tracker = require(path.join(LIB, 'index.js'));
+const { TrackerError } = tracker;
 const { WritePlan } = require(path.join(LIB, 'ledger.js'));
-
-// The ONLY link this script creates: Parent, expressed on the child task.
-const PARENT_LINK = 'System.LinkTypes.Hierarchy-Reverse';
-const CHILD_LINK = 'System.LinkTypes.Hierarchy-Forward'; // read-only: the existing-children scan
-const TITLE_PREFIX = '[Testing] ';
-const ACTIVITY_FIELD = 'Microsoft.VSTS.Common.Activity';
-const ACTIVITY_VALUE = 'Testing';
-const ESTIMATE_FIELDS = ['Microsoft.VSTS.Scheduling.OriginalEstimate', 'Microsoft.VSTS.Scheduling.RemainingWork'];
-
-const wiqlEsc = (s) => String(s).replace(/'/g, "''");
-
-// PINNED: the current-sprint WIQL uses the @CurrentIteration macro WITH the
-// team argument — '[<project>]\<team>' — on the project-scoped wiql route (the
-// same server-side WIQL engine the old CLI-driven flow queried; live
-// verification of the macro-with-argument form is deferred to the release
-// smoke). This function is the one place the macro lives; the sibling test
-// pins its exact shape.
-function currentIterationWiql(project, team) {
-  return (
-    'SELECT [System.Id] FROM workitems' +
-    ` WHERE [System.WorkItemType]='User Story'` +
-    ` AND [System.TeamProject]='${wiqlEsc(project)}'` +
-    ` AND [System.IterationPath] = @CurrentIteration('[${wiqlEsc(project)}]\\${wiqlEsc(team)}')` +
-    ' ORDER BY [System.Id]'
-  );
-}
+const { defaultRegistry, compat } = require('./strategies/index.js');
 
 // ---- CLI arg parser: --key value / --key=value / --flag ----------------------
 function parseArgs(argv) {
@@ -108,92 +89,55 @@ const USAGE =
   'usage: create-tasks.js stories --current-sprint [--team <name>] [--full] | stories --ids <id,id> [--full]' +
   ' | create-tasks.js --spec <file.json> [--allow-existing] [--refresh-fields] [--execute]';
 
-const webUrl = (adapter, id) =>
-  `${adapter.config.base}/${encodeURIComponent(adapter.config.project)}/_workitems/edit/${id}`;
-
-// Existing-children scan: Hierarchy-Forward relations -> per-child read ->
-// the children whose title starts with [Testing]. THROWS when any child read
-// fails — callers decide (stories: a warning; dry run: blocked, fails CLOSED).
-async function scanTestingChildren(adapter, wi) {
-  const rels = (wi.relations || []).filter((r) => r.rel === CHILD_LINK);
-  const found = [];
-  for (const r of rels) {
-    const m = String(r.url || '').match(/\/(\d+)$/);
-    if (!m) continue;
-    const child = await adapter.getWorkItem(m[1]);
-    const f = (child && child.fields) || {};
-    const title = f['System.Title'] || '';
-    if (title.startsWith('[Testing]')) {
-      found.push({ id: child.id, title, state: f['System.State'] || null });
-    }
-  }
-  return found;
-}
-
-function storySummary(adapter, wi, { full = false } = {}) {
-  const f = (wi && wi.fields) || {};
-  return {
-    id: wi.id,
-    type: f['System.WorkItemType'] || null,
-    title: f['System.Title'] || null,
-    state: f['System.State'] || null,
-    storyPoints: f['Microsoft.VSTS.Scheduling.StoryPoints'] ?? null,
-    iterationPath: f['System.IterationPath'] || null,
-    areaPath: f['System.AreaPath'] || null,
-    url: webUrl(adapter, wi.id),
-    ...(full ? {
-      description: f['System.Description'] || null,
-      acceptanceCriteria: f['Microsoft.VSTS.Common.AcceptanceCriteria'] || null,
-    } : {}),
-  };
-}
-
 // ---- stories (read-only; there is no --execute path here) --------------------
-async function storiesCmd(args, adapter) {
-  let ids;
+async function storiesCmd(args, adapter, strategy) {
+  const ctx = await strategy.openStoriesRead(adapter, args);
+  let refs;
   if (args.ids) {
-    ids = String(args.ids).split(',').map((s) => s.trim()).filter(Boolean).map(Number);
+    refs = strategy.parseIds(args.ids);
   } else if (args['current-sprint']) {
-    const team = (typeof args.team === 'string' && args.team.trim()) || adapter.config.team;
-    if (!team) {
-      return {
-        code: 2,
-        out: {
-          ok: false,
-          error: {
-            message: 'No team resolved — the @CurrentIteration macro needs the TEAM name, not just the project. ' +
-              'Pass --team "<name>" for this run, or set azure.team in config/project.json (legacy AZURE_TEAM in .env).',
-          },
-        },
-      };
-    }
-    const res = await adapter.query(currentIterationWiql(adapter.config.project, team));
-    const rows = Array.isArray(res) ? res : (res && res.workItems) || [];
-    ids = rows.map((w) => w.id).filter((id) => id !== undefined && id !== null);
+    const r = await strategy.currentSprint(adapter, args, ctx);
+    if (r.stop) return r.stop;
+    refs = r.refs;
   } else {
     return { code: 2, out: { ok: false, error: { message: USAGE } } };
   }
 
   const stories = [];
-  for (const id of ids) {
+  for (const ref of refs) {
     try {
-      const wi = await adapter.getWorkItem(id, { expand: 'all' });
-      const s = storySummary(adapter, wi, { full: Boolean(args.full) });
-      if (s.type !== 'User Story') {
-        s.warning = `#${id} is a "${s.type || '?'}", not a User Story — the dry run will refuse to create tasks under it`;
-      }
-      try {
-        s.existingTestingTasks = await scanTestingChildren(adapter, wi);
-      } catch (e) {
-        s.existingTestingTasks = null;
-        s.warning = `existing-children scan failed: ${e.message} — the dry run will block on this story (fails closed)`;
-      }
-      stories.push(s);
+      const story = await strategy.readStory(adapter, ref, ctx);
+      let children = null; let childrenError = null;
+      try { children = await strategy.testingChildren(adapter, story); }
+      catch (e) { childrenError = e; }
+      stories.push(strategy.storyRow(story, { ref, children, childrenError, full: Boolean(args.full) }, ctx));
     } catch (e) {
-      stories.push({ id, warning: `could not be read: ${e.message}` });
+      stories.push({ id: ref, warning: `could not be read: ${e.message}` });
     }
   }
   return { code: 0, out: { ok: true, mode: 'stories', count: stories.length, stories } };
+}
+
+// The strategy's Validation must carry every key — the spine has NO defaults,
+// so a gap fails the run closed (exit 1) before any write.
+function assertValidation(v, provider) {
+  const gaps = [];
+  const has = (k) => v && Object.prototype.hasOwnProperty.call(v, k);
+  if (!has('blocked') || !Array.isArray(v.blocked)) gaps.push('blocked[]');
+  if (!has('validation') || !v.validation || typeof v.validation !== 'object' || !Array.isArray(v.validation.perStory)) gaps.push('validation.perStory[]');
+  if (!has('cacheInfo') || (v.cacheInfo !== null && typeof v.cacheInfo !== 'object')) gaps.push('cacheInfo');
+  if (!has('cacheStale') || typeof v.cacheStale !== 'boolean') gaps.push('cacheStale');
+  if (!has('createType') || typeof v.createType !== 'string') gaps.push('createType');
+  if (!has('parentRel') || typeof v.parentRel !== 'string') gaps.push('parentRel');
+  if (!has('fieldsFor') || typeof v.fieldsFor !== 'function') gaps.push('fieldsFor');
+  if (!has('describeCreate') || typeof v.describeCreate !== 'function') gaps.push('describeCreate');
+  if (!has('followUp')) gaps.push('followUp');
+  else if (v.followUp !== null && (typeof v.followUp !== 'object' || typeof v.followUp.step !== 'string' ||
+    typeof v.followUp.fieldsFor !== 'function' || typeof v.followUp.plannedTarget !== 'string' ||
+    typeof v.followUp.describe !== 'function')) gaps.push('followUp{step, fieldsFor, plannedTarget, describe}');
+  if (gaps.length) {
+    throw new Error(`the '${provider}' task-estimation strategy returned an incomplete validation (missing: ${gaps.join(', ')}) — refusing; nothing was written`);
+  }
 }
 
 // ---- spec structural checks (before any read) ---------------------------------
@@ -214,183 +158,18 @@ function specShapeErrors(spec) {
   return blocked;
 }
 
-// ---- validation phase (shared by dry run and the pre-write guard) -------------
-// Reads + local checks only — NOTHING here writes to the board. All findings
-// are accumulated and returned at once.
-async function validate(adapter, spec, args, cwd) {
-  const cfg = adapter.config;
-  const blocked = [];
-  const validation = {};
-  let cacheStale = false;
-
-  // 1) assignee: spec -> a single configured azure.assignee — never invented.
-  const configured = cfg.assignees || [];
-  const assignee = (spec.assignee && String(spec.assignee).trim()) ||
-    (configured.length === 1 ? configured[0] : null);
-  if (!assignee) {
-    blocked.push({
-      reason: 'missing-assignee',
-      ...(configured.length > 1 ? { options: configured } : {}),
-      message: configured.length > 1
-        ? `spec.assignee is empty and azure.assignee lists ${configured.length} options (${configured.join(', ')}) — ask the user which one, never pick silently`
-        : 'no assignee — set spec.assignee (ask the user) or azure.assignee in config/project.json',
-    });
-  }
-  validation.assignee = assignee;
-
-  // 2) structural: title prefix + finite positive estimate, every finding at once.
-  for (const st of spec.stories) {
-    for (const task of st.tasks) {
-      const title = task && task.title;
-      if (typeof title !== 'string' || !title.startsWith(TITLE_PREFIX)) {
-        blocked.push({
-          reason: 'bad-task-title', story: st.id, title: title ?? null,
-          message: `story #${st.id}: task title ${JSON.stringify(title ?? null)} must start with "${TITLE_PREFIX}"`,
-        });
-      }
-      const est = Number(task && task.estimate);
-      if (!Number.isFinite(est) || est <= 0) {
-        blocked.push({
-          reason: 'bad-estimate', story: st.id, title: title ?? null, estimate: (task && task.estimate) ?? null,
-          message: `story #${st.id}: "${title}" needs a finite estimate > 0 (got ${JSON.stringify((task && task.estimate) ?? null)})`,
-        });
-      }
-    }
-  }
-
-  // 3) per story: exists, IS a User Story, iteration/area re-read fresh (never
-  //    from the spec), existing [Testing] children (fails CLOSED on scan failure).
-  const perStory = [];
-  for (const st of spec.stories) {
-    const entry = { id: st.id, ...(st.complexity ? { complexity: st.complexity } : {}), tasks: (st.tasks || []).length };
-    try {
-      const wi = await adapter.getWorkItem(st.id, { expand: 'all' });
-      const f = (wi && wi.fields) || {};
-      entry.type = f['System.WorkItemType'] || null;
-      entry.title = f['System.Title'] || null;
-      entry.state = f['System.State'] || null;
-      entry.iterationPath = f['System.IterationPath'] || null;
-      entry.areaPath = f['System.AreaPath'] || null;
-      entry.url = webUrl(adapter, st.id);
-      if (entry.type !== 'User Story') {
-        blocked.push({
-          reason: 'story-not-a-user-story', story: st.id,
-          message: `#${st.id} is a "${entry.type || '?'}", not a User Story — [Testing] tasks hang only off User Stories`,
-        });
-      }
-      try {
-        entry.existingTestingTasks = await scanTestingChildren(adapter, wi);
-        if (entry.existingTestingTasks.length && !args['allow-existing']) {
-          blocked.push({
-            reason: 'existing-testing-tasks', story: st.id,
-            ids: entry.existingTestingTasks.map((t) => t.id),
-            message: `story #${st.id} already has ${entry.existingTestingTasks.length} [Testing] task(s) ` +
-              `(#${entry.existingTestingTasks.map((t) => t.id).join(', #')}) — ask the user: skip = drop the story from the spec; add anyway = pass --allow-existing`,
-          });
-        }
-      } catch (e) {
-        blocked.push({
-          reason: 'children-check-failed', story: st.id,
-          message: `the existing-children check on #${st.id} could not complete — refusing to create blind (fails closed): ${e.message}`,
-        });
-      }
-    } catch (e) {
-      blocked.push({ reason: 'story-not-found', story: st.id, message: `story #${st.id} could not be read: ${e.message}` });
-    }
-    perStory.push(entry);
-  }
-  validation.perStory = perStory;
-
-  // 4) field cache (Task type merged additively) + value/existence validation.
-  let cacheInfo = null; let fieldMap = {};
-  try {
-    cacheInfo = await fieldCache.ensure(cwd, adapter, { types: ['Task'], refresh: Boolean(args['refresh-fields']) });
-    fieldMap = (cacheInfo.cache.types.Task && cacheInfo.cache.types.Task.fields) || {};
-  } catch (e) {
-    blocked.push({ reason: 'field-cache-failed', message: `field metadata could not be read: ${e.message}` });
-  }
-
-  const firstTask = spec.stories[0] && spec.stories[0].tasks && spec.stories[0].tasks[0];
-  const toValidate = [
-    { field: ACTIVITY_FIELD, value: ACTIVITY_VALUE },
-    ...ESTIMATE_FIELDS.map((field) => ({ field, value: Number(firstTask && firstTask.estimate) })),
-  ];
-  if (cacheInfo) {
-    const results = fieldCache.validateValues(cacheInfo.cache, 'Task', toValidate);
-    validation.fields = results;
-    for (const r of results) {
-      if (r.ok) continue;
-      blocked.push({
-        reason: r.reason, field: r.field, value: r.value,
-        ...(r.allowedValues ? { allowedValues: r.allowedValues } : {}),
-        message: r.reason === 'field-not-on-type'
-          ? `field ${r.field} does not exist on this project's Task type — it cannot be emitted blind`
-          : `"${r.value}" is not a valid value for ${r.field} — valid: ${r.allowedValues.join(' | ')}`,
-      });
-    }
-  }
-
-  // The fields each create sends: iteration/area are the STORY'S, always.
-  const fieldsFor = (entry, task) => ({
-    'System.Title': task.title,
-    ...(entry.iterationPath ? { 'System.IterationPath': entry.iterationPath } : {}),
-    ...(entry.areaPath ? { 'System.AreaPath': entry.areaPath } : {}),
-    'System.AssignedTo': assignee,
-    [ACTIVITY_FIELD]: ACTIVITY_VALUE,
-    'Microsoft.VSTS.Scheduling.OriginalEstimate': Number(task.estimate),
-    'Microsoft.VSTS.Scheduling.RemainingWork': Number(task.estimate),
-  });
-
-  // 5) ONE representative server-side validateOnly probe (first task of the
-  //    first story) — dry run only; the real creates carry the same validation
-  //    server-side during --execute.
-  if (!args.execute && blocked.length === 0 && adapter.capabilities.validateOnly) {
-    try {
-      await adapter.createWorkItem('Task', {
-        fields: fieldsFor(perStory[0], firstTask),
-        relations: [{ rel: PARENT_LINK, targetId: spec.stories[0].id }],
-      }, { validateOnly: true, execute: true });
-      validation.validateOnly = 'passed';
-    } catch (e) {
-      // The server rejected what the cache accepted — re-fetch the REAL current
-      // allowedValues live (no error-prose parsing, no cache write, no retry).
-      const staleFields = [];
-      try {
-        const live = await fieldCache.liveFieldMap(adapter, 'Task');
-        for (const { field } of toValidate) {
-          const cached = fieldMap[field] && fieldMap[field].allowedValues;
-          const cur = live[field] && live[field].allowedValues;
-          if (JSON.stringify(cached) !== JSON.stringify(cur)) {
-            staleFields.push({ field, allowedValues: cur || null });
-          }
-        }
-      } catch { /* live read failed — the server message still blocks the run */ }
-      cacheStale = staleFields.length > 0;
-      validation.validateOnly = 'rejected';
-      blocked.push({
-        reason: 'server-rejected-create',
-        status: e.status ?? null,
-        serverMessage: e.serverMessage || e.message,
-        ...(staleFields.length ? { fields: staleFields } : {}),
-        message: cacheStale
-          ? 'the server rejected a value the cache accepted — the field cache is stale; the real current options are included, ask the user and offer --refresh-fields'
-          : 'the server rejected the create during validateOnly — nothing was written',
-      });
-    }
-  }
-
-  return { blocked, validation, assignee, fieldsFor, cacheInfo, cacheStale };
-}
-
 // ---- main ---------------------------------------------------------------------
-// Returns { code, out }; prints nothing. opts.fetch is the offline-test seam.
-async function run(argv, { cwd = process.cwd(), fetch } = {}) {
+// Returns { code, out }; prints nothing. opts.fetch is the offline-test seam;
+// opts.registry / opts.resolveTracker are the same kind of seam for the
+// registry and the tracker resolution (tests inject them; the CLI never does).
+async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistry, resolveTracker = tracker.resolveTracker } = {}) {
   const args = parseArgs(argv);
   const cmd = args._[0];
   const mode = args.execute ? 'executed' : 'plan';
   try {
     if (cmd === 'stories') {
-      return await storiesCmd(args, resolveTracker(cwd, { fetch }));
+      const adapter = resolveTracker(cwd, { fetch });
+      return await storiesCmd(args, adapter, registry.get(adapter.name));
     }
 
     if (!args.spec) return { code: 2, out: { ok: false, mode, error: { message: `--spec <file.json> is required. ${USAGE}` } } };
@@ -402,7 +181,13 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
     if (shapeErrors.length) return { code: 2, out: { ok: false, mode, blocked: shapeErrors } };
 
     const adapter = resolveTracker(cwd, { fetch });
-    const { blocked, validation, fieldsFor, cacheInfo, cacheStale } = await validate(adapter, spec, args, cwd);
+    const strategy = registry.get(adapter.name);
+    // The validation/gate/ledger spine is shared; the strategy supplies every
+    // provider value — field composition, create type, parent relation,
+    // describe text, and any follow-up step. No defaults here.
+    const v = await strategy.validate(adapter, spec, args, cwd);
+    assertValidation(v, strategy.provider);
+    const { blocked, validation, fieldsFor, cacheInfo, cacheStale, createType, parentRel, describeCreate, followUp } = v;
     const cacheOut = cacheInfo
       ? { file: cacheInfo.file, rebuilt: cacheInfo.rebuilt, builtAt: cacheInfo.cache.builtAt, ...(cacheInfo.reason ? { reason: cacheInfo.reason } : {}) }
       : null;
@@ -423,33 +208,48 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       // rendered by the agent on the consolidated screen. Nothing has been written.
       const plan = [];
       for (const { storyId, entry, task } of flat) {
-        const d = await adapter.createWorkItem('Task', {
+        const d = await adapter.createWorkItem(createType, {
           fields: fieldsFor(entry, task),
-          relations: [{ rel: PARENT_LINK, targetId: storyId }],
+          relations: [{ rel: parentRel, targetId: storyId }],
         }, { execute: false });
         plan.push({
           step: 'create-task', story: storyId, title: task.title,
-          describe: `${d.method} ${d.url} (${PARENT_LINK} -> #${storyId} inline — atomic)`,
+          describe: `${d.method} ${d.url} (${parentRel} -> ${typeof storyId === 'number' ? `#${storyId}` : storyId} inline — atomic)`,
           request: d,
         });
+        if (followUp) {
+          const u = await adapter.updateWorkItem(followUp.plannedTarget, { fields: followUp.fieldsFor(entry, task) }, { execute: false });
+          plan.push({ step: followUp.step, story: storyId, title: task.title, describe: `${u.method} ${u.url} — right after the create above`, request: u });
+        }
       }
       return { code: 0, out: { ok: true, mode: 'plan', validation, plan, cache: cacheOut } };
     }
 
     // ---- WRITE PHASE (only past explicit --execute, i.e. past the user's one approval)
     const createdTasks = [];
-    const intents = flat.map(({ storyId, entry, task }) => ({
-      step: 'create-task',
-      describe: `create "${task.title}" under story #${storyId} (POST _apis/wit/workitems/$Task, parent link inline)`,
-      run: async () => {
-        const r = await adapter.createWorkItem('Task', {
-          fields: fieldsFor(entry, task),
-          relations: [{ rel: PARENT_LINK, targetId: storyId }],
-        }, { execute: true });
-        createdTasks.push({ id: r.id, url: r.url, storyId, title: task.title });
-        return { id: r.id, url: r.url };
-      },
-    }));
+    const intents = flat.flatMap(({ storyId, entry, task }) => {
+      let createdId = null;
+      const create = {
+        step: 'create-task',
+        describe: describeCreate(task, storyId),
+        run: async () => {
+          const r = await adapter.createWorkItem(createType, {
+            fields: fieldsFor(entry, task),
+            relations: [{ rel: parentRel, targetId: storyId }],
+          }, { execute: true });
+          createdId = r.id;
+          createdTasks.push({ id: r.id, url: r.url, storyId, title: task.title });
+          return { id: r.id, url: r.url };
+        },
+      };
+      if (!followUp) return [create];
+      const fields = followUp.fieldsFor(entry, task);
+      return [create, {
+        step: followUp.step,
+        describe: followUp.describe(task),
+        run: async () => adapter.updateWorkItem(createdId, { fields }, { execute: true }),
+      }];
+    });
 
     const ledger = await new WritePlan(intents).execute();
     const allDone = ledger.every((l) => l.status === 'done');
@@ -472,7 +272,13 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
   }
 }
 
-module.exports = { run, currentIterationWiql, PARENT_LINK };
+module.exports = {
+  run,
+  // Pinned compat names, owned by the strategies (create-tasks.test.js pins them).
+  currentIterationWiql: compat.currentIterationWiql,
+  currentSprintJql: compat.currentSprintJql,
+  PARENT_LINK: compat.PARENT_LINK,
+};
 
 if (require.main === module) {
   run(process.argv.slice(2)).then(({ code, out }) => {

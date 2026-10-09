@@ -38,7 +38,7 @@ WIQL queries go through the adapter's project-scoped `wiql` route; the scripts o
 escaping (single quotes double: `'` → `''`).
 
 The current sprint resolves **dynamically, never hardcoded** —
-`create-tasks.js stories --current-sprint` composes:
+`create-tasks.js stories --current-sprint` composes via its ADO strategy:
 
 ```sql
 ... WHERE [System.WorkItemType]='User Story'
@@ -85,3 +85,37 @@ children scan that cannot complete also blocks — fail closed, never create bli
   test work items using this API"); removing one takes elevated Test Management permissions
   most identities don't have. To handle a duplicate/mistaken Test Case, ask the user to delete
   it from the Azure DevOps portal — never retitle, tag, or otherwise write to it as a cleanup.
+
+## Estimation flow (/estimate-story)
+
+The Azure DevOps side of the `task-estimation` skill. The skill body holds the methodology
+and the one-gate workflow; these are the ADO mechanics and the ADO-specific rules on top.
+
+**Configuration.** Resolved from the `azure` block of `config/project.json`, with legacy
+`AZURE_*` keys in `.env` as the fallback. Never bake an organization, project, team, or
+email into anything; a missing value joins the ONE bundled question round.
+
+| Setting | Source |
+|---|---|
+| Organization / Project | `azure.org` / `azure.project` — the script resolves them itself |
+| Team | `azure.team` → `AZURE_TEAM` → ask in the bundled round (needed by `@CurrentIteration`) |
+| Default assignee | `azure.assignee` → `AZURE_ASSIGNEE` → ask |
+| Auth | `AZURE_PAT` in `.env`. The script reads it itself and sends it only in the Authorization header. **Never** read, print, or pass it. |
+
+A `--team` or corrected value is for the run only — never rewrite the user's config.
+
+**Mechanics (the script owns them):**
+
+- Never run `az` for board operations — `create-tasks.js` talks to ADO REST itself.
+- Each `[Testing]` task is an ADO **Task**, created with its parent link
+  (`System.LinkTypes.Hierarchy-Reverse` → the story) inline — one atomic create per task.
+- The testing-activity marker is the field `Activity=Testing`
+  (`Microsoft.VSTS.Common.Activity`).
+- The estimated hours go into both `OriginalEstimate` and `RemainingWork`.
+- Placement: every task takes the **parent story's** iteration and area — the script
+  inherits both fresh from the story, so they cannot be omitted or wrong. Never ask for them
+  and never accept spec overrides. The `stories` JSON carries each story's
+  `iterationPath`/`areaPath` (the placement facts).
+- `--current-sprint` reads the team's `@CurrentIteration` (the WIQL above). No team in
+  `--team` / `azure.team` / `AZURE_TEAM` → exit 2 naming exactly those keys; ask the user in
+  the bundled round rather than guessing, then pass `--team "<name>"` for the run.

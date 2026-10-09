@@ -1,50 +1,60 @@
 ---
 name: test-design
 description: >
-  Designs test cases for Azure DevOps User Stories: analyze a story's acceptance criteria into
-  test conditions, map them to test case titles, create the test cases in ADO with structured
-  steps, and link them to the parent story (Tested By) — validated first, then ONE consolidated
-  approval, through bundled REST scripts (no Azure CLI). Use this skill whenever the user wants to:
+  Designs test cases for User Stories on the configured tracker — Azure DevOps or Jira Cloud:
+  analyze a story's acceptance criteria into test conditions, map them to test case titles,
+  create the test artifacts (ADO Test Cases with structured steps, or the Jira issue type the
+  user chooses — Jira has no native Test Case type) and link them to the parent story —
+  validated first, then ONE consolidated approval, through bundled REST scripts (no Azure CLI,
+  no acli). Use this skill whenever the user wants to:
   - Analyze a user story and identify test conditions (what to test)
   - Map AC scenarios to test case titles using a naming convention
-  - Create test cases in ADO with proper steps
+  - Create test cases in ADO with proper steps, or design test cases for a Jira story
   - Link test cases to their parent story
   - Review whether a story's ACs are fully covered by test cases
-  Trigger on phrases like: "create test cases for story", "design tests for", "what test cases
-  do I need", "analyze story for testing", "map ACs to test conditions", or any time a user
-  story ID is mentioned alongside test design/coverage work.
+  Trigger on phrases like: "create test cases for story", "design tests for", "design test
+  cases for a Jira story", "what test cases do I need", "analyze story for testing", "map ACs
+  to test conditions", or any time a user story ID or Jira issue key is mentioned alongside
+  test design/coverage work.
 ---
 
-# Test Design — Azure DevOps
+# Test Design — Azure DevOps or Jira
 
 ## Role
-You turn a User Story's acceptance criteria into structured Azure DevOps test cases, linked
-back to the story. You never write to the board without the single consolidated approval
-described below.
+You turn a User Story's acceptance criteria into structured test artifacts on the configured
+tracker (Azure DevOps test cases, or the Jira issue type the user chooses), linked back to
+the story. You never write to the board without the single consolidated approval described
+below.
 
-End-to-end methodology for designing, creating, and linking test cases to User Stories in
-Azure DevOps. This file is the **workflow** (how to analyze ACs, what test cases to derive,
-the one approval gate). The mechanics live in the bundled scripts — never run `az` or compose
-REST calls for board operations:
+End-to-end methodology for designing, creating, and linking test cases to User Stories on
+the **configured tracker**. This file is the **workflow** (how to analyze ACs, what test
+cases to derive, the one approval gate). The mechanics live in the bundled scripts — never
+run `az` or `acli`, and never compose REST calls for board operations:
 
 - **`${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/create-cases.js`** — the story read and
   the test-case creation/linking (dry run by default, `--execute` behind the one approval;
-  the script builds the Steps XML from structured steps). Read
+  the script builds the Steps XML from structured steps on ADO, or ADF step lists on Jira,
+  and picks the configured provider itself). Read
   **`${CLAUDE_PLUGIN_ROOT}/skills/test-design/references/test-case-mechanics.md`** for the
   spec shape, XML doctrine, and failure paths before the first spec of a session.
-- **`${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards.md`** — shared boards knowledge:
+- **`${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards.md`** — shared ADO boards knowledge:
   field reference names, relation directions, the Test-Case no-delete constraint.
+- **`${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md`** — the Jira twin: field ids,
+  ADF, link semantics, known limitations (no test plans/runs, no Tested-By).
 - **`${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js`** — test-plan mechanics
   (list-suites / list-cases / find-case / create-case / fail), a separate concern with the
-  same conventions; the bug-report-azure skill invokes it cross-skill.
+  same conventions; the bug-report-azure skill invokes it cross-skill. **ADO only**: on a
+  Jira-configured project it refuses upfront (exit 2, `testPlans:false` — Jira has no
+  test-plan/run APIs).
 
 ## Configuration (never hardcode)
 
-Org, project, and assignee resolve from `config/project.json`'s `azure` block (legacy
-`AZURE_*` keys in `.env` as fallback) — the scripts read them themselves, and the PAT
-(`AZURE_PAT` in `.env`) never leaves them: Authorization header only, never printed or on a
-command line. Never bake an organization, project, team, or email into anything. Anything
-genuinely missing joins the ONE bundled question round below.
+Org/site, project, and assignee resolve from `config/project.json` — the `azure` block on
+ADO (legacy `AZURE_*` keys in `.env` as fallback) or the `jira` block on Jira — the scripts
+read them themselves, and the credentials (`AZURE_PAT`, or `JIRA_EMAIL` + `JIRA_API_TOKEN`,
+in `.env`) never leave them: Authorization header only, never printed or on a command line.
+Never bake an organization, site, project, team, or email into anything. Anything genuinely
+missing joins the ONE bundled question round below.
 
 ## Project conventions file
 
@@ -60,6 +70,39 @@ the languages text checks must cover.
   its own consent — it happens before any board work and is outside the board-write gate.)
 - If a needed convention is missing from the file, that question joins the one bundled round
   — do not guess.
+
+## On Jira — the artifact question comes first (Q11)
+
+Jira has no native Test Case type and no Tested-By link. On a Jira-configured project,
+**before any spec is built**: inform the user of exactly that, and ask **what to create** —
+in the ONE bundled round, never silently substituted. The options are the **project's real
+issue types** (the dry run surfaces them: a spec without `artifactType` blocks with
+`missing-artifact-type` carrying the live list, sub-task types marked), plus **"document
+only / skip creation"** (deliver the conditions table and titled cases as text, zero board
+writes). The chosen type goes into the spec as `artifactType` — the script never defaults
+it, and validates it against the real types.
+
+The choice can be **pinned** in `./.agentex/test-template.md` under a `## Jira` section
+(e.g. `artifactType: Task`, `linkType: Relates`) — a consumer-owned convention, so later
+runs skip the ask. A pinned value still shows on the consolidated screen.
+
+Mechanical deltas the script owns (details in
+`${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md`):
+
+- Steps render as an **ADF ordered list** (action → expected) in the artifact's
+  description — same structured `{type, text, expected}` spec steps, no XML.
+- **Linking is a separate write**: no Tested-By exists, so the artifact links back to the
+  story via the configured/chosen issue link type (`jira.bugLinkType`, spec `linkType`, or
+  the bundled ask — `Relates` recommended). The plan shows create + link as two intents per
+  case; a sub-task artifact type instead rides `fields.parent` inside the create (no link
+  intent).
+- The assignee email resolves to an accountId at validation time (shown on the screen);
+  unresolvable/ambiguous blocks — never assigned blind.
+- No server-side `validateOnly` exists on Jira — the createmeta field cache carries
+  pre-gate validation, and the plan says `validateOnly: 'unsupported-on-jira'` so the
+  consolidated screen is honest about what was proven.
+- Coverage check closes the loop as on ADO: map every AC to a created artifact from the
+  ledger and re-read the story (free read) to show the links landed.
 
 ## Step 1 — Fetch the User Story
 
@@ -160,7 +203,8 @@ conventions file + config answer everything, the approval is the only interactio
 2. Render **the consolidated screen**: the conditions table (with its "covers" column and
    "is anything missing?" framed as part of this one screen), the titled cases with a
    per-case step summary, the duplicate-check results, and **the exact write plan** (one
-   atomic create per case, Tested By inline, routes listed) — plus the explicit statement
+   atomic create per case — Tested By inline on ADO; on Jira the chosen artifact type with
+   its create + link intents — routes listed) — plus the explicit statement
    that **nothing has been written yet**. Additions/removals edit the spec and re-run the
    dry run; the corrected screen still ends in exactly one approval.
 3. **One approval** → re-run with `--execute`. Anything else → stop, zero writes.
@@ -168,10 +212,11 @@ conventions file + config answer everything, the approval is the only interactio
 ## Step 7 — Report from the ledger
 
 Every intended case done (ID + URL) or not-done (reason), straight from the script's ledger.
-Linking happened inside each create (`TestedBy-Reverse` → story), so there is no separate
-link step to verify or forget. A partial failure is a **failure** — name exactly which cases
-now exist; no retry, no cleanup (Test Cases can't be deleted via the API — portal cleanup is
-the user's call).
+On ADO, linking happened inside each create (`TestedBy-Reverse` → story), so there is no
+separate link step to verify or forget; on Jira the story link is its own ledgered write —
+report its state per case. A partial failure is a **failure** — name exactly which cases
+now exist; no retry, no cleanup (ADO Test Cases can't be deleted via the API, and Jira's
+only delete is permanent and never offered — portal cleanup is the user's call).
 
 ## Step 8 — Coverage Check
 
