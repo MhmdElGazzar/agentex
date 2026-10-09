@@ -43,6 +43,8 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 | **Tracker bug filing (Azure DevOps or Jira Cloud)** | After a run, `bug-report-azure` files found defects as tracker **Bugs** through the same bundled scripts — recommends severity/priority, validates every field against your project's real values, links each bug to its parent User Story, validates & attaches screenshots, optionally fails the related test case (ADO); all writes behind **one** approval, with an exact per-write ledger if anything fails partway. | [azure-devops](./docs/azure-devops.md) · [jira](./docs/jira.md) |
 | **HTML report** | At the end of a run, generates a standalone, self-contained `extent-report.html` dashboard (donut chart, status cards, expandable per-test-case steps). | [extent-report](./docs/extent-report.md) |
 | **Configuration** | Three homes, one each: `config/project.json` (project settings), `environments/<env>.json` (targets, users, integrations), and a secrets-only `.env` — legacy keys-only `.env` projects still work untouched. After a plugin update, `/update-agentex` migrates a project to the new conventions, carrying your values. | [configuration](./docs/configuration.md) |
+| **Standalone API tests** | `/test-endpoints` runs every cataloged endpoint's test cases in one pass, dispatching an `api-executor` subagent and reporting pass/fail per case. | [skills/endpoint-testing/SKILL.md](./skills/endpoint-testing/SKILL.md) |
+| **Swagger/OpenAPI import** | `/import-swagger <path-or-url>` generates the API catalog + suite from a Swagger 2.0 / OpenAPI 3.x spec — mapping fields, skipping what it can't infer, and picking an auth scheme. | [skills/swagger-import/SKILL.md](./skills/swagger-import/SKILL.md) |
 
 See [docs/](./docs/) for the full reference on any feature.
 
@@ -59,6 +61,8 @@ Run a parallel regression against https://example.com from the specs in test/sui
 /execute-test https://example.com
 /define-flow https://example.com     # build a spec step by step, executing each step live
 /execute-mobile-test suite1
+/test-endpoints
+/import-swagger ./openapi.json --name acme-api
 /estimate-story 12345 12346
 /design-test 12345
 /ask-kb acme-store: how does the checkout flow work?

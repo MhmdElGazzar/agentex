@@ -4,6 +4,38 @@ All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
 ### Added
+- **`endpoint-testing` skill** — standalone API test run over cataloged endpoints ("api-tests"),
+  independent of any browser test spec (the "Standalone API tests" row flips from planned to
+  available). New `integration/api_test_suites/**/*_suite.json` case files reference a sibling
+  `*_api.json` catalog's entries by name and supply the concrete params/expected result a
+  standalone run needs — one entry can have multiple cases (happy path, not-found, …). Every
+  case in every suite file runs every time — there's no scope/tag selection.
+- `run_suite.js` — deterministic runner that shells out to `api-integration`'s `run_api.js`
+  per case (never duplicates its catalog/auth/assertion logic), aggregating one
+  PASS/FAIL/BLOCKED summary.
+- `agents/api-executor.md` — subagent (sibling to `qa-executor`) that runs the full set of
+  api-tests in one call and returns a consolidated defect report, keeping per-case logs out of
+  the orchestrator's context.
+- `/test-endpoints` command — entrypoint for the standalone flow; scaffolds
+  `integration/api_test_suites/sample_suite.json` on first run.
+- **`swagger-import` skill** — generates a catalog + suite, co-located under
+  `integration/api_test_suites/<service>/<service>_api.json` /
+  `.../<service>_suite.json`, from a Swagger 2.0 / OpenAPI 3.x JSON document (local file,
+  URL, or a SwaggerHub-hosted spec via the Swagger MCP connector), via `import_swagger.js`
+  and the `/import-swagger <source> [--name <service>]` command. Picks one supported auth
+  scheme per catalog file (`bearer` > `apiKey` header > `basic`), flags unsupported schemes
+  (oauth2/openIdConnect) and every generated best-effort value (param examples, request
+  bodies, "not found" placeholders) for manual review instead of guessing silently. Never
+  overwrites an existing catalog/suite file. JSON-only input (no YAML parser); Postman import
+  and response-schema/contract validation are explicitly out of scope.
+- `run_api.js`: catalog lookup is recursive under `--catalog` (default `./integration`), so
+  both hand-written flat catalogs and `swagger-import`'s nested
+  `integration/api_test_suites/<service>/` catalogs resolve by their internal `"name"`
+  regardless of location. Also two small additive extensions needed for imported entries to
+  work against real specs — `auth.type: "apiKey"` (custom header auth) and a query-string
+  fallback for any declared param not consumed by a `{name}` path placeholder (previously
+  silently dropped). Backward compatible; existing catalogs are unaffected.
+
 - **Mobile testing** — a new `mobile-testing` skill automates native Android/iOS apps through
   a real [Appium](https://appium.io/docs/en/latest/) session, mirroring the existing
   browser-testing flow: sequential (human-in-the-loop) or parallel (autonomous, one
@@ -71,6 +103,27 @@ All notable changes to AgenTeX are documented here.
   renderer and lacked flaky / warning / view-mismatch statuses, timing, evidence and defects,
   so the ideas were rebuilt inside `make_html_report.js` instead. Closed with credit, not
   merged.
+- `import_swagger.js`: found while testing against a live public OpenAPI spec — relative
+  `servers[].url` values (e.g. `"/api/v3"`, common in real specs) were used literally instead
+  of being resolved against the spec's own host; now resolved when the spec was fetched from
+  a URL (flagged for manual review when imported from a local file, since there's no origin
+  to resolve against). Also: enum-typed params now use the first enum value instead of a
+  generic placeholder (e.g. a `status` param picks its first valid value), and array-typed
+  params are explicitly flagged in `review` — a single representative value is generated, not
+  full OpenAPI array-serialization (`style`/`explode`), which remains a known limitation.
+- `import_swagger.js`: found running the generated Petstore suite against a live server —
+  internal `$ref` pointers (`components.schemas` / `definitions`) were never resolved, so any
+  field defined via `$ref` (in practice, almost every non-trivial field in a real spec)
+  silently degraded to the generic `'example'` placeholder, and every request body — always a
+  `$ref` to a reusable schema in practice — became the literal string `"example"` instead of
+  an object. The server rejected these outright (`400 unable to convert input to <Model>`).
+  Now: `$ref`s resolve recursively (including nested and chained refs), external refs and
+  circular chains are left unresolved/flagged instead of guessed, request bodies build real
+  nested arrays/objects instead of flattening them to a scalar, and `date`/`date-time` string
+  formats get a real ISO-8601 placeholder instead of `'example'`. Verified against the live
+  Petstore demo: all 6 previously-400ing write endpoints now pass body validation (any
+  remaining failures are the shared public demo server's own instability, confirmed
+  independently on read-only endpoints too).
 
 ## [0.23.0] — 2026-10-09
 ### Added

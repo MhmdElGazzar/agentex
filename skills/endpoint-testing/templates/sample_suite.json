@@ -1,0 +1,18 @@
+{
+  "name": "sample-api-suite",
+  "description": "EXAMPLE — replace with your own cases. Each case references an entry from integration/*_api.json (<file>.<request>) and supplies the concrete params + expected result a standalone run needs (a browser spec would normally supply these inline via an `api:` step). Every case in every suite file runs every time — there's no scope/tag filtering.",
+  "cases": [
+    {
+      "name": "get-todo-happy-path",
+      "entry": "sample-api.get-todo",
+      "params": { "id": 1 },
+      "expect": { "status": 200, "fields": ["title"] }
+    },
+    {
+      "name": "get-todo-not-found",
+      "entry": "sample-api.get-todo",
+      "params": { "id": 999999 },
+      "expect": { "status": 404 }
+    }
+  ]
+}
