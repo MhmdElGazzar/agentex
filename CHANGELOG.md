@@ -14,6 +14,14 @@ All notable changes to AgenTeX are documented here.
   two fixes, the raw screenshot is attached and the consolidated screen says why —
   annotation never blocks a filing or adds a question. Covered by
   `skills/bug-report-azure/scripts/annotate-image.test.js`.
+### Fixed
+- **`api:` steps read catalog secrets from `.env`.** `run_api.js` resolved a catalog's own
+  env-var names (`${API_BASE_URL}` in `baseUrl`, `auth.tokenEnv`, `auth.userEnv` /
+  `passEnv`) from the shell environment only, so a token kept in `.env`, the documented home
+  for secrets, left the step BLOCKED with "not set". These names now resolve like every other
+  secret, from the environment and then `.env`, and the BLOCKED reason names both places.
+  The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
+  three new cases in `run_api.test.js`.
 
 ## [0.23.0] — 2026-10-09
 ### Added

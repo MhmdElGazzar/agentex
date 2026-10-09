@@ -57,13 +57,16 @@ for (const k of Object.keys(params)) if (!declared.includes(k)) blocked(`param "
 for (const k of declared) if (!(k in params)) blocked(`missing value for declared param "${k}"`);
 
 // ---- target: active environment's api block first, catalog ${ENV_VAR} refs second ----
+const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
+// Catalog-named vars resolve like every other secret: process env, then the project's .env.
+const envVar = (name) => pc.readEnvVar(process.cwd(), name);
 function resolveEnvRefs(s) {
   return s.replace(/\$\{([A-Z0-9_]+)\}/g, (_, name) => {
-    if (!process.env[name]) blocked(`env var ${name} is not set (referenced by catalog "${fileName}")`);
-    return process.env[name];
+    const v = envVar(name);
+    if (!v) blocked(`env var ${name} is not set in .env or the environment (referenced by catalog "${fileName}")`);
+    return v;
   });
 }
-const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 let target = null;
 try { target = pc.resolveApiTarget(process.cwd(), envName); }
 catch (e) { blocked(e.message); }
@@ -80,12 +83,12 @@ const auth = def.auth || { type: 'none' };
 if (target && target.token) {
   headers['Authorization'] = `Bearer ${target.token}`; // environment token wins
 } else if (auth.type === 'bearer') {
-  const tok = process.env[auth.tokenEnv];
-  if (!tok) blocked(`env var ${auth.tokenEnv} (bearer token) is not set`);
+  const tok = envVar(auth.tokenEnv);
+  if (!tok) blocked(`env var ${auth.tokenEnv} (bearer token) is not set in .env or the environment`);
   headers['Authorization'] = `Bearer ${tok}`;
 } else if (auth.type === 'basic') {
-  const u = process.env[auth.userEnv], p = process.env[auth.passEnv];
-  if (!u || !p) blocked(`env vars ${auth.userEnv}/${auth.passEnv} (basic auth) are not set`);
+  const u = envVar(auth.userEnv), p = envVar(auth.passEnv);
+  if (!u || !p) blocked(`env vars ${auth.userEnv}/${auth.passEnv} (basic auth) are not set in .env or the environment`);
   headers['Authorization'] = 'Basic ' + Buffer.from(`${u}:${p}`).toString('base64');
 }
 
