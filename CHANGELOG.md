@@ -3,7 +3,43 @@
 All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
+### Added
+- **More tracker operations in `scripts/tracker.js`, on Azure DevOps and Jira.** Reads:
+  `batch` (many ids, chosen fields, input order, unknown ids listed under `missing`),
+  `comments` (the thread oldest first as author/date/plain text), `relations` (parent,
+  child, tested-by, related and other links, at a request cost that does not grow per
+  child), `iterations` (team iterations / board sprints, current/future/past), and
+  `--fields` on `show`/`search`, `--top` on `search`. Every read takes `--out <file>`: the
+  result is written as UTF-8 JSON and stdout carries only the path, so non-ASCII story text
+  never travels through a pipe. Writes: `update --discussion` and `comment --mention`
+  post through one shared path that encodes the text and turns a mention into the
+  tracker's real mention (an unresolvable or ambiguous mention stops the write — never a
+  bare `@name`); `update` refuses `RemainingWork` on Azure DevOps (TF401320) before any
+  request. Every new write is a dry run without `--execute` and refused in CI.
+- **`testplan.js ensure-plan`, `ensure-suite` and `record --outcome
+  Passed|Failed|Blocked|NotApplicable`.** Find-or-create a test plan or suite (a second run
+  writes nothing) and record any outcome on a test point with `fail`'s ledger (`fail`
+  stays as its exact alias). Refused upfront on Jira (`testPlans: false`).
+- **One structured config getter** (`getStructured` in `scripts/lib/project_config.js`)
+  for the plugin-owned blocks `testingTasks`, `workflow` (in the configured tracker's
+  block), `reproSummaryRow`, `testDesign`, `estimation` and `qaRecords` — typed, merged
+  per key over defaults that reproduce today's behaviour, and strictly validated (a
+  malformed value is an exit-2 config error naming the key). Nothing reads it yet.
+- **Shared references** `references/tracker/task-lifecycle.md`,
+  `references/question-format.md` and `references/tracker/capabilities.md` (the operation
+  × tracker matrix, checked against the adapters by a test), plus WIQL and JQL gotchas in
+  `ado-boards.md` / `jira-boards.md`.
+- **Release gate: suite-membership check** (`scripts/release-gate/suite-check.js`) — a real
+  add of a non-member pooled test case, an independent re-read, ledgered and removed at
+  teardown as an association only.
+
 ### Changed
+- **Azure DevOps comments are supported** by `tracker.js comment` (the comments API;
+  previously refused upfront), and an ADO `search` whose WIQL names no project is now
+  scoped to the configured project.
+- **`testplan.js` refuses `--execute` under `AGENTEX_CI=1` before any read** (exit 2,
+  `ci-mode`), as bug filing does — previously it read first and failed inside the write
+  plan with exit 1.
 - **The tracker work-item CLI moved to the plugin root: `scripts/tracker.js`** (was
   `skills/tracker-ops/scripts/workitem.js`; no shim at the old path). It is now the
   plugin's one tracker CLI that every skill calls as
