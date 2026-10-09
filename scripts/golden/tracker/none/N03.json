@@ -25,7 +25,7 @@
     {
       "method": "POST",
       "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1",
-      "body": "{\"query\":\"SELECT [System.Id] FROM workitems\"}"
+      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.TeamProject] = @project\"}"
     }
   ]
 }

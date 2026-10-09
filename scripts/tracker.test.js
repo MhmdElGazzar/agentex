@@ -537,6 +537,38 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     assert.strictEqual(none.calls.length, 0);
   });
 
+  await test('ADO search scoping (scopeQuery): every WIQL shape', async () => {
+    const { defaultRegistry } = require('./lib/tracker/ops/index.js');
+    const scope = (q) => defaultRegistry.get('ado').scopeQuery(null, q);
+    const S = '[System.TeamProject] = @project';
+    for (const [q, want] of [
+      ['SELECT [System.Id] FROM workitems', `SELECT [System.Id] FROM workitems WHERE ${S}`],
+      ["SELECT [System.Id] FROM workitems WHERE [System.State] = 'Active'", `SELECT [System.Id] FROM workitems WHERE ${S} AND ([System.State] = 'Active')`],
+      ["SELECT [System.Id] FROM workitems WHERE [System.State] = 'Active' OR [System.State] = 'New' ORDER BY [System.Id] DESC",
+        `SELECT [System.Id] FROM workitems WHERE ${S} AND ([System.State] = 'Active' OR [System.State] = 'New') ORDER BY [System.Id] DESC`],
+      ['SELECT [System.Id] FROM workitems ORDER BY [System.ChangedDate]', `SELECT [System.Id] FROM workitems WHERE ${S} ORDER BY [System.ChangedDate]`],
+      ["select [System.Id] from workitems where [System.Title] = 'where to order by' asof '2026-01-01'",
+        `select [System.Id] from workitems where ${S} AND ([System.Title] = 'where to order by') asof '2026-01-01'`],
+      ["SELECT [System.Id] FROM workitems WHERE [System.Title] CONTAINS 'it''s [System.TeamProject]'",
+        `SELECT [System.Id] FROM workitems WHERE ${S} AND ([System.Title] CONTAINS 'it''s [System.TeamProject]')`],
+      ['SELECT [System.Id] FROM workitems WHERE [System.Title] = "x where y"', `SELECT [System.Id] FROM workitems WHERE ${S} AND ([System.Title] = "x where y")`],
+      ["SELECT [System.Id] FROM WorkItemLinks WHERE [Source].[System.WorkItemType] = 'User Story' MODE (MustContain)",
+        "SELECT [System.Id] FROM WorkItemLinks WHERE [Source].[System.TeamProject] = @project AND ([Source].[System.WorkItemType] = 'User Story') MODE (MustContain)"],
+    ]) assert.strictEqual(scope(q), want, q);
+    for (const q of [
+      "SELECT [System.Id] FROM workitems WHERE [System.TeamProject] = 'Other Project'",
+      'SELECT [System.Id] FROM workitems WHERE system.teamproject = @project',
+      "SELECT [System.Id] FROM WorkItemLinks WHERE [Source].[System.TeamProject] = @project",
+    ]) assert.strictEqual(scope(q), q, `names a project already: ${q}`);
+  });
+
+  await test('search (ADO): an unscoped WIQL is sent scoped to the configured project (named change #3)', async () => {
+    const f = fake2([{ method: 'POST', match: '/wit/wiql', json: { workItems: [] } }]);
+    await run(['search', '--query', "SELECT [System.Id] FROM workitems WHERE [System.State] = 'Active'"], { cwd: aproj(), fetch: f });
+    assert.strictEqual(JSON.parse(f.calls[0].body).query, "SELECT [System.Id] FROM workitems WHERE [System.TeamProject] = @project AND ([System.State] = 'Active')");
+    assert.match(f.calls[0].url, /\/Sample%20Project\/_apis\/wit\/wiql\?/, '@project resolves on the project-scoped route');
+  });
+
   const ADO_COMMENTS = { comments: [
     { id: 1, createdBy: { id: 'g-a', displayName: 'Ana', uniqueName: 'ana@example.com' }, createdDate: '2026-01-01T09:00:00Z', text: '<div>Is the total &lt;= 100?</div>' },
     { id: 2, createdBy: { id: 'g-b', displayName: 'Ben', uniqueName: 'ben@example.com' }, createdDate: '2026-01-02T09:00:00Z', text: `<div>${NON_ASCII}</div>` },

@@ -41,9 +41,66 @@ function summarize(adapter, wi) {
   };
 }
 
-// search: the query text sent to the adapter (scoping lands in a later step).
+// search: scope a WIQL to the configured project unless it already names
+// one. The adapter posts to the project-scoped wiql route, where @project
+// resolves — the same rule findByTitle applies — so no quoting is needed.
+//   - System.TeamProject mentioned anywhere outside a string literal (any
+//     case, bracketed or not) -> left alone (an explicit opt-out);
+//   - a top-level WHERE -> WHERE <scope> AND (<original predicate>), with a
+//     trailing ORDER BY / ASOF / MODE clause kept outside the parentheses;
+//   - no WHERE -> WHERE <scope> inserted before the trailing clause or at the end;
+//   - FROM WorkItemLinks -> the scope is on [Source].
+// Keyword search runs on a masked copy: string-literal contents ('…', "…",
+// doubled quotes escaped) and bracketed field names are blanked, so a value
+// such as 'where to order by' can never be mistaken for syntax.
+function maskLiterals(q, { brackets = false } = {}) {
+  let out = '';
+  let i = 0;
+  while (i < q.length) {
+    const c = q[i];
+    if (c === "'" || c === '"') {
+      let j = i + 1;
+      while (j < q.length) {
+        if (q[j] === c) { if (q[j + 1] === c) { j += 2; continue; } break; }
+        j++;
+      }
+      const end = Math.min(j, q.length);
+      out += c + ' '.repeat(Math.max(0, end - i - 1)) + (j < q.length ? c : '');
+      i = end + 1;
+    } else if (brackets && c === '[') {
+      const j = q.indexOf(']', i);
+      const end = j === -1 ? q.length - 1 : j;
+      out += '[' + ' '.repeat(Math.max(0, end - i - 1)) + (j === -1 ? '' : ']');
+      i = end + 1;
+    } else { out += c; i++; }
+  }
+  return out;
+}
 function scopeQuery(adapter, text) {
-  return text;
+  const q = String(text);
+  if (/system\.teamproject/i.test(maskLiterals(q))) return q;
+  const m = maskLiterals(q, { brackets: true });
+  const scope = /\bfrom\s+workitemlinks\b/i.test(m)
+    ? '[Source].[System.TeamProject] = @project'
+    : '[System.TeamProject] = @project';
+  const trailingFrom = (from) => {
+    const re = /\b(order\s+by|asof|mode)\b/ig;
+    re.lastIndex = from;
+    const hit = re.exec(m);
+    return hit ? hit.index : -1;
+  };
+  const where = /\bwhere\b/i.exec(m);
+  if (where) {
+    const ps = where.index + where[0].length;
+    const t = trailingFrom(ps);
+    const end = t === -1 ? q.length : t;
+    const predicate = q.slice(ps, end).trim();
+    return `${q.slice(0, ps)} ${scope} AND (${predicate})${t === -1 ? '' : ` ${q.slice(t)}`}`;
+  }
+  const from = /\bfrom\b/i.exec(m);
+  const t = trailingFrom(from ? from.index : 0);
+  if (t === -1) return `${q.trimEnd()} WHERE ${scope}`;
+  return `${q.slice(0, t).trimEnd()} WHERE ${scope} ${q.slice(t)}`;
 }
 
 // search: the adapter.query options and the --top ceiling (the service's
