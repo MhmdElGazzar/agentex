@@ -1,6 +1,6 @@
 ---
 name: extent-report
-description: Produce a standalone, self-contained extent-report.html — a dark-themed interactive dashboard (donut chart, per-status stat cards, expandable test-case cards with step-by-step detail). Use at the end of any playwright-cli test execution (one test case or a full parallel/sequential batch) once final scenario results are known, alongside report.md.
+description: Produce a standalone, self-contained extent-report.html — a dark-themed interactive dashboard (verdict banner, donut chart, per-status stat cards, expandable test-case cards with step-by-step detail). Use at the end of any playwright-cli test execution (one test case or a full parallel/sequential batch) once final scenario results are known, alongside report.md.
 ---
 
 # Extent Report — Testing Execution Status Dashboard
@@ -24,6 +24,19 @@ tally the results the run already produced.
 Test Coverage = (Passed + Warning + Failed + Blocked + View Mismatch) ÷ Total # of TC —
 scenarios actually exercised over the total planned. Total # of TC is the count of individual
 test scenarios/steps executed across all specs in the run, not the count of spec files.
+
+On a `schemaVersion: 2` input the dashboard also shows:
+- **Verdict banner** — PASSED / FAILED / BLOCKED, computed from the `summary` counts with the
+  CI gate's own mapping and policy (test-execution's `write_verdict.js`, resolved from the
+  project root: `AGENTEX_CI_POLICY`, then `config/project.json` `ci`), so the banner never
+  disagrees with the gate on the same counts. `verdict.json` stays authoritative: run-level
+  reasons (needs-user, timeout, …) reach only the gate, never the report. Under the label, one
+  line names every non-zero failed/blocked/view-mismatch/warning/flaky/not-run count.
+- **Pass rate** = (Passed + Flaky) ÷ (Passed + Flaky + Failed) — only scenarios that reached a
+  pass/fail decision; `—` when none did.
+- **Per-card step counts** (steps · pass · issues) after the status pill and duration, and an
+  **Issues only** filter that hides passed and N/A cards.
+- **Print styles** — a light palette with every card expanded, for print or Save as PDF.
 
 Note: executor reports only emit PASS/FAIL per scenario. Blocked, N/A-De-scoped, and Not Run
 come from the orchestrator's own plan — scenarios that couldn't be attempted (environment/
