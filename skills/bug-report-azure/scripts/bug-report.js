@@ -70,7 +70,7 @@ const FIELD_NAMES = Object.freeze({
 
 const OPERATION_NAMES = Object.freeze({
   getWorkItem: 'work-item lookup',
-  getWorkItemsBatch: 'batch work-item lookup',
+  getWorkItems: 'batch work-item lookup',
   listFields: 'field metadata lookup',
   findByTitle: 'duplicate check',
   query: 'duplicate search',
@@ -864,14 +864,18 @@ async function parentBugCandidates(adapter, parentWorkItem) {
   if (!ids.length) return [];
 
   let workItems;
-  if (typeof adapter.getWorkItemsBatch !== 'function') {
+  if (typeof adapter.getWorkItems !== 'function') {
     workItems = await getWorkItemsBounded(adapter, ids);
   } else {
     try {
-      workItems = await adapter.getWorkItemsBatch(ids, {
-        fields: DUPLICATE_CANDIDATE_FIELDS,
-        expand: 'links',
-      });
+      const batch = await adapter.getWorkItems(ids, { fields: DUPLICATE_CANDIDATE_FIELDS });
+      // The shared batch read omits unknown ids and lists them under `missing`.
+      // A candidate set with a hole is not authoritative: fail closed.
+      const missing = (batch && batch.missing) || [];
+      if (missing.length) {
+        throw new Error(`batch response omitted work item${missing.length === 1 ? '' : 's'} ${missing.map((id) => `#${id}`).join(', ')}`);
+      }
+      workItems = batch && batch.items;
       assertBatchCandidateProjection(ids, workItems);
     } catch (error) {
       if (!batchFallbackAllowed(error)) throw error;
@@ -889,14 +893,19 @@ async function parentBugCandidates(adapter, parentWorkItem) {
     if (!returnedId || returnedId !== id || !nonEmpty(type)) {
       throw new Error(`direct child #${id} returned an invalid work-item response`);
     }
-    if (type === 'Bug') results.push(compactCandidate(wi, id));
+    if (type === 'Bug') {
+      const candidate = compactCandidate(wi, id);
+      // A projected batch item carries no _links; the adapter owns the web URL.
+      if (!candidate.url && typeof adapter.webUrl === 'function') candidate.url = adapter.webUrl(id);
+      results.push(candidate);
+    }
   }
   return results;
 }
 
 function batchFallbackAllowed(error) {
   if (error && error.batchProjectionUnavailable === true) return true;
-  if (!(error instanceof TrackerError) || error.op !== 'getWorkItemsBatch') return false;
+  if (!(error instanceof TrackerError) || error.op !== 'getWorkItems') return false;
   if (error.status === 404 || error.status === 405 || error.status === 501) return true;
 
   const detail = `${error.serverMessage || ''} ${error.body || ''}`;

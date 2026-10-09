@@ -173,7 +173,6 @@ function baseRoutes() {
     { method: 'PATCH', match: '/test/runs/88?', json: { id: 88, state: 'Completed' } },
     { method: 'PATCH', match: '/workitems/77', json: { id: 77 } },
     { method: 'POST', match: '/workitems/$Test%20Case', json: { id: 505 } },
-    { method: 'PATCH', match: '/testplan/suiteentry/4', json: {} },
   ];
 }
 
@@ -518,8 +517,8 @@ async function prepare(dir, fetch, testCase, overrides = {}) {
         'System.State',
         'Microsoft.VSTS.TCM.ReproSteps',
       ]);
-      assert.strictEqual(body.$expand, 'links');
-      assert.strictEqual(body.errorPolicy, 'fail');
+      assert.strictEqual(body.$expand, undefined);
+      assert.strictEqual(body.errorPolicy, 'omit');
     }
     assert.strictEqual(fetch.calls.some((call) =>
       call.method === 'GET' && /\/wit\/workitems\/9\d{3}\?/.test(call.url)), false);
@@ -672,6 +671,7 @@ async function prepare(dir, fetch, testCase, overrides = {}) {
     assert.strictEqual(code, 0, JSON.stringify(out));
     assert.deepStrictEqual(out.duplicateCandidates, [{
       id, type: 'Bug', title: 'Hydrated title', state: 'Closed',
+      url: `https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/${id}`,
     }]);
     assert.strictEqual(fetch.calls.filter((call) =>
       call.method === 'GET' && call.url.includes(`/wit/workitems/${id}?`)).length, 1);
@@ -781,6 +781,7 @@ async function prepare(dir, fetch, testCase, overrides = {}) {
     assert.strictEqual(code, 0, JSON.stringify(out));
     assert.deepStrictEqual(out.duplicateCandidates, [{
       id: 614, type: 'Bug', title: 'Direct child Bug', state: 'New',
+      url: 'https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/614',
     }]);
     assert.strictEqual(fetch.calls.filter((call) => call.url.includes('/wit/workitems/614')).length, 1);
     assert.strictEqual(fetch.calls.some((call) => call.url.includes('/wit/workitems/612')), false);
@@ -923,6 +924,7 @@ async function prepare(dir, fetch, testCase, overrides = {}) {
     assert.notStrictEqual(prepared.out.duplicateReview.reviewId, context.out.duplicateReview.reviewId);
     assert.deepStrictEqual(prepared.out.duplicateCandidates, [{
       id: 622, type: 'Bug', title: 'Sibling added after context', state: 'New',
+      url: 'https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/622',
     }]);
     assert.strictEqual(expandedParentReads, 2);
     assert.strictEqual(fs.existsSync(plan), false);
@@ -1354,14 +1356,20 @@ async function prepare(dir, fetch, testCase, overrides = {}) {
   });
 
   await test('create-new validates the suite and reuses the existing testplan owner', async () => {
-    const dir = project(); const fetch = fakeFetch();
+    // addCaseToSuite POSTs test/Plans/{p}/suites/{s}/testcases/{ids} and re-reads the suite
+    // (0.22.1: PATCH testplan/suiteentry is a live 404). Membership flips after the POST.
+    let added = false;
+    const dir = project(); const fetch = fakeFetch([
+      { method: 'POST', match: '/test/Plans/3/suites/4/testcases/505', respond: async () => { added = true; return { json: {} }; } },
+      { match: '/test/Plans/3/suites/4/testcases', respond: async () => ({ json: { value: added ? [{ testCase: { id: '505' } }] : [] } }) },
+    ]);
     const prepared = await prepare(dir, fetch, { action: 'create-new', suiteId: 4, title: 'Checkout card failure' });
     assert.strictEqual(prepared.code, 0, JSON.stringify(prepared.out));
     assert.deepStrictEqual(prepared.out.approval.writePlan.slice(-2).map((entry) => entry.step), ['create-test-case', 'add-to-suite']);
     const executed = await run(['execute', '--plan', prepared.plan], { cwd: dir, fetch });
     assert.strictEqual(executed.code, 0, JSON.stringify(executed.out));
     assert.strictEqual(executed.out.created.testCase.testCaseId, 505);
-    assert.ok(fetch.calls.some((call) => call.method === 'PATCH' && call.url.includes('/testplan/suiteentry/4')));
+    assert.ok(fetch.calls.some((call) => call.method === 'POST' && call.url.includes('/test/Plans/3/suites/4/testcases/505')));
   });
 
   await test('configured template and suite failures block with compact actionable runtime data', async () => {
