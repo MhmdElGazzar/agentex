@@ -10,7 +10,7 @@
   "out": {
     "ok": false,
     "error": {
-      "message": "--title is required. usage: testplan.js <list-suites|list-cases|find-case|create-case|fail> [options]"
+      "message": "--title is required. usage: testplan.js <list-suites|list-cases|find-case|create-case|fail|record|ensure-plan|ensure-suite> [options]"
     }
   },
   "requests": []

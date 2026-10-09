@@ -9,7 +9,8 @@
 //
 // Self-contained on purpose (node: modules + ./testplan.js only). The only
 // expectation edits allowed are the design's NAMED changes, each in its own
-// commit (R3.4 #4: the CLI CI guard).
+// commit (R3.4 #4: the CLI CI guard; #5: USAGE lists record / ensure-plan /
+// ensure-suite, which moves the bad-usage text in C08 and F10 only).
 //
 // Run (check mode, the default):  node skills/test-design/scripts/testplan.golden.test.js
 // Record missing expectations:    GOLDEN_RECORD=1 node skills/test-design/scripts/testplan.golden.test.js

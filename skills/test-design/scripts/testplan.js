@@ -77,10 +77,10 @@ function parseArgs(argv) {
   return out;
 }
 
-// Kept byte-identical to 0.23.0 (the golden suite pins every bad-usage message
-// that embeds it; the design names no change here). The subcommands added
-// since — record, ensure-plan, ensure-suite — are documented in the header.
-const USAGE = 'usage: testplan.js <list-suites|list-cases|find-case|create-case|fail> [options]';
+// Lists every subcommand (named golden change #5: the 0.23.0 text gained
+// record, ensure-plan and ensure-suite; goldens C08/F10 embed it). Their flags
+// are documented in the header above.
+const USAGE = 'usage: testplan.js <list-suites|list-cases|find-case|create-case|fail|record|ensure-plan|ensure-suite> [options]';
 
 const WRITES = ['create-case', 'fail', 'record', 'ensure-plan', 'ensure-suite'];
 const OUTCOMES = ['Passed', 'Failed', 'Blocked', 'NotApplicable'];

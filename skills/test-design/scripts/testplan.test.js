@@ -290,6 +290,17 @@ const isWrite = (c) =>
     assert.ok(!r.stdout.includes(SENTINEL_PAT) && !r.stderr.includes(SENTINEL_PAT));
   });
 
+  await test('USAGE lists every subcommand, including ensure-plan, ensure-suite and record (named golden change #5)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-tp-'));
+    const f = fakeFetch([]);
+    const r = await run([], { cwd: dir, fetch: f });
+    assert.strictEqual(r.code, 2);
+    const m = /<([^>]+)>/.exec(r.out.error.message);
+    assert.ok(m, r.out.error.message);
+    assert.deepStrictEqual(m[1].split('|'), ['list-suites', 'list-cases', 'find-case', 'create-case', 'fail', 'record', 'ensure-plan', 'ensure-suite']);
+    assert.strictEqual(f.calls.length, 0);
+  });
+
   await test('capability guard: a Jira-configured project exits 2 naming testPlans:false — before any network call', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-tp-'));
     fs.mkdirSync(path.join(dir, 'config'), { recursive: true });
