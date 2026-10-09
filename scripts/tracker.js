@@ -77,6 +77,10 @@ const PLAN_NOTE =
 
 const WRITES = ['create', 'update', 'transition', 'comment', 'link'];
 
+// Neutral relation kinds and the capability flag that gates each (link: none).
+const RELATION_KINDS = { parent: 'parent', child: 'child', 'tested-by': 'testedBy', related: 'related', link: null };
+const TIMEFRAMES = ['current', 'future', 'past', 'all'];
+
 function bad(mode, message) {
   return { code: 2, out: { ok: false, mode, error: { message } } };
 }
@@ -95,6 +99,41 @@ function trackerErrorOut(e) {
 
 function readSpec(specPath) {
   return JSON.parse(fs.readFileSync(specPath, 'utf8'));
+}
+
+// "a,b , c" -> ['a', 'b', 'c']; undefined/true -> null.
+function list(v) {
+  if (v === undefined || v === true) return null;
+  const items = String(v).split(',').map((s) => s.trim()).filter(Boolean);
+  return items.length ? items : null;
+}
+
+// A capability refusal: exit 2, the flag named, before any request.
+function unsupported(mode, op, flag, adapter) {
+  const value = flag.split('.').reduce((o, k) => (o == null ? undefined : o[k]), adapter.capabilities);
+  return {
+    code: 2,
+    out: { ok: false, mode, blocked: [{ reason: 'unsupported-op', flag, message: `${op} is not supported on this tracker (capabilities.${flag}: ${value ?? 'undefined'}) — refused before any request; nothing was read or written` }] },
+  };
+}
+
+// The --out emitter (non-ASCII never travels through a pipe): the payload is
+// written as UTF-8 JSON to <file>.tmp and renamed into place (parent folders
+// created); the stdout line carries the absolute path, the byte count and
+// counts/flags only — never a body field.
+function emitToFile(cwd, outArg, payload, { count, missing, truncated } = {}) {
+  const abs = path.resolve(cwd, String(outArg));
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  const body = JSON.stringify(payload, null, 2);
+  const tmp = `${abs}.tmp`;
+  fs.writeFileSync(tmp, body, 'utf8');
+  fs.renameSync(tmp, abs);
+  return {
+    ok: true, provider: payload.provider, out: abs, bytes: Buffer.byteLength(body, 'utf8'),
+    ...(count !== undefined ? { count } : {}),
+    ...(missing !== undefined ? { missing } : {}),
+    ...(truncated ? { truncated: true } : {}),
+  };
 }
 
 // One plan entry from an adapter dry-run descriptor.
@@ -118,7 +157,15 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
     const adapter = resolveTracker(cwd, { fetch });
     return { adapter, strategy: registry.get(adapter.name) };
   };
+  // A read's result: the payload on stdout, or written to --out with a
+  // counts-only stdout line.
+  const deliver = (payload, counts) => {
+    if (args.out === undefined) return { code: 0, out: payload };
+    return { code: 0, out: emitToFile(cwd, args.out, payload, counts) };
+  };
   try {
+    if (args.out === true) return bad(mode, `--out needs a file path. ${USAGE}`);
+
     // CI guard (invariant 4 / ci-quality-gate): CI mode performs no tracker
     // writes of any kind — refuse --execute BEFORE any read; ad-hoc tracker
     // operations stay interactive. The adapters carry the same choke-point
@@ -133,23 +180,96 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
     // ── reads (free, no gating) ────────────────────────────────────────────
     if (cmd === 'show') {
       if (!args.id) return bad(mode, `--id is required. ${USAGE}`);
+      const fields = list(args.fields);
       const { adapter, strategy } = open();
-      const wi = await adapter.getWorkItem(args.id, args.expand ? { expand: args.expand } : {});
-      return { code: 0, out: { ok: true, provider: adapter.name, workItem: strategy.summarize(adapter, wi, {}) } };
+      const wi = await adapter.getWorkItem(args.id, { ...(args.expand ? { expand: args.expand } : {}), ...(fields ? { fields } : {}) });
+      return deliver({ ok: true, provider: adapter.name, workItem: strategy.summarize(adapter, wi, { fields }) });
     }
 
     if (cmd === 'search') {
       if (!args.query) return bad(mode, `--query is required (the configured provider's query language). ${USAGE}`);
+      const fields = list(args.fields);
       const { adapter, strategy } = open();
-      const res = await adapter.query(strategy.scopeQuery(adapter, args.query));
-      const { results, truncated } = strategy.searchResults(adapter, res, {});
-      return {
-        code: 0,
-        out: {
-          ok: true, provider: adapter.name, queryLanguage: adapter.capabilities.query,
-          count: results.length, results, ...(truncated ? { truncated: true } : {}),
-        },
-      };
+      let top;
+      const { max } = strategy.searchOptions({});
+      if (args.top !== undefined) {
+        top = Number(args.top);
+        if (!Number.isInteger(top) || top < 1 || top > max) return bad(mode, `--top must be a whole number from 1 to ${max} on this tracker (got ${JSON.stringify(args.top)}). ${USAGE}`);
+      }
+      const { options } = strategy.searchOptions({ top, fields });
+      const res = await adapter.query(strategy.scopeQuery(adapter, args.query), options);
+      const { results, truncated } = await strategy.searchResults(adapter, res, { top, fields });
+      return deliver({
+        ok: true, provider: adapter.name, queryLanguage: adapter.capabilities.query,
+        count: results.length, results, ...(truncated ? { truncated: true } : {}),
+      }, { count: results.length, truncated });
+    }
+
+    if (cmd === 'batch') {
+      const fields = list(args.fields);
+      if ((args.ids === undefined) === (args['ids-file'] === undefined) || !fields) {
+        return bad(mode, `batch needs exactly one of --ids a,b,… / --ids-file <file>, and --fields f1,f2. ${USAGE}`);
+      }
+      let ids;
+      if (args.ids !== undefined) ids = list(args.ids);
+      else {
+        try { ids = fs.readFileSync(path.resolve(cwd, String(args['ids-file'])), 'utf8').split(/[\s,]+/).map((x) => x.trim()).filter(Boolean); }
+        catch (e) { return bad(mode, `could not read --ids-file: ${e.message}`); }
+      }
+      if (!ids || !ids.length) return bad(mode, `no ids given. ${USAGE}`);
+      const { adapter, strategy } = open();
+      if (!adapter.capabilities.batchRead) return unsupported(mode, 'batch', 'batchRead', adapter);
+      const r = await strategy.batchRead(adapter, ids, fields);
+      return deliver({
+        ok: true, provider: adapter.name, count: r.items.length, items: r.items, missing: r.missing,
+        ...(r.moved && r.moved.length ? { moved: r.moved } : {}),
+      }, { count: r.items.length, missing: r.missing.length });
+    }
+
+    if (cmd === 'comments') {
+      if (!args.id) return bad(mode, `--id is required. ${USAGE}`);
+      const { adapter, strategy } = open();
+      if (!adapter.capabilities.comments) return unsupported(mode, 'comments', 'comments', adapter);
+      const thread = await strategy.comments(adapter, args.id);
+      return deliver({ ok: true, provider: adapter.name, id: args.id, count: thread.length, comments: thread }, { count: thread.length });
+    }
+
+    if (cmd === 'relations') {
+      const ids = list(args.id);
+      if (!ids) return bad(mode, `--id is required (one id, or a comma list). ${USAGE}`);
+      const asked = list(args.kind) || ['all'];
+      const unknown = asked.filter((k) => k !== 'all' && !Object.prototype.hasOwnProperty.call(RELATION_KINDS, k));
+      if (unknown.length) return bad(mode, `unknown --kind ${unknown.join(', ')} — accepted: ${Object.keys(RELATION_KINDS).join(', ')}, all. ${USAGE}`);
+      const fields = list(args.fields) || [];
+      const { adapter, strategy } = open();
+      const rel = adapter.capabilities.relations || {};
+      const supported = (k) => RELATION_KINDS[k] === null || Boolean(rel[RELATION_KINDS[k]]);
+      let kinds; const skipped = [];
+      if (asked.includes('all')) {
+        kinds = Object.keys(RELATION_KINDS).filter(supported);
+        for (const k of Object.keys(RELATION_KINDS)) if (!supported(k)) skipped.push({ kind: k, flag: `relations.${RELATION_KINDS[k]}` });
+      } else {
+        const refused = asked.find((k) => !supported(k));
+        if (refused) return unsupported(mode, `relations --kind ${refused}`, `relations.${RELATION_KINDS[refused]}`, adapter);
+        kinds = [...new Set(asked)];
+      }
+      const r = await strategy.relations(adapter, ids, kinds, fields);
+      const total = r.items.reduce((n, i) => n + i.relations.length, 0);
+      return deliver({ ok: true, provider: adapter.name, kinds, items: r.items, ...(skipped.length ? { skipped } : {}) }, { count: total });
+    }
+
+    if (cmd === 'iterations') {
+      const timeframe = args.timeframe === undefined ? 'all' : String(args.timeframe);
+      if (!TIMEFRAMES.includes(timeframe)) return bad(mode, `--timeframe must be one of ${TIMEFRAMES.join(', ')}. ${USAGE}`);
+      if (args.team === true || args.board === true) return bad(mode, `--team / --board need a value. ${USAGE}`);
+      const { adapter, strategy } = open();
+      if (!adapter.capabilities.sprints) return unsupported(mode, 'iterations', 'sprints', adapter);
+      const rows = await strategy.iterations(adapter, {
+        ...(args.team !== undefined ? { team: String(args.team) } : {}),
+        ...(args.board !== undefined ? { board: String(args.board) } : {}),
+        timeframe,
+      });
+      return deliver({ ok: true, provider: adapter.name, timeframe, count: rows.length, iterations: rows }, { count: rows.length });
     }
 
     // ── writes (dry-run default; --execute behind the one approval) ───────

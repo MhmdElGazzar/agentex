@@ -963,7 +963,7 @@ const SUBTASK_FIELDS = {
     const r2 = await createAdapter({ cwd: proj(), fetch: moved }).getWorkItems(['PROJ-1', 'PROJ-5']);
     assert.deepStrictEqual(r2.items.map((i) => i.key), ['PROJ-1']);
     assert.deepStrictEqual(r2.missing, ['PROJ-5'], 'the old key is missing as asked');
-    assert.deepStrictEqual(r2.moved, [{ id: '20005', key: 'NEW-5' }], 'the issue under its new key is reported, not merged');
+    assert.deepStrictEqual(r2.moved, [{ id: '20005', key: 'NEW-5', fields: {} }], 'the issue under its new key is reported, not merged');
     assert.ok(!('fields' in JSON.parse(moved.calls[0].body)), 'no fields -> the key is omitted');
   });
 

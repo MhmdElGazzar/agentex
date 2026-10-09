@@ -12,8 +12,14 @@
 //   provider                                  === adapter.name, the registry key
 //   summarize(adapter, raw, {fields}) -> obj  `show`'s neutral work-item summary
 //   scopeQuery(adapter, text) -> string       the query text `search` sends
-//   searchResults(adapter, res, {top})        `search` rows + truncated flag
-//     -> { results: [...], truncated: bool }
+//   searchOptions({top, fields})              the adapter.query options + the
+//     -> { max, options }                     --top ceiling (validated before any request)
+//   searchResults(adapter, res, {top, fields}) `search` rows (+ fields) + truncated
+//     -> Promise<{ results: [...], truncated: bool }>   ("at the cap; more may exist")
+//   batchRead(adapter, ids, fields)           -> { items: [{id, fields}], missing, moved? }
+//   comments(adapter, id)                     -> [{author, date, text}] oldest first
+//   relations(adapter, ids, kinds, fields)    -> { items: [{id, relations: [{kind, id, type, title, state, …}]}] }
+//   iterations(adapter, {team, board, timeframe}) -> [{id, name, path?, startDate, finishDate, timeFrame}]
 //   transition(adapter, id, to, {execute})    dry run -> { step, request, extra?, note? }
 //                                             execute -> { result, note? }
 //   refusedUpdateFields(spec) -> Blocked[]    fields `update` refuses before any request
@@ -26,7 +32,8 @@
 const path = require('node:path');
 const { createRegistry } = require(path.join(__dirname, '..', 'registry.js'));
 
-const REQUIRED_MEMBERS = ['provider', 'summarize', 'scopeQuery', 'searchResults', 'transition', 'refusedUpdateFields', 'renderDiscussion'];
+const REQUIRED_MEMBERS = ['provider', 'summarize', 'scopeQuery', 'searchOptions', 'searchResults', 'batchRead', 'comments',
+  'relations', 'iterations', 'transition', 'refusedUpdateFields', 'renderDiscussion'];
 const LABEL = 'tracker-ops strategy';
 
 const ado = require('./ado.js');

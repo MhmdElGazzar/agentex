@@ -458,7 +458,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
     // Batch read: POST issue/bulkfetch, chunks of 100. The service answers in
     // ascending id order, so INPUT order is restored here.
-    //   { items: [raw issue…], missing: [key…], moved: [{id, key}…] }
+    //   { items: [raw issue…], missing: [key…], moved: [{id, key, fields}…] }
     // missing = keys in issueErrors + keys nothing matched; an issue returned
     // under a key that was not asked for (a moved issue) is listed in moved,
     // never merged into the old key's slot.
@@ -475,7 +475,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
           if (!iss) continue;
           const hit = asked.has(String(iss.key)) ? String(iss.key) : asked.has(String(iss.id)) ? String(iss.id) : null;
           if (hit) byRef.set(hit, iss);
-          else moved.push({ id: String(iss.id), key: iss.key });
+          else moved.push({ id: String(iss.id), key: iss.key, fields: iss.fields || {} });
         }
       }
       return {

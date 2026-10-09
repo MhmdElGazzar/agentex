@@ -11,7 +11,8 @@
 // checks.
 //
 // Fixture contract (conformance/<provider>.fixture.js):
-//   refs { item }      an item id the routes answer for
+//   refs { item, item2, missing }  ids the routes answer for (missing: one a batch read lacks)
+//   batchFields        the field list a batch read asks for
 //   query              a search text in the provider's query language
 //   transitionTo       a transition target the routes resolve
 //   project(dir)       writes config/project.json (+ a .env with sentinel credentials)
@@ -43,8 +44,10 @@ function fakeFetch(routes) {
     calls.push(call);
     for (const r of routes) {
       if ((r.method || 'GET') !== call.method || !call.url.includes(r.match)) continue;
-      const status = r.status || 200;
-      const text = r.text !== undefined ? r.text : JSON.stringify(r.json ?? {});
+      if (r.bodyMatch && !(typeof call.body === 'string' && call.body.includes(r.bodyMatch))) continue;
+      const resp = r.respond ? r.respond(call) : r;
+      const status = resp.status || 200;
+      const text = resp.text !== undefined ? resp.text : JSON.stringify(resp.json ?? {});
       return { ok: status < 300, status, text: async () => text };
     }
     return { ok: true, status: 200, text: async () => '{}' };
@@ -121,6 +124,42 @@ async function conformance(key, strategy, fixture, registry) {
       }
       assert.strictEqual(writes(r).length, 0, `${argv[0]} wrote without --execute`);
     }
+  });
+
+  await test(`[${key}] 6. batch returns {items:[{id, fields}], missing} in input order with only the asked fields`, async () => {
+    const r = await exec(fixture, registry, ['batch', '--ids', [refs.item2, refs.item, refs.missing].join(','), '--fields', fixture.batchFields.join(',')]);
+    assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+    assert.deepStrictEqual(r.out.items.map((i) => String(i.id)), [String(refs.item2), String(refs.item)]);
+    for (const i of r.out.items) assert.deepStrictEqual(Object.keys(i.fields), fixture.batchFields);
+    assert.deepStrictEqual(r.out.missing.map(String), [String(refs.missing)]);
+    assert.strictEqual(writes(r).length, 0);
+  });
+
+  await test(`[${key}] 7. comments return [{author, date, text}] oldest first, plain text`, async () => {
+    const r = await exec(fixture, registry, ['comments', '--id', refs.item]);
+    assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+    assert.deepStrictEqual(r.out.comments.map((c) => Object.keys(c)), [['author', 'date', 'text'], ['author', 'date', 'text']]);
+    assert.deepStrictEqual(r.out.comments.map((c) => c.text), ['first', 'second']);
+    assert.ok(r.out.comments[0].date < r.out.comments[1].date);
+  });
+
+  await test(`[${key}] 8. relations --kind child returns neutral rows; iterations returns neutral rows`, async () => {
+    const r = await exec(fixture, registry, ['relations', '--id', refs.item, '--kind', 'child']);
+    assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+    const rel = r.out.items[0].relations;
+    assert.ok(rel.length >= 1);
+    for (const x of rel) {
+      assert.strictEqual(x.kind, 'child');
+      for (const k of ['id', 'type', 'title', 'state']) assert.ok(k in x, `relation key ${k}`);
+    }
+    const it = await exec(fixture, registry, ['iterations', '--timeframe', 'current']);
+    assert.strictEqual(it.code, 0, JSON.stringify(it.out));
+    assert.ok(it.out.iterations.length >= 1);
+    for (const x of it.out.iterations) {
+      for (const k of ['id', 'name', 'startDate', 'finishDate', 'timeFrame']) assert.ok(k in x, `iteration key ${k}`);
+      assert.strictEqual(x.timeFrame, 'current');
+    }
+    assert.strictEqual(writes(r).length + writes(it).length, 0);
   });
 
   await test(`[${key}] 5. under AGENTEX_CI=1 every --execute write is refused BEFORE any read (zero requests)`, async () => {
