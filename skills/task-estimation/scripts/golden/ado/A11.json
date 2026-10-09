@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "stories"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "error": {
+      "message": "usage: create-tasks.js stories --current-sprint [--team <name>] [--full] | stories --ids <id,id> [--full] | create-tasks.js --spec <file.json> [--allow-existing] [--refresh-fields] [--execute]"
+    }
+  },
+  "requests": []
+}

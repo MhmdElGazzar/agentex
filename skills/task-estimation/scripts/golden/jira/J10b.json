@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint"
+  ],
+  "code": 1,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "listBoards failed: HTTP 401 — Unauthorized (https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=PROJ)",
+      "op": "listBoards",
+      "status": 401,
+      "serverMessage": "Unauthorized",
+      "credentialHint": {
+        "tried": [
+          "JIRA_API_TOKEN"
+        ],
+        "resolved": "JIRA_API_TOKEN",
+        "emailVar": "JIRA_EMAIL"
+      }
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/field",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND issuetype = \\\"Story\\\" AND sprint in openSprints() ORDER BY key\",\"fields\":[\"summary\",\"customfield_10020\"],\"maxResults\":100}"
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=PROJ",
+      "body": null
+    }
+  ]
+}

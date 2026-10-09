@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "missing-required-field",
+        "field": "stories[0].id",
+        "message": "spec.stories[0].id is required"
+      },
+      {
+        "reason": "missing-required-field",
+        "field": "stories[1].id",
+        "message": "spec.stories[1].id is required"
+      }
+    ]
+  },
+  "requests": []
+}

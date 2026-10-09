@@ -1,0 +1,37 @@
+{
+  "argv": [
+    "stories",
+    "--ids",
+    "PROJ-1"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "stories",
+    "count": 1,
+    "stories": [
+      {
+        "id": "PROJ-1",
+        "type": "Story",
+        "title": "Story PROJ-1",
+        "state": "In Progress",
+        "storyPoints": null,
+        "storyPointsNote": "more than one Story Points-like field (customfield_10016, customfield_10030) — storyPoints is null; pin jira.storyPointsField in config/project.json",
+        "url": "https://example.atlassian.net/browse/PROJ-1",
+        "existingTestingTasks": []
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/field",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames",
+      "body": null
+    }
+  ]
+}

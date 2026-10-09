@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "More than one tracker provider is configured (azure, jira) — a project uses one tracker, so this fails closed rather than silently picking one. Keep exactly one provider block in config/project.json — re-run the /init-test wizard and answer its tracker question to switch cleanly."
+    }
+  },
+  "requests": []
+}

@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "No tracker is configured — looked for an `azure` block (keys: azure.org, azure.project) and a `jira` block (keys: jira.site, jira.project) in config/project.json, and for legacy AZURE_URL / AZURE_PROJECT lines in .env, and found none. Fill exactly one provider block (the /init-test wizard writes it)."
+    }
+  },
+  "requests": []
+}

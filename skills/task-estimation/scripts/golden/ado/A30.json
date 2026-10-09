@@ -1,0 +1,102 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "missing-assignee",
+        "message": "no assignee — set spec.assignee (ask the user) or azure.assignee in config/project.json"
+      },
+      {
+        "reason": "bad-task-title",
+        "story": 101,
+        "title": "No prefix",
+        "message": "story #101: task title \"No prefix\" must start with \"[Testing] \""
+      },
+      {
+        "reason": "bad-estimate",
+        "story": 101,
+        "title": "No prefix",
+        "estimate": -1,
+        "message": "story #101: \"No prefix\" needs a finite estimate > 0 (got -1)"
+      },
+      {
+        "reason": "story-not-a-user-story",
+        "story": 101,
+        "message": "#101 is a \"Bug\", not a User Story — [Testing] tasks hang only off User Stories"
+      }
+    ],
+    "validation": {
+      "assignee": null,
+      "perStory": [
+        {
+          "id": 101,
+          "tasks": 1,
+          "type": "Bug",
+          "title": "A bug",
+          "state": "New",
+          "iterationPath": null,
+          "areaPath": null,
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/101",
+          "existingTestingTasks": []
+        },
+        {
+          "id": 103,
+          "tasks": 5,
+          "type": "User Story",
+          "title": "Story 103",
+          "state": "Active",
+          "iterationPath": "Sample Project\\Sprint 9",
+          "areaPath": null,
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/103",
+          "existingTestingTasks": []
+        }
+      ],
+      "fields": [
+        {
+          "field": "Microsoft.VSTS.Common.Activity",
+          "value": "Testing",
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.OriginalEstimate",
+          "value": -1,
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.RemainingWork",
+          "value": -1,
+          "ok": true
+        }
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/103?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Task/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    }
+  ]
+}
