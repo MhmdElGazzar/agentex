@@ -89,6 +89,16 @@ function jqlQuote(value) {
   return '"' + String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
 }
 
+// PINNED: the current-sprint JQL. `sprint in openSprints()` may span several
+// sprints on multi-board projects — listSprintStories reports that as a
+// condition, never a silent pick. The story type is the caller's parameter,
+// placed in the query text (never a post-read filter, never an adapter
+// default). Escaping via jqlQuote. task-estimation's Jira strategy re-exports
+// it (as currentSprintJql) for its pinned test.
+function openSprintJql(projectKey, issueType) {
+  return `project = ${jqlQuote(projectKey)} AND issuetype = ${jqlQuote(issueType)} AND sprint in openSprints() ORDER BY key`;
+}
+
 // Resolve the consumer's non-secret Jira settings (invariant 7). Missing
 // site/project is an explicit exit-2 error naming the keys (invariant 10).
 function resolveConfig(cwd) {
@@ -402,6 +412,88 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return (res && res.values) || [];
     },
 
+    // ── NEUTRAL READS (additive, flow-free) ───────────────────────────────────
+    // Provider-neutral shapes for consumer flows: no CLI text, no flow wording,
+    // no story-type rule (the caller passes the type). Each issues exactly the
+    // requests a direct getWorkItem/query/listBoards/listSprints call would;
+    // transport errors propagate unwrapped (the same TrackerError object).
+
+    // NeutralStory { id, type, title, state, url, raw } — ONE request,
+    // getWorkItem(ref) (renderedFields,names expanded). TOTAL on an empty body:
+    // raw null, fields read as {}, id falls back to the ref.
+    async getStory(ref) {
+      const raw = await this.getWorkItem(ref);
+      const f = (raw && raw.fields) || {};
+      const id = (raw && raw.key) || ref;
+      return {
+        id,
+        type: (f.issuetype || {}).name || null,
+        title: f.summary || null,
+        state: (f.status || {}).name || null,
+        url: webUrl(id),
+        raw,
+      };
+    },
+
+    // NeutralChild[] { id, title ('' when absent), state (null when absent) } —
+    // ALL sub-tasks, unfiltered, in API order, straight from the read's
+    // fields.subtasks: ZERO requests. Rejects when the read carried no
+    // subtasks array (the caller must fail closed). Null-safe per entry.
+    async listChildren(story) {
+      const f = (story.raw && story.raw.fields) || {};
+      if (!Array.isArray(f.subtasks)) {
+        throw new Error(`the read of ${story.id} carried no subtasks list`);
+      }
+      return f.subtasks.map((s) => {
+        const sf = (s || {}).fields || {};
+        return { id: (s || {}).key, title: sf.summary || '', state: (sf.status || {}).name || null };
+      });
+    },
+
+    // SprintStories — the stories of the project's open sprint, as keys.
+    // opts: storyType (REQUIRED, part of the query text), sprint (restrict to
+    // the open sprint with this name or id), board (board id or name that
+    // steers a multi-sprint read), sprintFieldId (the Sprint field the caller
+    // already discovered — passed in so it is never re-discovered).
+    // Sends ONE JQL query; only when no sprint is given AND the read spans >1
+    // sprint does it consult boards: listBoards() then listSprints(id, active).
+    //   { ok: true, sprint: {id, name} | null, refs: [key, …] } — refs may be empty
+    //   { ok: false, condition: 'board-not-found', data: { board, boards: [{id, name}] } }
+    //   { ok: false, condition: 'board-sprint-not-unique', data: { board, sprints: [{id, name}] } }
+    //   { ok: false, condition: 'multiple-open-sprints', data: { sprints: [name, …] } } (distinct, first-seen)
+    async listSprintStories({ storyType, sprint = null, board = null, sprintFieldId = null } = {}) {
+      if (!storyType) throw new Error('listSprintStories needs opts.storyType (the issue type that counts as a story)');
+      const res = await this.query(openSprintJql(cfg.project, storyType), { fields: ['summary', ...(sprintFieldId ? [sprintFieldId] : [])] });
+      const sprintsOf = (issue) => {
+        const v = sprintFieldId ? ((issue.fields || {})[sprintFieldId]) : null;
+        return (Array.isArray(v) ? v : []).filter((s) => s && (s.state === undefined || s.state === 'active'));
+      };
+      let issues = res.issues || [];
+      const seen = new Map(); // name -> the first sprint value carrying it
+      for (const iss of issues) for (const s of sprintsOf(iss)) if (!seen.has(s.name)) seen.set(s.name, s);
+      const pick = (s) => (s ? { id: s.id, name: s.name } : null);
+      let from = seen.size === 1 ? pick([...seen.values()][0]) : null;
+      if (sprint) {
+        let hit = null;
+        issues = issues.filter((iss) => sprintsOf(iss).some((s) => {
+          const ok = String(s.name) === sprint || String(s.id) === sprint;
+          if (ok && !hit) hit = s;
+          return ok;
+        }));
+        from = pick(hit);
+      } else if (seen.size > 1) {
+        if (!board) return { ok: false, condition: 'multiple-open-sprints', data: { sprints: [...seen.keys()] } };
+        const boards = await this.listBoards();
+        const b = boards.find((x) => String(x.id) === board) || boards.find((x) => x.name === board);
+        if (!b) return { ok: false, condition: 'board-not-found', data: { board, boards: boards.map((x) => ({ id: x.id, name: x.name })) } };
+        const active = await this.listSprints(b.id, { state: 'active' });
+        if (active.length !== 1) return { ok: false, condition: 'board-sprint-not-unique', data: { board, sprints: active.map((s) => ({ id: s.id, name: s.name })) } };
+        issues = issues.filter((iss) => sprintsOf(iss).some((s) => String(s.id) === String(active[0].id) || s.name === active[0].name));
+        from = pick(active[0]);
+      }
+      return { ok: true, sprint: from, refs: issues.map((i) => i.key) };
+    },
+
     // ── WRITES (each takes {execute}; execute:false returns the descriptor) ──
     async createWorkItem(type, payload = {}, { validateOnly = false, execute = false } = {}) {
       if (validateOnly) {
@@ -551,4 +643,4 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
   };
 }
 
-module.exports = { createAdapter, resolveConfig, normalizeSite, jqlQuote, TrackerError, CRED_ENV_NAMES };
+module.exports = { createAdapter, resolveConfig, normalizeSite, jqlQuote, openSprintJql, TrackerError, CRED_ENV_NAMES };

@@ -698,6 +698,175 @@ const SUBTASK_FIELDS = {
     assert.strictEqual(r.id, 'PROJ-77');
   });
 
+  // ── neutral reads (additive): getStory / listChildren / listSprintStories ──
+  // Flow-free by contract: no CLI text, no estimation wording, no story-type rule.
+  const { openSprintJql } = require('./jira.js');
+  const FLOW_WORDS = ['--', 're-run', 'bundled', 'config/project.json'];
+  const assertFlowFree = (r) => {
+    const s = JSON.stringify(r);
+    for (const w of FLOW_WORDS) assert.ok(!s.includes(w), `result carries flow text "${w}": ${s}`);
+  };
+  const ISSUE_1 = { key: 'PROJ-1', fields: {
+    issuetype: { name: 'Story' }, summary: 'One', status: { name: 'In Progress' },
+    subtasks: [
+      { key: 'PROJ-11', fields: { summary: '[Testing] A', status: { name: 'To Do' } } },
+      { key: 'PROJ-12', fields: { summary: 'Build it' } },
+      null,
+      { key: 'PROJ-13' },
+    ],
+  } };
+  const SP = 'customfield_10020';
+  const iss = (key, sprints) => ({ key, fields: { summary: key, [SP]: sprints } });
+  const S7 = { id: 7, name: 'Sprint 7', state: 'active' };
+  const S8 = { id: 8, name: 'Sprint 8', state: 'active' };
+  const OLD = { id: 6, name: 'Sprint 6', state: 'closed' };
+  const searchRoute = (issues) => ({ method: 'POST', match: '/search/jql', json: { issues } });
+  const TWO = [iss('PROJ-9', [OLD, S8]), iss('PROJ-1', [S7]), iss('PROJ-3', [S8])];
+  const sprintRead = (f, opts = {}) => createAdapter({ cwd: proj(), fetch: f })
+    .listSprintStories({ storyType: 'Story', sprint: null, board: null, sprintFieldId: SP, ...opts });
+
+  await test('PINNED: openSprintJql(k, s) is byte-identical to the 319619c current-sprint JQL', async () => {
+    assert.strictEqual(openSprintJql('PROJ', 'Story'), 'project = "PROJ" AND issuetype = "Story" AND sprint in openSprints() ORDER BY key');
+    assert.strictEqual(openSprintJql('My "Q" Proj', 'User Story'),
+      'project = "My \\"Q\\" Proj" AND issuetype = "User Story" AND sprint in openSprints() ORDER BY key');
+  });
+
+  await test('getStory: exactly ONE request, identical to getWorkItem(ref); neutral shape + raw', async () => {
+    const f1 = fakeFetch([{ match: '/issue/PROJ-1?', json: ISSUE_1 }]);
+    await createAdapter({ cwd: proj(), fetch: f1 }).getWorkItem('PROJ-1');
+    const f2 = fakeFetch([{ match: '/issue/PROJ-1?', json: ISSUE_1 }]);
+    const s = await createAdapter({ cwd: proj(), fetch: f2 }).getStory('PROJ-1');
+    assert.deepStrictEqual(f2.calls.map((c) => [c.method, c.url, c.body]), f1.calls.map((c) => [c.method, c.url, c.body]));
+    assert.deepStrictEqual(Object.keys(s), ['id', 'type', 'title', 'state', 'url', 'raw']);
+    assert.deepStrictEqual([s.id, s.type, s.title, s.state, s.url], ['PROJ-1', 'Story', 'One', 'In Progress', `${BASE}/browse/PROJ-1`]);
+    assert.deepStrictEqual(s.raw, ISSUE_1);
+  });
+
+  await test('getStory is TOTAL on an empty body (id falls back to the ref); transport errors propagate UNWRAPPED', async () => {
+    const s = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/issue/PROJ-1?', text: '' }]) }).getStory('PROJ-1');
+    assert.deepStrictEqual([s.id, s.type, s.title, s.state, s.raw], ['PROJ-1', null, null, null, null]);
+    const a = createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/issue/PROJ-1?', status: 404, text: JSON.stringify({ errorMessages: ['gone'] }) }]) });
+    let direct; try { await a.getWorkItem('PROJ-1'); } catch (e) { direct = e; }
+    let viaStory; try { await a.getStory('PROJ-1'); } catch (e) { viaStory = e; }
+    assert.ok(viaStory instanceof TrackerError);
+    assert.strictEqual(viaStory.message, direct.message);
+  });
+
+  await test('listChildren: from fields.subtasks with ZERO requests, all entries in order, null-safe per entry', async () => {
+    const f = fakeFetch([]);
+    const kids = await createAdapter({ cwd: proj(), fetch: f }).listChildren({ id: 'PROJ-1', raw: ISSUE_1 });
+    assert.strictEqual(f.calls.length, 0);
+    assert.deepStrictEqual(kids, [
+      { id: 'PROJ-11', title: '[Testing] A', state: 'To Do' },
+      { id: 'PROJ-12', title: 'Build it', state: null },
+      { id: undefined, title: '', state: null },
+      { id: 'PROJ-13', title: '', state: null },
+    ]);
+  });
+
+  await test('listChildren: REJECTS when the read carried no subtasks array (incl. an empty body)', async () => {
+    const a = createAdapter({ cwd: proj(), fetch: fakeFetch([]) });
+    await assert.rejects(a.listChildren({ id: 'PROJ-1', raw: { key: 'PROJ-1', fields: { summary: 'x' } } }), /subtasks/);
+    await assert.rejects(a.listChildren({ id: 'PROJ-1', raw: null }), /subtasks/);
+  });
+
+  await test('listSprintStories: ONE JQL query — openSprintJql + fields [summary, <sprint field>] (summary only without one)', async () => {
+    const f1 = fakeFetch([searchRoute([iss('PROJ-1', [S7])])]);
+    await sprintRead(f1);
+    const b1 = JSON.parse(f1.calls[0].body);
+    assert.strictEqual(f1.calls.length, 1);
+    assert.strictEqual(b1.jql, openSprintJql('PROJ', 'Story'));
+    assert.deepStrictEqual(b1.fields, ['summary', SP]);
+    const f2 = fakeFetch([searchRoute(TWO)]);
+    const r2 = await sprintRead(f2, { sprintFieldId: null, storyType: 'User Story' });
+    assert.deepStrictEqual(JSON.parse(f2.calls[0].body).fields, ['summary']);
+    assert.strictEqual(JSON.parse(f2.calls[0].body).jql, openSprintJql('PROJ', 'User Story'));
+    assert.deepStrictEqual(r2, { ok: true, sprint: null, refs: ['PROJ-9', 'PROJ-1', 'PROJ-3'] }, 'no sprint field: every key kept, no board read');
+    assert.strictEqual(f2.calls.length, 1);
+  });
+
+  await test('listSprintStories: one open sprint -> ok with that sprint; closed sprint values are ignored', async () => {
+    const f = fakeFetch([searchRoute([iss('PROJ-1', [OLD, S7]), iss('PROJ-3', [S7])])]);
+    const r = await sprintRead(f, { board: '42' });
+    assert.deepStrictEqual(r, { ok: true, sprint: { id: 7, name: 'Sprint 7' }, refs: ['PROJ-1', 'PROJ-3'] });
+    assert.strictEqual(f.calls.length, 1, 'a board is consulted only when the read spans more than one sprint');
+    assertFlowFree(r);
+  });
+
+  await test('listSprintStories: opts.sprint filters by name OR id, with no further request', async () => {
+    const f1 = fakeFetch([searchRoute(TWO)]);
+    const r1 = await sprintRead(f1, { sprint: 'Sprint 8', board: '42' });
+    assert.deepStrictEqual(r1, { ok: true, sprint: { id: 8, name: 'Sprint 8' }, refs: ['PROJ-9', 'PROJ-3'] });
+    assert.strictEqual(f1.calls.length, 1);
+    const r2 = await sprintRead(fakeFetch([searchRoute(TWO)]), { sprint: '7' });
+    assert.deepStrictEqual(r2, { ok: true, sprint: { id: 7, name: 'Sprint 7' }, refs: ['PROJ-1'] });
+    const r3 = await sprintRead(fakeFetch([searchRoute(TWO)]), { sprint: 'Sprint 6' });
+    assert.deepStrictEqual(r3, { ok: true, sprint: null, refs: [] }, 'a closed sprint never matches; empty is a fact, not a condition');
+  });
+
+  await test('listSprintStories: >1 sprint, no board -> multiple-open-sprints, distinct first-seen UNSORTED names, no further request', async () => {
+    const f = fakeFetch([searchRoute([...TWO, iss('PROJ-4', [S8])])]);
+    const r = await sprintRead(f);
+    assert.deepStrictEqual(r, { ok: false, condition: 'multiple-open-sprints', data: { sprints: ['Sprint 8', 'Sprint 7'] } });
+    assert.strictEqual(f.calls.length, 1);
+    assertFlowFree(r);
+  });
+
+  await test('listSprintStories: board steering — listBoards() (default project URL) then listSprints(id, active); id match before name', async () => {
+    const f = fakeFetch([
+      searchRoute(TWO),
+      { match: '/rest/agile/1.0/board/42/sprint', json: { values: [S8] } },
+      { match: '/rest/agile/1.0/board/7/sprint', json: { values: [S7] } },
+      { match: '/rest/agile/1.0/board?projectKeyOrId=', json: { values: [{ id: 7, name: '42' }, { id: 42, name: 'Team board' }] } },
+    ]);
+    const r = await sprintRead(f, { board: '42' });
+    assert.deepStrictEqual(f.calls.slice(1).map((c) => c.url), [
+      `${BASE}/rest/agile/1.0/board?projectKeyOrId=PROJ`,
+      `${BASE}/rest/agile/1.0/board/42/sprint?state=active`,
+    ]);
+    assert.deepStrictEqual(r, { ok: true, sprint: { id: 8, name: 'Sprint 8' }, refs: ['PROJ-9', 'PROJ-3'] });
+    const byName = await sprintRead(fakeFetch([
+      searchRoute(TWO),
+      { match: '/rest/agile/1.0/board/7/sprint', json: { values: [S7] } },
+      { match: '/rest/agile/1.0/board?projectKeyOrId=', json: { values: [{ id: 7, name: 'Team board' }] } },
+    ]), { board: 'Team board' });
+    assert.deepStrictEqual(byName.refs, ['PROJ-1']);
+  });
+
+  await test('listSprintStories: board-not-found stops BEFORE listSprints; data carries the raw board ids/names', async () => {
+    const f = fakeFetch([searchRoute(TWO), { match: '/rest/agile/1.0/board?projectKeyOrId=', json: { values: [{ id: 42, name: 'PROJ board', type: 'scrum' }] } }]);
+    const r = await sprintRead(f, { board: 'Nope' });
+    assert.deepStrictEqual(r, { ok: false, condition: 'board-not-found', data: { board: 'Nope', boards: [{ id: 42, name: 'PROJ board' }] } });
+    assert.ok(!f.calls.some((c) => c.url.includes('/sprint')), 'no listSprints after board-not-found');
+    assertFlowFree(r);
+  });
+
+  await test('listSprintStories: board-sprint-not-unique for 0 and for 2 active sprints (API order kept)', async () => {
+    const boards = { match: '/rest/agile/1.0/board?projectKeyOrId=', json: { values: [{ id: 42, name: 'PROJ board' }] } };
+    const r0 = await sprintRead(fakeFetch([searchRoute(TWO), { match: '/board/42/sprint', json: { values: [] } }, boards]), { board: '42' });
+    assert.deepStrictEqual(r0, { ok: false, condition: 'board-sprint-not-unique', data: { board: '42', sprints: [] } });
+    const r2 = await sprintRead(fakeFetch([searchRoute(TWO), { match: '/board/42/sprint', json: { values: [S8, S7] } }, boards]), { board: '42' });
+    assert.deepStrictEqual(r2, { ok: false, condition: 'board-sprint-not-unique', data: { board: '42', sprints: [{ id: 8, name: 'Sprint 8' }, { id: 7, name: 'Sprint 7' }] } });
+    assertFlowFree(r0); assertFlowFree(r2);
+  });
+
+  await test('listSprintStories: transport errors from the query, listBoards and listSprints propagate UNWRAPPED', async () => {
+    const e401 = { status: 401, text: JSON.stringify({ errorMessages: ['Unauthorized'] }) };
+    await assert.rejects(sprintRead(fakeFetch([{ method: 'POST', match: '/search/jql', ...e401 }])),
+      (e) => e instanceof TrackerError && e.op === 'query' && e.status === 401);
+    await assert.rejects(sprintRead(fakeFetch([searchRoute(TWO), { match: '/rest/agile/1.0/board?', ...e401 }]), { board: '42' }),
+      (e) => e instanceof TrackerError && e.op === 'listBoards');
+    await assert.rejects(sprintRead(fakeFetch([searchRoute(TWO), { match: '/board/42/sprint', status: 500, text: '{}' },
+      { match: '/rest/agile/1.0/board?', json: { values: [{ id: 42, name: 'b' }] } }]), { board: '42' }),
+    (e) => e instanceof TrackerError && e.op === 'listSprints');
+  });
+
+  await test('listSprintStories: storyType is a REQUIRED caller parameter (no adapter default)', async () => {
+    const f = fakeFetch([]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listSprintStories({ sprintFieldId: SP }), /storyType/);
+    assert.strictEqual(f.calls.length, 0);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
