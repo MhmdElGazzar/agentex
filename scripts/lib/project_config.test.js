@@ -176,6 +176,22 @@ test('STRUCTURED_DEFAULTS.qaRecords: the four kinds, relative Markdown paths in 
   assert.strictEqual(new Set(paths).size, 4, 'four distinct files');
 });
 
+// Owner decision #6 (amended 2026-10-09): the folder is the "QA watchlist" and
+// each kind has a plain-English file name. Asserted as folder + basenames (never
+// the joined paths, which live only in the constant) so this is the decision
+// record, not a second copy of the defaults.
+test('STRUCTURED_DEFAULTS.qaRecords follows owner decision #6: the qa-watchlist/ folder and its four file names', () => {
+  const folders = new Set(Object.values(D.qaRecords).map((p) => path.posix.dirname(p)));
+  assert.deepStrictEqual([...folders], ['qa-watchlist']);
+  const base = Object.fromEntries(Object.entries(D.qaRecords).map(([k, p]) => [k, path.posix.basename(p)]));
+  assert.deepStrictEqual(base, {
+    pendingQuestions: 'awaiting-answers.md',
+    pendingRechecks: 'awaiting-retest.md',
+    envIssues: 'environment-blockers.md',
+    deferredConditions: 'deferred-conditions.md',
+  });
+});
+
 test('STRUCTURED_DEFAULTS.workflow is EMPTY (assumption A-1, owner answer #5)', () => {
   assert.deepStrictEqual(D.workflow, {
     devDoneStates: [], devActiveStates: [], inTestState: '', qaStates: [], terminalStates: [],

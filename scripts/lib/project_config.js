@@ -163,15 +163,15 @@ const STRUCTURED_DEFAULTS = Object.freeze({
   reproSummaryRow: true,
   testDesign: { approval: 'consolidated', independentCoverageCheck: false },
   estimation: { modelPath: '.agentex/task-estimation.json', historyPath: '.agentex/estimation-history.jsonl' },
-  // The QA-record files: one committed folder at the project root, all Markdown,
-  // each file created lazily on its first append. THE one home of these default
-  // paths — everything else (tests, docs, migration, wizard) reads or is pinned
-  // against this constant.
+  // The QA watchlist (owner decision #6): one committed folder at the project
+  // root, all Markdown, the folder and each file created lazily on that kind's
+  // first append. THE one home of these default paths — everything else (tests,
+  // docs, migration, wizard, template) reads or is pinned against this constant.
   qaRecords: {
-    pendingQuestions: 'qa-records/open-questions.md',
-    pendingRechecks: 'qa-records/pending-rechecks.md',
-    envIssues: 'qa-records/env-issues.md',
-    deferredConditions: 'qa-records/deferred-conditions.md',
+    pendingQuestions: 'qa-watchlist/awaiting-answers.md',
+    pendingRechecks: 'qa-watchlist/awaiting-retest.md',
+    envIssues: 'qa-watchlist/environment-blockers.md',
+    deferredConditions: 'qa-watchlist/deferred-conditions.md',
   },
 });
 deepFreeze(STRUCTURED_DEFAULTS);
