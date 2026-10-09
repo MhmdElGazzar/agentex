@@ -524,6 +524,28 @@ const isWrite = (c) =>
     assert.strictEqual(f.calls.length, 0);
   });
 
+  await test('CI guard: every write subcommand with --execute under AGENTEX_CI=1 exits 2 ci-mode BEFORE any read (zero requests)', async () => {
+    process.env.AGENTEX_CI = '1';
+    try {
+      const f = fakeFetch(failRoutes(createCaseRoutes()));
+      for (const argv of [
+        ['create-case', '--plan', '3', '--suite', '4', '--title', 't'],
+        ['fail', '--plan', '3', '--testcase', '77', '--bug', '1'],
+        ['record', '--plan', '3', '--testcase', '77', '--outcome', 'Passed'],
+        ['ensure-plan', '--name', 'x'],
+        ['ensure-suite', '--plan', '3', '--type', 'static', '--name', 'x'],
+      ]) {
+        const { code, out } = await run([...argv, '--execute'], { cwd: proj(), fetch: f });
+        assert.strictEqual(code, 2, `${argv[0]}: ${JSON.stringify(out)}`);
+        assert.deepStrictEqual(out.blocked.map((b) => b.reason), ['ci-mode']);
+        assert.match(out.blocked[0].message, /tracker writes are disabled in CI/);
+      }
+      assert.strictEqual(f.calls.length, 0);
+      const dry = await run(['ensure-plan', '--name', 'Release 1'], { cwd: proj(), fetch: fakeFetch(planRoutes()) });
+      assert.strictEqual(dry.code, 0, 'reads and dry runs are unaffected');
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

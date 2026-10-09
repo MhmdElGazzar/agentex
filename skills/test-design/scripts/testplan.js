@@ -82,6 +82,7 @@ function parseArgs(argv) {
 // since — record, ensure-plan, ensure-suite — are documented in the header.
 const USAGE = 'usage: testplan.js <list-suites|list-cases|find-case|create-case|fail> [options]';
 
+const WRITES = ['create-case', 'fail', 'record', 'ensure-plan', 'ensure-suite'];
 const OUTCOMES = ['Passed', 'Failed', 'Blocked', 'NotApplicable'];
 const FAILING = ['Failed', 'Blocked'];
 const PLAN_NOTE =
@@ -248,6 +249,17 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
     return args[k];
   };
   try {
+    // CI guard (invariant 4): CI mode performs no tracker writes of any kind —
+    // every write subcommand's --execute is refused BEFORE any read (exit 2,
+    // ci-mode), exactly as create-bug.js does. Reads and dry-run plans are
+    // unaffected; the adapters keep the same choke point one level down.
+    if (args.execute && WRITES.includes(cmd) && process.env.AGENTEX_CI === '1') {
+      return {
+        code: 2,
+        out: { ok: false, mode: 'executed', blocked: [{ reason: 'ci-mode', message: 'tracker writes are disabled in CI (AGENTEX_CI=1) — test-plan writes stay interactive; run this from an interactive session' }] },
+      };
+    }
+
     if (cmd === 'list-suites') {
       const plan = need('plan');
       const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));

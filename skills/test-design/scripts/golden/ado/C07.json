@@ -9,40 +9,16 @@
     "Checkout — totals include tax",
     "--execute"
   ],
-  "code": 1,
+  "code": 2,
   "out": {
     "ok": false,
     "mode": "executed",
-    "ledger": [
+    "blocked": [
       {
-        "step": "create-test-case",
-        "describe": "create Test Case \"Checkout — totals include tax\" (POST _apis/wit/workitems/$Test Case)",
-        "status": "failed",
-        "reason": "ci-mode: tracker writes are disabled in CI (AGENTEX_CI=1) — createWorkItem with execute:true refused; bug filing and every other tracker write stay interactive"
-      },
-      {
-        "step": "add-to-suite",
-        "describe": "add the Test Case to suite 4 (POST _apis/test/Plans/3/suites/4/testcases, membership re-read)",
-        "status": "not-attempted"
+        "reason": "ci-mode",
+        "message": "tracker writes are disabled in CI (AGENTEX_CI=1) — test-plan writes stay interactive; run this from an interactive session"
       }
-    ],
-    "created": {},
-    "cache": {
-      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
-      "rebuilt": true,
-      "builtAt": "<BUILT_AT>"
-    }
+    ]
   },
-  "requests": [
-    {
-      "method": "POST",
-      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1",
-      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='Test Case' AND [System.TeamProject]='Sample Project' AND [System.Title]='Checkout — totals include tax'\"}"
-    },
-    {
-      "method": "GET",
-      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Test%20Case/fields?$expand=allowedValues&api-version=7.1",
-      "body": null
-    }
-  ]
+  "requests": []
 }
