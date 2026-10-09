@@ -4,6 +4,10 @@
 
 'use strict';
 
+// The plugin-owned config blocks are seeded by the ONE function migration 12
+// also uses, so a fresh wizard save and a migrated project converge.
+const { withPluginConfigBlocks } = require('../lib/project_config.js');
+
 // The prefilled, freely-editable default environment name — the ONE definition.
 // schema.json's default/placeholder, server.js's config-read fallback, and
 // ui.html's fallbacks all mirror this value; migrate.js requires it too.
@@ -239,7 +243,12 @@ function buildConfigs(answers, steps, fields = {}) {
     delete projectConfig.kb;
   }
 
-  return { projectConfig, envConfig, envName };
+  // Plugin-owned blocks (skill-consolidation-foundation R7 / S9): the same
+  // seeding the server applies at /api/save — absent top-level blocks
+  // (testingTasks, testDesign, estimation, qaRecords) and the ONE remaining
+  // provider block's empty workflow. Runs AFTER the provider pick and the
+  // emptiness strip, so it never creates or revives a provider block.
+  return { projectConfig: withPluginConfigBlocks(projectConfig), envConfig, envName };
 }
 
 /**

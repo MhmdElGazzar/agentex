@@ -262,6 +262,44 @@ const post = (route, body, headers = {}) =>
     });
   });
 
+  // ── save-time seeding of the plugin-owned blocks (R7 / S9) ────────────────
+  const { STRUCTURED_DEFAULTS: SD } = require('../lib/project_config.js');
+  const PLUGIN_BLOCKS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+  const readProj = () => JSON.parse(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'));
+  const saveProj = (projectConfig) => post('/api/save', {
+    projectConfig, envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } }, envName: 'qa', secrets: {},
+  });
+
+  await test('save seeds the ABSENT plugin blocks and the chosen provider\'s workflow; a round-trip keeps customized blocks on disk', async () => {
+    let r = await saveProj({ name: 'demo', defaultEnvironment: 'qa', azure: { org: 'exampleorg', project: 'Sample Project' } });
+    assert.strictEqual(r.status, 200);
+    let disk = readProj();
+    for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(disk[k], SD[k], `${k} seeded from the defaults`);
+    assert.deepStrictEqual(disk.azure, { org: 'exampleorg', project: 'Sample Project', workflow: SD.workflow });
+    assert.ok(!('jira' in disk));
+    // round-trip: what the browser sends back (disk + edits) is written as-is — nothing re-seeded over it
+    const custom = { ...disk,
+      testingTasks: [{ stage: 'automation', enabled: false }],
+      qaRecords: { envIssues: 'notes/env.jsonl' },
+      azure: { ...disk.azure, workflow: { inTestState: 'In QA', closeOut: { state: 'Accepted' } } } };
+    r = await saveProj(JSON.parse(JSON.stringify(custom)));
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(readProj(), custom, 'customized blocks are kept byte-for-byte in meaning');
+    // a Jira switch seeds jira.workflow only; the azure block (and its workflow) leaves with the switch
+    r = await saveProj({ ...custom, azure: undefined, jira: { site: 'example', project: 'PROJ' } });
+    assert.strictEqual(r.status, 200);
+    disk = readProj();
+    assert.ok(!('azure' in disk));
+    assert.deepStrictEqual(disk.jira, { site: 'example', project: 'PROJ', workflow: SD.workflow });
+    assert.deepStrictEqual(disk.testingTasks, custom.testingTasks);
+    // tracker none: no provider block, no workflow anywhere
+    r = await saveProj({ name: 'demo', defaultEnvironment: 'qa' });
+    disk = readProj();
+    assert.ok(!('azure' in disk) && !('jira' in disk));
+    for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(disk[k], SD[k]);
+    assert.ok(!fs.existsSync(path.join(projectDir, path.dirname(SD.qaRecords.pendingQuestions))), 'the save creates no QA watchlist file');
+  });
+
   await test('an existing but unreadable config file is reported, not ignored', async () => {
     fs.writeFileSync(path.join(projectDir, 'config', 'project.json'), '{ broken json');
     const r = await fetch(`${BASE}/api/config`, { headers: { 'X-Wizard-Token': TOKEN } });

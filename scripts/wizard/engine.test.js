@@ -7,6 +7,7 @@ const path = require('node:path');
 const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate, DEFAULT_ENV_NAME,
         planSave, buildEnvUsers, BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS,
         validateFieldDescriptors } = require('./engine.js');
+const { STRUCTURED_DEFAULTS: SD, withPluginConfigBlocks } = require('../lib/project_config.js');
 
 let passed = 0; const failures = [];
 function test(name, fn) {
@@ -723,13 +724,14 @@ test('buildConfigs keyed off the tracker answer emits EXACTLY one provider block
   const { projectConfig } = buildConfigs(answers, []);
   assert.ok(!('azure' in projectConfig), 'the abandoned provider\'s stale answers never reach the save');
   assert.deepStrictEqual(projectConfig.jira,
-    { site: 'example', project: 'PROJ', board: '42', assignee: 'qa@example.com' });
+    { site: 'example', project: 'PROJ', board: '42', assignee: 'qa@example.com', workflow: SD.workflow },
+    'the managed keys, plus the seeded (empty) workflow');
   // the switch back:
   const back = buildConfigs({ ...answers, tracker: 'azure' }, []);
   assert.ok(!('jira' in back.projectConfig));
   assert.deepStrictEqual(back.projectConfig.azure,
-    { org: 'staleorg', project: 'Stale Proj', team: 'T', assignee: '' },
-    'the azure block keeps its historical shape');
+    { org: 'staleorg', project: 'Stale Proj', team: 'T', assignee: '', workflow: SD.workflow },
+    'the azure block keeps its historical managed keys (plus the seeded workflow)');
   // none: no provider block at all
   const none = buildConfigs({ ...answers, tracker: 'none' }, []);
   assert.ok(!('azure' in none.projectConfig) && !('jira' in none.projectConfig));
@@ -741,8 +743,35 @@ test('buildConfigs keyed off the tracker answer emits EXACTLY one provider block
 
 test('buildConfigs without a tracker answer keeps the historical answer-emptiness behavior (legacy callers)', () => {
   const r = buildConfigs({ name: 'd', 'azure.org': 'o', 'azure.project': 'p' }, []);
-  assert.deepStrictEqual(r.projectConfig.azure, { org: 'o', project: 'p', team: '', assignee: '' });
+  assert.deepStrictEqual(r.projectConfig.azure, { org: 'o', project: 'p', team: '', assignee: '', workflow: SD.workflow });
   assert.ok(!('jira' in r.projectConfig));
+});
+
+// ── plugin-owned config blocks (skill-consolidation-foundation R7 / S9) ─────
+// buildConfigs mirrors the server's save: it passes the project config through
+// withPluginConfigBlocks, so the engine and the server agree. The seeded keys
+// are scaffolding (like userFields), not answers — no wizard field asks them.
+const PLUGIN_BLOCKS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+
+test('buildConfigs seeds the plugin blocks; ONLY the chosen provider gets a workflow (Q12)', () => {
+  const base = { name: 'demo', 'azure.org': 'exampleorg', 'azure.project': 'Sample Project', 'jira.site': 'example', 'jira.project': 'PROJ' };
+  const az = buildConfigs({ ...base, tracker: 'azure' }, []).projectConfig;
+  assert.deepStrictEqual(az.azure.workflow, SD.workflow, 'azure pick -> azure.workflow, every state empty');
+  assert.ok(!('jira' in az));
+  const ji = buildConfigs({ ...base, tracker: 'jira' }, []).projectConfig;
+  assert.deepStrictEqual(ji.jira.workflow, SD.workflow, 'jira pick -> jira.workflow');
+  assert.ok(!('azure' in ji), 'a Jira pick gets no azure key');
+  const none = buildConfigs({ ...base, tracker: 'none' }, []).projectConfig;
+  assert.ok(!('azure' in none) && !('jira' in none), 'tracker none -> no provider block, so no workflow');
+  const legacy = buildConfigs({ name: 'd', 'azure.org': 'o', 'azure.project': 'p' }, []).projectConfig;
+  assert.deepStrictEqual(legacy.azure.workflow, SD.workflow, 'the legacy no-tracker-answer path seeds the azure block it keeps');
+  const emptyAz = buildConfigs({ name: 'd', tracker: 'azure' }, []).projectConfig;
+  assert.ok(!('azure' in emptyAz), 'an emptied block is removed BEFORE seeding — seeding never creates a provider block');
+  for (const p of [az, ji, none, legacy, emptyAz]) {
+    for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(p[k], SD[k], `${k} seeded from the defaults`);
+    assert.deepStrictEqual(withPluginConfigBlocks(p), p, 'nothing left to seed — the engine output is already seeded');
+    assert.ok(!Object.values(p).some((v) => v && typeof v === 'object' && 'reproSummaryRow' in v), 'reproSummaryRow is never written');
+  }
 });
 
 test('validateConfigs and planSave REJECT a multi-provider projectConfig with the resolveTracker wording', () => {

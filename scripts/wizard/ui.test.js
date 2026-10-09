@@ -517,6 +517,53 @@ setTimeout(() => {
     ui.existingProjectV = savedExisting;
   });
 
+  // ── plugin-owned blocks survive a re-run (skill-consolidation-foundation R7) ──
+  // buildProjectConfig starts from the project on disk, and setManagedBlock
+  // touches only the four managed keys — so the plugin blocks and a nested
+  // <provider>.workflow survive a wizard re-run deep-equal. (The server seeds
+  // what is ABSENT; it never overwrites what this function keeps.)
+  test('a re-run over a project carrying every plugin block keeps them deep-equal (customized testingTasks, azure.workflow)', () => {
+    const savedExisting = ui.existingProjectV;
+    const blocks = {
+      testingTasks: [{ stage: 'automation', enabled: false }, { stage: 'testCreation', title: '[Testing] Test Design' }],
+      testDesign: { approval: 'per-story', independentCoverageCheck: true },
+      estimation: { modelPath: 'qa/model.json', historyPath: 'qa/history.jsonl' },
+      qaRecords: { envIssues: 'notes/env.jsonl' },
+    };
+    const azWorkflow = { inTestState: 'In QA', devDoneStates: ['Dev Complete'], closeOut: { state: 'Accepted', assignee: '' } };
+    ui.existingProjectV = JSON.parse(JSON.stringify({ name: 'p', defaultEnvironment: 'qc', ...blocks,
+      azure: { org: 'exampleorg', project: 'Sample Project', areaPath: 'Sample Project\\QA', workflow: azWorkflow } }));
+    ui.answers['tracker'] = 'azure';
+    ui.answers['azure.org'] = 'exampleorg';
+    ui.answers['azure.project'] = 'Sample Project';
+    const proj = ui.buildProjectConfig();
+    for (const [k, v] of Object.entries(blocks)) assert.deepStrictEqual(proj[k], v, `${k} survives the re-run`);
+    assert.deepStrictEqual(proj.azure.workflow, azWorkflow, 'azure.workflow survives the re-run');
+    assert.strictEqual(proj.azure.areaPath, 'Sample Project\\QA');
+    // jira pick over a jira project keeps jira.workflow the same way
+    const jiWorkflow = { qaStates: ['In Review'] };
+    ui.existingProjectV = { name: 'p', defaultEnvironment: 'qc', ...blocks, jira: { site: 'example', project: 'PROJ', workflow: jiWorkflow } };
+    ui.answers['tracker'] = 'jira';
+    ui.answers['jira.site'] = 'example';
+    ui.answers['jira.project'] = 'PROJ';
+    const pj = ui.buildProjectConfig();
+    assert.deepStrictEqual(pj.jira.workflow, jiWorkflow);
+    assert.ok(!('azure' in pj));
+    for (const k of ['tracker', 'azure.org', 'azure.project', 'jira.site', 'jira.project']) delete ui.answers[k];
+    ui.existingProjectV = savedExisting;
+  });
+
+  test('edge (R7): clearing every managed azure key keeps a block carrying a CUSTOMIZED workflow — never silently dropped', () => {
+    const savedExisting = ui.existingProjectV;
+    const azWorkflow = { inTestState: 'In QA' };
+    ui.existingProjectV = { name: 'p', defaultEnvironment: 'qc', azure: { org: 'exampleorg', project: 'Sample Project', workflow: azWorkflow } };
+    ui.answers['tracker'] = 'azure';
+    const proj = ui.buildProjectConfig();
+    assert.deepStrictEqual(proj.azure, { workflow: azWorkflow }, 'the hand-configured workflow keeps the block alive, like a hand-added areaPath');
+    delete ui.answers['tracker'];
+    ui.existingProjectV = savedExisting;
+  });
+
   test('a gated-away provider\'s typed secrets never ride the save (buildSecretsPayload mirrors the gating)', () => {
     ui.secretsV['azure.pat'] = 'typed-then-abandoned';
     ui.secretsV['jira.apiToken'] = 'tok-jira-1';

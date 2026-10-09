@@ -1080,6 +1080,37 @@ test('migrations 01→12 chain on a 0.10-era project: m12 applies after m11, the
   assert.deepStrictEqual(snapshot(dir), mid);
 });
 
+// AC E: a fresh /init-test project + its first wizard save, and a pre-1.0
+// project + /update-agentex, end with IDENTICAL new config keys — for no
+// tracker, ADO and Jira. The fresh side is the template copy plus what the
+// browser sends (the on-disk project + the chosen provider's managed keys),
+// written through the server's save seeding (withPluginConfigBlocks — the call
+// /api/save makes; server.test.js pins that round-trip over HTTP).
+test('fresh vs migrated (×3: none, ADO, Jira): identical new config keys; no QA watchlist file on either side', () => {
+  const NEW_KEYS = (cfg) => {
+    const out = {};
+    for (const k of PLUGIN_BLOCKS) out[k] = cfg[k];
+    for (const p of ['azure', 'jira']) if (cfg[p]) out[`${p}.workflow`] = cfg[p].workflow;
+    return out;
+  };
+  for (const [label, provider] of [['no tracker', {}], ['ADO', { azure: { ...AZ_BLOCK } }], ['Jira', { jira: { ...JI_BLOCK } }]]) {
+    const fresh = proj();
+    runInit(fresh);
+    const browserSends = { ...readJson(fresh, 'config/project.json'), ...JSON.parse(JSON.stringify(provider)) };
+    addFiles(fresh, { 'config/project.json': withPluginConfigBlocks(browserSends) });
+    const migrated = preOneZero(JSON.parse(JSON.stringify(provider)));
+    const r = run(migrated);
+    assert.strictEqual(r.code, 0, `${label}: ${r.out}`);
+    const f = NEW_KEYS(readJson(fresh, 'config/project.json'));
+    const m = NEW_KEYS(readJson(migrated, 'config/project.json'));
+    assert.deepStrictEqual(m, f, `${label}: fresh and migrated agree`);
+    assert.deepStrictEqual(Object.keys(f).sort(), [...PLUGIN_BLOCKS, ...Object.keys(provider).map((p) => `${p}.workflow`)].sort(), `${label}: the expected keys`);
+    for (const dir of [fresh, migrated]) {
+      assert.ok(!exists(dir, QA_FOLDER), `${label}: QA watchlist files are created on first use only — same on both sides`);
+    }
+  }
+});
+
 // ── secrecy ───────────────────────────────────────────────────────────────────
 test('no secret value ever appears in any migration output', () => {
   assert.ok(ALL_OUTPUT.length > 0, 'outputs were collected');
