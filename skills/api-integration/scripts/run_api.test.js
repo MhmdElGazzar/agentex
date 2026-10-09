@@ -137,6 +137,41 @@ function serve(handler) {
     assert.match(out.reason, /\.env/);
   });
 
+  await test('apiKey auth reads tokenEnv from .env and sends it in the declared header', async () => {
+    let hdr = null;
+    const { srv, port } = await serve((req, res) => { hdr = req.headers['x-api-key']; res.end('{}'); });
+    const dir = proj({
+      'integration/sample_api.json': { ...CATALOG, auth: { type: 'apiKey', tokenEnv: 'API_KEY_T', headerName: 'X-API-Key' } },
+      '.env': `API_BASE_URL=http://127.0.0.1:${port}\nAPI_KEY_T=key-from-dotenv\n`,
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(hdr, 'key-from-dotenv');
+  });
+
+  await test('apiKey missing from both process env and .env -> BLOCKED naming the var', async () => {
+    const dir = proj({
+      'integration/sample_api.json': { ...CATALOG, auth: { type: 'apiKey', tokenEnv: 'API_KEY_T', headerName: 'X-API-Key' } },
+      '.env': 'API_BASE_URL=http://127.0.0.1:9\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    assert.strictEqual(code, 2);
+    assert.match(out.reason, /API_KEY_T/);
+  });
+
+  await test('declared params not in the path are sent as query string; nested catalogs are found', async () => {
+    let url = null;
+    const { srv, port } = await serve((req, res) => { url = req.url; res.end('{}'); });
+    const cat = { ...CATALOG, baseUrl: `http://127.0.0.1:${port}`,
+      requests: [{ name: 'find', method: 'GET', path: '/pets/{id}', params: ['id', 'status'] }] };
+    const dir = proj({ 'integration/api_test_suites/pets/pets_api.json': cat });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.find', '--param', 'id=7', '--param', 'status=sold', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(url, '/pets/7?status=sold');
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
