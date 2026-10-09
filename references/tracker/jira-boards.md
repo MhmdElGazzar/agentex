@@ -57,7 +57,8 @@ JQL search runs through `POST /rest/api/3/search/jql` (the legacy `/search` endp
 **removed** — 410) with adapter-owned pagination. Escaping is adapter-owned too: values are
 always double-quoted with `\` and `"` escaped — never concatenate raw values into JQL.
 
-The current sprint resolves dynamically via the pinned composition in `create-tasks.js`:
+The current sprint resolves dynamically via the pinned composition in the task-estimation
+Jira strategy (`skills/task-estimation/scripts/strategies/jira.js`):
 
 ```
 project = "<KEY>" AND issuetype = "<storyType>" AND sprint in openSprints() ORDER BY key
@@ -131,3 +132,59 @@ Menu names drift across Jira Cloud UI versions ("Issues" ↔ "Work items", "Issu
 | `validateOnly` | `false` — no server-side create dry-run | the createmeta cache + required-field checks carry pre-gate validation; the plan notes `validateOnly: 'unsupported-on-jira'` |
 | `deleteWorkItem` | `false` — Jira Cloud's only issue delete is **permanent** | never offered; a delete ask gets the upfront "not supported on this tracker" answer (portal cleanup is the user's call) |
 | native Test Case type | none | `/design-test` informs the user and asks what to create (Q11) before writing anything |
+
+## Estimation flow (/estimate-story)
+
+The Jira side of the `task-estimation` skill. The template is **verbatim** — the same five
+`[Testing]` titles, the same estimation methodology, the same one-gate workflow. What differs
+is mechanical, and the script owns it; the rules below sit on top of the skill body.
+
+**Configuration.** Resolved from the `jira` block of `config/project.json` — no `.env`
+fallback for non-secrets (see "Configuration and credentials" above). Never bake a site,
+project, board, or email into anything; a missing value joins the ONE bundled question round.
+
+| Setting | Source |
+|---|---|
+| Site / Project key | `jira.site` / `jira.project` — the script resolves them itself |
+| Board (optional) | `jira.board` — steers sprint discovery on multi-sprint projects |
+| Sub-task type (optional) | `jira.subtaskType` — pins the type when the project has several |
+| Story Points field (optional) | `jira.storyPointsField` — pins the site's custom field once confirmed |
+| Default assignee | `jira.assignee` (emails) → ask |
+| Auth | `JIRA_EMAIL` + `JIRA_API_TOKEN` in `.env`. The script reads them itself and sends them only in the Authorization header. **Never** read, print, or pass them. |
+
+A `--sprint` or corrected value is for the run only — never rewrite the user's config.
+
+**Mechanics and rules:**
+
+- Never run `acli` for board operations — `create-tasks.js` talks to Jira REST itself.
+- Each task is a **sub-task of the story** (`fields.parent` inline — one atomic create per
+  task, like ADO's inline parent link).
+- The testing-activity marker (ADO's `Activity=Testing`) is the label `testing`.
+- Hours map to Jira **time tracking** (`timetracking.originalEstimate`/`remainingEstimate`,
+  e.g. `"2h"`) only where Jira's API accepts them. Jira writes the field only when it is on
+  the screen, so the dry run reports `validation.hours.mode`:
+  - `create`: hours ride the create.
+  - `edit-after-create`: each create is followed by one `set-hours` update in the plan.
+  - `none`: no hours are written, and each description carries `Estimate: <n>h`.
+
+  Always show the mode and its `message` on the consolidated screen; the user approves it
+  with the rest.
+- The assignee email resolves to an **accountId** (one user-search read at validation time,
+  reported as `validation.assigneeAccountId`; the resolution is shown on the consolidated
+  screen). Unresolvable/ambiguous → blocks (`assignee-not-found` / `assignee-ambiguous`),
+  never assigned blind.
+- **No iteration/area on Jira** — sub-tasks ride their parent story's sprint; the plan says
+  this explicitly (`validation.notes`).
+- **Sub-task type**: exactly one sub-task type in the project → used; several → the choice
+  joins the ONE Phase-B bundle (real options listed) and `jira.subtaskType` pins it
+  thereafter — confirmed once, never guessed.
+- **Current sprint** resolves via `sprint in openSprints()` (the JQL above). When that spans
+  more than one open sprint, the script blocks with the real sprint names — ask the user
+  which sprint in the ONE bundle round and re-run with `--sprint "<name>"`, or set
+  `jira.board` to steer discovery. Never pick silently.
+- **No open sprint** blocks before any write with `no-open-sprint` (Kanban board, no started
+  sprint, or an empty sprint). Relay the fix and offer `--ids` for named stories; never guess
+  a sprint. The fixes are in "Project prerequisites" above.
+- **Story Points** come from a site-specific custom field discovered by display name; when
+  none/ambiguous the JSON says so with `storyPoints: null` (and a `storyPointsNote`) —
+  estimate from the factor counts and name the `jira.storyPointsField` override to the user.

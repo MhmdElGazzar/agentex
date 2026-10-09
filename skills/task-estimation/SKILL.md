@@ -10,53 +10,44 @@ description: |
   Trigger on phrases like: "create tasks for stories", "add QA tasks", "estimate sprint", "estimate the Jira sprint", "create testing tasks", "create tasks for Jira sprint stories", "add sub-tasks to Jira stories", "plan QA for sprint", "add tasks to stories", or any mention of sprint stories + estimation + testing.
 ---
 
-# QA Task Estimation & Task Creation (Azure DevOps or Jira)
+# QA Task Estimation & Task Creation
 
 ## Role
-You turn a sprint's User Stories into estimated QA `[Testing]` tasks on the configured
-tracker (Azure DevOps Tasks or Jira sub-tasks). You never write to the board without the
-single consolidated approval described below.
+You turn a sprint's stories into estimated QA `[Testing]` tasks on the configured tracker,
+created as the tracker's child tasks of each story. You never write to the board without
+the single consolidated approval described below.
 
-Automates QA testing-task creation on the **configured tracker's** User Stories, estimated
-by story complexity. This file is the **workflow** (what tasks, how to estimate, the one
-approval gate). The mechanics live in ONE bundled script — never run `az` or `acli`, and
-never compose REST calls for board operations:
+Automates QA testing-task creation on the **configured tracker's** stories, estimated by
+story complexity. This file is the **workflow** (what tasks, how to estimate, the one
+approval gate). The mechanics live in ONE bundled script — never run a tracker CLI or
+compose REST calls for board operations; the script owns transport and auth:
 
 - **`${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/scripts/create-tasks.js`** — sprint/story
-  reads, fail-closed dry-run validation, and the task creation itself (tracker layer, ADO
-  or Jira Cloud REST over built-in fetch — the script picks the configured provider itself;
-  dry run by default; one JSON line; exit 0/1/2).
-- **`${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards.md`** — shared ADO boards
-  knowledge: field reference names, the `@CurrentIteration` team-name gotcha, relation
-  directions, delete constraints.
-- **`${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md`** — the Jira twin: field ids,
-  ADF, JQL/sprint gotchas, accountId, timetracking, known limitations.
-
-Read the configured provider's reference before interpreting script JSON in a session.
+  reads, fail-closed dry-run validation, and the task creation itself. The script resolves
+  the configured tracker itself; dry run by default; one JSON line; exit 0/1/2.
+- **The configured provider's reference** — read it before interpreting script JSON in a
+  session: `${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards.md` (Azure DevOps) or
+  `${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md` (Jira), section *Estimation
+  flow*. It holds the provider's configuration keys, what its child tasks, hours, and
+  placement look like, and the provider-specific rules that apply on top of this workflow.
 
 ## Configuration (never hardcode)
 
-Resolved from `config/project.json` — the `azure` block on ADO projects (legacy `AZURE_*`
-keys in `.env` as fallback), the `jira` block on Jira projects (no `.env` fallback for
-non-secrets). Do not bake an organization, site, project, team, or email into anything.
-Anything missing joins the ONE bundled question round (Phase B) — never a drip of questions.
+Every setting resolves from `config/project.json`'s tracker block — the reference's
+*Estimation flow* section lists the keys and any fallbacks. Never bake an organization,
+site, project, team, or email into anything. Anything missing joins the ONE bundled
+question round (Phase B) — never a drip of questions.
 
-| Setting | Source |
-|---|---|
-| Organization / Project (ADO) | `azure.org` / `azure.project` — the script resolves them itself |
-| Team (ADO) | `azure.team` → `AZURE_TEAM` → ask (needed by `@CurrentIteration`) |
-| Site / Project key (Jira) | `jira.site` / `jira.project` — the script resolves them itself |
-| Board (Jira, optional) | `jira.board` — steers sprint discovery on multi-sprint projects |
-| Sub-task type (Jira, optional) | `jira.subtaskType` — pins the type when the project has several |
-| Story Points field (Jira, optional) | `jira.storyPointsField` — pins the site's custom field once confirmed |
-| Default assignee | `azure.assignee` → `AZURE_ASSIGNEE` → ask · `jira.assignee` (emails) → ask |
-| Auth | ADO: `AZURE_PAT` in `.env`. Jira: `JIRA_EMAIL` + `JIRA_API_TOKEN` in `.env`. The script reads them itself and sends them only in the Authorization header. **Never** read, print, or pass them. |
-
-A `--team` or corrected value is for the run only — never rewrite the user's config.
+- **Assignee**: from the spec, or a single configured value — never invented; several
+  configured values → ask which one.
+- **Credentials** live in `.env`. The script reads them itself and sends them only in the
+  Authorization header. **Never** read, print, or pass them.
+- Run-only overrides and corrected values are for the run only — they never rewrite the
+  user's config.
 
 ## Task template
 
-Every User Story gets exactly **5 QA tasks** — no more, no less:
+Every story gets exactly **5 QA tasks** — no more, no less:
 
 | Task Title | Purpose |
 |---|---|
@@ -66,48 +57,14 @@ Every User Story gets exactly **5 QA tasks** — no more, no less:
 | `[Testing] Bug Review and Retest` | Verify bug fixes |
 | `[Testing] Automation` | Automate test scenarios |
 
-Every task is created with: the `[Testing] ` title prefix, the **parent story's** iteration
-and area (the script inherits both fresh from the story — they cannot be omitted or wrong),
-the assignee, `Activity=Testing`, and `OriginalEstimate`/`RemainingWork` = the estimated
-hours, plus the parent link — inline in one atomic create per task.
+Every task is created with: the `[Testing] ` title prefix, the assignee, a testing-activity
+marker, and the estimated hours, plus the parent link — inline in one atomic create per
+task. Placement (sprint/iteration) is the script's: it comes from the parent story — never
+asked, never taken from the spec.
 
-## On Jira
-
-The template is **verbatim** — the same five `[Testing]` titles, the same estimation
-methodology, the same one-gate workflow. What differs is mechanical, and the script owns it:
-
-- Each task is a **sub-task of the story** (`fields.parent` inline — one atomic create per
-  task, like ADO's inline parent link).
-- Hours map to Jira **time tracking** (`timetracking.originalEstimate`/`remainingEstimate`,
-  e.g. `"2h"`) only where Jira's API accepts them. Jira writes the field only when it is on
-  the screen, so the dry run reports `validation.hours.mode`:
-  - `create`: hours ride the create.
-  - `edit-after-create`: each create is followed by one `set-hours` update in the plan.
-  - `none`: no hours are written, and each description carries `Estimate: <n>h`.
-
-  Always show the mode and its `message` on the consolidated screen; the user approves it
-  with the rest. `Activity=Testing` maps to the label `testing`.
-- The assignee email resolves to an **accountId** (one user-search read at validation time;
-  the resolution is shown on the consolidated screen). Unresolvable/ambiguous → blocks,
-  never assigned blind.
-- **No iteration/area on Jira** — sub-tasks ride their parent story's sprint; the plan says
-  this explicitly.
-- **Sub-task type**: exactly one sub-task type in the project → used; several → the choice
-  joins the ONE Phase-B bundle (real options listed) and `jira.subtaskType` pins it
-  thereafter — confirmed once, never guessed.
-- **Current sprint** resolves via `sprint in openSprints()`. When that spans more than one
-  open sprint, the script blocks with the real sprint names — ask the user which sprint in
-  the ONE bundle round and re-run with `--sprint "<name>"`, or set `jira.board` to steer
-  discovery. Never pick silently.
-- **No open sprint** blocks before any write with `no-open-sprint` (Kanban board, no
-  started sprint, or an empty sprint). Relay the fix and offer `--ids` for named stories;
-  never guess a sprint. The fixes are in the reference's "Project prerequisites" section.
-- **Story Points** come from a site-specific custom field discovered by display name; when
-  none/ambiguous the JSON says so with `storyPoints: null` — estimate from the factor
-  counts and name the `jira.storyPointsField` override to the user.
-
-Details (field ids, JQL, timetracking format, known limitations) live in
-`${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md`.
+The template, the estimation methodology, and the one-gate workflow are identical on every
+tracker; only the mechanics differ, and the script owns them (the reference says what they
+are).
 
 ## Estimation factors
 
@@ -147,7 +104,7 @@ Score these from the story's description + ACs before estimating:
 
 The exactly-5-canonical-tasks template and these numbers are the methodology — the user may
 adjust either at the gate; the script enforces only what is mechanical (prefix, positive
-estimate, inherited paths).
+estimate, inherited placement).
 
 ## Workflow — three phases, ONE approval
 
@@ -157,18 +114,28 @@ estimate, inherited paths).
    ```bash
    node ${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/scripts/create-tasks.js stories --current-sprint --full
    ```
-   (or `stories --ids 12345,12346 --full` when the ask names specific stories). The JSON
-   carries each story's title/state/SP, its iteration/area, the description + AC HTML, and
-   any `existingTestingTasks` — note which stories already have `[Testing]` children.
+   (or `stories --ids <ID,ID> --full` when the ask names specific stories). The JSON
+   carries each story's title/state/SP, the provider's placement facts (see the
+   reference), the description + AC HTML, and any `existingTestingTasks` — note which
+   stories already have `[Testing]` children.
+   - If the sprint read reports more than one candidate sprint, that choice joins the one
+     bundled round (Phase B) — never pick silently.
+   - A sprint read that blocks is relayed with its fix (the message names it); offer
+     `--ids` for named stories — never guess a sprint.
 2. Per story, apply the estimation methodology above: factor counts → complexity bucket →
-   the 5-task hours. The **analysis stays per-story**; only the approval is consolidated.
+   the 5-task hours. When `storyPoints` is null, estimate from the factor counts, and when
+   the row carries a note about it, relay that note to the user (it names the config
+   override). The **analysis stays per-story**; only the approval is consolidated.
 
 ### Phase B — ONE bundled input round, only if needed
 
-If anything is genuinely unresolvable — no team/assignee anywhere, or stories that already
-have `[Testing]` tasks (skip, or add anyway?) — ask **one** AskUserQuestion carrying every
-open question at once, **before** validation. When config + the reads answer everything,
-skip Phase B entirely: the happy path has exactly one interaction — the approval.
+If anything is genuinely unresolvable — a required setting the script reports missing (e.g.
+the team or assignee), the sprint to use when the read reports several, a blocked entry
+that carries `options`, or stories that already have `[Testing]` tasks (skip, or add
+anyway?) — ask **one** AskUserQuestion carrying every open question at once, **before**
+validation. A choice that comes with `options` is asked with those real options. When
+config + the reads answer everything, skip Phase B entirely: the happy path has exactly one
+interaction — the approval.
 
 ### Phase C — validate, one screen, one approval, write
 
@@ -179,14 +146,19 @@ skip Phase B entirely: the happy path has exactly one interaction — the approv
    ```
    Exit 2 = blocked: surface the reasons (they carry allowedValues / existing-task IDs /
    the stale-cache options with a `--refresh-fields` offer), correct **for the run**, and
-   re-run — a failure-path round, not a second gate.
+   re-run — a failure-path round, not a second gate. A blocked entry that carries
+   `options` is a user choice: ask it in that round with the real options. An unresolvable
+   or ambiguous assignee blocks — ask, never assign blind.
 2. Render **the consolidated screen** from the plan JSON — one table per story (ID, title,
    SP, factor counts, bucket, per-task hours, story total), the sprint grand total, the
-   assignee, any "adding despite N existing `[Testing]` tasks" notes, **the exact write
-   plan** (every task create in order with its route, parent link inline), and the explicit
-   statement that **nothing has been written yet**. An adjustment ("story 3 is Heavy")
-   edits the spec and re-runs the dry run — the corrected screen still ends in exactly one
-   approval.
+   assignee (as the dry run resolved it, including any tracker identity it resolved to),
+   any "adding despite N existing `[Testing]` tasks" notes, how the hours will be recorded
+   and any notes when the dry-run JSON reports them (`validation.hours` with its message,
+   `validation.notes`) — the one approval covers them — **the exact write plan** (every
+   planned step in order — task creates and any follow-up steps — each with its route,
+   parent link inline), and the explicit statement that **nothing has been written yet**.
+   An adjustment ("story 3 is Heavy") edits the spec and re-runs the dry run — the
+   corrected screen still ends in exactly one approval.
 3. **One approval** ("yes" / "تمام" / "approved") → re-run with `--execute`. Anything
    else → stop, zero writes.
 4. **Render the ledger**: every intended task done (ID + URL) or not-done (reason). A
@@ -197,13 +169,15 @@ skip Phase B entirely: the happy path has exactly one interaction — the approv
 
 - **One gate**: all reads + validation first, ONE consolidated screen for the whole run
   (analysis per story, approval once), then writes. Never create without that approval.
-- Never run `az` or `acli` (or compose your own REST calls) for board operations — the
-  script owns transport and auth on both providers.
-- Never read `.env*` or put a PAT / API token anywhere — the script reads credentials
-  itself, header-only.
-- Iteration/area are inherited from each parent story by the script (ADO) — never ask for
-  them and never accept spec overrides. On Jira they don't exist: sub-tasks ride their
-  parent's sprint.
+- Never run a tracker CLI (or compose your own REST calls) for board operations — the
+  script owns transport and auth on every tracker.
+- Never read `.env*` or handle a credential value — the script reads credentials itself,
+  header-only.
+- Placement (sprint/iteration/area) comes from each parent story through the script —
+  never ask for it and never accept spec overrides.
+- A blocked entry that carries `options` is a user choice — ask it with the real options
+  (in the one bundled round, or the failure-path round after a dry run); never pick
+  silently.
 - At most ONE bundled question round before validation; missing config values are asked
   there once and corrections apply to the run only (the config is never rewritten).
 - No retries, no cleanup writes — a partial result is reported exactly, from the ledger.
