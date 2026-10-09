@@ -306,12 +306,12 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // propagate unwrapped (the same TrackerError object).
 
     // NeutralStory { id, type, title, state, url, raw } — ONE request,
-    // getWorkItem(ref, {expand:'all'}). TOTAL on an empty body: raw null,
+    // getWorkItem(ref, {expand:'all'}). id is wi.id verbatim. TOTAL on an empty body: raw null,
     // fields read as {} — never a throw for shape reasons.
     async getStory(ref) {
       const raw = await this.getWorkItem(ref, { expand: 'all' });
       const f = (raw && raw.fields) || {};
-      const id = raw && raw.id !== undefined && raw.id !== null ? raw.id : ref;
+      const id = raw ? raw.id : ref; // wi.id verbatim; the ref only stands in for an empty body
       return {
         id,
         type: f['System.WorkItemType'] || null,

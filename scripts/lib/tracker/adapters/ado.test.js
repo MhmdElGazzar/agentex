@@ -564,6 +564,10 @@ const PROJ = 'Sample%20Project';
     const s = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/7?', text: '' }]) }).getStory(7);
     assert.strictEqual(s.raw, null);
     assert.strictEqual(s.type, null); assert.strictEqual(s.title, null); assert.strictEqual(s.state, null);
+    assert.strictEqual(s.id, 7, 'an empty body falls back to the ref');
+    const noId = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/7?', json: { fields: {} } }]) }).getStory(7);
+    assert.strictEqual(noId.id, undefined, 'a body is taken verbatim: id is wi.id, never substituted');
+    assert.strictEqual(noId.url, `${BASE}/${PROJ}/_workitems/edit/undefined`);
     const a = createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/7?', status: 404, text: JSON.stringify({ message: 'gone' }) }]) });
     let direct; try { await a.getWorkItem(7, { expand: 'all' }); } catch (e) { direct = e; }
     let viaStory; try { await a.getStory(7); } catch (e) { viaStory = e; }
