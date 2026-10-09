@@ -53,6 +53,24 @@ Iteration path format is `<Project>\<Sprint Name>`. Child tasks and test cases i
 **parent story's** iteration and area — the scripts re-read both fresh from the story on every
 run, so a spec cannot get them wrong.
 
+## WIQL gotchas
+
+Four pitfalls that cost real runs, and how `scripts/tracker.js` handles each:
+
+1. **The project clause goes inside the query.** Put `[System.TeamProject] = @project` (or
+   the quoted project name) in the WHERE clause. `tracker.js search` injects it when the
+   query names no project (and leaves a query that names one alone); hand-written WIQL
+   anywhere else must carry it, or it searches every project the token can see.
+2. **Results are capped.** The service returns at most 20,000 items per query. Pass
+   `--top n` for a smaller page, and read `truncated: true` as "at the cap — more may
+   exist; narrow the query", never as "that's all".
+3. **Batch the `[Testing]` children by parent.** One `[System.Parent] IN (…)` query plus
+   one batch read covers any number of stories (`tracker.js relations --id a,b,c --kind
+   child`) — never one read per child.
+4. **Never pipe text through a CLI.** Read text-bearing fields (descriptions, acceptance
+   criteria, comments) with `--out <file>` and Read the file: piping can drop non-ASCII
+   characters, and a story in a non-Latin script comes back garbled.
+
 ## Relation types and directions
 
 One ADO link always has two views (a `-Forward` and a `-Reverse` side). The scripts pin the
