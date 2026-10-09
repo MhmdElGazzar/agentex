@@ -1,0 +1,1 @@
+{ "portalUrl": "https://qa-shop.example.test", "defaults": { "password": { "envSecret": "QC_SHARED_PASSWORD" }, "otp": "000000" }, "users": { "expired_user": { "username": "expired.user@example.test", "password": { "envSecret": "QC_EXPIRED_PASSWORD" } }, "standard_user": { "username": "qa.tester@example.com" } } }

@@ -33,6 +33,910 @@ All notable changes to AgenTeX are documented here.
 ### Changed
 - `docs/getting-started.md` and `docs/contributing/architecture.md` updated to reflect the new
   mobile-testing capability (no longer describe `qa-executor` as the only subagent).
+- **Bug screenshots are attached annotated.** `bug-report-azure` now uploads, ahead of each
+  raw screenshot, a copy with a red box and label on the defect (optionally a green one on
+  something correct) and a one-line summary banner above it, drawn by the new
+  `skills/bug-report-azure/scripts/annotate-image.js` through the project's playwright-cli.
+  The raw capture is still attached beside it, since the overlay can hide what is under it.
+  Both files, and the text the copy adds, are what the one approval lists and uploads, on
+  Azure DevOps and Jira alike; `create-bug.js` is unchanged. Without playwright-cli, or when a box is still off after
+  two fixes, the raw screenshot is attached and the consolidated screen says why —
+  annotation never blocks a filing or adds a question. Covered by
+  `skills/bug-report-azure/scripts/annotate-image.test.js`.
+### Fixed
+- **`api:` steps read catalog secrets from `.env`.** `run_api.js` resolved a catalog's own
+  env-var names (`${API_BASE_URL}` in `baseUrl`, `auth.tokenEnv`, `auth.userEnv` /
+  `passEnv`) from the shell environment only, so a token kept in `.env`, the documented home
+  for secrets, left the step BLOCKED with "not set". These names now resolve like every other
+  secret, from the environment and then `.env`, and the BLOCKED reason names both places.
+  The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
+  three new cases in `run_api.test.js`. Thanks to @MarwahZain, whose PR #9 flagged the
+  inconsistent `API_TOKEN` handling (closed with credit, not merged).
+
+## [0.23.0] — 2026-10-09
+### Added
+- **Jira Cloud tracker support — every tracker flow now runs on Azure DevOps OR Jira
+  Cloud.** A second adapter behind the 0.20.0 tracker interface
+  (`scripts/lib/tracker/adapters/jira.js` — Jira platform REST v3 over Node's built-in
+  fetch, zero runtime npm deps, no CLI): JQL search through `POST /rest/api/3/search/jql`
+  with adapter-owned `nextPageToken` pagination (the removed legacy `/search` endpoint is
+  never called), field metadata from the per-issue-type createmeta routes normalized into
+  the existing per-project field cache (`.agentex/cache/tracker-fields-jira.json` —
+  additive beside the ADO file, `cache.js` untouched), rich text as Atlassian Document
+  Format composed deterministically by the new `scripts/lib/tracker/adf.js` (write
+  structured, read server-rendered HTML via `expand=renderedFields`), screenshot
+  attachments as multipart via built-in `FormData`/`Blob`, adapter-owned JQL escaping with
+  client-side exact-title dup filtering, and new capability-flagged ops — `transition`
+  (fail-closed against the issue's REAL transitions), `addComment`, agile board/sprint
+  reads — plus `adapter.webUrl(id)` exposed on both providers. Honest capability flags
+  declare every gap: `testPlans`/`testRuns: false`, `relations.testedBy: false`,
+  `validateOnly: false` (the createmeta cache carries pre-gate validation and the plan says
+  `validateOnly: 'unsupported-on-jira'`), and `deleteWorkItem: false` — Jira Cloud's only
+  issue delete is permanent and this plugin never performs permanent destroys. Credentials
+  are `JIRA_EMAIL` + `JIRA_API_TOKEN` from `.env` (id.atlassian.com API token), sent only
+  in the Authorization header — never printed, logged, or on a command line; the
+  `AGENTEX_CI=1` mechanical write guard has exact parity with the ADO adapter's.
+- **Tracker selection is now a setup-wizard question (asked once, never per-run, never a
+  silent default):** `/init-test`'s first page asks *which work tracker does this project
+  use* — Azure DevOps, Jira Cloud, or none — with no preselected default on fresh projects
+  (existing configs prefill from their own provider block). Only the chosen provider's
+  step is shown (wizard steps gained generic `when` gating) and only its block is written;
+  a save carrying more than one provider block is rejected with the same fail-closed
+  wording the runtime uses, and switching providers on an existing project announces the
+  old block's removal explicitly before anything is saved (`.env` is never edited by a
+  switch). `.env.example` gains keys-only `JIRA_EMAIL=` / `JIRA_API_TOKEN=` lines — fill
+  only your tracker's.
+- **The three tracker flows on Jira:** `/estimate-story` creates the same five `[Testing]`
+  tasks per story as **sub-tasks** (parent inline, atomic) with hours mapped to Jira time
+  tracking and the label `testing`; the current sprint resolves via
+  `sprint in openSprints()` (several open sprints → blocked with the real names, one
+  bundled ask, `jira.board` steers it permanently), the sub-task type is discovered from
+  createmeta (several → asked once, pinned via `jira.subtaskType`), assignee emails
+  resolve to accountIds at validation time, and Story Points come from the site's custom
+  field by display-name discovery (`jira.storyPointsField` pins it — never guessed).
+  `/design-test` informs the user upfront that **Jira has no native Test Case type** and
+  asks what to create (the project's real issue types + document-only/skip — the spec's
+  `artifactType`, never defaulted by the script; pinnable in `.agentex/test-template.md`'s
+  Jira section); steps render as an ADF ordered action→expected list and non-sub-task
+  artifacts link back to the story via a chosen issue link type as a separate ledgered
+  write (no Tested-By exists). Bug filing inverts the write order around attachments —
+  **create Bug → attach ×N → link story**, visible in the approved plan — with priority
+  validated against the project's real names, a severity-like custom field used only when
+  the project's Bug screen has one (absent → omitted and the screen says so), the
+  bug→story link type read live and chosen explicitly (`Relates` recommended,
+  `jira.bugLinkType` pins it), and the test-plan gap informed upfront (skip by default, or
+  link an existing `/design-test` artifact — never a silent substitute). `testplan.js`
+  refuses Jira configs upfront (exit 2, `testPlans:false`); `read-workitem.js` output is
+  provider-neutral. The one-gate/ledger/fail-closed discipline is byte-identical to ADO,
+  and existing ADO behavior is untouched.
+- **`tracker-ops` — ad-hoc work-item operations behind one approval per write batch** (the
+  backlog's "search, read, create, update, transition, comment on, and link work items"
+  surface): a thin skill routing every one-off board ask ("move PROJ-12 to In Progress",
+  "comment on bug 4711", "link X to Y") through one bundled script
+  (`skills/tracker-ops/scripts/workitem.js` — show / search / create / update / transition /
+  comment / link on whichever provider is configured; one JSON line, exit 0/1/2). Reads run
+  freely; every write is a dry run by default returning the exact request plan, with
+  `--execute` behind ONE approval per write batch. Capability flags answer unsupported ops
+  upfront — and a `transition` ask on ADO routes to the honest equivalent, a `System.State`
+  field update, stated to the user (never dressed up as a workflow transition). Honors the
+  `AGENTEX_CI=1` write guard.
+- **Evals:** four new behavioral cases, house pattern (prompt + graders + parseable
+  footers, no live tracker) — `discipline-test-design-jira-artifact-ask` (the Q11 rule:
+  inform + ask before any spec, pre-baked issue-type discovery fixture),
+  `discipline-tracker-selection-fail-closed` (the Q12 rule: dual azure+jira config relays
+  the fail-closed error, never a silent pick, never a config edit — fully offline),
+  `trigger-tracker-ops`, and `discipline-tracker-ops-one-gate` (one approval per write
+  batch, pre-baked dry-run plans) — registered in the eval baseline table. The three
+  existing trigger evals whose skill descriptions were broadened for Jira
+  (`trigger-task-estimation`, `trigger-test-design`, `trigger-bug-report-azure`) **must be
+  re-run on the installed build at the release run** — recorded as dated notes in their
+  baseline rows per the manual dated-row protocol (`claude plugin eval` is still early
+  access); no result is claimed before that run.
+- **Docs & surface:** new [`docs/jira.md`](./docs/jira.md) (setup walkthrough, token
+  provenance, per-flow behavior, known-limitations table derived from the capability
+  flags), `docs/configuration.md` jira/config + env rows, README feature-table and
+  `plugin.json` now say "Azure DevOps or Jira Cloud", `docs/azure-devops.md` cross-links,
+  the shared `references/tracker/jira-boards.md` reference (field ids, ADF, JQL gotchas,
+  accountId, timetracking, link semantics, known limitations), and the three tracker
+  skills' descriptions broadened so Jira phrasing triggers them (skill ids unchanged).
+
+### Changed
+- **Wrong Jira credentials no longer look like a missing issue.** Jira answers a wrong
+  email/token pair anonymously, so every read came back "404 — does not exist or you do
+  not have permission". On a 404 the adapter now checks `GET /myself` once; a 401 there
+  is reported as a credentials error naming `JIRA_EMAIL` and `JIRA_API_TOKEN`. A real
+  missing issue still reports 404. Found on a live Jira Cloud site.
+- **Fresh scaffolds carry no tracker.** `templates/config/project.json` no longer
+  pre-carries an `azure` placeholder block — a fresh scaffold has no tracker until the
+  wizard's answer writes one, and the no-tracker runtime error now names both providers'
+  keys and the wizard.
+- **Jira project prerequisites are discovered at run time, with the fix.** A Kanban
+  board (no sprints), a sprint that isn't started, and a project without a Bug type each
+  block before any write, and the message says what to change on Jira.
+  `/estimate-story --current-sprint` used to return an empty story list in the first
+  case; it now blocks with `no-open-sprint` and offers `--ids`. Hours follow what Jira's
+  API allows on the project: written with the create, written by one update right after
+  it when only the edit screen carries Time tracking, or not written at all (each
+  description says `Estimate: <n>h`, and the approval screen says so) when neither does. The how-to-enable steps live in `references/tracker/jira-boards.md` ("Project
+  prerequisites") and `docs/jira.md` ("What your Jira project needs"). Found on a live
+  Jira Cloud site.
+- **The two-tracker error is current.** A config with both an `azure` and a `jira` block
+  still fails closed, but the message no longer calls provider selection "not supported
+  yet": it says a project uses one tracker and points at the `/init-test` tracker
+  question.
+- Task estimation's script now routes Azure DevOps and Jira through per-provider
+  estimation strategies behind a fail-closed registry. The change is internal, and output
+  is byte-identical on both trackers.
+
+### Credits
+- The Jira operation semantics and field mappings were harvested from community **PR #4** by @mabdel130 ([Testing] task → Sub-task with parent;
+  `Activity=Testing` → label `testing`; `OriginalEstimate`/`RemainingWork` →
+  `timetracking.originalEstimate`/`remainingEstimate`; Story Points as a site-specific
+  custom field confirmed once per project, never guessed; the configurable bug→story link
+  type; the `.agentex/test-template.md` Jira-section pin) and **PR #11** by @YoussefAbdellah2023 (verification
+  that `parent` works only for sub-task types; the sub-task-with-text-steps artifact model
+  offered by `/design-test`'s artifact ask). Their acli/CLI transport approach was not
+  adopted (CLI dependency, no attachment upload, no custom-field writes) — no code was
+  lifted; the semantics were. Both PRs were closed with credit, not merged.
+
+## [0.22.1] — 2026-10-03
+### Fixed
+- **`/design-test` (and `bug-report-azure`'s create-case) add the new Test Case to its suite.**
+  The suite add used `PATCH _apis/testplan/suiteentry/{suiteId}`, which ADO Services answers
+  with HTTP 404. So every `testplan.js create-case --execute` created the Test Case and then
+  failed at the add-to-suite step, leaving the case outside its suite. The ledger reported
+  the failure. The add now uses `POST _apis/test/Plans/{plan}/suites/{suite}/testcases/{ids}`.
+  It skips cases already in the suite, then re-reads the suite and fails the step if a
+  requested case isn't there, so an HTTP 200 that adds nothing can't pass as success.
+  Verified live against a throwaway suite.
+
+## [0.22.0] — 2026-10-01
+### Changed
+- **`browser-testing` is split into `test-execution` (the orchestrator) and `browser-driver`
+  (the browser driver).** `test-execution` runs the test (modes, environment, verdicts, Flake
+  rules, reports, CI verdict) and routes each spec step to its driver: prose → browser-driver,
+  `api:` → api-integration, `db:` → db-integration, `kb:` → ask-kb, `ui-check:` → ui-check.
+  `/execute-test` and every existing spec behave as before: same checkpoints, same
+  `executions/` tree, same session naming, same reports. The skill now leads with its rules and
+  loads each mode's procedure only when that mode starts (~2,400 tokens, was ~5,000).
+  `qa-executor` takes a new `DRIVERS` input.
+- **CI pipelines: the gate's path moved** to `<plugin-root>/skills/test-execution/scripts/ci_gate.js`.
+  The old `skills/browser-testing/scripts/ci_gate.js` still works as a forwarder that prints a
+  deprecation warning; it will be removed in a later minor release. Update your pipeline line.
+  If you pass `--settings …/browser-testing/templates/ci/ci-settings.json` explicitly, point it at
+  `…/test-execution/templates/ci/ci-settings.json`.
+### Added
+- **API / DB-only specs run without a browser.** A spec declares `Drivers: api` (or `api, db`) in
+  its header and then needs no browser, no `Target:`, and no `portalUrl`, locally and in CI.
+  `spec_drivers.js` resolves a run's drivers. `ci_preflight.js` / `preflight.js` take `--needs`:
+  playwright-cli, the browser binary and `portalUrl` gate only when a browser is needed; `api`
+  probes the environment's `api.baseUrl`, and `db` gates on `sqlcmd`, so an API or DB outage is
+  BLOCKED (exit 2), never exit 1. Specs without a `Drivers:` line resolve exactly as before.
+  New eval: `discipline-api-only-run-no-browser`.
+### Fixed
+- **Parallel dispatch no longer relies on a queue that does not exist.** Executors go out in waves
+  of at most 6. A spawn refused at the session's subagent limit is dispatched again, and a spec
+  that never got dispatched is recorded `notRun` (incomplete), never silently dropped.
+- **`qa-executor` reports BLOCKED.** It is now in the per-scenario outcome and the tally line
+  (`<n> pass / <m> fail / <b> blocked, …`), so blocked scenarios reach the CI verdict's blocked
+  count.
+- **CI mode's verdict step runs at the end of MERGE.** The CI procedure named a REPORT phase that
+  only sequential mode has.
+- **`ci_gate.test.js` marketplace-layout case passes on macOS.** The temp dir sits behind the
+  `/var` → `/private/var` symlink; the comparison now uses the real path.
+
+## [0.21.2] — 2026-10-01
+### Fixed
+- **The Setup Wizard's save-gate jumps you to the problem instead of just naming it.** When
+  `saveAndClose` finds a non-active environment that's missing its application URL or has no
+  test user, it used to show a toast and tell you to go open the environments page yourself —
+  easy to miss on a first pass through the wizard. It now switches straight to that environment
+  and the exact unfinished step (environment URL or test users). The active environment's
+  answers are safely captured first, so nothing you typed is lost by the jump.
+### Changed
+- **Nine more skills state their Role up front.** `api-integration`, `ask-kb`,
+  `azure-integration`, `bug-report-azure`, `db-integration`, `optimize-login`,
+  `task-estimation`, `test-design`, and `ui-check` now open with the same explicit
+  scope-and-boundary statement already used by `browser-testing`, `define-flow`, and
+  `extent-report`. No behavior change.
+
+## [0.21.1] — 2026-08-28
+### Fixed
+- **`/update-agentex`'s plugin self-update pull actually pulls now.** Shipped in 0.21.0,
+  `scripts/self_update.js` composed `claude plugin install <plugin>@<marketplace>` for
+  the `pull` verb — and the CLI's `install` no-ops on an already-installed plugin: it
+  printed "already installed" in ~2s, exited 0, and created no new versioned dir, so the
+  filesystem post-condition correctly refused the result and EVERY real-world pull ended
+  `pull-failed` — the feature degraded to inform-only (fail-closed held: no wrong success
+  was ever possible). The pull now composes `claude plugin update <plugin>@<marketplace>`
+  — the CLI's actual update verb, verified live 0.20.1 → 0.21.0 in ~16s, non-interactive,
+  with the new versioned dir landing beside the old one. The post-condition that caught
+  the defect, the exit codes (0/1/2), and the fail-closed order are all unchanged; the
+  update-agentex discipline evals now name `claude plugin update` as the pull mechanism.
+  Covered by the flipped pull-composition cases in `scripts/self_update.test.js`.
+- **The self-update CLI calls no longer emit Node's `DEP0190` DeprecationWarning on
+  Windows.** The win32 spawn passed an args array alongside `shell: true` (the deprecated
+  form); `buildCliCall` now composes ONE cmd-quoted command string with an empty args
+  array — contract untouched (one JSON line on stdout, stdin closed, hard timeouts, exit
+  0/1/2, no `process.exit()`, POSIX plain args) — pinned by the new win32 spawn-shape
+  tests in `scripts/self_update.test.js`, quoting included.
+
+## [0.21.0] — 2026-08-28
+### Added
+- **CI quality gate — AgenTeX runs are now invokable from a consumer's CI/CD pipeline.**
+  One bundled deterministic entry point, `skills/browser-testing/scripts/ci_gate.js`,
+  runs the whole gate moment from the project root: a token-free CI preflight per
+  attempt (`ci_preflight.js` — target reachability, environment resolution, secrets
+  present by NAME, browser installed, plugin manifest; any failure exits 2 with a named
+  `preflight-*` reason), a fresh headless session per attempt
+  (`claude --bare -p "/agentex:execute-test ci …" --add-dir <plugin-root>
+  --permission-mode dontAsk` with the shipped deny-by-default
+  `templates/ci/ci-settings.json`; the `--add-dir` read grant on the self-resolved
+  plugin root keeps the plugin's own references and scripts readable in every install
+  layout — the settings allowlist reads only the consumer project), a per-attempt
+  wall-clock
+  budget (default 60 min — on expiry the session's process tree is killed and the
+  partial report stays on disk), automatic retries for BLOCKED outcomes only (default 3;
+  never on exit 0/1, and never for the `unstable` reason — the Flake doctrine's
+  no-retry-to-clear-instability rule, one level up), and a fail-closed conclusion: a
+  session that did not deterministically conclude is exit 2, never a wrong pass/fail.
+  Exit codes are the contract: **0 pass (EXPECTED FAIL honored as pass), 1 real product
+  defects, 2 environment/indeterminate** — under no input does an environment failure
+  produce exit 1, pinned case by case in an adversarial test matrix.
+- **A public, schemaVersion'd verdict JSON (contract v1)** — the plugin's first public
+  machine contract: the gate's single stdout line, retained as
+  `executions/execu_<ts>/verdict.json` (verdict, per-status counts in the established
+  run vocabulary, duration, report path, named `blockedReasons`, retry visibility via
+  `attempt`/`retries`/`attemptHistory`, scope, environment name, policy). Computed by
+  the deterministic `write_verdict.js` (fixed mapping order; warnings fail the gate by
+  default, consumer-relaxable; `flakyFailsGate` off by default), documented field by
+  field with additive-evolution stability rules in `docs/ci-quality-gate.md` alongside
+  the CI-agnostic recipe, advisory vs blocking modes, and the PM manual-approval step.
+- **CI mode for `/execute-test`** (`ci` argument + the new
+  `skills/browser-testing/references/ci-mode.md`): zero user interaction — NEEDS-USER
+  ui-check items conclude BLOCKED with the precise question named, captcha/unobtainable
+  OTP conclude BLOCKED `captcha-or-otp`, `extent-report.html` always generated, the
+  verdict step runs at REPORT. Covered by three new discipline evals
+  (`discipline-ci-no-interaction`, `discipline-ci-no-tracker-writes`,
+  `discipline-ci-blocked-not-fail`).
+- **Mechanical no-tracker-writes guarantee in CI:** the tracker adapter and
+  `create-bug.js` refuse `execute:true` under `AGENTEX_CI=1` (exit 2, reason `ci-mode`);
+  reads and dry-run descriptors are unaffected. Bug filing stays interactive-only.
+- **Pipeline templates** under `skills/browser-testing/templates/ci/` — Azure Pipelines
+  and GitHub Actions full stages (secrets by name, verdict surfaced in the pipeline UI,
+  `executions/` published as the artifact — never `test/.auth/`, PM manual approval,
+  advisory + blocking wiring) plus the headless `ci-settings.json`; all three pinned by
+  genericness tests. Optional `ci` policy block in `config/project.json`
+  (read-if-present, flags > config > defaults — no scaffold change, no migration).
+- **`/update-agentex` now checks whether the plugin itself is stale — before any project
+  migration.** New bundled script `scripts/self_update.js` (`check`/`pull` verbs, one JSON
+  line, exit 0/1/2) derives the marketplace and plugin identity from its own install path
+  (`plugins/cache/<marketplace>/<plugin>/<version>` — never hardcoded), refreshes the
+  marketplace's local cache, and compares versions with the same shared semantics the
+  stamp-newer abort uses (`compareVersions` extracted to `scripts/lib/version.js`, required
+  by both `migrate.js` and `self_update.js`, so the two gates can never disagree). When a
+  newer version exists, the command asks exactly ONE confirmation (installed vs. latest,
+  `plugin@marketplace`, what a yes does) — never a silent pull, never inform-only. After a
+  successful pull the command STOPS with the instruction to run `/reload-plugins --force`
+  (or restart) and re-run `/update-agentex`, so the migration runs entirely on the new
+  version; the pull is verified deterministically against the refreshed cache (fail
+  closed). A check that cannot run (offline, cache missing, not a marketplace install —
+  e.g. a dev clone) and a pull that fails after consent are reported loudly and the
+  migration proceeds on the installed version. CLI invocations are non-interactive with
+  hard timeouts (win32 `.cmd` shim handled), covered by sibling unit tests
+  (`self_update.test.js`, `lib/version.test.js`) and 4 new discipline evals
+  (`discipline-update-agentex-{one-gate-pull,stop-after-pull,loud-check-failure,loud-pull-failure}`).
+- **Extent report enrichment — the persistent rich run record.** The JSON that feeds
+  `extent-report.html` is now a retained artifact: `run-summary.json` (`schemaVersion: 2`,
+  internal contract in `skills/extent-report/references/run-summary-schema.md`) persists at
+  the run folder root next to the HTML in BOTH modes — the sequential orchestrator writes it
+  itself at REPORT, parallel MERGE composes the identical file from executor reports; the
+  temp-and-delete practice is gone and `report.md` links the JSON next to the HTML. Timing
+  is finally captured (agent-recorded ISO timestamps): run start/end/duration and
+  per-scenario durations are required, per-step optional — durations are **execution time**,
+  not raw wall-clock (a sequential run pauses the clock across user waits;
+  `startedAt`/`endedAt` stay wall-clock facts, so `endedAt − startedAt` may exceed
+  `durationMs` there) — and qa-executor now returns started/ended/duration per scenario.
+  `make_html_report.js` becomes a schemaVersion-gated
+  dual-path renderer: a legacy-shape JSON (no `schemaVersion`) takes the untouched v1 code
+  path and renders byte-identically to before, while v2 inputs additionally render the
+  execution context (environment, target URL, login mode, run mode, run timing, tool-version
+  chips, session→spec map), `naDescoped`/`notRun` stat cards, an after-pill per-scenario
+  duration chip (card headers stay lean — the release-gate name→pill window is untouched by
+  construction and pinned by a renderer test that calls `verifyReports` itself), a per-step
+  Duration column when known, base64-embedded evidence thumbnails with click-to-expand
+  (missing evidence renders a labeled placeholder, never a failure — the single HTML file
+  displays every image on any machine, no external requests, no `file://`), ui-check
+  baseline|actual pairs with the cached-baseline caveat verbatim, flaky attempt blocks,
+  upstream-block causality, resolved NEEDS-USER records, API/DB/KB outcome summaries (never
+  payloads), and a severity-bordered defects section. Secrets rule, strictest reading: both
+  artifacts carry user handles only — `envSecret` target names and resolved values never
+  appear in the JSON or the HTML. 11 new renderer tests (the existing 11 untouched and
+  green) + 3 discipline evals (`discipline-run-summary-persists`,
+  `discipline-run-timing-captured`, `discipline-report-secrets`).
+
+### Fixed
+- **Preflight no longer reports a working playwright-cli as broken on Windows + Node 24**
+  (the CI gate's in-scope prerequisite — a false "broken" verdict is gate-closing with
+  no human to override). The probe now judges by OUTPUT: a plausible version string plus
+  the known benign libuv exit-crash signature (`UV_HANDLE_CLOSING`) reports
+  `ok: true` with a `note: "version confirmed; known benign exit-crash on this stack"`;
+  a genuinely missing/broken tool (no version output) still fails exactly as before.
+  Contract unchanged (one JSON line, informational, exit 0); the playwright-cli
+  reference's preflight guidance is aligned so the agent never re-runs the version
+  command and re-concludes "broken" on its own.
+
+## [0.20.1] — 2026-08-28
+### Fixed
+- **Wrong exit codes from the tracker CLIs on Windows/Node 24.** A correct read could
+  exit 127 after printing valid JSON: force-exiting after fetch work trips a libuv
+  assertion (`!(handle->flags & UV_HANDLE_CLOSING)`, src\win\async.c:94) on open undici
+  handles, corrupting the exit code — the release gate observed it live on
+  `create-cases.js story`. The five tracker CLIs (`create-cases.js`, `testplan.js`,
+  `create-tasks.js`, `create-bug.js`, `read-workitem.js`) now print their one JSON line,
+  set `process.exitCode`, and let the event loop drain — the `run_api.js` doctrine.
+  Exit-code semantics (0/1/2) are unchanged, and each sibling test file structurally
+  pins the pattern: the delivered script's source contains no `process.exit(`.
+
+## [0.20.0] — 2026-08-27
+### Added
+- **A behavior-changing release must now prove itself as a consumer before it ships.** New
+  maintainer-facing harness `scripts/release-gate/` — the mechanics under the release
+  checklist's new Precondition 5 (E2E gate): `prepare.js` creates a genuinely fresh
+  throwaway consumer project in the system temp dir (writes nothing into it — pre-seeded
+  tracker keys are legacy signals that would send `init.js` down the migration branch;
+  sentinel-vs-live mode auto-detected from the `EVAL_SENTINEL_PAT_` prefix, values never
+  printed), `inject-env.js` copies the tracker env values into the throwaway `.env` only
+  AFTER the wizard's `/api/done` — merge without clobbering wizard-written keys, fail
+  closed like prepare,
+  `verify-wizard.js` asserts every wizard answer landed in its documented home with secrets
+  ONLY in `.env` — schema-driven from `scripts/wizard/schema.json`, so it cannot drift from
+  the wizard, `verify-reports.js` requires `report.md` + `extent-report.html` to exist and
+  reflect the run — every expected scenario's verdict adjacent to its name in each
+  artifact's own vocabulary (caps `PASS`/`FAIL`/`BLOCKED` in report.md, the generator's
+  `Passed`/`Failed`/`Blocked` pills in extent-report.html), fail-closed on any verdict
+  outside that map, scenario names matched longest-first with word boundaries so a name
+  that is a proper prefix of another can never borrow the longer card's verdict; the
+  first live gate run caught its original single-vocabulary matcher failing all 8
+  scenarios of a healthy extent-report.html, so its HTML tests now exercise the real
+  `make_html_report.js` output instead of synthetic fixtures,
+  `gate-ledger.js` keeps the teardown ledger (WritePlan-compatible entries
+  plus `kind`/`type`/`disposition`, every `url` field stripped — ADO URLs embed the org),
+  `teardown.js` settles every created id into a terminal disposition and finalizes a
+  surviving ledger copy under `.claude/release-gate/runs/<ts>/` before the folder is
+  removed, and `scan-secrets.js` greps every surviving artifact for the PAT (plus its
+  base64 auth form) and the org/project values — compared in memory, never echoed. Exit
+  codes carry the failure posture: 0 clean, 3 waivable (`undeletable-standard` Test Cases —
+  ADO has no standard delete for test artifacts; always surfaced, never destroyed, never a
+  destroy API call), 1 `FAIL` (any created id without a terminal disposition, or a secret
+  in an artifact — the folder is then kept as evidence). The doctrine: every check that
+  could produce a confident wrong `PASS` lives in deterministic, tested code, not in per-run
+  agent reasoning — each script carries a sibling offline `*.test.js` (66 cases together).
+- **The tracker adapter can now delete a work item — and only into the Recycle Bin.**
+  `adapters/ado.js` gains `deleteWorkItem(id, {execute})`, backing the existing
+  `deleteWorkItem: 'partial'` capability flag: `execute:false` returns the redacted DELETE
+  descriptor and sends nothing, `execute:true` performs the standard (recoverable) delete.
+  Permanent destroy is structurally impossible — no `destroy` option exists in the
+  signature, and the id is validated to a positive integer before the URL is composed, so
+  no input can put `destroy=true` on the route; the adapter tests assert exactly that.
+
+- **Two flow scripts on the tracker layer** — estimation and test design get the same
+  bundled-script mechanics bug filing got in 0.19.0, with zero new adapter surface:
+  - `skills/task-estimation/scripts/create-tasks.js` — reads the current sprint's User
+    Stories (WIQL `@CurrentIteration('[<project>]\<team>')`, `--team` as a run-only
+    override) or named IDs, scans for existing `[Testing]` children, then validates a task
+    spec fail-closed (story really is a User Story, iteration/area inherited fresh from
+    the story — never trusted from the spec, `[Testing] ` title prefix, finite positive
+    estimates, assignee never invented, `Activity=Testing` checked against the project's
+    real field cache, one server-side `validateOnly` probe) and — only behind `--execute`
+    — creates the tasks, one atomic create per task with the parent link inline (an
+    unparented `[Testing]` task cannot exist), behind an exact per-write ledger.
+  - `skills/test-design/scripts/create-cases.js` — reads a story for AC analysis, then
+    validates a case spec fail-closed (duplicate-title check against the board that fails
+    CLOSED when it cannot complete, in-spec title uniqueness, structured
+    `{type, text, expected}` steps) and builds the `Microsoft.VSTS.TCM.Steps` XML itself
+    (IDs from 2 incrementing by 1, escaping, the empty second `parameterizedString` — the
+    quoting/8191-char command-line failure classes die in tested code); `--execute`
+    creates one atomic Test Case per case with the `Microsoft.VSTS.Common.TestedBy-Reverse`
+    link inline, so an unlinked or wrongly-linked case cannot exist. Same ledger.
+  - Both: one JSON line, exit 0/1/2, dry-run default, offline sibling tests via the
+    injected-fetch seam, PAT from `.env` into the Authorization header only.
+- `references/tracker/ado-boards.md` — REST-flavored shared boards knowledge (field
+  reference names, WIQL + the `@CurrentIteration` team-name gotcha, relation directions,
+  the Test-Case no-delete constraint), replacing the az-flavored reference.
+- **Two discipline evals** — `discipline-estimation-one-gate`,
+  `discipline-test-design-one-gate` — one per flow's new consolidated-approval rule;
+  recorded as authored, pending the release run on the installed build.
+
+### Changed
+- **`/estimate-story` and `/design-test` are one gate, fail-closed, and ledger-accounted —
+  and no longer need the Azure CLI at all.** Estimation's per-story confirmations and
+  test-design's free-standing condition-table round consolidate into ONE screen per flow:
+  all reads and validation first with zero board writes, at most one bundled question
+  round for genuinely unresolvable inputs, then the validated content plus the exact
+  write plan on a single screen and ONE approval before `--execute`. The per-story
+  analysis (factor counts → complexity bucket → the 5-task hours) and every documented
+  outcome — 5 `[Testing]` tasks per story with iteration/area/Activity/estimates and the
+  parent link, titled test cases with Steps XML and Tested By links, the coverage table —
+  are unchanged; the coverage table's facts now come from the ledger plus a fresh story
+  read instead of agent memory. The manual `AZURE_DEVOPS_EXT_PAT` shell export dies with
+  the transport (the legacy name still resolves from `.env` for users who kept it).
+- `skills/test-design/references/test-case-mechanics.md` rewritten for the script surface:
+  spec shape, Steps-XML doctrine as the script builds it, link-direction facts; all az
+  command blocks and the file+`$STEPS` trick removed.
+- **Recommended permissions trimmed** (`settings.example.json`): the `Bash(az boards:*)`,
+  `Bash(az devops:*)`, `Bash(az extension:*)` allows and the `Bash(az boards work-item
+  delete:*)` ask are gone — no tracker flow issues `az` anymore, so the remaining az rules
+  serve only the azure-integration skill (the Azure resource plane, unchanged by this
+  release). Docs (`docs/azure-devops.md`, `docs/configuration.md`, `README.md`, the
+  scaffolded consumer README template) updated to match.
+
+### Fixed
+- **The setup wizard now saves what its Figma step collected.** Typing a Figma File Key
+  through the wizard and saving left `config/project.json` with the template's empty
+  `fileKey` — the next `ui-check:` step then had no file to fetch its baseline from. The
+  save path managed only the `azure` and `kb` blocks; the Figma answers were prefilled on
+  a re-run and then silently dropped on every save (only the token *value*'s path to
+  `.env` worked). The block is now written like the others — mirror-the-screen, in the
+  documented `{ "fileKey": ..., "token": { "envSecret": ... } }` shape, with the
+  `FIGMA_TOKEN` fallback db/api already had. Caught deterministically by the first live
+  release-gate run (`verify-wizard.js`, defect W2); the other three optional groups were
+  audited for the same gap — Azure DevOps and Knowledge Base ride the managed-block
+  writer, DB and API ride the environment-file writer — Figma was the only orphan.
+- **Angle-bracket text in a field hint renders instead of vanishing.** Hint text was
+  interpolated raw into `innerHTML`, so the browser parsed the Figma hint's literal
+  placeholder — `figma.com/design/<FILE KEY>/...` — as an HTML tag and swallowed it,
+  hiding the one token the hint exists to explain (first live gate run, defect W1). All
+  three hint injection points (standard fields, the read-only environment name, secret
+  defaults fields) now escape, and the ui tests pin an angle-bracket placeholder
+  rendering literally at each of them.
+### Removed
+- `references/tracker/ado-boards-cli.md` (az-flavored; kept in 0.19.0 explicitly "retired
+  by Phase 2") — superseded by `references/tracker/ado-boards.md`. No `az` invocation
+  remains anywhere in the task-estimation or test-design surface.
+
+## [0.19.0] — 2026-08-26
+### Added
+- **A provider-neutral tracker layer** (`scripts/lib/tracker/`) — resolution
+  (`resolveTracker`, fail-closed on no/many/unsupported providers), a `WritePlan` ledger
+  (declared intents, first failure stops, no retry/no cleanup, IDs of completed steps
+  survive a later throw), a per-project field-metadata cache
+  (`.agentex/cache/tracker-fields-ado.json`, schemaVersion-stamped, gitignored by default
+  with a documented `!.agentex/cache/` commit opt-in, `--refresh-fields` to rebuild), and
+  an **Azure DevOps REST adapter** over Node's built-in fetch: work-item show/WIQL/create
+  (with server-side `validateOnly`)/patch, attachment upload, field metadata with
+  `$expand=allowedValues`, test-plan suites/cases/points, suite-entries add, and test
+  runs/results. Capability flags (`validateOnly`, `attachments`, `testPlans`/`testRuns`,
+  `relations`, `dialect`, `query`) are shaped so a future Jira adapter (plain-JSON
+  dialect, JQL, no test-plan APIs, no Tested-By) fits without interface rework — a
+  provider gap is detected and told to the user, never silently substituted. Zero runtime
+  npm dependencies; every module carries a sibling offline test with an injected fake fetch.
+- **Three bug-filing discipline evals** — `discipline-bug-filing-one-gate`,
+  `discipline-bug-filing-ledger`, `discipline-bug-filing-cache-refresh` — one per new
+  user-visible rule; recorded as authored, pending the release run on the installed build.
+
+### Changed
+- **Bug filing is one gate, fail-closed, and ledger-accounted — and no longer needs the
+  Azure CLI at all.** The old flow forced 7 mandatory interactions (max 10) and ~10–12
+  `az` process launches per filing; the PAT only reached `az` if the user remembered a
+  manual `AZURE_DEVOPS_EXT_PAT` export (the likely root of the reported field failures);
+  custom picklists were never pre-validated; a post-create failure hid the orphan bug's
+  ID; and the duplicate check failed OPEN. Now `bug-report-azure` collects and validates
+  everything first with zero board writes — parent story really is a User Story, the
+  duplicate check **fails CLOSED**, severity/priority/custom picklists check against the
+  **project's real values** (a stale cache rejection surfaces the live options with
+  `cacheStale: true`), screenshots keep the two-pass evidence gate, and the server
+  pre-validates the create — then shows ONE consolidated screen (validated fields + the
+  exact write plan) and takes ONE approval. Writes run in a fixed fail-closed order
+  (attachments → create → parent link → ReproSteps/evidence patch) behind an exact
+  per-write ledger: done with ID + URL or not-done with the reason, created IDs always
+  reported, nothing retried, no cleanup without the user. The PAT is read from `.env` by
+  the scripts themselves and sent only in the Authorization header. Windows quirks die
+  with the transport: no more cmd.exe quoting/@tempfile passing, no 8191-char
+  command-line ceiling on repro HTML, no `PYTHONIOENCODING` workaround.
+- **Test-case mechanics moved home.** `testplan.js` now lives with the skill that owns
+  test cases — `skills/test-design/scripts/` — rebuilt directly on the tracker layer (no
+  move-then-rewrite); bug filing invokes it cross-skill for create-case / fail with the
+  same ledger guarantees (an orphaned Test Case or a run left InProgress is a named
+  ledger line, never a silent state). The shared ADO boards CLI reference moved out of
+  the Azure *resources* skill to the new plugin-root `references/tracker/ado-boards-cli.md`
+  (consumers: task-estimation and test-design, which still drive `az` until their own
+  migration); `azure-integration` now covers only the Azure resource plane. Every path
+  that pointed at the old homes was re-pointed; `/estimate-story` and `/design-test`
+  behavior is unchanged.
+- **Scaffold/migration:** `.gitignore` gains `.agentex/cache/` (a cache, safe to delete,
+  rebuilt on demand); the existing m05 picks it up on legacy projects and never re-adds
+  the ignore line over a user's `!.agentex/cache/` commit opt-in.
+
+### Removed
+- `skills/bug-report-azure/scripts/_lib.js` (the az process launcher: `shQuote`,
+  `@tempfile` arg passing, the cmd.exe `%VAR%` expansion guard, hardcoded
+  severity/priority tables) and the old az-based `testplan.js` — superseded by
+  `scripts/lib/tracker/` and the rebuilt scripts. No `az` invocation remains anywhere in
+  the bug-filing surface.
+
+### Credits
+- Pattern harvest from **PR #16** (closed with credit, not merged): the `validateOnly`
+  create pattern, the `uploadAttachmentBinary` and `patchWorkItem` fetch shapes, the
+  `resolvePat` pattern (env order inverted to put the scaffolded `AZURE_PAT` first), the
+  ledger's done/not-done messages, and the list-picklist semantics that became the
+  field-cache builder.
+- **PR #4** and **PR #11** (closed with credit, not merged): Jira operation semantics and
+  field mappings, recorded as design input for the Phase-3 Jira adapter.
+
+## [0.18.0] — 2026-08-25
+### Added
+- **A flake is reported, not retried away.** Nothing in the execution path said what to do
+  when a scenario failed for a reason that had nothing to do with the app, so the call was the
+  executor's to improvise — and both improvisations are harmful: a silent retry turns an
+  intermittent defect into a green tick, and a defect filed against a network blip sends the
+  tester after a bug that was never there. The browser-testing skill now carries a **Flake
+  doctrine**, and `references/playwright-cli.md` a symptom list that separates "the app never
+  answered" (retry once, that scenario only, from a clean state) from "the app answered and the
+  answer was wrong" (a defect — never retried). A scenario that only passed on its one retry is
+  **FLAKY**: out of the pass/fail tally, named in the tally line, reported under its own
+  *Unstable results* heading with both attempts' evidence and the attempt-1 symptom verbatim,
+  and kept out of `bugs/bug-list.md` because nothing is proven yet. The same app failure twice
+  is a FAIL reported as reproduced on 2 of 2 attempts; the same infrastructure symptom twice is
+  BLOCKED. `flaky` became a first-class status in `extent-report.html` — own color, stat card,
+  donut segment, and a rollup that can never read green — and the orchestrator may not
+  re-dispatch an executor to obtain a cleaner report, which is the same silent retry one level
+  up.
+- **The Setup Wizard speaks English.** The schema had carried `titleEn`/`labelEn` twins that
+  nothing ever read, so a tester who does not read Arabic faced ~190 strings of Arabic-only UI
+  with no way out of it. Every string now renders through `L(ar, en)` (the page's own copy) or
+  `loc(obj, key)` (anything the schema supplies), with an EN/ع toggle in the header that redraws
+  the current screen without losing what was typed, remembers the choice, and sets `lang`/`dir`
+  so the layout reads the right way — four RTL-only CSS rules became logical properties. Arabic
+  is still the boot default, so an existing tester sees exactly the wizard they had.
+  `node scripts/wizard/server.js --lang=en` (or `/setup?lang=en`) opens it in English directly,
+  and `/init-test` now addresses the user in whatever language they have been using instead of
+  one hardcoded Arabic line. Twelve schema strings that had no English twin were written, and
+  three new guards make a one-language string a test failure: every Arabic-bearing schema string
+  must have a non-empty twin, every `L()` call must carry both sides, and the English copy of
+  every screen must still be present.
+
+### Fixed
+- **A Figma rate limit no longer costs the tester every ui-check in the run.** A parallel
+  regression is two Figma calls per `ui-check:` step, so a 19-step sweep fired 38 at once and
+  the limiter answered 429 — a status `fetch_baseline.js` had no branch for, so all 19 checks
+  BLOCKED on designs that had not changed in weeks. 429 and 5xx are now retried (`Retry-After`
+  honoured, then exponential, plus jitter so 19 callers do not come back in the same instant
+  and earn the same 429), and every successful fetch leaves a copy in `test/.ui-baselines/`,
+  keyed on file key + node + scale with a sidecar carrying the dimensions, node identity and
+  variants. That cache is a **fallback, never a first choice**: the live design is always
+  fetched first, because a cache read that quietly stood in for a design that HAD moved would
+  produce a confident wrong PASS — worse than any BLOCKED. So it is read only after a
+  transient failure, never on a 403 or a 404 (broken config has to stay visible), never past
+  the 7-day ceiling (`--cache-max-age-days`, and `--no-cache` turns it off), and never
+  silently: a fallback emits `cached: true`, `cachedAt` and a reason, the skill requires that
+  caveat in the step report, a conforming result is PASS + warning rather than a clean PASS,
+  and a deviation names the cache date so nobody files a design *change* as a defect.
+- **`/define-flow` no longer edits the file it was given.** Walkthrough mode forbade
+  rewriting the user's spec and then instructed writing a note into it — invariant #11 with a
+  hole in the middle, next to an ambiguous "the recorded step" that made reaching for the
+  original the easy read. A definition session now writes exactly two things: its draft in the
+  transient scratch, and the new spec file confirmed at ASSEMBLE. The cross-reference line
+  keeps its value as an *offer* — the one line that may ever be added to an original, and only
+  after the user says yes; a no is a complete outcome, and both paths are named either way.
+- **`/optimize-login`'s session check actually runs on a QA machine.** `session.js` required
+  `playwright` bare, which resolves through the PLUGIN's install directory — so a project
+  that had run `npm i -D playwright` still got `Cannot find module` with a stack, curable
+  only by a `NODE_PATH=` prefix buried in one doc line. It now resolves the package from the
+  project (working directory upwards, monorepo hoists included, `NODE_PATH` still honoured)
+  and, when it genuinely is missing, prints the install command instead of a resolver stack.
+  It also hardcoded `channel: "chrome"`, demanding a Google Chrome install on machines where
+  `npx playwright install chromium` had already provided a browser; the bundled Chromium is
+  now the default, with `--channel` / `PLAYWRIGHT_CHANNEL` to opt into a real browser and no
+  silent substitution when the one you asked for will not launch. New `--headed` flag.
+  `preflight.js` probes the package the same way now, next to `playwright-cli`, so a missing
+  library shows up as a preflight line instead of as a resume that dies mid-run.
+- **A failed session resume no longer leaks a browser.** Only the landmark check closed the
+  browser it had launched, so a bad URL, a navigation timeout or any context error left a
+  headless browser running for the rest of the run — one per attempt, noticed as memory
+  rather than as an error. Everything past launch now closes on the way out, and a missing
+  state file is reported before a browser is started at all. Covered by a new
+  `session.test.js` (16 cases) that fakes the browser, so it runs with no browser installed.
+- **Logging in is the job, not a forbidden action.** The executor agent carried the rule
+  "skip auth-gated actions: no real signup / login / checkout" while the rest of the plugin
+  handed it test users, `defaults.password`, an `/optimize-login` skill and a `login.mode`
+  setting — so an executor that read its own instructions literally skipped every scenario
+  behind a login, which is most of them. The rule now says what is actually off limits
+  (creating an account, completing a payment or any other irreversible transaction, real
+  personal data) and names logging in with a configured test user as expected work; a spec
+  naming a user the active environment does not define is BLOCKED, never improvised.
+- **`login.mode` reaches the run that needs it.** The wizard collected it and
+  `config/project.json` stored it, but no reader in the run path ever looked at it, so
+  choosing "reuse the saved session" changed nothing. The orchestrator now resolves it
+  alongside the environment (absent → `fresh`) and injects it into every executor as
+  `LOGIN_MODE`, and the executor knows both branches. The wizard also wrote `"per-test"`
+  where every doc and template said `"fresh"`; new projects get `"fresh"` and the old
+  spelling keeps working as a synonym.
+- **Saved login sessions are gitignored for real.** A Playwright storage-state file is a live
+  bearer token, and the docs called `test/.auth/` "gitignored by convention" — but the only
+  entry `/init-test` ever wrote was `.env`, so on every scaffolded project a `git add -A`
+  after an `/optimize-login` run committed a working session. The shared scaffold action now
+  ensures three entries — `.env`, `test/.auth/`, `.playwright-cli/` — appending only what is
+  genuinely missing (a project already ignoring one under any common spelling keeps its own
+  line), and migration **m05** (renamed `gitignore-env` → `gitignore-secrets`) backfills them
+  into existing projects.
+- **Spec files named in a non-Latin script get usable session names.** A session label is a
+  spec file name, and sanitizing it to ASCII left nothing at all for an Arabic or CJK title —
+  every such label collapsed to `-`, so a whole suite ran as `-`, `-2`, `-3` and the session
+  name (which is also the screenshots/logs folder) no longer said which spec had failed.
+  `init_run.js` now falls back to `spec<n>-<digest of the label>` — distinct per spec, stable
+  across runs — trims leading/trailing separators from sanitized names, and echoes the label as
+  given back on each session (`sessions[name].label`) so the report can print the spec's real
+  title next to its ASCII session. Covered by a new `init_run.test.js`.
+- **m03 env-split no longer resolves alias collisions by file order.** Six legacy names mean
+  `portalUrl` and two mean `db.name`; when two of them held different values and the JSON
+  field was unset, the first line in the .env won, the second was reported as "JSON wins over
+  .env <KEY>" — about a value that had just been written from the .env in that same run — and
+  its line was then deleted, discarding a value the tester had set. Entries are now grouped by
+  target: agreement carries once and removes every alias, disagreement is left completely
+  untouched (nothing written, no .env line removed) and raised as a `[manual]` item naming the
+  colliding keys, which withholds the version stamp until the tester picks.
+- **`settings.example.json` now matches what a run actually issues.** It allowed no `node`
+  command while the plugin does all its non-browser work through nine bundled `node` scripts
+  (a permission prompt at every one of them); `Bash(npm install *)` never matched anything
+  (prefix rules need `:*`); `Edit(./src/**)` left `Write`/`MultiEdit` free to reach the same
+  files; `Bash(rm -rf:*)` was defeated by `rm -fr` and by Windows `Remove-Item`; and `curl`/
+  `sqlcmd` were pre-approved rather than prompted. Secret reads (`.env`, `*.pem`, `*.key`,
+  `*.pfx`, `id_rsa*`, `.npmrc`, `test/.auth/`) are now denied, destructive git and delete
+  commands are denied per spelling, and a `//notes` block explains each choice plus the two
+  entries a tester must adapt. [docs/configuration.md](docs/configuration.md) no longer
+  claims protections the file did not have.
+
+## [0.17.0] — 2026-08-17
+### Added
+- **Customizable test-user fields — one shared, consumer-owned field schema.** The wizard's
+  fixed user field set (phone/email/role/notes) and fixed defaults pair (password/OTP) are
+  now descriptor arrays in the consumer's `config/project.json` (`userFields` +
+  `defaultsFields`): defined once, shared across ALL environments — every user's form in
+  every environment shows the same fields; only *values* are per-environment. A field-set
+  editor affordance (users page + defaults section, never a step) adds, renames, removes,
+  marks secret, and reorders fields: a **rename** migrates the key in every environment
+  file in one batch save (riding the multi-environment save-all); a **removal** is
+  consented with its blast radius (the environments holding values under the key) and both
+  appear in the review's operations list. Removed/renamed-away keys are the one exception
+  to the unknown-prop preservation rule — every other hand-added property still survives
+  (invariant #11). A custom field can be **marked secret**: the wizard renders the
+  established env-var-NAME + value pair (prefill `USER_<HANDLE>_<KEY>` per user,
+  `DEFAULT_<KEY>` per defaults entry), the file stores `{ "envSecret": "NAME" }` and the
+  typed value goes only to `.env` (invariant #5) — never to JSON, logs, or the review
+  (names-only summary). The account **handle stays required and fixed** — it keys the
+  `users` object and specs reference it. Engine/UI/server are schema-driven end to end
+  (`buildUsers` whitelist removed); the save validates descriptor arrays (key pattern,
+  uniqueness, reserved `handle`, `text|email|number|url` type vocabulary) and refuses
+  invalid `envSecret` names in user/defaults entries. First-time users who customize
+  nothing get exactly the historical built-in set; the effective arrays are always written
+  back to `config/project.json` (explicit round-trip, no hidden divergence).
+- **Migration m11 `user-field-schema`** — backfills the built-in `userFields`/
+  `defaultsFields` arrays into an existing `config/project.json` that carries none
+  (m09-style: additive, idempotent, only the missing array is added, a customized schema
+  is never rewritten, environment files and user values are never touched). The
+  `config/project.json` template ships the same arrays for fresh scaffolds.
+- **Multi-environment wizard — one session manages every environment.** The setup wizard
+  now shows all environments (on disk or added this session) on a new environments-manager
+  page that opens the environment group, with state badges (on disk / new / edited /
+  default) and explicit controls. Add asks interactively whether to start blank or copy
+  **safe sections** from an existing environment — test-user values and defaults values
+  only; connection targets (portalUrl, db, api) are never offered and never inherited.
+  Rename and delete — the wizard's first destructive capability — sit behind double
+  consent (a confirm dialog naming the exact file operation, then the review step's
+  operations list) and execute only through the one batch save: `/api/save` takes every
+  dirty/new environment plus explicit `ops` (each carrying `confirmed: true`), validated
+  whole by the engine's `planSave` — un-consented ops are refused, rename sources and
+  deletes must name files the project actually has, collisions and path escapes are
+  refused, at least one environment must remain after all ops, and the final
+  `defaultEnvironment` must name a post-save file (invariant #10 extended over the
+  rename/delete arithmetic); the response echoes every file op performed. Renaming the
+  default updates `defaultEnvironment` inside the same confirmed save; deleting the
+  default requires designating a new one in the same dialog; adding never re-points it
+  (first-configured-claims-default unchanged). The environment-name field is now a
+  read-only label whose one rename affordance routes through the confirm dialog — the
+  accidental type-a-new-name fork is gone. Editing prefills from each environment's own
+  file and merges back onto it, now including per-user entries (hand-added user
+  properties survive a save — invariant #11). On a 2nd+ environment the db/api
+  env-var-name fields prefill a suffixed suggestion (`API_TOKEN_UAT`) so two environments
+  don't silently share one `.env` secret slot. `/api/config` enumerates every
+  environment (unreadable files are flagged and excluded from editing; pristine samples
+  are reported by name only, never as editable data); the legacy single-environment save
+  payload is still accepted.
+- **Knowledge Base wizard page** — the `kb` block of `config/project.json` was buildable
+  by the engine and fillable by text import, but had no page. A new optional project-group
+  page collects `kb.baseUrl` + `kb.project`, and the KB Ask API key goes to `.env` under
+  the fixed `KB_ASK_API_KEY` name that `ask_kb.js` reads (secret field, never written to
+  JSON, never shown).
+- **Migration m10 `phantom-sample-env`** — detects a pristine leftover sample sitting
+  under a non-default name beside a real environment (all three conditions must hold; a
+  lone pristine sample on an unconfigured project is legitimate scaffolding) and emits a
+  `[manual]` offer that withholds the version stamp. Removal happens only through the
+  consented re-run `node scripts/migrate.js --remove-phantom-sample` — the engine's first
+  consent-flag (`ctx.flags`) — never silently; renaming the file or changing any value in
+  it (claiming it) also clears detection. `/update-agentex` relays the offer and re-runs
+  the engine with the flag only after explicit user confirmation.
+
+### Changed
+- **Wizard pages map one-to-one to config files.** The setup wizard's steps are reordered
+  into two labeled, contiguous groups that mirror the config model instead of interleaving
+  it: first the project group (Project Basics → Azure DevOps → Figma → Knowledge Base, all
+  writing `config/project.json`), then the environment group (Environment → Test Users →
+  Database → API, all writing `environments/<name>.json`), then review. Every card head
+  carries a monospaced target-file chip naming the ONE file that page writes (live-updating
+  with the environment name); the steps track shows the group labels. The environment-name
+  field moved off the first page to the top of the environment group — naming the file is
+  the first act of environment configuration, not a project setting — and its answer key is
+  renamed `defaultEnvironment` → `envName` everywhere (schema, engine, text-extraction
+  labels, UI). `project.json.defaultEnvironment` remains derived output only
+  (first-configured-claims-default, unchanged). The review step is schema-driven — one tab
+  per file-keyed output, a names-only `.env` keys summary (values never shown) — and its
+  reconciliation notice now enumerates **every** pristine sample the save will remove
+  (`/api/config` reports the full `pristineSamples` list, the same scan the save uses),
+  not just the one under the default name. Prefill/preserve semantics (invariant #11) are
+  untouched: only where fields appear changed, never what saving preserves.
+- **Default environment name is `qc` (was `qa`)** — still a prefilled, freely editable
+  default, not a presumption, and now one shared constant (`DEFAULT_ENV_NAME` in
+  `scripts/wizard/engine.js`, required by `server.js` and `migrate.js`, mirrored by the
+  schema default/placeholder and the `ui.html` fallbacks). The sample template is
+  `templates/environments/qc.json`; legacy migrations on projects without a
+  `config/project.json` now create `environments/qc.json`.
+
+### Fixed
+- **Environment name integrity — no phantom sample environment.** The scaffold used to
+  copy the sample environment unconditionally, so a wizard save under any other name left
+  it behind as a never-configured environment that runs could silently resolve against.
+  The sample is now copied only when `environments/` has no environment files at all (one
+  rule shared by `/init-test`, its re-runs, and m07 fill-gaps); the wizard's save
+  reconciles away a differently-named sample that is *structurally pristine* — identical
+  to a sample shape the plugin ever shipped, i.e. zero user values — listing the removal
+  on the review step first and echoing it in the save response (`reconciled: [...]`);
+  `/api/config` reports pristine scaffolding (`samplePristine`/`projectPristine`) instead
+  of prefilling it as "your existing configuration". First-configured-claims-default: a
+  `defaultEnvironment` pointing at a pristine sample (or at no file) is scaffolding, so
+  the first environment the user actually configures claims it — and `/api/save` rejects
+  any save whose final `defaultEnvironment` would name no post-save file. A file that
+  differs from the sample in any value is user-touched: prefilled, protected, and never
+  reconciled.
+
+## [0.16.1] — 2026-08-14
+### Fixed
+- **Browser-session isolation across concurrent executions.** The shared playwright-cli
+  `default` session is now prohibited in every mode. Sequential runs and define-flow
+  sessions previously used it, so two executions on one machine — e.g. two Claude Code
+  windows — landed on the same browser and could kill each other's session. `init_run.js`
+  now generates each run's unique session names (label + time + random tag,
+  collision-checked against every existing execution; the label `default` is rejected),
+  sequential mode scaffolds its run folder before the first browser action, define-flow
+  generates its own unique session name, and teardown discipline is explicit everywhere:
+  an execution closes ONLY the sessions it created — `close-all` / `kill-all` never run
+  as part of an execution (a user-requested global cleanup is the only exception).
+  `settings.example.json` now gates `close-all` / `kill-all` behind an `ask` prompt.
+
+## [0.16.0] — 2026-08-13
+### Added
+- **`/define-flow` — guided flow definition.** The flow is defined by doing it, not by
+  writing it: an agent-led session proposes each step, executes it in a live browser the
+  moment the user agrees, and the user asserts the actual outcome before the next step is
+  defined. Forward-only correction, one sitting; values a step surfaces — and user-supplied
+  inputs that must be unique per run (e.g. a registration email) — are captured
+  symbolically / as fresh disposable data so fresh runs resolve them live; each confirmed
+  step is appended immediately to a scratch draft (a late crash loses nothing confirmed);
+  integration steps stay catalog-only; the
+  session writes no `executions/` evidence (only the offered validation run does). Output
+  is a normal natural-language spec (stateful chain, existing conventions) saved under the
+  project's suite folder and runnable unmodified via `/execute-test`. Pointing the command
+  at an existing spec walks it step by step, clarifies unclear steps with the user, and
+  saves the defined flow as a new file — the original gains only a top note pointing to it.
+- Eval cases `trigger-define-flow`, `discipline-define-flow-execute-before-next`,
+  `discipline-define-flow-forward-only`, `discipline-define-flow-symbolic-values`
+  (automated lane), plus a live-lane log in `evals/README.md` for manual define-flow
+  sessions against a public practice target.
+
+## [0.15.0] — 2026-08-13
+### Added
+- **`ui-check:` spec steps — design conformance inside test runs.** A scenario can now
+  assert "this screen matches the approved design" as an executed, evidenced step:
+  `ui-check: figma <node-id|frame URL>` or `ui-check: image <path>`, each with
+  `mode: exact` (every visible detail; no silent tolerance — suspected rendering noise
+  is confirmed with the user before any verdict) or `mode: reference` (only the
+  enumerated details can fail; layout drift is a warning). A new `ui-check` skill owns
+  the semantics; the bundled `fetch_baseline.js` resolves baselines deterministically
+  (Figma REST render downloaded before the short-lived URL expires, node-id
+  normalization, variant enumeration, structural image validation) and exits
+  OK/BLOCKED only — an unresolvable baseline is BLOCKED with a named reason, never
+  improvised. Same form factor is mandatory (mismatch = a named **view mismatch
+  error**, never PASS/FAIL); named viewports ship with defaults (desktop 1440×900,
+  tablet 768×1024, mobile 390×844), overridable via a `viewports` block. Both images
+  land in the run's evidence tree; a failed check files through the existing Azure bug
+  flow with baseline + actual attached. Docs: `docs/ui-check.md`.
+- **extent-report: first-class `warning` and `viewMismatch` statuses.** The
+  run-summary JSON contract widens from 5 to 7 statuses — own colors, pills, stat
+  cards, legend rows, and donut segments; coverage counts both as exercised. Backward
+  compatible: run-summary JSONs without the new keys render exactly as before.
+- **Figma config plumbing.** `config/project.json` template gains the `figma` block
+  (`{ "fileKey": "", "token": { "envSecret": "FIGMA_TOKEN" } }`), `.env.example` the
+  `FIGMA_TOKEN=` key, the setup wizard an optional Figma step, and
+  `scripts/migrations/09-figma-config.js` adds both to existing projects
+  additively/idempotently (house rule: scaffold-convention change ⇒ migration).
+- Eval cases: `trigger-ui-check` plus four discipline cases
+  (`blocked-baseline`, `view-mismatch`, `reference-mode`, `exact-noise`) with
+  schematic screenshot fixtures — no network needed.
+
+### Changed
+- Wizard UI polish: SVG logo mark (replaces the emoji glyph), real stepper
+  connector elements instead of the `::before` hack, intro layout/spacing cleanup.
+
+### Fixed
+- **bug-report-azure: untrusted text no longer touches the shell command line.** On
+  Windows `cmd.exe` re-parses the command string and expands `%VAR%` even inside
+  double quotes, so bug titles, area paths, assignees, etc. could break the `az` call
+  or leak secret environment variables. All untrusted values now reach `az` through
+  its native `@<tempfile>` argument mechanism — only an inert file path hits the
+  shell. Covered by new unit tests for `_lib.js`, `create-bug.js`, and `testplan.js`.
+
+## [0.14.0] — 2026-08-13
+### Added
+- **`/update-agentex` — project migration command.** Updating the plugin never
+  updated the consumer project; now one command migrates a project scaffolded by ANY
+  older version to the installed version's conventions. A bundled engine
+  (`scripts/migrate.js` + one state-detecting module per migration under
+  `scripts/migrations/`) does every file change deterministically: renames
+  `integrations/` → `integration/`, absorbs legacy `agentex.config.json` KB settings,
+  splits a keys-only `.env` into `config/project.json` + `environments/<env>.json`
+  (values carried into their new homes — never reset; secrets and unrecognized keys
+  stay in `.env` untouched), carries catalog `connection` blocks into the environment
+  `db` block (catalogs themselves only flagged), ensures the `.gitignore` entry and
+  `CLAUDE.md` bullet, fills missing scaffold pieces, and flags spec-convention drift
+  without ever rewriting user specs or old `executions/` runs. Apply-then-report;
+  clean git tree required (git is the rollback; the gitignored `.env` is rewritten
+  loss-proof by writing JSON homes first); idempotent (second run: zero writes,
+  "already up to date"); an interrupted run is completed by committing (or
+  git-restoring) the partial state and re-running.
+- **Version stamp** `.agentex/version.json` — written by `/init-test` at scaffold
+  time and refreshed by every migration; stamp-less legacy projects are inferred
+  from their files on first run.
+- Eval case `discipline-update-agentex-relay` — the agent must run the engine, relay
+  its report, hand-edit nothing, and print no secret values.
+- Contributing rule: any PR changing scaffold conventions must ship a
+  `scripts/migrations/` module (see `docs/contributing/conventions.md`).
+
+### Changed
+- `scripts/init.js` now delegates to the shared scaffold library
+  (`scripts/lib/scaffold.js`) and stamps `.agentex/version.json` on first scaffold;
+  the wizard's legacy `.env` key mapping moved to `scripts/lib/env_key_map.js`,
+  shared with the migrator. No behavior change to scaffolding itself.
+
+### Fixed
+- Wizard test suite no longer launches a real browser on every run: `server.js`
+  gained a `--no-open` flag and `server.test.js` always passes it. The `/init-test`
+  user flow is unchanged (browser still opens for the human).
+- README version badge tracks releases again (was stuck at 0.8.1).
+
+## [0.13.0] — 2026-08-12
+### Added
+- **Behavioral eval suite** — new `evals/` folder with 9 cases in three families
+  (trigger / negative / discipline), each as `prompt.md` + `graders/*.md`, with
+  self-contained fixture projects for the db/api catalog-discipline cases. Layout follows
+  `claude plugin eval` (early access); until it unlocks, cases run manually via fresh
+  subagents — the 2026-08-12 baseline results are recorded in `evals/README.md`.
+
+### Changed
+- **Setup wizard rework** — 7-step flow: file import (BRD/PDF/Word) moved off the numbered
+  steps to a dedicated screen; imported test users merge by handle instead of clobbering
+  the list; environments can be added in isolation without changing the project default;
+  per-step localized validation (environment/env-var names, at least one test user);
+  secrets are written under the env var name the user chose; review & save reflects the
+  screen exactly; the UI locks into a terminal done state after save; binary uploads are
+  refused honestly with no temp-file litter.
+
+### Fixed
+- **`bug-report-azure` skill was undiscoverable at runtime** — its frontmatter description
+  contained an unquoted `: `, so YAML parsing failed and the skill loaded with empty
+  metadata (silently invisible in v0.12.0). Description is now quoted;
+  `claude plugin validate` passes.
+- **`/ask-kb` command loaded with empty metadata** — same unquoted-`: ` frontmatter issue
+  in its description; now quoted.
 
 ## [0.12.0] — 2026-08-06
 ### Added

@@ -2,7 +2,7 @@
 
 **Agentic QA for Claude Code — an agent plans, runs, and reports your tests so you don't click through them by hand.**
 
-[![Version](https://img.shields.io/badge/version-0.8.1-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.23.0-blue.svg)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-8A2BE2.svg)](https://docs.anthropic.com/en/docs/claude-code)
 [![Playwright](https://img.shields.io/badge/Playwright-CLI-2EAD33.svg?logo=playwright&logoColor=white)](https://www.npmjs.com/package/@playwright/cli)
@@ -32,15 +32,17 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 
 | Feature | How it works | Docs |
 |---------|--------------|------|
-| **Browser testing** | An agent plans scenarios, drives a real `playwright-cli` browser, screenshots each one, and reports defects — sequential (approve each step) or parallel (one `qa-executor` subagent per spec file). | [browser-testing](./docs/browser-testing.md) |
+| **Test execution** | An agent plans scenarios and runs each step through its driver — a real `playwright-cli` browser, your APIs, or your database (API/DB-only specs need no browser) — capturing evidence and reporting defects, sequential (approve each step) or parallel (one `qa-executor` subagent per spec file). | [test-execution](./docs/test-execution.md) |
+| **Define flow** | `/define-flow` builds a spec by doing it: an agent-led session proposes each step, executes it live the moment you agree, and you assert the real outcome before the next step — the saved spec follows the normal conventions and runs unmodified via `/execute-test`. Point it at an existing spec to walk it through and clarify it. | [define-flow](./docs/define-flow.md) |
 | **Mobile testing** | Same flow for native Android/iOS apps, driven through a real [Appium](https://appium.io/docs/en/latest/) session (raw WebDriver REST or a bundled `webdriverio` wrapper) — sequential or parallel (one `mobile-qa-executor` subagent per spec file, per device/emulator). | [mobile-testing](./docs/mobile-testing.md) |
 | **API & DB steps** | `api:` / `db:` scenario steps run **only** the named, parameterized requests/queries in your `integration/` catalog — the agent never composes its own SQL or HTTP; DDL is refused. | [api-db-steps](./docs/api-db-steps.md) |
 | **Ask the KB** | `kb:` steps (or `/ask-kb`) query your project's KB Ask API for advisory context — informs testing, **never** used as PASS/FAIL evidence. | [ask-kb](./docs/ask-kb.md) |
+| **UI check steps** | `ui-check:` scenario steps compare the live page against a design baseline — a Figma frame (identifier only; file + token configured once) or a screenshot — in `exact` or `reference` mode; verdicts, warnings, and view-mismatch errors land in the reports with both images as evidence. | [ui-check](./docs/ui-check.md) |
 | **Optimize login** | Pay a web app's login once per session: drive it live, verify by landmark (never by URL), save the browser session, and reload it into a fresh browser to continue. | [optimize-login](./docs/optimize-login.md) |
-| **Azure DevOps planning** | `/estimate-story` estimates QA effort and creates 5 `[Testing]` tasks per story; `/design-test` turns story ACs into linked test cases — both via the `az` CLI, with confirmation. | [azure-devops](./docs/azure-devops.md) |
-| **Azure DevOps bug filing** | After a run, `bug-report-azure` files found defects as ADO **Bugs** via the `az` CLI — recommends severity/priority, links each to its parent User Story, validates & attaches screenshots, optionally fails the related test case; all behind one confirmation. | [azure-devops](./docs/azure-devops.md) |
+| **Tracker planning (Azure DevOps or Jira Cloud)** | `/estimate-story` estimates QA effort and creates 5 `[Testing]` tasks per story (Jira: sub-tasks with time tracking); `/design-test` turns story ACs into linked test cases (Jira has no native Test Case type — you choose what to create) — both through bundled scripts over the tracker REST API (no `az`, no `acli`), validated fail-closed first, with **one** consolidated approval per flow. | [azure-devops](./docs/azure-devops.md) · [jira](./docs/jira.md) |
+| **Tracker bug filing (Azure DevOps or Jira Cloud)** | After a run, `bug-report-azure` files found defects as tracker **Bugs** through the same bundled scripts — recommends severity/priority, validates every field against your project's real values, links each bug to its parent User Story, validates & attaches screenshots, optionally fails the related test case (ADO); all writes behind **one** approval, with an exact per-write ledger if anything fails partway. | [azure-devops](./docs/azure-devops.md) · [jira](./docs/jira.md) |
 | **HTML report** | At the end of a run, generates a standalone, self-contained `extent-report.html` dashboard (donut chart, status cards, expandable per-test-case steps). | [extent-report](./docs/extent-report.md) |
-| **Configuration** | Three homes, one each: `config/project.json` (project settings), `environments/<env>.json` (targets, users, integrations), and a secrets-only `.env` — legacy keys-only `.env` projects still work untouched. | [configuration](./docs/configuration.md) |
+| **Configuration** | Three homes, one each: `config/project.json` (project settings), `environments/<env>.json` (targets, users, integrations), and a secrets-only `.env` — legacy keys-only `.env` projects still work untouched. After a plugin update, `/update-agentex` migrates a project to the new conventions, carrying your values. | [configuration](./docs/configuration.md) |
 
 See [docs/](./docs/) for the full reference on any feature.
 
@@ -55,10 +57,12 @@ Run a parallel regression against https://example.com from the specs in test/sui
 
 # Slash commands:
 /execute-test https://example.com
+/define-flow https://example.com     # build a spec step by step, executing each step live
 /execute-mobile-test suite1
 /estimate-story 12345 12346
 /design-test 12345
 /ask-kb acme-store: how does the checkout flow work?
+/update-agentex        # after a plugin update: migrate this project to the new conventions
 ```
 
 Every run writes to a timestamped `executions/execu_<timestamp>/` folder — `report.md`,

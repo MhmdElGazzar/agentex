@@ -1,0 +1,10 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+name: discipline-ui-check-blocked-baseline
+tags: [discipline, ui-check]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .

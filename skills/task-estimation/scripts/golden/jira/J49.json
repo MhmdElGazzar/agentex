@@ -1,0 +1,200 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}",
+    "--execute"
+  ],
+  "code": 1,
+  "out": {
+    "ok": false,
+    "mode": "executed",
+    "ledger": [
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Requirement Review\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-101",
+        "url": "https://example.atlassian.net/browse/PROJ-101"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Requirement Review\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-101",
+        "url": "https://example.atlassian.net/browse/PROJ-101"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Creation\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-102",
+        "url": "https://example.atlassian.net/browse/PROJ-102"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Test Creation\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "failed",
+        "reason": "updateWorkItem failed: HTTP 400 — timetracking: Field cannot be set (https://example.atlassian.net/rest/api/3/issue/PROJ-102)"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Execution\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Test Execution\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Bug Review and Retest\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Bug Review and Retest\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Automation\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Automation\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Requirement Review\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Requirement Review\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Creation\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Test Creation\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Execution\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Test Execution\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Bug Review and Retest\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Bug Review and Retest\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Automation\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Automation\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "not-attempted"
+      }
+    ],
+    "created": {
+      "tasks": [
+        {
+          "id": "PROJ-101",
+          "url": "https://example.atlassian.net/browse/PROJ-101",
+          "storyId": "PROJ-1",
+          "title": "[Testing] Requirement Review"
+        },
+        {
+          "id": "PROJ-102",
+          "url": "https://example.atlassian.net/browse/PROJ-102",
+          "storyId": "PROJ-1",
+          "title": "[Testing] Test Creation"
+        }
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-jira.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/user/search?query=qa.engineer%40example.com",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes?maxResults=100",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-3?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes/10002?startAt=0&maxResults=100",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND issuetype = \\\"Sub-task\\\" ORDER BY created DESC\",\"fields\":[\"summary\"],\"maxResults\":1}"
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-77/editmeta",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Requirement Review\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 1h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-101",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"1h\",\"remainingEstimate\":\"1h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Test Creation\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 2h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-102",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"2h\",\"remainingEstimate\":\"2h\"}}}"
+    }
+  ]
+}

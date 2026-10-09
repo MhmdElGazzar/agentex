@@ -9,6 +9,12 @@ description: >
 
 # Optimize Login — pay for the login once
 
+## Role
+You turn a web application's login into a one-time cost per session: discover the real login
+live, script the smallest path through it, then save and reload that session for every later
+run. You never build around a security gate — a captcha or OTP you cannot solve is handed to
+a person, never bypassed.
+
 Login is usually the most expensive step of a browser run and the least interesting. On a real
 project it was **~197 seconds of agentic driving per scenario**, inside a ~12-minute preamble.
 After applying this skill: **~38s once**, then **~8s** per later run.
@@ -44,8 +50,16 @@ To check a saved session without writing any project code:
       --url   https://app.example.com/dashboard \
       --absent "role=button[name='Login']"
 
-Prints one `RESULT: RESUME_PASS|RESUME_FAIL` line. Set `NODE_PATH=<project>/node_modules` if
-`playwright` is not resolvable from the working directory.
+Prints one `RESULT: RESUME_PASS|RESUME_FAIL` line.
+
+It needs the `playwright` PACKAGE (not `playwright-cli`: only the library can load a saved
+`storageState`), and it looks for it in the project you run it from — the working directory
+and its parents, so a monorepo hoist works — falling back to `NODE_PATH` if you set one. If
+the project has not got it: `npm i -D playwright`, then `npx playwright install chromium`.
+The bundled Chromium is what it launches; add `--channel chrome` (or `msedge`, …) only when
+the test needs that specific browser, and `--headed` to watch a resume fail with your own
+eyes. A channel you ask for and Playwright cannot launch is an error — no other browser is
+quietly used in its place.
 
 ## Verify by landmark, never by URL
 
@@ -98,9 +112,21 @@ the next one will be strange in its own way.
 - **Only for applications you are authorised to access.** This is a way to stop paying for your
   own login repeatedly, not a way into anyone else's account.
 
+## Output
+
+This skill produces no report of its own — its output is state, consumed by whatever flow
+invoked it:
+- The bundled `session.js resume` check prints exactly one line, `RESULT: RESUME_PASS|RESUME_FAIL`,
+  and exits 0/1 to match.
+- A successful run leaves a session file at `test/.auth/<app>-<environment>-state.json` for
+  later runs to reload.
+- Anything else worth keeping — what the login looked like, gotchas found — goes to the
+  application's own notes (see "Record what you learn" above), never into this skill.
+
 ## Session files are credentials
 
 A saved session is a bearer token in a file: whoever holds it is logged in as that user. Keep
-these in a git-ignored directory (`test/.auth/` by convention here) and never commit one.
+these in `test/.auth/`, which /init-test and /update-agentex add to the project's `.gitignore`,
+and never commit one.
 Sessions are saved per environment — `test/.auth/<app>-<environment>-state.json` (e.g.
 `myapp-qa-state.json`); a session saved on one environment is never resumed on another.

@@ -1,13 +1,20 @@
 {
-  "//": "RECOMMENDED PERMISSIONS for AgenTeX (Browser Testing + Mobile Testing + Azure DevOps task estimation). Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the safe commands, gate destructive ones behind a prompt, and deny secret reads / destructive actions.",
+  "//": "RECOMMENDED PERMISSIONS for AgenTeX (Browser Testing + Mobile Testing + Azure DevOps task estimation). Plugin settings.json cannot carry permission rules, so copy the blocks below into your PROJECT .claude/settings.json (merge with any existing 'permissions'). These pre-approve the commands a run actually issues, gate destructive ones behind a prompt, and deny secret reads and edits to your application's source.",
+  "//notes": [
+    "allow > Bash(node:*) — the plugin does its non-browser work through bundled node scripts (preflight.js, spec_drivers.js, init_run.js, run_api.js, run_db.js, ask_kb.js, session.js, fetch_baseline.js, make_html_report.js, create-bug.js). Without this rule a single test run stops for a permission prompt at every one of them. To tighten it, replace this entry with 'Bash(node <absolute path to the installed plugin>/skills:*)' — run /plugin to see that path — which allows only the plugin's own scripts.",
+    "allow > az rules — no tracker flow uses az: bug filing, estimation, test design, and test-plan updates all run through bundled node scripts over the Azure DevOps REST API (already covered by the Bash(node:*) rule), so no az permission prompt can occur there. The az rules below serve only the azure-integration skill (the Azure resource plane: login, discovery, App Service, Storage, Key Vault, AKS).",
+    "allow > Jira — Jira-configured projects run the SAME bundled node scripts (tracker layer over Jira Cloud REST v3, built-in fetch): the Bash(node:*) rule already covers every Jira flow, no acli or extra permission rules are needed.",
+    "deny > Bash flag order defeats prefix matching: a rule matches the START of the command, so 'Bash(rm -rf:*)' alone never sees 'rm -fr' or 'rm -r -f'. Each spelling needs its own entry, and on Windows 'Remove-Item' is denied outright because its -Recurse/-Force flags can appear in any order after it.",
+    "deny > Edit(./src/**) alone does not protect your application: Write and MultiEdit reach the same files by a different tool, so all three are listed. Point them at wherever your app's source actually lives — if it is not ./src, these rules protect nothing. The agent never needs to write to your application; it only writes under test/ and executions/.",
+    "deny > secret files: the plugin's design is that config and catalog files name env vars and the values live in your shell or .env, which the bundled scripts read themselves. Nothing in a run needs the agent to READ a .env, a key or a certificate, so those reads are denied rather than trusted.",
+    "ask > curl and sqlcmd are one prompt each, on purpose. API and DB steps run through the api-integration / db-integration runners, which keep credentials in the environment and off the command line; a bare curl or sqlcmd is either an ad-hoc check worth confirming, or a way for data to leave the machine."
+  ],
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Bash(npx playwright-cli:*)",
-      "Bash(npm install *)",
-      "Bash(az boards:*)",
-      "Bash(az devops:*)",
-      "Bash(az extension:*)",
+      "Bash(node:*)",
+      "Bash(npm install:*)",
       "Bash(az --version)",
       "Bash(az login:*)",
       "Bash(az account:*)",
@@ -21,8 +28,6 @@
       "Bash(az keyvault list:*)",
       "Bash(az keyvault secret list:*)",
       "Bash(az aks list:*)",
-      "Bash(curl:*)",
-      "Bash(sqlcmd:*)",
       "Bash(npx appium:*)",
       "Bash(adb devices:*)",
       "Bash(adb version:*)",
@@ -33,7 +38,10 @@
       "Bash(xcrun simctl spawn:*)"
     ],
     "ask": [
-      "Bash(az boards work-item delete:*)",
+      "Bash(curl:*)",
+      "Bash(sqlcmd:*)",
+      "Bash(npx playwright-cli close-all:*)",
+      "Bash(npx playwright-cli kill-all:*)",
       "Bash(az webapp deploy:*)",
       "Bash(az storage blob upload:*)",
       "Bash(az aks get-credentials:*)",
@@ -49,9 +57,28 @@
     ],
     "deny": [
       "Read(./secrets/**)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/*.pfx)",
+      "Read(./**/id_rsa*)",
+      "Read(./**/.npmrc)",
+      "Read(./test/.auth/**)",
       "Edit(./src/**)",
+      "Write(./src/**)",
+      "MultiEdit(./src/**)",
+      "NotebookEdit(./src/**)",
       "Bash(rm -rf:*)",
-      "Bash(git push:*)"
+      "Bash(rm -fr:*)",
+      "Bash(rm -r:*)",
+      "Bash(Remove-Item:*)",
+      "Bash(rmdir:*)",
+      "Bash(git push:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)"
     ]
   }
 }

@@ -29,7 +29,7 @@ const post = (route, body, headers = {}) =>
 
 (async () => {
   const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv-'));
-  const child = spawn(process.execPath, [SERVER, projectDir, `--port=${PORT}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [SERVER, projectDir, `--port=${PORT}`, '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   child.stdout.on('data', d => { stdout += d; });
   await new Promise(r => {
@@ -38,6 +38,11 @@ const post = (route, body, headers = {}) =>
 
   // The page carries the token; a browser on another site cannot read it.
   TOKEN = (await (await fetch(`${BASE}/setup`)).text()).match(/const TOKEN = '([a-f0-9]+)'/)[1];
+
+  await test('--no-open: server prints the skip notice instead of launching a browser', async () => {
+    assert.ok(stdout.includes('--no-open: skipping browser launch'),
+      'expected the --no-open notice in server stdout (headless test run must not open a browser)');
+  });
 
   await test('an API call without the page token is refused', async () => {
     const read = await fetch(`${BASE}/api/config`);
@@ -57,6 +62,37 @@ const post = (route, body, headers = {}) =>
   await test('responses carry no wildcard CORS header', async () => {
     const r = await fetch(`${BASE}/setup`);
     assert.strictEqual(r.headers.get('access-control-allow-origin'), null);
+  });
+
+  // ── The language the page opens in ──────────────────────────────────────
+  // The wizard is bilingual; the URL that opened the tab can name a language,
+  // and anything it cannot honour is left to the page's own default.
+  const langOf = async qs => {
+    const body = await (await fetch(`${BASE}/setup${qs}`)).text();
+    const m = body.match(/const LANG_REQUESTED = '([^']*)';/);
+    assert.ok(m, 'the served page must keep the LANG_REQUESTED injection point');
+    return m[1];
+  };
+
+  await test('/setup?lang=en asks the page for English', async () => {
+    assert.strictEqual(await langOf('?lang=en'), 'en');
+  });
+
+  await test('/setup?lang=ar asks for Arabic explicitly', async () => {
+    assert.strictEqual(await langOf('?lang=ar'), 'ar');
+  });
+
+  await test('/setup with no lang leaves the page on its own default', async () => {
+    assert.strictEqual(await langOf(''), '', 'an absent request is not a request for Arabic');
+  });
+
+  await test('an unsupported lang is ignored, never guessed at or injected raw', async () => {
+    assert.strictEqual(await langOf('?lang=fr'), '', 'no copy exists for it');
+    // The value lands inside a single-quoted JS literal — it must never be
+    // attacker-controlled text, only one of the two languages that exist.
+    assert.strictEqual(await langOf("?lang=en';alert(1);//"), '');
+    const body = await (await fetch(`${BASE}/setup?lang=en';alert(1);//`)).text();
+    assert.ok(!body.includes('alert(1)'), 'the query string never reaches the page as code');
   });
 
   await test('extracts Arabic labels sent over HTTP (UTF-8, not latin1)', async () => {
@@ -183,6 +219,49 @@ const post = (route, body, headers = {}) =>
     assert.match(dotenv, /^MY_DB_PASS=FakeDbPass123$/m, '.env key must match the envSecret the JSON references');
   });
 
+  await test('REJECTED: a projectConfig carrying BOTH provider blocks (Q12 fail-closed at save)', async () => {
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa',
+        azure: { org: 'o', project: 'p' }, jira: { site: 'example', project: 'PROJ' } },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /more than one tracker provider/i);
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'));
+    assert.ok(!proj.jira && !proj.azure, 'the multi-provider payload never reached the disk');
+  });
+
+  await test('a tracker switch removes the old provider block and the response ECHOES the removal', async () => {
+    await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa', azure: { org: 'o', project: 'p' } },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa', jira: { site: 'example', project: 'PROJ' } },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    const body = await r.json();
+    assert.deepStrictEqual(body.trackerBlocksRemoved, ['azure'], 'the switch is echoed, never silent');
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'));
+    assert.ok(!proj.azure && proj.jira, 'exactly one provider block after the switch');
+    const r2 = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa', jira: { site: 'example', project: 'PROJ' } },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+    assert.deepStrictEqual((await r2.json()).trackerBlocksRemoved || [], [], 'no removal → no echo');
+    // Leave the shared fixture the way later tests expect it.
+    await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: {},
+    });
+  });
+
   await test('an existing but unreadable config file is reported, not ignored', async () => {
     fs.writeFileSync(path.join(projectDir, 'config', 'project.json'), '{ broken json');
     const r = await fetch(`${BASE}/api/config`, { headers: { 'X-Wizard-Token': TOKEN } });
@@ -217,7 +296,489 @@ const post = (route, body, headers = {}) =>
     assert.ok(!stdout.includes('tok-test') && !stdout.includes('tok-updated'), 'stdout leaked a secret');
   });
 
+  // ── Pristine-aware prefill + save-time reconciliation ─────────────────────
+  // A second server over a freshly-scaffolded project (template config + sample
+  // environment straight from templates/) — the state the wizard meets right
+  // after /init-test.
+  const PLUGIN = path.join(__dirname, '..', '..');
+  const projectDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv2-'));
+  fs.mkdirSync(path.join(projectDir2, 'config'), { recursive: true });
+  fs.mkdirSync(path.join(projectDir2, 'environments'), { recursive: true });
+  fs.copyFileSync(path.join(PLUGIN, 'templates', 'config', 'project.json'),
+                  path.join(projectDir2, 'config', 'project.json'));
+  fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'),
+                  path.join(projectDir2, 'environments', 'qc.json'));
+  const PORT2 = 7392;
+  const BASE2 = `http://127.0.0.1:${PORT2}`;
+  const child2 = spawn(process.execPath, [SERVER, projectDir2, `--port=${PORT2}`, '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout2 = '';
+  child2.stdout.on('data', d => { stdout2 += d; });
+  await new Promise(r => {
+    const t = setInterval(() => { if (stdout2.includes('Wizard running')) { clearInterval(t); r(); } }, 100);
+  });
+  const TOKEN2 = (await (await fetch(`${BASE2}/setup`)).text()).match(/const TOKEN = '([a-f0-9]+)'/)[1];
+  const get2 = route => fetch(`${BASE2}${route}`, { headers: { 'X-Wizard-Token': TOKEN2 } });
+  const post2 = (route, body) =>
+    fetch(`${BASE2}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Wizard-Token': TOKEN2 },
+      body: JSON.stringify(body),
+    });
+
+  await test('a fresh scaffold is reported pristine, never prefilled as user data', async () => {
+    const data = await (await get2('/api/config')).json();
+    assert.strictEqual(data.samplePristine, true, 'sample must be recognized as pristine');
+    assert.deepStrictEqual(data.environments, {},
+      'a pristine sample is scaffolding — never presented as an editable environment');
+    assert.strictEqual(data.sampleName, 'qc');
+    assert.strictEqual(data.defaultEnvironment, 'qc');
+    assert.strictEqual(data.projectPristine, true, 'template project.json is scaffolding, not config');
+    assert.deepStrictEqual(data.pristineSamples, ['qc'],
+      'every pristine sample is enumerated — the review step must list ALL files a save would reconcile');
+  });
+
+  await test('a user-touched environment under the default name is prefilled and protected', async () => {
+    const envPath = path.join(projectDir2, 'environments', 'qc.json');
+    const touched = JSON.parse(fs.readFileSync(envPath, 'utf8'));
+    touched.portalUrl = 'https://my-real-app.example';
+    fs.writeFileSync(envPath, JSON.stringify(touched, null, 2) + '\n');
+    const data = await (await get2('/api/config')).json();
+    assert.strictEqual(data.samplePristine, false);
+    assert.strictEqual(data.environments.qc.portalUrl, 'https://my-real-app.example', 'user data prefilled exactly as before');
+    // restore the pristine sample for the reconciliation tests below
+    fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'), envPath);
+  });
+
+  await test('saving under another name reconciles the pristine sample away, announced', async () => {
+    const r = await post2('/api/save', {
+      projectConfig: { name: 'demo2', defaultEnvironment: 'uat', login: { mode: 'session' } },
+      envConfig: { portalUrl: 'https://uat.example', users: { u1: { phone: '1' } } },
+      envName: 'uat', secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    const res = await r.json();
+    assert.deepStrictEqual(res.reconciled, ['environments/qc.json'], 'removal echoed in the response');
+    assert.ok(!fs.existsSync(path.join(projectDir2, 'environments', 'qc.json')), 'pristine sample removed');
+    assert.ok(fs.existsSync(path.join(projectDir2, 'environments', 'uat.json')), 'user environment written');
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir2, 'config', 'project.json'), 'utf8'));
+    assert.strictEqual(proj.defaultEnvironment, 'uat', 'default names the environment that exists');
+  });
+
+  await test('save rejects a defaultEnvironment that names no post-save file', async () => {
+    const r = await post2('/api/save', {
+      projectConfig: { name: 'demo2', defaultEnvironment: 'ghost' },
+      envConfig: { portalUrl: 'https://x.example', users: { u1: { phone: '1' } } },
+      envName: 'uat3', secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /defaultEnvironment/);
+    assert.ok(!fs.existsSync(path.join(projectDir2, 'environments', 'uat3.json')), 'nothing written on reject');
+  });
+
+  await test('a pristine sample under the historical qa name is reconciled too', async () => {
+    fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'),
+                    path.join(projectDir2, 'environments', 'qa.json'));
+    // /api/config enumerates it up front — the review step can announce the
+    // removal BEFORE the save, by name, even under a non-default name.
+    const cfg = await (await get2('/api/config')).json();
+    assert.deepStrictEqual(cfg.pristineSamples, ['qa'],
+      'a pristine sample under any name is listed (uat is user data, not listed)');
+    const r = await post2('/api/save', {
+      projectConfig: { name: 'demo2', defaultEnvironment: 'uat', login: { mode: 'session' } },
+      envConfig: { portalUrl: 'https://uat.example', users: { u1: { phone: '1' } } },
+      envName: 'uat', secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual((await r.json()).reconciled, ['environments/qa.json']);
+    assert.ok(!fs.existsSync(path.join(projectDir2, 'environments', 'qa.json')));
+  });
+
+  await test('a non-pristine environment under another name is never touched', async () => {
+    const keepPath = path.join(projectDir2, 'environments', 'keep.json');
+    const keepBytes = '{\n  "portalUrl": "https://keep.example",\n  "users": { "k": { "phone": "9" } }\n}\n';
+    fs.writeFileSync(keepPath, keepBytes);
+    const r = await post2('/api/save', {
+      projectConfig: { name: 'demo2', defaultEnvironment: 'qc2' },
+      envConfig: { portalUrl: 'https://qc2.example', users: { u1: { phone: '1' } } },
+      envName: 'qc2', secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual((await r.json()).reconciled, [], 'nothing pristine, nothing removed');
+    assert.strictEqual(fs.readFileSync(keepPath, 'utf8'), keepBytes, 'user environment byte-identical');
+    assert.ok(fs.existsSync(path.join(projectDir2, 'environments', 'uat.json')), 'other user environment intact');
+  });
+
+  // ── Multi-environment sessions: enumeration, batch save, confirmed ops ────
+  // A third server over a project with real environments (user data), a
+  // pristine leftover, and an unreadable file — the state design #3's
+  // environments manager meets. Rename/delete are the wizard's FIRST
+  // destructive capability: the rejection paths are first-class here.
+  const projectDir3 = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv3-'));
+  fs.mkdirSync(path.join(projectDir3, 'config'), { recursive: true });
+  fs.mkdirSync(path.join(projectDir3, 'environments'), { recursive: true });
+  const env3 = (name) => path.join(projectDir3, 'environments', `${name}.json`);
+  fs.writeFileSync(path.join(projectDir3, 'config', 'project.json'),
+    JSON.stringify({ name: 'multi', defaultEnvironment: 'qa', login: { mode: 'session' } }, null, 2) + '\n');
+  fs.writeFileSync(env3('qa'),
+    JSON.stringify({ portalUrl: 'https://qa.example', users: { a: { phone: '1' } } }, null, 2) + '\n');
+  fs.writeFileSync(env3('uat'),
+    JSON.stringify({ portalUrl: 'https://uat.example', users: { b: { phone: '2' } } }, null, 2) + '\n');
+  fs.copyFileSync(path.join(PLUGIN, 'templates', 'environments', 'qc.json'), env3('qc'));
+  fs.writeFileSync(env3('broken'), '{ not json');
+  const PORT3 = 7393;
+  const BASE3 = `http://127.0.0.1:${PORT3}`;
+  const child3 = spawn(process.execPath, [SERVER, projectDir3, `--port=${PORT3}`, '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout3 = '';
+  child3.stdout.on('data', d => { stdout3 += d; });
+  await new Promise(r => {
+    const t = setInterval(() => { if (stdout3.includes('Wizard running')) { clearInterval(t); r(); } }, 100);
+  });
+  const TOKEN3 = (await (await fetch(`${BASE3}/setup`)).text()).match(/const TOKEN = '([a-f0-9]+)'/)[1];
+  const get3 = route => fetch(`${BASE3}${route}`, { headers: { 'X-Wizard-Token': TOKEN3 } });
+  const post3 = (route, body) =>
+    fetch(`${BASE3}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Wizard-Token': TOKEN3 },
+      body: JSON.stringify(body),
+    });
+  const proj3 = { name: 'multi', defaultEnvironment: 'qa', login: { mode: 'session' } };
+
+  await test('/api/config enumerates every environment; pristine and unreadable are flagged, not editable', async () => {
+    const data = await (await get3('/api/config')).json();
+    assert.strictEqual(data.defaultEnvironment, 'qa');
+    assert.strictEqual(data.environments.qa.portalUrl, 'https://qa.example');
+    assert.strictEqual(data.environments.uat.portalUrl, 'https://uat.example');
+    assert.ok(!('qc' in data.environments), 'a pristine sample is scaffolding, not an editable environment');
+    assert.deepStrictEqual(data.pristineSamples, ['qc']);
+    assert.strictEqual(data.environments.broken, null, 'an unreadable file is flagged, never silently editable');
+    assert.deepStrictEqual(data.unreadable, ['environments/broken.json']);
+    assert.strictEqual(data.samplePristine, false, 'the default names user data, not the sample');
+  });
+
+  await test('one save writes every configured environment and reconciles the pristine sample', async () => {
+    const brokenBytes = fs.readFileSync(env3('broken'), 'utf8');
+    const r = await post3('/api/save', {
+      projectConfig: proj3,
+      environments: {
+        qa:  { portalUrl: 'https://qa.example',  users: { a: { phone: '1' } } },
+        stg: { portalUrl: 'https://stg.example', users: { s: { phone: '3' } } },
+      },
+      ops: { renames: [], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    const res = await r.json();
+    assert.deepStrictEqual([...res.written].sort(),
+      ['config/project.json', 'environments/qa.json', 'environments/stg.json'],
+      'every written file echoed');
+    assert.ok(fs.existsSync(env3('stg')), 'second environment written');
+    assert.deepStrictEqual(res.reconciled, ['environments/qc.json'], 'pristine sample removal echoed');
+    assert.ok(!fs.existsSync(env3('qc')), 'pristine sample reconciled away');
+    assert.strictEqual(fs.readFileSync(env3('broken'), 'utf8'), brokenBytes, 'unreadable file untouched');
+  });
+
+  await test('rename executes as rename-then-report when the file is not otherwise rewritten', async () => {
+    const before = fs.readFileSync(env3('uat'), 'utf8');
+    const r = await post3('/api/save', {
+      projectConfig: proj3,
+      environments: {},
+      ops: { renames: [{ from: 'uat', to: 'stage', confirmed: true }], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    const res = await r.json();
+    assert.deepStrictEqual(res.renamed,
+      [{ from: 'environments/uat.json', to: 'environments/stage.json' }], 'rename echoed');
+    assert.ok(!fs.existsSync(env3('uat')), 'old file gone');
+    assert.strictEqual(fs.readFileSync(env3('stage'), 'utf8'), before, 'content byte-identical after a pure rename');
+  });
+
+  await test('renamed-and-edited: written under the new name, the old file removed by the same op', async () => {
+    const r = await post3('/api/save', {
+      projectConfig: proj3,
+      environments: { stage2: { portalUrl: 'https://stage2.example', users: { s: { phone: '3' } } } },
+      ops: { renames: [{ from: 'stage', to: 'stage2', confirmed: true }], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    assert.ok(!fs.existsSync(env3('stage')), 'old name removed');
+    const env = JSON.parse(fs.readFileSync(env3('stage2'), 'utf8'));
+    assert.strictEqual(env.portalUrl, 'https://stage2.example', 'new name carries the edited content');
+  });
+
+  await test('the default follows its rename inside the same confirmed save', async () => {
+    const r = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [{ from: 'qa', to: 'prod', confirmed: true }], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    assert.ok(!fs.existsSync(env3('qa')) && fs.existsSync(env3('prod')));
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir3, 'config', 'project.json'), 'utf8'));
+    assert.strictEqual(proj.defaultEnvironment, 'prod', 'defaultEnvironment stays coherent with the rename');
+  });
+
+  await test('REJECTED: an un-consented rename or delete touches nothing', async () => {
+    const r = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [{ from: 'stg', to: 'stg2' }], deletes: [] },   // no confirmed: true
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /consent/i);
+    assert.ok(fs.existsSync(env3('stg')) && !fs.existsSync(env3('stg2')), 'file untouched');
+    const r2 = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [], deletes: [{ name: 'stg' }] },               // no confirmed: true
+      secrets: {},
+    });
+    assert.strictEqual(r2.status, 400);
+    assert.match((await r2.json()).error, /consent/i);
+    assert.ok(fs.existsSync(env3('stg')), 'file still on disk');
+  });
+
+  await test('REJECTED: ops on files the server did not enumerate', async () => {
+    const r = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [{ from: 'ghost', to: 'newname', confirmed: true }], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /ghost/);
+    const r2 = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [], deletes: [{ name: 'ghost', confirmed: true }] },
+      secrets: {},
+    });
+    assert.strictEqual(r2.status, 400);
+    assert.match((await r2.json()).error, /ghost/);
+  });
+
+  await test('REJECTED: deleting the default without designating a new one', async () => {
+    const r = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [], deletes: [{ name: 'prod', confirmed: true }] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /defaultEnvironment/);
+    assert.ok(fs.existsSync(env3('prod')), 'default environment file untouched');
+  });
+
+  await test('an explicit confirmed delete is executed and echoed', async () => {
+    const r = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [], deletes: [{ name: 'stage2', confirmed: true }] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 200);
+    const res = await r.json();
+    assert.deepStrictEqual(res.deleted, ['environments/stage2.json'], 'deletion echoed in the response');
+    assert.ok(!fs.existsSync(env3('stage2')), 'file deleted only as the explicit, confirmed op');
+  });
+
+  await test('REJECTED: chained or swapped renames — no file is touched', async () => {
+    // Chain: stg→stgx then prod→stg. In-order renameSync would land prod's
+    // content ON stg.json before stg moves away — refused whole, both intact.
+    const stgBytes = fs.readFileSync(env3('stg'), 'utf8');
+    const prodBytes = fs.readFileSync(env3('prod'), 'utf8');
+    const chain = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'stg' },
+      environments: {},
+      ops: { renames: [
+        { from: 'stg', to: 'stgx', confirmed: true },
+        { from: 'prod', to: 'stg', confirmed: true },
+      ], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(chain.status, 400);
+    assert.match((await chain.json()).error, /another rename/i);
+    const swap = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [
+        { from: 'prod', to: 'stg', confirmed: true },
+        { from: 'stg', to: 'prod', confirmed: true },
+      ], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(swap.status, 400);
+    assert.match((await swap.json()).error, /another rename/i);
+    assert.strictEqual(fs.readFileSync(env3('stg'), 'utf8'), stgBytes, 'stg.json byte-identical');
+    assert.strictEqual(fs.readFileSync(env3('prod'), 'utf8'), prodBytes, 'prod.json byte-identical');
+    assert.ok(!fs.existsSync(env3('stgx')), 'no partial rename landed');
+  });
+
+  await test('REJECTED: adding a new environment under a name vacated by a rename', async () => {
+    const stgBytes = fs.readFileSync(env3('stg'), 'utf8');
+    const r = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: { stg: { portalUrl: 'https://newstg.example', users: { u: { phone: '1' } } } },
+      ops: { renames: [{ from: 'stg', to: 'stgx', confirmed: true }], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /collides/i);
+    assert.strictEqual(fs.readFileSync(env3('stg'), 'utf8'), stgBytes, 'stg.json untouched');
+    assert.ok(!fs.existsSync(env3('stgx')), 'nothing renamed');
+  });
+
+  await test('REJECTED: writing over or deleting an unreadable environment file', async () => {
+    const brokenBytes = fs.readFileSync(env3('broken'), 'utf8');
+    const r = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: { broken: { portalUrl: 'https://b.example', users: { u: { phone: '1' } } } },
+      ops: { renames: [], deletes: [] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /broken/);
+    const r2 = await post3('/api/save', {
+      projectConfig: { ...proj3, defaultEnvironment: 'prod' },
+      environments: {},
+      ops: { renames: [], deletes: [{ name: 'broken', confirmed: true }] },
+      secrets: {},
+    });
+    assert.strictEqual(r2.status, 400);
+    assert.strictEqual(fs.readFileSync(env3('broken'), 'utf8'), brokenBytes,
+      'the wizard never touches what it could not read');
+  });
+
+  await test('REJECTED: deleting the last environment', async () => {
+    // server 1's project has exactly one environment file (environments/qa.json)
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      environments: {},
+      ops: { renames: [], deletes: [{ name: 'qa', confirmed: true }] },
+      secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /at least one environment/i);
+    assert.ok(fs.existsSync(path.join(projectDir, 'environments', 'qa.json')), 'the last environment file is untouched');
+  });
+
+  // ── Consumer-owned field schema over the wire (wizard design #4) ───────────
+  await test('custom field schema round-trips: arrays in project.json, secret values only in .env', async () => {
+    const SECRET = 'FakeUserSecret_x91';
+    const r = await post('/api/save', {
+      projectConfig: {
+        name: 'demo', defaultEnvironment: 'qa',
+        userFields: [
+          { key: 'userId', label: 'User ID', type: 'text' },
+          { key: 'nationalId', label: 'National ID', type: 'text' },
+          { key: 'apiKey', label: 'API Key', secret: true },
+        ],
+        defaultsFields: [
+          { key: 'password', label: 'pw', default: 'Test@1234' },
+          { key: 'captcha', label: 'captcha', default: 'off' },
+        ],
+      },
+      environments: {
+        qa: {
+          portalUrl: 'https://ok.example',
+          defaults: { password: 'Test@1234', captcha: 'on' },
+          users: { u1: { userId: 'U-1', nationalId: '123', apiKey: { envSecret: 'USER_U1_APIKEY' } } },
+        },
+      },
+      ops: { renames: [], deletes: [] },
+      secrets: { USER_U1_APIKEY: SECRET },
+    });
+    assert.strictEqual(r.status, 200);
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'));
+    assert.deepStrictEqual(proj.userFields.map(f => f.key), ['userId', 'nationalId', 'apiKey'],
+      'the effective field schema round-trips through project.json');
+    assert.deepStrictEqual(proj.defaultsFields.map(f => f.key), ['password', 'captcha']);
+    const env = JSON.parse(fs.readFileSync(path.join(projectDir, 'environments', 'qa.json'), 'utf8'));
+    assert.deepStrictEqual(env.users.u1,
+      { userId: 'U-1', nationalId: '123', apiKey: { envSecret: 'USER_U1_APIKEY' } });
+    assert.strictEqual(env.defaults.captcha, 'on', 'custom defaults field written');
+    const dotenv = fs.readFileSync(path.join(projectDir, '.env'), 'utf8');
+    assert.match(dotenv, new RegExp(`^USER_U1_APIKEY=${SECRET}$`, 'm'), 'value lives in .env only');
+    assert.ok(!JSON.stringify(proj).includes(SECRET) && !JSON.stringify(env).includes(SECRET),
+      'secret value never lands in a JSON config');
+    await new Promise(res => setTimeout(res, 150));
+    assert.ok(!stdout.includes(SECRET), 'secret value never appears in server stdout');
+  });
+
+  await test('REJECTED: invalid field descriptors — nothing written', async () => {
+    const before = fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8');
+    for (const [userFields, why] of [
+      [[{ key: 'x' }, { key: 'x' }], 'duplicate key'],
+      [[{ key: 'handle' }], 'reserved handle'],
+      [[{ key: '1bad' }], 'bad key pattern'],
+      [[{ key: 'ok', type: 'select' }], 'unknown type'],
+    ]) {
+      const r = await post('/api/save', {
+        projectConfig: { name: 'demo', defaultEnvironment: 'qa', userFields },
+        environments: { qa: { portalUrl: 'https://ok.example', users: { u: { phone: '1' } } } },
+        ops: {}, secrets: {},
+      });
+      assert.strictEqual(r.status, 400, `${why} must be refused`);
+    }
+    assert.strictEqual(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'), before,
+      'project.json byte-identical after every refusal');
+  });
+
+  await test('REJECTED: a user-entry envSecret that is not a valid env var name', async () => {
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      environments: {
+        qa: { portalUrl: 'https://ok.example', users: { u: { apiKey: { envSecret: 'BAD NAME!' } } } },
+      },
+      ops: {}, secrets: {},
+    });
+    assert.strictEqual(r.status, 400);
+    assert.match((await r.json()).error, /envSecret/);
+  });
+
+  // ── --lang=en: the URL the server hands the browser ─────────────────────
+  // A caller who already knows which language the user reads should not have to
+  // make them find the toggle.
+  const PORT4 = 7394;
+  const projectDir4 = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv4-'));
+  const child4 = spawn(process.execPath, [SERVER, projectDir4, `--port=${PORT4}`, '--no-open', '--lang=en'],
+    { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout4 = '';
+  child4.stdout.on('data', d => { stdout4 += d; });
+  await new Promise(r => {
+    const t = setInterval(() => { if (stdout4.includes('Wizard running')) { clearInterval(t); r(); } }, 100);
+  });
+
+  await test('--lang=en opens the wizard in English and the page honours it', async () => {
+    assert.ok(stdout4.includes(`http://127.0.0.1:${PORT4}/setup?lang=en`),
+      `expected the announced URL to carry the language, got: ${stdout4.trim()}`);
+    const body = await (await fetch(`http://127.0.0.1:${PORT4}/setup?lang=en`)).text();
+    assert.match(body, /const LANG_REQUESTED = 'en';/);
+  });
+
+  await test('--lang=de is dropped — the wizard opens on its own default', async () => {
+    const PORT5 = 7395;
+    const dir5 = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv5-'));
+    const c5 = spawn(process.execPath, [SERVER, dir5, `--port=${PORT5}`, '--no-open', '--lang=de'],
+      { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out5 = '';
+    c5.stdout.on('data', d => { out5 += d; });
+    await new Promise(r => {
+      const t = setInterval(() => { if (out5.includes('Wizard running')) { clearInterval(t); r(); } }, 100);
+    });
+    const line5 = (out5.split(String.fromCharCode(10)).find(l => l.includes('/setup')) || '').trim();
+    assert.ok(line5.includes(':' + PORT5 + '/setup'), 'the wizard URL is announced: ' + line5);
+    assert.ok(!line5.includes('?'), 'no query string is appended for a language that has no copy');
+    assert.ok(!out5.includes('lang=de'), 'an unsupported language is never echoed into the URL');
+    c5.kill();
+  });
+
   child.kill();
+  child2.kill();
+  child3.kill();
+  child4.kill();
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

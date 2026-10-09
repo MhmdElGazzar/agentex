@@ -1,0 +1,16 @@
+{
+  "name": "shop-api",
+  "description": "Shop API calls. The requests below are the ONLY API calls the agent may execute.",
+  "baseUrl": "${API_BASE_URL}",
+  "auth": { "type": "bearer", "tokenEnv": "API_TOKEN" },
+  "requests": [
+    {
+      "name": "login",
+      "description": "Authenticate as a test user",
+      "method": "POST",
+      "path": "/auth/login",
+      "params": ["user"],
+      "body": { "user": "{user}" }
+    }
+  ]
+}

@@ -1,5 +1,15 @@
 {
   "version": "1.0",
+  "groups": {
+    "project": {
+      "label": "المشروع",
+      "labelEn": "Project"
+    },
+    "environment": {
+      "label": "البيئات",
+      "labelEn": "Environments"
+    }
+  },
   "steps": [
     {
       "id": "project-basics",
@@ -8,6 +18,7 @@
       "description": "المعلومات الأساسية عن مشروعك",
       "descriptionEn": "Core information about your project",
       "icon": "🏗️",
+      "group": "project",
       "target": "config/project.json",
       "fields": [
         {
@@ -20,17 +31,32 @@
           "aiHint": "project name or system name"
         },
         {
-          "key": "defaultEnvironment",
-          "label": "البيئة (اسم الملف)",
-          "labelEn": "Environment",
-          "type": "text",
-          "placeholder": "qa",
-          "default": "qa",
+          "key": "tracker",
+          "label": "أداة تتبع المهام (Tracker)",
+          "labelEn": "Work Tracker",
+          "type": "select",
           "required": true,
-          "pattern": "^[a-z0-9][a-z0-9_-]{0,30}$",
-          "patternMsg": "حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف",
-          "aiHint": "environment name being configured (e.g. qa, staging, uat)",
-          "hint": "اسم البيئة اللي هتتكتب: qa أو uat أو live. البيئة الافتراضية للمشروع بتفضل زي ما هي."
+          "persisted": false,
+          "hint": "المشروع بيستخدم أي أداة لتتبع المهام؟ بتتسأل مرة واحدة هنا — بلوك الأداة المختارة فقط هو اللي بيتكتب في config/project.json، من غير قيمة افتراضية صامتة",
+          "hintEn": "Which work tracker does this project use? Asked once, here — only the chosen provider's block is written to config/project.json; never a silent default",
+          "options": [
+            {
+              "value": "azure",
+              "label": "Azure DevOps",
+              "labelEn": "Azure DevOps"
+            },
+            {
+              "value": "jira",
+              "label": "Jira Cloud",
+              "labelEn": "Jira Cloud"
+            },
+            {
+              "value": "none",
+              "label": "بدون — تخطَّ ميزات الـ tracker",
+              "labelEn": "None — skip tracker features"
+            }
+          ],
+          "aiHint": "which work tracker the project uses: azure, jira, or none"
         },
         {
           "key": "login.mode",
@@ -42,130 +68,16 @@
           "options": [
             {
               "value": "session",
-              "label": "Session (موصى به — مرة واحدة لكل جلسة)"
+              "label": "Session (موصى به — مرة واحدة لكل جلسة)",
+              "labelEn": "Session (recommended — log in once per session)"
             },
             {
-              "value": "per-test",
-              "label": "Per-Test (تسجيل دخول في كل اختبار)"
+              "value": "fresh",
+              "label": "Fresh (تسجيل دخول في كل اختبار)",
+              "labelEn": "Fresh (log in through the UI every run)"
             }
           ],
-          "aiHint": "login strategy: session-based or per-test"
-        }
-      ]
-    },
-    {
-      "id": "environment",
-      "title": "بيئة الاختبار",
-      "titleEn": "Test Environment",
-      "description": "رابط التطبيق وإعدادات الجلسة",
-      "descriptionEn": "App URL and session defaults",
-      "icon": "🌐",
-      "target": "environments/{defaultEnvironment}.json",
-      "fields": [
-        {
-          "key": "portalUrl",
-          "label": "رابط التطبيق (Portal URL)",
-          "labelEn": "Portal URL",
-          "type": "url",
-          "placeholder": "https://app.example.com",
-          "required": true,
-          "aiHint": "application URL, portal URL, base URL for testing"
-        },
-        {
-          "key": "defaults.password",
-          "label": "كلمة المرور الافتراضية",
-          "labelEn": "Default Password",
-          "type": "text",
-          "placeholder": "Test@1234",
-          "default": "Test@1234",
-          "required": false,
-          "hint": "كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سراً حقيقياً)",
-          "aiHint": "default test account password"
-        },
-        {
-          "key": "defaults.otp",
-          "label": "OTP الافتراضي",
-          "labelEn": "Default OTP",
-          "type": "text",
-          "placeholder": "0000",
-          "default": "0000",
-          "required": false,
-          "aiHint": "default OTP or verification code for test accounts"
-        }
-      ]
-    },
-    {
-      "id": "test-users",
-      "title": "مستخدمو الاختبار",
-      "titleEn": "Test Users",
-      "description": "بيانات الحسابات المستخدمة في الاختبارات",
-      "descriptionEn": "Test account credentials and roles",
-      "icon": "👥",
-      "target": "environments/{defaultEnvironment}.json",
-      "type": "dynamic-list",
-      "listKey": "users",
-      "minItems": 1,
-      "itemTemplate": {
-        "key": "{handle}",
-        "fields": [
-          {
-            "key": "handle",
-            "label": "معرّف الحساب",
-            "labelEn": "Account Handle",
-            "type": "text",
-            "placeholder": "valid_user",
-            "required": true,
-            "hint": "مثال: valid_user, admin_user, expired_user",
-            "aiHint": "user handle or identifier"
-          },
-          {
-            "key": "phone",
-            "label": "رقم الهاتف",
-            "labelEn": "Phone",
-            "type": "text",
-            "placeholder": "0550000001",
-            "required": false,
-            "aiHint": "test account phone number"
-          },
-          {
-            "key": "email",
-            "label": "البريد الإلكتروني",
-            "labelEn": "Email",
-            "type": "email",
-            "placeholder": "test@example.com",
-            "required": false,
-            "aiHint": "test account email"
-          },
-          {
-            "key": "role",
-            "label": "الدور",
-            "labelEn": "Role",
-            "type": "text",
-            "placeholder": "customer",
-            "required": false,
-            "aiHint": "user role (e.g. customer, admin, manager)"
-          },
-          {
-            "key": "notes",
-            "label": "ملاحظات",
-            "labelEn": "Notes",
-            "type": "text",
-            "placeholder": "for negative login scenarios",
-            "required": false,
-            "aiHint": "notes about this test account"
-          }
-        ]
-      },
-      "defaults": [
-        {
-          "handle": "valid_user",
-          "phone": "",
-          "role": "customer"
-        },
-        {
-          "handle": "expired_user",
-          "phone": "",
-          "notes": "for negative login scenarios"
+          "aiHint": "login strategy: reuse a saved session, or log in fresh every run"
         }
       ]
     },
@@ -176,8 +88,10 @@
       "description": "إعدادات ربط Azure DevOps لإنشاء الـ bugs والـ test plans",
       "descriptionEn": "Azure DevOps settings for bug filing and test plans",
       "icon": "☁️",
+      "group": "project",
       "target": "config/project.json",
       "optional": true,
+      "when": { "key": "tracker", "equals": "azure" },
       "fields": [
         {
           "key": "azure.org",
@@ -220,6 +134,7 @@
           "label": "Azure DevOps PAT Token",
           "type": "password",
           "placeholder": "Personal Access Token من dev.azure.com",
+          "placeholderEn": "Personal Access Token from dev.azure.com",
           "required": false,
           "secret": true,
           "envKey": "AZURE_PAT",
@@ -228,13 +143,256 @@
       ]
     },
     {
+      "id": "jira",
+      "title": "Jira",
+      "titleEn": "Jira",
+      "description": "إعدادات ربط Jira Cloud لإنشاء الـ bugs والتقديرات وتصميم الاختبارات",
+      "descriptionEn": "Jira Cloud settings for bug filing, estimation, and test design",
+      "icon": "🧭",
+      "group": "project",
+      "target": "config/project.json",
+      "optional": true,
+      "when": { "key": "tracker", "equals": "jira" },
+      "fields": [
+        {
+          "key": "jira.site",
+          "label": "Site",
+          "labelEn": "Site",
+          "type": "text",
+          "placeholder": "your-site.atlassian.net",
+          "required": false,
+          "hint": "اسم الموقع أو الرابط كاملاً — الاسم المجرد بيتحول تلقائياً إلى ‎https://<name>.atlassian.net",
+          "hintEn": "The site name or the full URL — a bare name becomes https://<name>.atlassian.net",
+          "aiHint": "Jira Cloud site name or full site URL"
+        },
+        {
+          "key": "jira.project",
+          "label": "مفتاح المشروع (Project Key)",
+          "labelEn": "Project Key",
+          "type": "text",
+          "placeholder": "PROJ",
+          "required": false,
+          "aiHint": "Jira project key"
+        },
+        {
+          "key": "jira.board",
+          "label": "Board",
+          "labelEn": "Board",
+          "type": "text",
+          "placeholder": "42",
+          "required": false,
+          "hint": "رقم أو اسم الـ board — مفيد لما يكون في أكثر من سبرنت مفتوح في المشروع",
+          "hintEn": "Board id or name — steers sprint discovery when the project has more than one open sprint",
+          "aiHint": "Jira board id or name for sprint discovery"
+        },
+        {
+          "key": "jira.assignee",
+          "label": "المسؤول الافتراضي",
+          "labelEn": "Default Assignee",
+          "type": "email",
+          "placeholder": "qa@example.com",
+          "required": false,
+          "aiHint": "default assignee email for Jira issues"
+        },
+        {
+          "key": "jira.email",
+          "label": "Jira Email",
+          "type": "email",
+          "placeholder": "you@example.com",
+          "required": false,
+          "secret": true,
+          "envKey": "JIRA_EMAIL",
+          "hint": "نصف بيانات الدخول (Basic auth) — بيتكتب في ‎.env، مش في أي ملف JSON",
+          "hintEn": "Half of the Basic-auth pair — written to .env, never to any JSON file",
+          "aiHint": "Atlassian account email used for API authentication"
+        },
+        {
+          "key": "jira.apiToken",
+          "label": "Jira API Token",
+          "type": "password",
+          "placeholder": "API token من id.atlassian.com",
+          "placeholderEn": "API token from id.atlassian.com",
+          "required": false,
+          "secret": true,
+          "envKey": "JIRA_API_TOKEN",
+          "aiHint": "Jira API token"
+        }
+      ]
+    },
+    {
+      "id": "figma",
+      "title": "Figma",
+      "titleEn": "Figma",
+      "description": "إعدادات Figma لخطوات ui-check (مقارنة الصفحة بالتصميم)",
+      "descriptionEn": "Figma settings for ui-check: design-conformance steps",
+      "icon": "🎨",
+      "group": "project",
+      "target": "config/project.json",
+      "optional": true,
+      "fields": [
+        {
+          "key": "figma.fileKey",
+          "label": "File Key",
+          "labelEn": "File Key",
+          "type": "text",
+          "placeholder": "AbCdEf123456",
+          "required": false,
+          "hint": "مفتاح ملف Figma من الرابط: figma.com/design/<FILE KEY>/...",
+          "hintEn": "The Figma file key from the URL: figma.com/design/<FILE KEY>/...",
+          "aiHint": "Figma file key (the path segment after /design/ or /file/ in a Figma URL)"
+        },
+        {
+          "key": "figma.tokenEnvVar",
+          "label": "متغير الـ Token",
+          "labelEn": "Token Env Var",
+          "type": "text",
+          "placeholder": "FIGMA_TOKEN",
+          "default": "FIGMA_TOKEN",
+          "required": false,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
+          "patternMsgEn": "an environment-variable name only: A-Z, digits and _ , no spaces",
+          "aiHint": "environment variable name for the Figma personal access token"
+        },
+        {
+          "key": "figma.token",
+          "label": "Figma Personal Access Token",
+          "type": "password",
+          "placeholder": "figd_xxxxxxxxxxxx",
+          "required": false,
+          "secret": true,
+          "envKey": "FIGMA_TOKEN",
+          "envKeyFrom": "figma.tokenEnvVar",
+          "aiHint": "Figma personal access token"
+        }
+      ]
+    },
+    {
+      "id": "knowledge-base",
+      "title": "قاعدة المعرفة",
+      "titleEn": "Knowledge Base",
+      "description": "إعدادات الـ Knowledge Base لخطوات kb: وأمر /ask-kb",
+      "descriptionEn": "Knowledge Base (KB Ask) settings for kb: steps and /ask-kb",
+      "icon": "📚",
+      "group": "project",
+      "target": "config/project.json",
+      "optional": true,
+      "fields": [
+        {
+          "key": "kb.baseUrl",
+          "label": "Base URL",
+          "labelEn": "Base URL",
+          "type": "url",
+          "placeholder": "http://localhost:3000",
+          "required": false,
+          "hint": "عنوان سيرفر الـ KB Ask API (الهوست فقط، من غير مسار)",
+          "hintEn": "The KB Ask API server address (host only, no path)",
+          "aiHint": "knowledge base (KB Ask) API base URL"
+        },
+        {
+          "key": "kb.project",
+          "label": "اسم مشروع الـ KB",
+          "labelEn": "KB Project",
+          "type": "text",
+          "placeholder": "my-kb-project",
+          "required": false,
+          "aiHint": "knowledge base project name"
+        },
+        {
+          "key": "kb.key",
+          "label": "KB Ask API Key",
+          "type": "password",
+          "placeholder": "المفتاح السري المرسل في x-api-key",
+          "placeholderEn": "the secret sent in the x-api-key header",
+          "required": false,
+          "secret": true,
+          "envKey": "KB_ASK_API_KEY",
+          "aiHint": "KB Ask API shared secret key"
+        }
+      ]
+    },
+    {
+      "id": "environments",
+      "title": "إدارة البيئات",
+      "titleEn": "Environments",
+      "description": "كل بيئات المشروع في مكان واحد — افتح بيئة للتعديل، أو أضف بيئة جديدة، أو أعد التسمية أو احذف (بتأكيد صريح قبل أي تغيير في الملفات)",
+      "descriptionEn": "All project environments — open one to edit, add a new one, rename, or delete (explicit confirmation before any file change)",
+      "icon": "🗂️",
+      "group": "environment",
+      "type": "env-manager"
+    },
+    {
+      "id": "environment",
+      "title": "بيئة الاختبار",
+      "titleEn": "Test Environment",
+      "description": "اسم البيئة ورابط التطبيق وإعدادات الجلسة",
+      "descriptionEn": "Environment name, app URL, and session defaults",
+      "icon": "🌐",
+      "group": "environment",
+      "target": "environments/{envName}.json",
+      "defaultsSection": true,
+      "fields": [
+        {
+          "key": "envName",
+          "label": "اسم البيئة (اسم الملف)",
+          "labelEn": "Environment Name",
+          "type": "text",
+          "placeholder": "qc",
+          "default": "qc",
+          "required": true,
+          "readonly": true,
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,30}$",
+          "patternMsg": "حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف",
+          "patternMsgEn": "lowercase letters, digits, - and _ only (31 characters max) — it becomes a file name",
+          "aiHint": "environment name being configured (e.g. qc, staging, uat)",
+          "hint": "دي البيئة المفتوحة حالياً. تغيير الاسم بيتم من صفحة إدارة البيئات (إعادة تسمية) — بتأكيد صريح، مش بالكتابة هنا.",
+          "hintEn": "The environment you have open. Renaming happens on the Environments page (Rename) — on an explicit confirmation, not by typing here."
+        },
+        {
+          "key": "portalUrl",
+          "label": "رابط التطبيق (Portal URL)",
+          "labelEn": "Portal URL",
+          "type": "url",
+          "placeholder": "https://app.example.com",
+          "required": true,
+          "aiHint": "application URL, portal URL, base URL for testing"
+        }
+      ]
+    },
+    {
+      "id": "test-users",
+      "title": "مستخدمو الاختبار",
+      "titleEn": "Test Users",
+      "description": "بيانات الحسابات المستخدمة في الاختبارات — حقول المستخدم قابلة للتخصيص ومشتركة بين كل البيئات",
+      "descriptionEn": "Test account data — the field set is customizable and shared across all environments",
+      "icon": "👥",
+      "group": "environment",
+      "target": "environments/{envName}.json",
+      "type": "dynamic-list",
+      "listKey": "users",
+      "minItems": 1,
+      "defaults": [
+        {
+          "handle": "valid_user",
+          "phone": "",
+          "role": "customer"
+        },
+        {
+          "handle": "expired_user",
+          "phone": "",
+          "notes": "for negative login scenarios"
+        }
+      ]
+    },
+    {
       "id": "db-connection",
       "title": "قاعدة البيانات",
       "titleEn": "Database Connection",
-      "description": "إعدادات الاتصال بقاعدة البيانات (اختياري)",
-      "descriptionEn": "Database connection settings (optional)",
+      "description": "إعدادات الاتصال بقاعدة البيانات لخطوات db:",
+      "descriptionEn": "Database connection settings for db: steps",
       "icon": "🗄️",
-      "target": "environments/{defaultEnvironment}.json",
+      "group": "environment",
+      "target": "environments/{envName}.json",
       "optional": true,
       "fields": [
         {
@@ -282,11 +440,13 @@
           "required": false,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
+          "patternMsgEn": "an environment-variable name only: A-Z, digits and _ , no spaces",
           "aiHint": "environment variable name for DB password"
         },
         {
           "key": "db.password",
           "label": "كلمة مرور قاعدة البيانات",
+          "labelEn": "Database Password",
           "type": "password",
           "placeholder": "••••••••",
           "required": false,
@@ -301,10 +461,11 @@
       "id": "api-integration",
       "title": "API Integration",
       "titleEn": "API Integration",
-      "description": "إعدادات الـ REST API (اختياري)",
-      "descriptionEn": "REST API settings (optional)",
+      "description": "إعدادات الـ REST API لخطوات api:",
+      "descriptionEn": "REST API settings for api: steps",
       "icon": "🔌",
-      "target": "environments/{defaultEnvironment}.json",
+      "group": "environment",
+      "target": "environments/{envName}.json",
       "optional": true,
       "fields": [
         {
@@ -325,6 +486,7 @@
           "required": false,
           "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "patternMsg": "اسم متغير بيئة صالح فقط: حروف إنجليزية وأرقام و _ بدون مسافات",
+          "patternMsgEn": "an environment-variable name only: A-Z, digits and _ , no spaces",
           "aiHint": "environment variable name for API bearer token"
         },
         {
@@ -344,17 +506,17 @@
       "id": "review",
       "title": "مراجعة وحفظ",
       "titleEn": "Review & Save",
-      "description": "راجع الإعدادات قبل الحفظ",
-      "descriptionEn": "Review your configuration before saving",
+      "description": "راجع الملفات اللي هتتكتب قبل الحفظ",
+      "descriptionEn": "Review the files to be written before saving",
       "icon": "✅",
       "type": "review",
       "outputs": [
         {
-          "label": "config/project.json",
+          "file": "config/project.json",
           "key": "projectConfig"
         },
         {
-          "label": "environments/{defaultEnvironment}.json",
+          "file": "environments/{envName}.json",
           "key": "envConfig"
         }
       ]

@@ -1,50 +1,53 @@
 ---
 name: task-estimation
 description: |
-  Creates QA testing tasks with estimation on Azure DevOps User Stories. Use this skill whenever the user wants to:
-  - Add QA tasks to sprint stories in Azure DevOps
+  Creates QA testing tasks with estimation on the configured tracker's User Stories — Azure DevOps or Jira Cloud. Reads the sprint, analyzes each story, then creates all [Testing] tasks (ADO Tasks or Jira sub-tasks) behind ONE consolidated approval, through bundled REST scripts (no Azure CLI, no acli). Use this skill whenever the user wants to:
+  - Add QA tasks to sprint stories in Azure DevOps or Jira
   - Estimate testing hours for user stories
-  - Create [Testing] tasks on ADO work items
+  - Create [Testing] tasks on ADO work items or [Testing] sub-tasks on Jira issues
   - Plan QA effort for a sprint
   - Break down stories into testing tasks with hours
-  Trigger on phrases like: "create tasks for stories", "add QA tasks", "estimate sprint", "create testing tasks", "plan QA for sprint", "add tasks to stories", or any mention of sprint stories + estimation + testing.
+  Trigger on phrases like: "create tasks for stories", "add QA tasks", "estimate sprint", "estimate the Jira sprint", "create testing tasks", "create tasks for Jira sprint stories", "add sub-tasks to Jira stories", "plan QA for sprint", "add tasks to stories", or any mention of sprint stories + estimation + testing.
 ---
 
-# QA Task Estimation & Task Creation (Azure DevOps)
+# QA Task Estimation & Task Creation
 
-Automates QA testing-task creation on Azure DevOps User Stories, estimated by story complexity.
-This file is the **workflow** (what tasks, how to estimate, when to confirm). The `az boards` /
-`az devops` command mechanics live in the reference — **read it before the first `az boards`
-command in a session**:
+## Role
+You turn a sprint's stories into estimated QA `[Testing]` tasks on the configured tracker,
+created as the tracker's child tasks of each story. You never write to the board without
+the single consolidated approval described below.
 
-- **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-devops-cli.md`** —
-  extension install, `az devops configure`, work-item create/show/query, WIQL
-  `@CurrentIteration`, parent linking, delete, and the known gotchas.
+Automates QA testing-task creation on the **configured tracker's** stories, estimated by
+story complexity. This file is the **workflow** (what tasks, how to estimate, the one
+approval gate). The mechanics live in ONE bundled script — never run a tracker CLI or
+compose REST calls for board operations; the script owns transport and auth:
 
-Base `az` install/auth is covered by the sibling **azure-integration** skill — read its
-`references/azure-cli.md` if `az` itself isn't installed or you aren't logged in.
+- **`${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/scripts/create-tasks.js`** — sprint/story
+  reads, fail-closed dry-run validation, and the task creation itself. The script resolves
+  the configured tracker itself; dry run by default; one JSON line; exit 0/1/2.
+- **The configured provider's reference** — read it before interpreting script JSON in a
+  session: `${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards.md` (Azure DevOps) or
+  `${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md` (Jira), section *Estimation
+  flow*. It holds the provider's configuration keys, what its child tasks, hours, and
+  placement look like, and the provider-specific rules that apply on top of this workflow.
 
 ## Configuration (never hardcode)
 
-Read these once at the start of a session — from the values the user gives you, or from an
-existing `az devops configure --defaults`. If any is unknown, **ask the user once** and reuse it
-for the whole session. Do not bake an organization, project, team, or email into commands.
+Every setting resolves from `config/project.json`'s tracker block — the reference's
+*Estimation flow* section lists the keys and any fallbacks. Never bake an organization,
+site, project, team, or email into anything. Anything missing joins the ONE bundled
+question round (Phase B) — never a drip of questions.
 
-| Setting | Source | Example |
-|---|---|---|
-| Organization URL | `azure.org` (`config/project.json`) → `AZURE_URL` / ask | `https://dev.azure.com/<org>` |
-| Project | `azure.project` (`config/project.json`) → `AZURE_PROJECT` / ask | `My Project` |
-| Team | `azure.team` (`config/project.json`) → `AZURE_TEAM` / ask | `My Project Team` |
-| Default assignee | `azure.assignee` (`config/project.json`) → `AZURE_ASSIGNEE` / ask | `qa.engineer@example.com` |
-| PAT (auth) | `AZURE_DEVOPS_EXT_PAT` env in the user's shell — **never** print or pass it | — |
-
-(Config lives in `config/project.json`'s `azure` block or legacy `AZURE_*` keys in `.env`.
-NEVER print, log, or pass the PAT (or any secret) anywhere — auth flows through the
-`AZURE_DEVOPS_EXT_PAT` env var that the user exports in their shell.)
+- **Assignee**: from the spec, or a single configured value — never invented; several
+  configured values → ask which one.
+- **Credentials** live in `.env`. The script reads them itself and sends them only in the
+  Authorization header. **Never** read, print, or pass them.
+- Run-only overrides and corrected values are for the run only — they never rewrite the
+  user's config.
 
 ## Task template
 
-Every User Story gets exactly **5 QA tasks** — no more, no less:
+Every story gets exactly **5 QA tasks** — no more, no less:
 
 | Task Title | Purpose |
 |---|---|
@@ -54,10 +57,14 @@ Every User Story gets exactly **5 QA tasks** — no more, no less:
 | `[Testing] Bug Review and Retest` | Verify bug fixes |
 | `[Testing] Automation` | Automate test scenarios |
 
-Every task must set, at create time: `--type Task`, `--title "[Testing] <name>"`,
-`--iteration <parent story's iteration>`, `--assigned-to <assignee>`,
-`Microsoft.VSTS.Common.Activity=Testing`, and `OriginalEstimate`/`RemainingWork` = the estimated
-hours — then link it to its parent story. Exact commands are in the reference.
+Every task is created with: the `[Testing] ` title prefix, the assignee, a testing-activity
+marker, and the estimated hours, plus the parent link — inline in one atomic create per
+task. Placement (sprint/iteration) is the script's: it comes from the parent story — never
+asked, never taken from the spec.
+
+The template, the estimation methodology, and the one-gate workflow are identical on every
+tracker; only the mechanics differ, and the script owns them (the reference says what they
+are).
 
 ## Estimation factors
 
@@ -95,40 +102,96 @@ Score these from the story's description + ACs before estimating:
 | Automation | 1h | 1–2h | 3h |
 | **Total** | **5h** | **5–8h** | **13–14h** |
 
-> Always **show the estimate and ask the user to confirm or adjust** before creating tasks.
+The exactly-5-canonical-tasks template and these numbers are the methodology — the user may
+adjust either at the gate; the script enforces only what is mechanical (prefix, positive
+estimate, inherited placement).
 
-## Workflow
+## Workflow — three phases, ONE approval
 
-0. **Resolve config** — organization, project, team, assignee (see Configuration). Ask once if
-   missing.
-1. **Get current iteration** — fetch the current sprint dynamically (never hardcode); see reference.
-2. **Fetch sprint stories** — WIQL query for User Stories in the current iteration; show a
-   summary table: ID | Title | State | Story Points.
-3. **Process one story at a time** — for each:
-   1. Fetch details (`work-item show --expand all`).
-   2. Analyze description + ACs against the estimation factors.
-   3. Show the analysis: factor counts, complexity bucket, proposed hours per task.
-   4. **Ask for confirmation** — never create without an explicit "yes" / "تمام" / "approved".
-   5. **Check for existing child tasks first** (see reference); if present, ask whether to skip
-      or add.
-   6. Create the 5 tasks with all mandatory fields, then link each to the parent story.
-   7. Move to the next story.
+### Phase A — collect & read (no user interaction, no writes)
+
+1. Read the stories:
+   ```bash
+   node ${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/scripts/create-tasks.js stories --current-sprint --full
+   ```
+   (or `stories --ids <ID,ID> --full` when the ask names specific stories). The JSON
+   carries each story's title/state/SP, the provider's placement facts (see the
+   reference), the description + AC HTML, and any `existingTestingTasks` — note which
+   stories already have `[Testing]` children.
+   - If the sprint read reports more than one candidate sprint, that choice joins the one
+     bundled round (Phase B) — never pick silently.
+   - A sprint read that blocks is relayed with its fix (the message names it); offer
+     `--ids` for named stories — never guess a sprint.
+2. Per story, apply the estimation methodology above: factor counts → complexity bucket →
+   the 5-task hours. When `storyPoints` is null, estimate from the factor counts, and when
+   the row carries a note about it, relay that note to the user (it names the config
+   override). The **analysis stays per-story**; only the approval is consolidated.
+
+### Phase B — ONE bundled input round, only if needed
+
+If anything is genuinely unresolvable — a required setting the script reports missing (e.g.
+the team or assignee), the sprint to use when the read reports several, a blocked entry
+that carries `options`, or stories that already have `[Testing]` tasks (skip, or add
+anyway?) — ask **one** AskUserQuestion carrying every open question at once, **before**
+validation. A choice that comes with `options` is asked with those real options. When
+config + the reads answer everything, skip Phase B entirely: the happy path has exactly one
+interaction — the approval.
+
+### Phase C — validate, one screen, one approval, write
+
+1. Build the spec (stories the user chose to skip are simply absent), write it to the **OS
+   temp dir**, and dry-run:
+   ```bash
+   node …/create-tasks.js --spec "$TMP/tasks.json" [--allow-existing]
+   ```
+   Exit 2 = blocked: surface the reasons (they carry allowedValues / existing-task IDs /
+   the stale-cache options with a `--refresh-fields` offer), correct **for the run**, and
+   re-run — a failure-path round, not a second gate. A blocked entry that carries
+   `options` is a user choice: ask it in that round with the real options. An unresolvable
+   or ambiguous assignee blocks — ask, never assign blind.
+2. Render **the consolidated screen** from the plan JSON — one table per story (ID, title,
+   SP, factor counts, bucket, per-task hours, story total), the sprint grand total, the
+   assignee (as the dry run resolved it, including any tracker identity it resolved to),
+   any "adding despite N existing `[Testing]` tasks" notes, how the hours will be recorded
+   and any notes when the dry-run JSON reports them (`validation.hours` with its message,
+   `validation.notes`) — the one approval covers them — **the exact write plan** (every
+   planned step in order — task creates and any follow-up steps — each with its route,
+   parent link inline), and the explicit statement that **nothing has been written yet**.
+   An adjustment ("story 3 is Heavy") edits the spec and re-runs the dry run — the
+   corrected screen still ends in exactly one approval.
+3. **One approval** ("yes" / "تمام" / "approved") → re-run with `--execute`. Anything
+   else → stop, zero writes.
+4. **Render the ledger**: every intended task done (ID + URL) or not-done (reason). A
+   partial failure is a **failure** — name exactly which tasks now exist on the board; no
+   retry, no cleanup — remediation is the user's call.
 
 ## Rules
 
-- One story at a time — never batch-create across all stories.
-- Never create tasks without showing the estimate and getting confirmation.
-- Never put a PAT on the command line or read `.env*` — auth is handled via the shell env.
-- Always set `--iteration` (inherit the parent story's) and `Activity=Testing` — the two most
-  common omissions.
-- Ask once for any missing config value, then reuse it for the session.
+- **One gate**: all reads + validation first, ONE consolidated screen for the whole run
+  (analysis per story, approval once), then writes. Never create without that approval.
+- Never run a tracker CLI (or compose your own REST calls) for board operations — the
+  script owns transport and auth on every tracker.
+- Never read `.env*` or handle a credential value — the script reads credentials itself,
+  header-only.
+- Placement (sprint/iteration/area) comes from each parent story through the script —
+  never ask for it and never accept spec overrides.
+- A blocked entry that carries `options` is a user choice — ask it with the real options
+  (in the one bundled round, or the failure-path round after a dry run); never pick
+  silently.
+- At most ONE bundled question round before validation; missing config values are asked
+  there once and corrections apply to the run only (the config is never rewritten).
+- No retries, no cleanup writes — a partial result is reported exactly, from the ledger.
 
 ## Example interaction
 
 ```
-Bot: Story #12345 — Capture Contact Preferences (3 SP)
-     - 3 scenarios · 4 Yes/No questions · Simple complexity
-     Proposed: all 5 tasks @ 1h each (Total: 5h). Confirm? [yes / adjust]
+User: estimate the sprint
+Bot: [reads stories + analyzes silently, then ONE screen:]
+     #12345 Capture Contact Preferences (3 SP) — 3 scenarios · 4 Yes/No inputs → Simple, 5 tasks @ 1h (5h)
+     #12346 Address Lookup (8 SP) — 6 scenarios · map API · 9 fields → Heavy, 13h (2/3–4/3/2/3)
+     #12347 already has 5 [Testing] tasks — you chose: add anyway
+     Sprint total: 31h · Assignee: qa.engineer@example.com
+     Write plan: 15 task creates (routes below), parent links inline. Nothing has been written yet. Approve?
 User: تمام
-Bot: [creates 5 tasks — iteration inherited, Activity: Testing, assigned] ✅ Done. Next: #12346...
+Bot: [--execute] ✅ 15/15 created — IDs + URLs listed.
 ```

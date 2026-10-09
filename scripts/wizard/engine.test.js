@@ -2,13 +2,36 @@
 // Tests for the wizard engine — extraction, validation, config building.
 // Run: node scripts/wizard/engine.test.js
 const assert = require('node:assert');
-const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate } = require('./engine.js');
+const fs = require('node:fs');
+const path = require('node:path');
+const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate, DEFAULT_ENV_NAME,
+        planSave, buildEnvUsers, BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS,
+        validateFieldDescriptors } = require('./engine.js');
 
 let passed = 0; const failures = [];
 function test(name, fn) {
   try { fn(); passed++; console.log(`  ok - ${name}`); }
   catch (e) { failures.push(name); console.error(`  FAIL - ${name}: ${e.message}`); }
 }
+
+// ── DEFAULT_ENV_NAME: one shared default, consistent on every surface ─────
+test('DEFAULT_ENV_NAME is "qc" and every declared default agrees with it', () => {
+  assert.strictEqual(DEFAULT_ENV_NAME, 'qc');
+  // engine fallback
+  assert.strictEqual(buildConfigs({ name: 'd' }, []).envName, DEFAULT_ENV_NAME);
+  // wizard schema default + placeholder
+  const schema = require('./schema.json');
+  const field = schema.steps.flatMap(s => s.fields || []).find(f => f.key === 'envName');
+  assert.strictEqual(field.default, DEFAULT_ENV_NAME, 'schema default');
+  assert.strictEqual(field.placeholder, DEFAULT_ENV_NAME, 'schema placeholder');
+  // shipped templates: project default + the sample file's own name
+  const projTemplate = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8'));
+  assert.strictEqual(projTemplate.defaultEnvironment, DEFAULT_ENV_NAME, 'project template default');
+  assert.ok(fs.existsSync(
+    path.join(__dirname, '..', '..', 'templates', 'environments', `${DEFAULT_ENV_NAME}.json`)),
+    'sample environment template carries the default name');
+});
 
 // ── extractFromText: .env source ──────────────────────────────────────────
 test('extracts an old .env into answer keys', () => {
@@ -81,14 +104,14 @@ test('empty or unrecognised text yields no invented values', () => {
 
 test('validate enforces field patterns, and the schema declares them where it matters', () => {
   const steps = [{ id: 's', fields: [
-    { key: 'defaultEnvironment', label: 'env', pattern: '^[a-z0-9][a-z0-9_-]{0,30}$' },
+    { key: 'envName', label: 'env', pattern: '^[a-z0-9][a-z0-9_-]{0,30}$' },
   ]}];
-  assert.deepStrictEqual(validate({ defaultEnvironment: 'qa' }, steps), []);
-  assert.match(validate({ defaultEnvironment: 'QA App!!' }, steps).join(), /env/);
+  assert.deepStrictEqual(validate({ envName: 'qa' }, steps), []);
+  assert.match(validate({ envName: 'QA App!!' }, steps).join(), /env/);
 
   const schema = require('./schema.json');
   const fields = schema.steps.flatMap(s => s.fields || []);
-  for (const key of ['defaultEnvironment', 'db.passwordEnvVar', 'api.tokenEnvVar']) {
+  for (const key of ['envName', 'db.passwordEnvVar', 'api.tokenEnvVar']) {
     const f = fields.find(x => x.key === key);
     assert.ok(f && f.pattern, `${key} must declare a pattern (garbage was only rejected at save, in English)`);
     assert.ok(f.patternMsg, `${key} must carry a localized pattern message`);
@@ -122,13 +145,112 @@ test('mergeExtracted takes extracted users when there are none yet, and fills em
   assert.deepStrictEqual(merged.users, [{ handle: 'import_user', phone: '0559990001' }]);
 });
 
-// ── schema shape ──────────────────────────────────────────────────────────
-test('schema has 7 numbered steps and no ai-import step', () => {
+// ── schema shape: pages map one-to-one to config files, grouped by file ───
+test('schema has 11 numbered steps and no ai-import step', () => {
   const schema = require('./schema.json');
-  assert.strictEqual(schema.steps.length, 7);
+  assert.strictEqual(schema.steps.length, 11);
   assert.ok(!schema.steps.some(s => s.id === 'ai-import'), 'ai-import must not be a numbered step');
   assert.ok(!schema.steps.some(s => s.type === 'ai-extract'), 'no ai-extract step type in the flow');
   assert.strictEqual(schema.steps[schema.steps.length - 1].type, 'review', 'review stays last');
+  const figma = schema.steps.find(s => s.id === 'figma');
+  assert.ok(figma && figma.optional, 'figma step exists and is optional');
+  const tokenField = figma.fields.find(f => f.key === 'figma.token');
+  assert.ok(tokenField.secret && tokenField.envKey === 'FIGMA_TOKEN' && tokenField.envKeyFrom === 'figma.tokenEnvVar',
+    'figma token is a secret field wired to FIGMA_TOKEN');
+});
+
+test('every content page declares exactly one target file, and same-file pages are consecutive', () => {
+  const schema = require('./schema.json');
+  const content = schema.steps.filter(s => s.type !== 'review');
+  for (const s of content) {
+    assert.ok(s.group === 'project' || s.group === 'environment', `step ${s.id} must belong to a group`);
+    // The environments manager (E0) writes no file itself — it manages which
+    // files exist; every other content page declares its ONE target file.
+    if (s.type === 'env-manager') continue;
+    assert.ok(typeof s.target === 'string' && s.target, `step ${s.id} must declare its one target file`);
+    const expected = s.group === 'project' ? 'config/project.json' : 'environments/{envName}.json';
+    assert.strictEqual(s.target, expected, `step ${s.id}: group and target must agree`);
+  }
+  // Contiguity: once the environment group starts, no project page follows.
+  const groups = content.map(s => s.group);
+  const firstEnv = groups.indexOf('environment');
+  assert.ok(firstEnv > 0, 'project pages come first');
+  assert.ok(!groups.slice(firstEnv).includes('project'),
+    `project and environment pages must not interleave (got: ${groups.join(' → ')})`);
+  // The steps-track group labels are schema-driven.
+  assert.ok(schema.groups && schema.groups.project && schema.groups.project.label, 'project group label');
+  assert.ok(schema.groups.environment && schema.groups.environment.label, 'environment group label');
+});
+
+test('the environments manager opens the environment group; the name field is read-only', () => {
+  const schema = require('./schema.json');
+  const idx = schema.steps.findIndex(s => s.id === 'environments');
+  assert.ok(idx > 0, 'environments manager step exists');
+  const mgr = schema.steps[idx];
+  assert.strictEqual(mgr.type, 'env-manager');
+  assert.strictEqual(mgr.group, 'environment');
+  const firstEnvIdx = schema.steps.findIndex(s => s.group === 'environment');
+  assert.strictEqual(idx, firstEnvIdx, 'the manager is the environment group opener (E0)');
+  assert.strictEqual(schema.steps[idx + 1].id, 'environment', 'environment details follow the manager');
+  const envName = schema.steps[idx + 1].fields.find(f => f.key === 'envName');
+  assert.strictEqual(envName.readonly, true,
+    'typing a new name must no longer fork a fresh environment — rename is an explicit, confirmed op');
+});
+
+test('the first page is pure project settings — the environment name lives on the environment page', () => {
+  const schema = require('./schema.json');
+  const first = schema.steps[0];
+  assert.strictEqual(first.target, 'config/project.json', 'first page writes project.json only');
+  assert.ok(!(first.fields || []).some(f => f.key === 'envName' || f.key === 'defaultEnvironment'),
+    'no environment-name field among project settings');
+  assert.ok(!schema.steps.flatMap(s => s.fields || []).some(f => f.key === 'defaultEnvironment'),
+    'defaultEnvironment is derived output only — never a page input');
+  const envStep = schema.steps.find(s => s.id === 'environment');
+  assert.strictEqual(envStep.group, 'environment');
+  assert.strictEqual((envStep.fields || [])[0].key, 'envName',
+    'naming the file is the first act of environment configuration');
+});
+
+test('the KB page exists in the project group with the fixed KB_ASK_API_KEY secret', () => {
+  const schema = require('./schema.json');
+  const kb = schema.steps.find(s => s.id === 'knowledge-base');
+  assert.ok(kb && kb.optional, 'knowledge-base step exists and is optional');
+  assert.strictEqual(kb.group, 'project');
+  assert.strictEqual(kb.target, 'config/project.json');
+  const keys = kb.fields.map(f => f.key);
+  assert.ok(keys.includes('kb.baseUrl') && keys.includes('kb.project'), 'kb.baseUrl + kb.project inputs');
+  const keyField = kb.fields.find(f => f.key === 'kb.key');
+  assert.ok(keyField && keyField.secret && keyField.envKey === 'KB_ASK_API_KEY',
+    'KB key is a secret bound to the fixed KB_ASK_API_KEY env var (ask_kb.js reads that name)');
+  assert.ok(!keyField.envKeyFrom, 'KB env var name is fixed — no envKeyFrom (matches azure.pat, not figma)');
+});
+
+test('review outputs are file-keyed and template on {envName}', () => {
+  const schema = require('./schema.json');
+  const review = schema.steps[schema.steps.length - 1];
+  assert.deepStrictEqual(review.outputs, [
+    { file: 'config/project.json', key: 'projectConfig' },
+    { file: 'environments/{envName}.json', key: 'envConfig' },
+  ]);
+});
+
+test('ui.html speaks envName — no stale defaultEnvironment answer key', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'ui.html'), 'utf8');
+  assert.ok(!ui.includes("answers['defaultEnvironment']"),
+    'the answer-key rename must be total: one mapping, no drift');
+});
+
+test('ui.html: the fork affordance is gone; manager, pending ops, and consent markers are in', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'ui.html'), 'utf8');
+  assert.ok(!ui.includes('onEnvironmentNameChanged'),
+    'typing a name must no longer silently fork a fresh environment');
+  assert.ok(ui.includes('env-manager'), 'the E0 environments manager is rendered');
+  assert.ok(ui.includes('pendingDeletes'), 'deletes are recorded as pending ops, executed only by the save');
+  assert.ok(ui.includes('confirmed: true'), 'ops go to the server explicitly consented');
+  assert.ok(ui.includes('openAddEnvDialog') && ui.includes('openRenameDialog') && ui.includes('openDeleteDialog'),
+    'add/rename/delete all route through explicit dialogs');
+  assert.ok(ui.includes('base[u.handle]'),
+    'per-user unknown-prop preservation (mirror of engine buildEnvUsers) is wired in');
 });
 
 // ── validateConfigs ───────────────────────────────────────────────────────
@@ -160,16 +282,481 @@ test('validateConfigs rejects bad url, bad env name, missing name', () => {
 // ── buildConfigs ──────────────────────────────────────────────────────────
 test('buildConfigs maps answers to the file contract', () => {
   const { projectConfig, envConfig, envName } = buildConfigs({
-    name: 'demo', defaultEnvironment: 'uat', portalUrl: 'https://uat.example',
+    name: 'demo', envName: 'uat', portalUrl: 'https://uat.example',
     'db.server': 'db.local', 'api.baseUrl': 'https://api.example',
     users: [{ handle: 'valid_user', phone: '0550000001' }],
   }, []);
   assert.strictEqual(envName, 'uat');
+  assert.strictEqual(projectConfig.defaultEnvironment, 'uat',
+    'first-configured claims the default — derived, not an input');
   assert.strictEqual(projectConfig.name, 'demo');
   assert.deepStrictEqual(Object.keys(envConfig.users), ['valid_user']);
   assert.deepStrictEqual(envConfig.db.password, { envSecret: 'SQLCMDPASSWORD' });
   assert.deepStrictEqual(envConfig.api.token, { envSecret: 'API_TOKEN' });
   assert.ok(!('azure' in projectConfig), 'empty azure block is stripped');
+});
+
+test('extractFromText maps environment-name labels to envName', () => {
+  assert.strictEqual(extractFromText('البيئة: uat').envName, 'uat');
+  assert.strictEqual(extractFromText('environment: staging').envName, 'staging');
+  const r = extractFromText('default environment: qc2');
+  assert.strictEqual(r.envName, 'qc2');
+  assert.ok(!('defaultEnvironment' in r), 'the old answer key is never emitted');
+});
+
+test('buildConfigs: kb block from kb answers, key material never in JSON', () => {
+  const r = buildConfigs({ name: 'd', 'kb.baseUrl': 'http://localhost:3000', 'kb.project': 'travel-kb' }, []);
+  assert.deepStrictEqual(r.projectConfig.kb, { baseUrl: 'http://localhost:3000', project: 'travel-kb' });
+  const none = buildConfigs({ name: 'd' }, []);
+  assert.ok(!('kb' in none.projectConfig), 'empty kb block is stripped');
+});
+
+test('buildConfigs: figma block only when a file key is provided', () => {
+  const withKey = buildConfigs({ name: 'd', 'figma.fileKey': 'KEY1' }, []);
+  assert.deepStrictEqual(withKey.projectConfig.figma, { fileKey: 'KEY1', token: { envSecret: 'FIGMA_TOKEN' } });
+  const custom = buildConfigs({ name: 'd', 'figma.fileKey': 'K2', 'figma.tokenEnvVar': 'MY_FIGMA_TOKEN' }, []);
+  assert.deepStrictEqual(custom.projectConfig.figma.token, { envSecret: 'MY_FIGMA_TOKEN' });
+  const none = buildConfigs({ name: 'd' }, []);
+  assert.ok(!('figma' in none.projectConfig), 'no figma block without a file key');
+});
+
+// ── planSave: the multi-environment batch save plan (wizard design #3) ────
+// Pure plan validation + arithmetic: disk state comes in as data, so every
+// rejection path — the wizard's FIRST destructive capability — is testable
+// without IO. The server executes only what a clean plan allows.
+const disk = (envNames = [], pristineNames = []) => ({ envNames, pristineNames });
+const cfgOk = (url = 'https://ok.example') => ({ portalUrl: url, users: { u1: { phone: '1' } } });
+const op = (o) => ({ confirmed: true, ...o });
+
+test('planSave accepts a multi-env write and reports the final environment set', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: { qa: cfgOk(), uat: cfgOk('https://uat.example') },
+    ops: { renames: [], deletes: [] },
+  }, disk(['qa']));
+  assert.deepStrictEqual(plan.errors, []);
+  assert.deepStrictEqual([...plan.finalEnvNames].sort(), ['qa', 'uat']);
+  assert.deepStrictEqual(plan.reconcile, []);
+});
+
+test('planSave validates every environment, naming the file in the error', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: { qa: cfgOk(), uat: { portalUrl: 'nope', users: { u: {} } } },
+    ops: {},
+  }, disk(['qa']));
+  assert.match(plan.errors.join(), /uat/);
+  assert.match(plan.errors.join(), /portalUrl/);
+});
+
+test('planSave refuses an un-consented rename or delete (invariant #11 double consent)', () => {
+  const base = { projectConfig: { name: 'd', defaultEnvironment: 'qa' }, environments: { qa: cfgOk() } };
+  const r1 = planSave({ ...base, ops: { renames: [{ from: 'old', to: 'new2' }], deletes: [] } }, disk(['qa', 'old']));
+  assert.match(r1.errors.join(), /consent/i);
+  const r2 = planSave({ ...base, ops: { renames: [], deletes: [{ name: 'old' }] } }, disk(['qa', 'old']));
+  assert.match(r2.errors.join(), /consent/i);
+  const r3 = planSave({ ...base, ops: { renames: [], deletes: [{ name: 'old', confirmed: true }] } }, disk(['qa', 'old']));
+  assert.deepStrictEqual(r3.errors, [], 'the same op with explicit consent passes');
+});
+
+test('planSave refuses ops on files it did not enumerate', () => {
+  const base = { projectConfig: { name: 'd', defaultEnvironment: 'qa' }, environments: { qa: cfgOk() } };
+  const r1 = planSave({ ...base, ops: { renames: [op({ from: 'ghost', to: 'new2' })], deletes: [] } }, disk(['qa']));
+  assert.match(r1.errors.join(), /ghost/);
+  const r2 = planSave({ ...base, ops: { renames: [], deletes: [op({ name: 'ghost' })] } }, disk(['qa']));
+  assert.match(r2.errors.join(), /ghost/);
+});
+
+test('planSave refuses a save that would leave zero environments', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: {},
+    ops: { renames: [], deletes: [op({ name: 'qa' })] },
+  }, disk(['qa']));
+  assert.match(plan.errors.join(), /at least one environment/i);
+  // Reconciliation alone must not zero the project either: a lone pristine
+  // sample with nothing written stays where it is (the save is refused).
+  const r2 = planSave({ projectConfig: { name: 'd', defaultEnvironment: 'qc' }, environments: {}, ops: {} },
+    disk(['qc'], ['qc']));
+  assert.match(r2.errors.join(), /at least one environment/i);
+});
+
+test('planSave: rename arithmetic — the default follows a rename; a ghost default is refused', () => {
+  const good = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'b' },
+    environments: {},
+    ops: { renames: [op({ from: 'a', to: 'b' })], deletes: [] },
+  }, disk(['a']));
+  assert.deepStrictEqual(good.errors, []);
+  assert.deepStrictEqual(good.finalEnvNames, ['b']);
+  const bad = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'a' },
+    environments: {},
+    ops: { renames: [op({ from: 'a', to: 'b' })], deletes: [] },
+  }, disk(['a']));
+  assert.match(bad.errors.join(), /defaultEnvironment/);
+});
+
+test('planSave: deleting the default without re-designating is a ghost default — refused', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: { uat: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: 'qa' })] },
+  }, disk(['qa', 'uat']));
+  assert.match(plan.errors.join(), /defaultEnvironment/);
+  const fixed = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'uat' },
+    environments: { uat: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: 'qa' })] },
+  }, disk(['qa', 'uat']));
+  assert.deepStrictEqual(fixed.errors, []);
+});
+
+test('planSave refuses colliding or path-escaping op names', () => {
+  const proj = { name: 'd', defaultEnvironment: 'qa' };
+  // rename target collides with a surviving file
+  assert.match(planSave({ projectConfig: proj, environments: {},
+    ops: { renames: [op({ from: 'a', to: 'qa' })], deletes: [] } }, disk(['qa', 'a'])).errors.join(), /collid/i);
+  // two renames onto the same target
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'a', to: 'x' }), op({ from: 'b', to: 'x' })], deletes: [] } },
+    disk(['qa', 'a', 'b'])).errors.join(), /collid/i);
+  // deleting a file this save also writes (delete runs last — it would kill the fresh write)
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: 'qa' })] } }, disk(['qa'])).errors.join(), /collid/i);
+  // deleting a rename target (same ordering hazard)
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'a', to: 'b' })], deletes: [op({ name: 'b' })] } },
+    disk(['qa', 'a', 'b'])).errors.join(), /collid/i);
+  // rename from === to is not a rename
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'a', to: 'a' })], deletes: [] } }, disk(['qa', 'a'])).errors.join(), /rename/i);
+  // path traversal in an op name
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: '../evil' })] } }, disk(['qa'])).errors.join(), /name/i);
+});
+
+test('planSave: renamed-and-edited — written under the new name, the old file removed by the op', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'b' },
+    environments: { b: cfgOk() },
+    ops: { renames: [op({ from: 'a', to: 'b' })], deletes: [] },
+  }, disk(['a']));
+  assert.deepStrictEqual(plan.errors, []);
+  assert.deepStrictEqual(plan.finalEnvNames, ['b']);
+});
+
+test('planSave refuses chained or swapped renames — a target that is another rename source', () => {
+  // In-order renameSync would silently overwrite the second rename's
+  // still-on-disk source: a→b lands ON b.json, then b→c moves a's content —
+  // b's data destroyed with an HTTP 200. Refused whole instead.
+  const chain = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'c' },
+    environments: {},
+    ops: { renames: [op({ from: 'a', to: 'b' }), op({ from: 'b', to: 'c' })], deletes: [] },
+  }, disk(['a', 'b']));
+  assert.match(chain.errors.join(), /another rename/i, 'chain a→b, b→c must be refused');
+  const swap = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'a' },
+    environments: {},
+    ops: { renames: [op({ from: 'a', to: 'b' }), op({ from: 'b', to: 'a' })], deletes: [] },
+  }, disk(['a', 'b']));
+  assert.match(swap.errors.join(), /another rename/i, 'swap a↔b must be refused');
+});
+
+test('planSave refuses adding a new environment under a name vacated by a rename', () => {
+  // rename b→c AND write a fresh b in one save: the rename executes after the
+  // write and would carry the fresh b.json away as c.json.
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'c' },
+    environments: { b: cfgOk() },
+    ops: { renames: [op({ from: 'b', to: 'c' })], deletes: [] },
+  }, disk(['b']));
+  assert.match(plan.errors.join(), /collides/i);
+});
+
+test('planSave reconciles pristine samples this save does not claim — and only those', () => {
+  const plan = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'uat' },
+    environments: { uat: cfgOk() },
+    ops: { renames: [], deletes: [] },
+  }, disk(['qc', 'uat'], ['qc']));
+  assert.deepStrictEqual(plan.errors, []);
+  assert.deepStrictEqual(plan.reconcile, ['qc']);
+  assert.deepStrictEqual(plan.finalEnvNames, ['uat']);
+  // writing over the pristine name claims it — nothing reconciled
+  const claimed = planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qc' },
+    environments: { qc: cfgOk() },
+    ops: {},
+  }, disk(['qc'], ['qc']));
+  assert.deepStrictEqual(claimed.errors, []);
+  assert.deepStrictEqual(claimed.reconcile, []);
+});
+
+test('planSave refuses touching an unreadable on-disk environment file', () => {
+  const proj = { name: 'd', defaultEnvironment: 'qa' };
+  const state = { envNames: ['qa', 'broken'], pristineNames: [], unreadableNames: ['broken'] };
+  // write over it
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk(), broken: cfgOk() }, ops: {} }, state)
+    .errors.join(), /broken/);
+  // rename it away
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'broken', to: 'fixed' })], deletes: [] } }, state).errors.join(), /broken/);
+  // rename onto it
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [op({ from: 'qa', to: 'broken' })], deletes: [] } },
+    { envNames: ['qa', 'broken'], pristineNames: [], unreadableNames: ['broken'] }).errors.join(), /broken/);
+  // delete it
+  assert.match(planSave({ projectConfig: proj, environments: { qa: cfgOk() },
+    ops: { renames: [], deletes: [op({ name: 'broken' })] } }, state).errors.join(), /broken/);
+});
+
+// ── buildEnvUsers: per-user unknown-prop preservation (invariant #11) ─────
+test('buildEnvUsers merges each entry onto its on-disk base — hand-added props survive', () => {
+  const base = {
+    valid_user: { phone: '0550000001', role: 'customer', apiKeyRef: 'hand-added' },
+    old_user: { phone: '9' },
+  };
+  const out = buildEnvUsers([
+    { handle: 'valid_user', phone: '0550009999', email: '', role: 'customer', notes: '' },
+    { handle: 'new_user', phone: '1' },
+  ], base);
+  assert.deepStrictEqual(out.valid_user,
+    { phone: '0550009999', role: 'customer', apiKeyRef: 'hand-added' },
+    'managed fields mirror the screen; unmanaged props are preserved');
+  assert.deepStrictEqual(out.new_user, { phone: '1' });
+  assert.ok(!('old_user' in out), 'a user removed on screen is removed from the file');
+});
+
+test('buildEnvUsers: an emptied managed field clears the saved value (screen wins)', () => {
+  const out = buildEnvUsers(
+    [{ handle: 'u', phone: '', role: 'admin' }],
+    { u: { phone: '0550000001', notes: 'kept? no — cleared is cleared', custom: 'kept' } });
+  assert.deepStrictEqual(out.u, { role: 'admin', custom: 'kept' });
+});
+
+// ── Consumer-owned field schema (wizard design #4) ─────────────────────────
+// The user/defaults field sets are descriptor arrays in config/project.json —
+// defined once, shared across ALL environments; only VALUES are per-env.
+test('built-in field arrays: engine and template project.json agree exactly', () => {
+  const tpl = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8'));
+  assert.deepStrictEqual(tpl.userFields, BUILTIN_USER_FIELDS,
+    'template userFields mirror the engine built-ins — one definition, no drift');
+  assert.deepStrictEqual(tpl.defaultsFields, BUILTIN_DEFAULTS_FIELDS);
+  assert.deepStrictEqual(BUILTIN_USER_FIELDS.map(f => f.key), ['phone', 'email', 'role', 'notes'],
+    'built-ins are exactly the historical fixed set (semantics-preserving)');
+  assert.deepStrictEqual(BUILTIN_DEFAULTS_FIELDS.map(f => f.key), ['password', 'otp']);
+});
+
+test('built-ins and template carry the corrected tanween (سرًّا حقيقيًا)', () => {
+  // m11 bakes these strings into every consumer project — the wrong form
+  // (tanween on the alif) must never ship in a synced home.
+  const all = JSON.stringify(BUILTIN_DEFAULTS_FIELDS) + fs.readFileSync(
+    path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8');
+  assert.ok(!all.includes('سراً') && !all.includes('حقيقياً'),
+    'التنوين على الحرف قبل الألف، مش على الألف');
+  assert.ok(JSON.stringify(BUILTIN_DEFAULTS_FIELDS).includes('سرًّا'), 'the corrected form is present');
+});
+
+test('schema.json no longer hardcodes the field sets — rendering is schema-driven', () => {
+  const schema = require('./schema.json');
+  const usersStep = schema.steps.find(s => s.id === 'test-users');
+  assert.ok(!usersStep.itemTemplate,
+    'itemTemplate replaced by rendering from project.json userFields (invariant #7: consumer-owned schema)');
+  const envStep = schema.steps.find(s => s.id === 'environment');
+  assert.ok(!(envStep.fields || []).some(f => f.key.startsWith('defaults.')),
+    'password/OTP are no longer a fixed pair in the wizard schema');
+  assert.strictEqual(envStep.defaultsSection, true,
+    'the environment page renders the defaultsFields section instead');
+});
+
+test('validateFieldDescriptors: accepts the built-ins, refuses duplicates/reserved/bad keys/bad types', () => {
+  assert.deepStrictEqual(validateFieldDescriptors(BUILTIN_USER_FIELDS, 'userFields', { reserved: ['handle'] }), []);
+  assert.deepStrictEqual(validateFieldDescriptors(BUILTIN_DEFAULTS_FIELDS, 'defaultsFields'), []);
+  assert.match(validateFieldDescriptors([{ key: 'x' }, { key: 'x' }], 'userFields').join(), /duplicate/i);
+  assert.match(validateFieldDescriptors([{ key: 'handle' }], 'userFields', { reserved: ['handle'] }).join(), /reserved/i);
+  assert.match(validateFieldDescriptors([{ key: '1bad' }], 'userFields').join(), /key/i);
+  assert.match(validateFieldDescriptors([{ key: 'weird key' }], 'userFields').join(), /key/i);
+  assert.match(validateFieldDescriptors([{ key: 'ok', type: 'select' }], 'userFields').join(), /type/i);
+  assert.match(validateFieldDescriptors('nope', 'userFields').join(), /array/i);
+  assert.match(validateFieldDescriptors([null], 'userFields').join(), /object/i);
+});
+
+test('buildConfigs is schema-driven: custom fields written, secrets as envSecret, arrays always written', () => {
+  const userFields = [
+    { key: 'userId', label: 'User ID', type: 'text' },
+    { key: 'nationalId', label: 'National ID', type: 'text' },
+    { key: 'apiKey', label: 'API Key', secret: true },
+  ];
+  const defaultsFields = [
+    { key: 'password', label: 'pw', default: 'Test@1234' },
+    { key: 'captcha', label: 'captcha', default: 'off' },
+  ];
+  const { projectConfig, envConfig } = buildConfigs({
+    name: 'd', portalUrl: 'https://x.example',
+    'defaults.captcha': 'on',
+    users: [{ handle: 'u1', userId: 'U-1', nationalId: '123', apiKey: 'USER_U1_APIKEY', phone: 'dropped' }],
+  }, [], { userFields, defaultsFields });
+  assert.deepStrictEqual(envConfig.users.u1,
+    { userId: 'U-1', nationalId: '123', apiKey: { envSecret: 'USER_U1_APIKEY' } },
+    'custom fields written; keys outside the set dropped; secret stored as an env-var NAME (invariant #5)');
+  assert.deepStrictEqual(envConfig.defaults, { password: 'Test@1234', captcha: 'on' },
+    'defaults iterate the descriptors — no hardcoded otp/password fallback');
+  assert.deepStrictEqual(projectConfig.userFields, userFields,
+    'the effective arrays are always written — explicit round-trip, no hidden divergence');
+  assert.deepStrictEqual(projectConfig.defaultsFields, defaultsFields);
+});
+
+test('buildConfigs without arrays falls back to the built-ins — historical behavior unchanged', () => {
+  const { projectConfig, envConfig } = buildConfigs(
+    { name: 'd', users: [{ handle: 'u', phone: '1', custom: 'x' }] }, []);
+  assert.deepStrictEqual(envConfig.users.u, { phone: '1' }, 'non-schema key still dropped');
+  assert.deepStrictEqual(envConfig.defaults, { otp: '0000', password: 'Test@1234' });
+  assert.deepStrictEqual(projectConfig.userFields, BUILTIN_USER_FIELDS);
+  assert.deepStrictEqual(projectConfig.defaultsFields, BUILTIN_DEFAULTS_FIELDS);
+});
+
+test('buildEnvUsers: schema-driven + dropKeys — renamed/removed keys leave the file, unknown props survive', () => {
+  const userFields = [{ key: 'userId', label: 'User ID' }, { key: 'notes', label: 'Notes' }];
+  const base = { u: { phone: '0550001', notes: 'old', apiKeyRef: 'hand-added' } };
+  const out = buildEnvUsers([{ handle: 'u', userId: '0550001', notes: 'old' }], base, userFields, ['phone']);
+  assert.deepStrictEqual(out.u, { userId: '0550001', notes: 'old', apiKeyRef: 'hand-added' },
+    'phone (renamed away this session) is dropped from the base; hand-added props still survive (invariant #11)');
+});
+
+test('buildEnvUsers: secret field — a name writes { envSecret }, an emptied name unsets it', () => {
+  const userFields = [{ key: 'apiKey', label: 'k', secret: true }];
+  const out = buildEnvUsers(
+    [{ handle: 'u', apiKey: 'USER_U_APIKEY' }, { handle: 'v', apiKey: '' }],
+    { v: { apiKey: { envSecret: 'OLD_REF' } } }, userFields, []);
+  assert.deepStrictEqual(out.u, { apiKey: { envSecret: 'USER_U_APIKEY' } });
+  assert.deepStrictEqual(out.v, {}, 'cleared name unsets the stored ref (screen wins)');
+});
+
+test('planSave validates the field descriptor arrays in projectConfig (defense-in-depth)', () => {
+  const mk = (uf, df) => planSave({
+    projectConfig: { name: 'd', defaultEnvironment: 'qa', userFields: uf, defaultsFields: df },
+    environments: { qa: cfgOk() }, ops: {},
+  }, disk(['qa']));
+  assert.match(mk([{ key: 'x' }, { key: 'x' }]).errors.join(), /duplicate/i);
+  assert.match(mk([{ key: 'handle' }]).errors.join(), /reserved/i);
+  assert.match(mk([{ key: 'ok' }], [{ key: 'otp' }, { key: 'otp' }]).errors.join(), /duplicate/i);
+  assert.match(mk('nope').errors.join(), /array/i);
+  const good = mk([{ key: 'userId', label: 'User ID' }], [{ key: 'password', default: 'x' }]);
+  assert.deepStrictEqual(good.errors, []);
+  const absent = planSave({ projectConfig: { name: 'd', defaultEnvironment: 'qa' },
+    environments: { qa: cfgOk() }, ops: {} }, disk(['qa']));
+  assert.deepStrictEqual(absent.errors, [], 'a legacy payload without the arrays stays valid');
+});
+
+test('validateConfigs/validateEnvConfig refuse an envSecret that is not a valid env var name', () => {
+  const bad1 = validateConfigs({ name: 'd' },
+    { portalUrl: 'https://ok.example', users: { u: { apiKey: { envSecret: 'BAD NAME!' } } } }, 'qa');
+  assert.match(bad1.join(), /envSecret/);
+  const bad2 = validateConfigs({ name: 'd' },
+    { portalUrl: 'https://ok.example', users: { u: { phone: '1' } }, defaults: { pin: { envSecret: '1BAD' } } }, 'qa');
+  assert.match(bad2.join(), /envSecret/);
+  const ok = validateConfigs({ name: 'd' },
+    { portalUrl: 'https://ok.example', users: { u: { apiKey: { envSecret: 'USER_U_APIKEY' } } },
+      defaults: { pin: { envSecret: 'DEFAULT_PIN' } } }, 'qa');
+  assert.deepStrictEqual(ok, []);
+});
+
+// ── Q12 tracker selection (Jira design §5.9) ───────────────────────────────
+test('schema: tracker is a REQUIRED select on the first page with NO default (never a silent default)', () => {
+  delete require.cache[require.resolve('./schema.json')];
+  const schema = require('./schema.json');
+  const basics = schema.steps.find(s => s.id === 'project-basics');
+  const tracker = (basics.fields || []).find(f => f.key === 'tracker');
+  assert.ok(tracker, 'the tracker field lives on project-basics');
+  assert.strictEqual(tracker.type, 'select');
+  assert.strictEqual(tracker.required, true);
+  assert.ok(!('default' in tracker), 'Q12: no default — the user must pick explicitly');
+  assert.deepStrictEqual(tracker.options.map(o => o.value).sort(), ['azure', 'jira', 'none']);
+  assert.strictEqual(tracker.persisted, false,
+    'the tracker answer is never persisted — the provider block IS the selection');
+});
+
+test('schema: azure-devops and jira steps are when-gated on the tracker answer (O8)', () => {
+  const schema = require('./schema.json');
+  const azure = schema.steps.find(s => s.id === 'azure-devops');
+  const jiraStep = schema.steps.find(s => s.id === 'jira');
+  assert.deepStrictEqual(azure.when, { key: 'tracker', equals: 'azure' });
+  assert.ok(jiraStep, 'a jira step exists');
+  assert.deepStrictEqual(jiraStep.when, { key: 'tracker', equals: 'jira' });
+  assert.strictEqual(jiraStep.target, 'config/project.json');
+  const keys = jiraStep.fields.map(f => f.key);
+  assert.deepStrictEqual(keys, ['jira.site', 'jira.project', 'jira.board', 'jira.assignee', 'jira.email', 'jira.apiToken']);
+  const email = jiraStep.fields.find(f => f.key === 'jira.email');
+  assert.strictEqual(email.secret, true, 'O9: secret is a routing flag — the email goes to .env');
+  assert.strictEqual(email.envKey, 'JIRA_EMAIL');
+  const token = jiraStep.fields.find(f => f.key === 'jira.apiToken');
+  assert.strictEqual(token.secret, true);
+  assert.strictEqual(token.envKey, 'JIRA_API_TOKEN');
+});
+
+test('stepApplies gates a when-carrying step on its answer; validate() skips gated-away steps', () => {
+  const { stepApplies } = require('./engine.js');
+  const steps = [
+    { id: 'basics', fields: [{ key: 'tracker', label: 'Tracker', required: true }] },
+    { id: 'azure-devops', when: { key: 'tracker', equals: 'azure' }, fields: [{ key: 'azure.org', label: 'Org', required: true }] },
+    { id: 'jira', when: { key: 'tracker', equals: 'jira' }, fields: [{ key: 'jira.site', label: 'Site', required: true }] },
+  ];
+  assert.strictEqual(stepApplies(steps[0], {}), true, 'no when → always applies');
+  assert.strictEqual(stepApplies(steps[1], { tracker: 'azure' }), true);
+  assert.strictEqual(stepApplies(steps[1], { tracker: 'jira' }), false);
+  assert.strictEqual(stepApplies(steps[1], {}), false, 'unanswered gate → hidden');
+  const errs = validate({ tracker: 'jira', 'jira.site': 'example' }, steps);
+  assert.deepStrictEqual(errs, [], 'the azure step\'s required field is not enforced when gated away');
+  assert.match(validate({ tracker: 'azure' }, steps).join(), /Org/, 'the visible step still validates');
+});
+
+test('buildConfigs keyed off the tracker answer emits EXACTLY one provider block — stale answers never leak', () => {
+  // The user filled azure answers, then switched the tracker to jira mid-wizard:
+  const answers = {
+    name: 'demo', tracker: 'jira',
+    'azure.org': 'staleorg', 'azure.project': 'Stale Proj', 'azure.team': 'T',
+    'jira.site': 'example', 'jira.project': 'PROJ', 'jira.board': '42', 'jira.assignee': 'qa@example.com',
+  };
+  const { projectConfig } = buildConfigs(answers, []);
+  assert.ok(!('azure' in projectConfig), 'the abandoned provider\'s stale answers never reach the save');
+  assert.deepStrictEqual(projectConfig.jira,
+    { site: 'example', project: 'PROJ', board: '42', assignee: 'qa@example.com' });
+  // the switch back:
+  const back = buildConfigs({ ...answers, tracker: 'azure' }, []);
+  assert.ok(!('jira' in back.projectConfig));
+  assert.deepStrictEqual(back.projectConfig.azure,
+    { org: 'staleorg', project: 'Stale Proj', team: 'T', assignee: '' },
+    'the azure block keeps its historical shape');
+  // none: no provider block at all
+  const none = buildConfigs({ ...answers, tracker: 'none' }, []);
+  assert.ok(!('azure' in none.projectConfig) && !('jira' in none.projectConfig));
+  // the tracker answer itself is NOT persisted (the block is the selection)
+  for (const p of [projectConfig, back.projectConfig, none.projectConfig]) {
+    assert.ok(!('tracker' in p), 'no second authority beside resolveTracker');
+  }
+});
+
+test('buildConfigs without a tracker answer keeps the historical answer-emptiness behavior (legacy callers)', () => {
+  const r = buildConfigs({ name: 'd', 'azure.org': 'o', 'azure.project': 'p' }, []);
+  assert.deepStrictEqual(r.projectConfig.azure, { org: 'o', project: 'p', team: '', assignee: '' });
+  assert.ok(!('jira' in r.projectConfig));
+});
+
+test('validateConfigs and planSave REJECT a multi-provider projectConfig with the resolveTracker wording', () => {
+  const multi = { name: 'd', defaultEnvironment: 'qa',
+    azure: { org: 'o', project: 'p' }, jira: { site: 's', project: 'PROJ' } };
+  const e1 = validateConfigs(multi, cfgOk(), 'qa');
+  assert.match(e1.join(), /more than one tracker provider/i);
+  assert.match(e1.join(), /azure, jira/);
+  assert.match(e1.join(), /fails closed|exactly one provider block/i);
+  const e2 = planSave({ projectConfig: multi, environments: { qa: cfgOk() }, ops: {} }, disk(['qa']));
+  assert.match(e2.errors.join(), /more than one tracker provider/i);
+  // one provider (either) stays valid; empty blocks don't count as configured
+  assert.deepStrictEqual(validateConfigs({ name: 'd', jira: { site: 's', project: 'PROJ' } }, cfgOk(), 'qa'), []);
+  assert.deepStrictEqual(validateConfigs({ name: 'd', azure: { org: 'o' }, jira: {} }, cfgOk(), 'qa'), []);
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

@@ -1,0 +1,5 @@
+{
+  "name": "sample-shop-qa",
+  "defaultEnvironment": "qc",
+  "ci": { "warningsFailGate": true, "retries": 3, "timeoutMinutes": 60, "flakyFailsGate": false }
+}

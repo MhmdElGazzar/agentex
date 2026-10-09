@@ -1,0 +1,95 @@
+{
+  "storyId": 2201,
+  "assignee": "qa.engineer@example.com",
+  "cases": [
+    {
+      "title": "SME User || Step5 || user checks the page UI",
+      "steps": [
+        {
+          "type": "action",
+          "text": "Open the design for reference: https://figma.example.com/f/contact-prefs"
+        },
+        {
+          "type": "action",
+          "text": "Given the customer lands on the example-portal homepage"
+        },
+        {
+          "type": "action",
+          "text": "When the customer clicks \"Get started\" and completes Steps 1-4"
+        },
+        {
+          "type": "validate",
+          "text": "user checks the stepper, header, four Yes/No toggles, Save button and spacing",
+          "expected": "matches the design"
+        }
+      ]
+    },
+    {
+      "title": "SME User || Step5 || user checks the page text",
+      "steps": [
+        {
+          "type": "action",
+          "text": "Given the customer lands on the example-portal homepage"
+        },
+        {
+          "type": "action",
+          "text": "When the customer clicks \"Get started\" and completes Steps 1-4"
+        },
+        {
+          "type": "validate",
+          "text": "user checks every label, title and subtitle in EN",
+          "expected": "matches the copy table"
+        },
+        {
+          "type": "validate",
+          "text": "user checks every label, title and subtitle in AR",
+          "expected": "matches the copy table"
+        }
+      ]
+    },
+    {
+      "title": "SME User || Step5 || user checks the Save button functionality",
+      "steps": [
+        {
+          "type": "action",
+          "text": "Given the customer lands on the example-portal homepage"
+        },
+        {
+          "type": "action",
+          "text": "When the customer clicks \"Get started\" and completes Steps 1-4"
+        },
+        {
+          "type": "action",
+          "text": "When the customer sets the four toggles and clicks Save"
+        },
+        {
+          "type": "validate",
+          "text": "user checks the Save functionality",
+          "expected": "choices persist, a success toast appears in the active language, and the customer moves to Step 6"
+        }
+      ]
+    },
+    {
+      "title": "SME User || Step5 || user checks invalid input",
+      "steps": [
+        {
+          "type": "action",
+          "text": "Given the customer lands on the example-portal homepage"
+        },
+        {
+          "type": "action",
+          "text": "When the customer clicks \"Get started\" and completes Steps 1-4"
+        },
+        {
+          "type": "action",
+          "text": "When the customer enters an empty value, special characters, and leading/trailing spaces in the email reminder field"
+        },
+        {
+          "type": "validate",
+          "text": "user checks the inline error for each invalid value",
+          "expected": "the inline error appears in the active language"
+        }
+      ]
+    }
+  ]
+}

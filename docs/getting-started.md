@@ -16,6 +16,11 @@ AgenTeX installs through the **`elgazzar-plugins`** marketplace. From Claude Cod
 > `elgazzar-plugins` repo (the one containing `.claude-plugin/marketplace.json`) instead of GitHub:
 > `/plugin marketplace add /path/to/elgazzar-plugins`, then install the same way.
 
+> **Updating later?** A plugin update changes the plugin, not your project. After
+> updating, run `/update-agentex` in each project to migrate its scaffolded files to
+> the new version's conventions — your own values are carried over, never reset (see
+> [Configuration](./configuration.md#keeping-a-project-current--update-agentex)).
+
 ## 2. Install the browser driver
 
 In the project you want to test (Claude will offer to do this for you):
@@ -33,8 +38,10 @@ npx playwright-cli install-browser chromium
 
 This creates a starting point in your project: sample test files in `test/suite1/` (editable
 examples — adapt them to your app), an empty `executions/` folder where run results will land,
-plus `config/project.json`, a sample `environments/qa.json`, and a secrets-only `.env` ready for
-you to fill in.
+plus `config/project.json`, a sample `environments/qc.json`, and a secrets-only `.env` ready for
+you to fill in. The wizard also asks **which work tracker the project uses** — Azure DevOps,
+Jira Cloud, or none — and configures only that one (see [azure-devops.md](./azure-devops.md) /
+[jira.md](./jira.md)).
 
 ## 4. Set permissions
 
@@ -77,6 +84,7 @@ executions/execu_<timestamp>/
 - Permissions: copy the `permissions` block from [`settings.example.json`](../settings.example.json)
   into `.claude/settings.json`
 - Run: `/execute-test <url>`
+- After a plugin update: `/update-agentex` (migrates the project to the new conventions)
 
 ## Optional: testing a native mobile app instead
 
@@ -86,7 +94,7 @@ instead (or as well), see [Mobile Testing](./mobile-testing.md) for the equivale
 
 ## Next steps
 
-- [Browser Testing](./browser-testing.md) — sequential vs. parallel modes, writing your own specs.
+- [Test Execution](./test-execution.md) — sequential vs. parallel modes, writing your own specs.
 - [Mobile Testing](./mobile-testing.md) — the same flow for native Android/iOS apps, via Appium.
 - [Configuration](./configuration.md) — the three config files (`config/project.json`,
   `environments/<env>.json`, `.env`) and secret handling.

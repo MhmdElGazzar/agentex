@@ -26,7 +26,7 @@ the session afterward, same as usual, so you only do it once.
 
 ## Quick reference
 
-- Saved sessions live in `test/.auth/` by convention — **gitignored, never commit them.** A
+- Saved sessions live in `test/.auth/` — **gitignored by /init-test and /update-agentex, never commit them.** A
   saved session file is effectively a password: whoever has it is logged in as that user.
 - Only use this for applications you're authorized to test — it's for not repeating your own
   login, not for getting into anyone else's account.
@@ -41,3 +41,7 @@ the session afterward, same as usual, so you only do it once.
     --url   https://app.example.com/dashboard \
     --absent "role=button[name='Login']"
   ```
+  Needs the `playwright` package in your project (`npm i -D playwright`, then
+  `npx playwright install chromium`) — it is resolved from the project you run it in, not
+  from the plugin. Launches the bundled Chromium; add `--channel chrome` for a real Chrome,
+  `--headed` to watch it.

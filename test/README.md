@@ -40,10 +40,26 @@ db:  sample-db.todo-by-title(title=qa-test-item) → expect 1 row
   (`{ "envSecret": "…" }` / `tokenEnv`); values live in `.env`/your shell. Connection
   details live in `environments/<env>.json`.
 
+## API / DB-only specs
+
+A spec with no browser steps declares its drivers in the header, before the first `##`:
+
+```
+Drivers: api, db
+```
+
+It then runs with no browser: no `Target:` line and no `portalUrl` needed, locally or in
+CI. Without a `Drivers:` line a spec is a browser spec plus the `api:` / `db:` / `kb:` /
+`ui-check:` steps it uses (`ui-check:` always needs the browser).
+
 ## Rules the agent already follows
 
-- Never uses real personal data or completes real signup/login/checkout — use disposable
-  values like `qa.tester@example.com`.
+- Logging in is part of the job: a step like "login as expired_user" signs in with that user
+  from `environments/<env>.json` (its own `password`, or `defaults.password`). What the agent
+  never does is CREATE an account, complete a payment or any other irreversible transaction,
+  or use real personal data — it uses disposable values like `qa.tester@example.com`. A step
+  needing a user you have not defined for the active environment is reported BLOCKED, never
+  improvised.
 - Never reads or prints secrets, never modifies your application source.
 - Captures a screenshot on every scenario (pass and fail); console errors and failed
   requests count as defects even when the UI looks fine.
@@ -65,7 +81,7 @@ element selectors instead of a URL and CSS selectors).
 
 AgenTeX can also work your ADO backlog — fill the `azure` block in `config/project.json` first
 (org/project/team/assignee); legacy `AZURE_*` keys in `.env` still work as a fallback. The PAT
-always stays in `.env` as `AZURE_DEVOPS_EXT_PAT`:
+always stays in `.env` as `AZURE_PAT`, read by the bundled scripts themselves:
 
 - `/design-test <story-ids>` — analyze a story's ACs and create linked test cases
   (project conventions live in `.agentex/test-template.md`, scaffolded on first run).

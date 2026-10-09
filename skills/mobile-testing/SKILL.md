@@ -27,7 +27,7 @@ From the environment file's `mobile` block (see `docs/configuration.md`): `platf
 `.apk`/`.ipa`) **or** `appPackage`+`appActivity` (Android, already installed) / `bundleId`
 (iOS, already installed), `deviceName`, `platformVersion`, optional `udid` (a specific real
 device). `defaults` and `users` from the same environment file are the test data for the run,
-same convention as browser-testing: a spec step like "login as expired_user" means
+same convention as test-execution: a spec step like "login as expired_user" means
 `users.expired_user`; a user without `password` uses `defaults.password`; a
 `{ "envSecret": "NAME" }` value means read `NAME` from `.env` — never print it.
 
@@ -56,7 +56,7 @@ Always-on rules (full details in the files above):
 - **Parallel runs MUST each target their own device/emulator** (own `udid`/AVD/simulator) —
   sessions on the same physical device collide. Unlike headless browser sessions, mobile
   concurrency is bounded by **available emulators/devices on the machine**, not just CPU/RAM —
-  expect far fewer concurrent sessions than browser-testing's ~6-8; often just 1-2 unless
+  expect far fewer concurrent sessions than test-execution's ~6-8; often just 1-2 unless
   multiple emulators/devices are actually provisioned.
 - App/device errors surfaced in the Appium server log or in `adb logcat` count as defects even
   if the UI looks fine.

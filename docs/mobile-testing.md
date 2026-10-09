@@ -1,6 +1,6 @@
 # Mobile Testing
 
-The native-app counterpart to [Browser Testing](./browser-testing.md): instead of clicking
+The native-app counterpart to [Test Execution](./test-execution.md): instead of clicking
 through an Android/iOS app by hand, you describe what to test and Claude drives it for you
 through a real [Appium](https://appium.io/docs/en/latest/) session — taking screenshots,
 watching the device log, and reporting back what passed and what didn't. It never touches your
@@ -36,7 +36,7 @@ This time Claude doesn't stop for approval at each step. It spins up one indepen
 session **per spec file, per available device/emulator**, then merges every session's results
 into one final report when they're all done.
 
-**Mobile concurrency is bounded by real devices, not CPU/RAM** — unlike browser-testing's
+**Mobile concurrency is bounded by real devices, not CPU/RAM** — unlike test-execution's
 cheap headless Chromium instances, each mobile session needs its own physical
 device/emulator/simulator. Confirm how many are actually provisioned before asking for a
 parallel run; often that's 1-2, not 6-8.
@@ -47,7 +47,7 @@ login → action → assert) together in a single file rather than splitting it 
 ## Writing your own specs
 
 A spec is a markdown file: the app under test, what "correct" looks like, and a numbered list
-of scenarios, written in plain language — same shape as a browser-testing spec, adapted for a
+of scenarios, written in plain language — same shape as a test-execution spec, adapted for a
 native app (no URLs; elements are found by accessibility id / resource id rather than CSS
 selectors):
 

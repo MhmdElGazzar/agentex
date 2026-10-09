@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // AgenTeX Setup Wizard — Local HTTP Server (Phase 1: Plugin delivery)
-// Usage: node scripts/wizard/server.js [projectRoot] [--port=7373]
+// Usage: node scripts/wizard/server.js [projectRoot] [--port=7373] [--no-open] [--lang=ar|en]
 // Serves the wizard UI on http://127.0.0.1:<port>/setup
 // Writes config/project.json + environments/<env>.json on save.
 // Zero external dependencies — Node.js built-ins only.
@@ -13,7 +13,9 @@ const fs     = require('fs');
 const path   = require('path');
 const { execSync } = require('child_process');
 
-const { buildConfigs, validate, validateConfigs, extractFromText } = require('./engine.js');
+const { buildConfigs, validate, planSave, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
+const { isPristineSampleEnv } = require('../lib/scaffold.js');
+const { isDeepStrictEqual } = require('util');
 
 // ── CLI args ──────────────────────────────────────────────────────────────
 const args        = process.argv.slice(2);
@@ -21,9 +23,15 @@ const projectRoot = path.resolve(args.find(a => !a.startsWith('--')) || process.
 const portArg     = args.find(a => a.startsWith('--port='));
 const PORT        = portArg ? parseInt(portArg.split('=')[1]) : 7373;
 const FORCE       = args.includes('--force');
+const NO_OPEN     = args.includes('--no-open');   // tests/agents: never launch a real browser
+// The wizard is bilingual and boots Arabic. --lang=en opens it in English for a
+// caller who already knows which language the user reads; an unrecognised value
+// is dropped rather than guessed at, and the in-page toggle overrides either way.
+const langArg     = args.find(a => a.startsWith('--lang='));
+const LANG        = ['ar', 'en'].includes(langArg?.split('=')[1]) ? langArg.split('=')[1] : '';
 const HOST        = '127.0.0.1';
 const BASE_URL    = `http://${HOST}:${PORT}`;
-const WIZARD_URL  = `${BASE_URL}/setup`;
+const WIZARD_URL  = `${BASE_URL}/setup${LANG ? `?lang=${LANG}` : ''}`;
 
 // Per-run secret the served page carries; API calls must echo it back.
 const TOKEN       = crypto.randomBytes(24).toString('hex');
@@ -41,6 +49,10 @@ if (!FORCE && projectRoot === pluginRoot) {
 // ── Schema ────────────────────────────────────────────────────────────────
 const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
+// Shipped project template — a config/project.json still structurally equal to
+// it is scaffolding, not the user's configuration.
+const projectTemplate = safeReadJSON(path.join(pluginRoot, 'templates', 'config', 'project.json'));
+
 // ── Server ────────────────────────────────────────────────────────────────
 let server;
 
@@ -51,7 +63,12 @@ server = http.createServer((req, res) => {
   // ── GET /setup  →  serve wizard HTML ───────────────────────────────────
   if (method === 'GET' && url.pathname === '/setup') {
     let html = fs.readFileSync(uiPath, 'utf8');
-    // Inject mode, API base, and this run's token into the page.
+    // The page opens in Arabic unless the URL asks otherwise (?lang=en) — an
+    // unknown value is ignored rather than guessed at, and a language the
+    // tester picked with the in-page toggle still wins over this default.
+    const askedLang = url.searchParams.get('lang');
+    const lang = ['ar', 'en'].includes(askedLang) ? askedLang : '';
+    // Inject mode, API base, this run's token and the requested language.
     html = html.replace(
       "const MODE = window.WIZARD_MODE || 'local';",
       "const MODE = 'local';"
@@ -61,6 +78,9 @@ server = http.createServer((req, res) => {
     ).replace(
       "const TOKEN = window.WIZARD_TOKEN || '';",
       `const TOKEN = '${TOKEN}';`
+    ).replace(
+      "const LANG_REQUESTED = window.WIZARD_LANG || '';",
+      `const LANG_REQUESTED = '${lang}';`
     );
     respond(res, 200, 'text/html; charset=utf-8', html);
     return;
@@ -88,40 +108,90 @@ server = http.createServer((req, res) => {
   }
 
   // ── GET /api/config  →  read current project config files ──────────────
+  // Multi-environment (design #3): enumerates EVERY environments/*.json.
+  // Readable user data is returned for editing; a structurally-pristine sample
+  // is scaffolding, not the user's data — reported by name (pristineSamples),
+  // never presented as an editable environment; an unreadable file is flagged
+  // (null + unreadable[]) and excluded from editing, never silently rewritten.
   if (method === 'GET' && url.pathname === '/api/config') {
     const projCfgPath = path.join(projectRoot, 'config', 'project.json');
     const existingProj = safeReadJSON(projCfgPath);
-    const envName = existingProj?.defaultEnvironment || 'qa';
-    const envCfgPath = path.join(projectRoot, 'environments', `${envName}.json`);
-    const existingEnv = safeReadJSON(envCfgPath);
     // A file that exists but won't parse is NOT the same as no file: saying
     // nothing would let the wizard quietly overwrite whatever it couldn't read.
-    const unreadable = [
-      [projCfgPath, existingProj, 'config/project.json'],
-      [envCfgPath, existingEnv, `environments/${envName}.json`],
-    ].filter(([p, parsed]) => parsed === null && fs.existsSync(p)).map(([, , label]) => label);
-    respondJSON(res, 200, { projectConfig: existingProj, envConfig: existingEnv, envName, unreadable });
+    const unreadable = [];
+    if (existingProj === null && fs.existsSync(projCfgPath)) unreadable.push('config/project.json');
+    const projectPristine = existingProj !== null && projectTemplate !== null &&
+      isDeepStrictEqual(existingProj, projectTemplate);
+    const envDir = path.join(projectRoot, 'environments');
+    const environments = {};
+    const pristineSamples = [];
+    if (fs.existsSync(envDir)) {
+      for (const f of fs.readdirSync(envDir).filter(f => f.endsWith('.json')).sort()) {
+        const name = f.replace(/\.json$/, '');
+        const parsed = safeReadJSON(path.join(envDir, f));
+        if (parsed === null) { environments[name] = null; unreadable.push(`environments/${f}`); continue; }
+        if (isPristineSampleEnv(parsed, pluginRoot)) { pristineSamples.push(name); continue; }
+        environments[name] = parsed;
+      }
+    }
+    const defaultEnvironment = existingProj?.defaultEnvironment || DEFAULT_ENV_NAME;
+    const samplePristine = pristineSamples.includes(defaultEnvironment);
+    respondJSON(res, 200, {
+      projectConfig: existingProj,
+      environments,
+      defaultEnvironment,
+      samplePristine,
+      sampleName: samplePristine ? defaultEnvironment : null,
+      pristineSamples,
+      projectPristine,
+      unreadable,
+    });
     return;
   }
 
-  // ── POST /api/save  →  write config files + secrets → .env ─────────────
+  // ── POST /api/save  →  write config files + execute confirmed ops ───────
+  // Multi-environment batch save (design #3): one payload carries the project
+  // config, every dirty/new environment, and the explicit user-confirmed
+  // renames/deletes. planSave (engine.js) validates it all — the wizard's
+  // first destructive capability executes ONLY what a clean plan allows, and
+  // the response echoes every file op performed.
   if (method === 'POST' && url.pathname === '/api/save') {
     readBody(req, buf => {
       let payload;
       try { payload = JSON.parse(buf.toString('utf8')); }
       catch { respondJSON(res, 400, { ok: false, error: 'Invalid JSON' }); return; }
 
-      const { projectConfig, envConfig, envName, secrets } = payload;
-      if (!projectConfig || !envConfig || !envName) {
-        respondJSON(res, 400, { ok: false, error: 'Missing projectConfig, envConfig, or envName' });
+      // Legacy single-environment shape → a one-entry environments map.
+      if (!payload.environments && payload.envConfig && payload.envName !== undefined) {
+        payload.environments = { [payload.envName]: payload.envConfig };
+      }
+      const { projectConfig, environments, secrets } = payload;
+      const ops = payload.ops || {};
+      const renames = Array.isArray(ops.renames) ? ops.renames : [];
+      const deletes = Array.isArray(ops.deletes) ? ops.deletes : [];
+      if (!projectConfig || !environments) {
+        respondJSON(res, 400, { ok: false, error: 'Missing projectConfig or environments' });
         return;
       }
 
-      // Never trust the browser: re-validate, and reject an envName that could
-      // escape environments/ (it becomes a file name below).
-      const errors = validateConfigs(projectConfig, envConfig, envName);
-      if (errors.length) {
-        respondJSON(res, 400, { ok: false, error: errors.join('; ') });
+      // Never trust the browser: enumerate the disk, then re-validate the whole
+      // plan — per-env configs, ops consent, collisions, path escapes, the
+      // at-least-one-environment rule, the post-ops default check, and the
+      // untouchability of files that exist but would not parse.
+      const envDir = path.join(projectRoot, 'environments');
+      const diskEnvNames = !fs.existsSync(envDir) ? [] :
+        fs.readdirSync(envDir).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, ''));
+      const pristineNames = [];
+      const unreadableNames = [];
+      for (const n of diskEnvNames) {
+        const parsed = safeReadJSON(path.join(envDir, `${n}.json`));
+        if (parsed === null) unreadableNames.push(n);
+        else if (isPristineSampleEnv(parsed, pluginRoot)) pristineNames.push(n);
+      }
+      const plan = planSave({ projectConfig, environments, ops: { renames, deletes } },
+        { envNames: diskEnvNames, pristineNames, unreadableNames });
+      if (plan.errors.length) {
+        respondJSON(res, 400, { ok: false, error: plan.errors.join('; ') });
         return;
       }
 
@@ -134,23 +204,71 @@ server = http.createServer((req, res) => {
       }
 
       try {
-        // Write config/project.json
+        // Provider-switch echo (Q12 / D14 consent pattern): a save that REMOVES
+        // a provider block the existing config carried is a tracker switch —
+        // announced on the review step, echoed here, never silent. `.env` is
+        // never edited by a switch (secrets are only ever written, not removed).
         const projDir = path.join(projectRoot, 'config');
+        const prevProj = safeReadJSON(path.join(projDir, 'project.json'));
+        const hasBlock = (obj, p) => !!(obj && obj[p] && typeof obj[p] === 'object' && Object.keys(obj[p]).length > 0);
+        const trackerBlocksRemoved = ['azure', 'jira']
+          .filter(p => hasBlock(prevProj, p) && !hasBlock(projectConfig, p));
+
+        // Write config/project.json
         fs.mkdirSync(projDir, { recursive: true });
         fs.writeFileSync(
           path.join(projDir, 'project.json'),
           JSON.stringify(projectConfig, null, 2) + '\n',
           'utf8'
         );
+        const written = ['config/project.json'];
+        for (const p of trackerBlocksRemoved) {
+          console.log(`[setup-wizard] 🔁 removed the ${p} block from config/project.json — tracker switched (user-reviewed); .env keys stay untouched`);
+        }
 
-        // Write environments/<env>.json
-        const envDir = path.join(projectRoot, 'environments');
-        fs.mkdirSync(envDir, { recursive: true });
-        fs.writeFileSync(
-          path.join(envDir, `${envName}.json`),
-          JSON.stringify(envConfig, null, 2) + '\n',
-          'utf8'
-        );
+        // Write every environment in the payload
+        const envDirOut = path.join(projectRoot, 'environments');
+        fs.mkdirSync(envDirOut, { recursive: true });
+        for (const [name, envConfig] of Object.entries(environments)) {
+          fs.writeFileSync(
+            path.join(envDirOut, `${name}.json`),
+            JSON.stringify(envConfig, null, 2) + '\n',
+            'utf8'
+          );
+          written.push(`environments/${name}.json`);
+        }
+
+        // Apply renames (user-confirmed, validated above). A renamed-and-edited
+        // environment was just written under its NEW name — renaming over it
+        // would resurrect the old content, so only the old file is removed.
+        const renamed = [];
+        for (const r of renames) {
+          const fromPath = path.join(envDirOut, `${r.from}.json`);
+          if (Object.prototype.hasOwnProperty.call(environments, r.to)) {
+            fs.unlinkSync(fromPath);
+          } else {
+            fs.renameSync(fromPath, path.join(envDirOut, `${r.to}.json`));
+          }
+          renamed.push({ from: `environments/${r.from}.json`, to: `environments/${r.to}.json` });
+          console.log(`[setup-wizard] 📝 renamed environments/${r.from}.json → environments/${r.to}.json (user-confirmed)`);
+        }
+
+        // Apply deletes (user-confirmed, validated above) — never silent.
+        const deleted = [];
+        for (const d of deletes) {
+          fs.unlinkSync(path.join(envDirOut, `${d.name}.json`));
+          deleted.push(`environments/${d.name}.json`);
+          console.log(`[setup-wizard] 🗑️ deleted environments/${d.name}.json (user-confirmed)`);
+        }
+
+        // Save-time reconciliation (transparency, not silence): remove the
+        // structurally-pristine leftover samples the plan enumerated — AFTER
+        // the user's files are safely on disk, announced on the review step
+        // beforehand and echoed below.
+        for (const n of plan.reconcile) {
+          fs.unlinkSync(path.join(envDirOut, `${n}.json`));
+          console.log(`[setup-wizard] 🧹 removed pristine sample environments/${n}.json — scaffold artifact replaced by this save`);
+        }
 
         // Write secrets → .env silently (no UI mention)
         if (secrets && Object.keys(secrets).length > 0) {
@@ -159,9 +277,15 @@ server = http.createServer((req, res) => {
         }
 
         console.log(`[setup-wizard] ✅ Saved:`);
-        console.log(`  config/project.json`);
-        console.log(`  environments/${envName}.json`);
-        respondJSON(res, 200, { ok: true });
+        for (const f of written) console.log(`  ${f}`);
+        respondJSON(res, 200, {
+          ok: true,
+          written,
+          renamed,
+          deleted,
+          reconciled: plan.reconcile.map(n => `environments/${n}.json`),
+          ...(trackerBlocksRemoved.length ? { trackerBlocksRemoved } : {}),
+        });
       } catch(e) {
         respondJSON(res, 500, { ok: false, error: e.message });
       }
@@ -228,7 +352,8 @@ server = http.createServer((req, res) => {
 // ── Start ─────────────────────────────────────────────────────────────────
 server.listen(PORT, HOST, () => {
   console.log(`\n[setup-wizard] 🚀 Wizard running at: ${WIZARD_URL}\n`);
-  openBrowser(WIZARD_URL);
+  if (NO_OPEN) console.log('[setup-wizard] --no-open: skipping browser launch.');
+  else openBrowser(WIZARD_URL);
   console.log('[setup-wizard] Waiting for user to complete setup...');
   console.log('[setup-wizard] Press Ctrl+C to cancel.\n');
 });

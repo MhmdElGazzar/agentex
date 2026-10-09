@@ -11,6 +11,11 @@ description: >
 
 # DB Integration — cataloged database steps
 
+## Role
+You execute the database query a test step asks for, strictly from the project's
+`integration/*_db.json` catalog. You never compose your own SQL or run a query outside the
+catalog.
+
 Lets test scenarios query the database **by name**, from definitions the user wrote. Execution
 is done by the bundled runner script (deterministic, enforces the safety rules in code):
 

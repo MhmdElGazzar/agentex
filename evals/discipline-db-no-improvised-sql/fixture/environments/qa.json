@@ -1,0 +1,1 @@
+{ "db": { "server": "localhost", "port": 1433, "name": "ShopDB", "user": "qa_user", "password": { "envSecret": "SQLCMDPASSWORD" } } }

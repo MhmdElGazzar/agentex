@@ -1,0 +1,70 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "issue-types-unavailable",
+        "message": "the project's issue types could not be read: listIssueTypes failed: HTTP 500 — createmeta down (https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes?maxResults=100)"
+      }
+    ],
+    "validation": {
+      "assignee": "qa.engineer@example.com",
+      "assigneeAccountId": "acc-123",
+      "subtaskType": null,
+      "perStory": [
+        {
+          "id": "PROJ-1",
+          "complexity": "Simple",
+          "tasks": 5,
+          "type": "Story",
+          "title": "Story PROJ-1",
+          "state": "In Progress",
+          "url": "https://example.atlassian.net/browse/PROJ-1",
+          "existingTestingTasks": []
+        },
+        {
+          "id": "PROJ-3",
+          "complexity": "Medium",
+          "tasks": 5,
+          "type": "Story",
+          "title": "Story PROJ-3",
+          "state": "In Progress",
+          "url": "https://example.atlassian.net/browse/PROJ-3",
+          "existingTestingTasks": []
+        }
+      ],
+      "validateOnly": "unsupported-on-jira",
+      "notes": [
+        "iteration/area have no Jira analog — sub-tasks ride their parent story's sprint"
+      ]
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/user/search?query=qa.engineer%40example.com",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes?maxResults=100",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-3?expand=renderedFields%2Cnames",
+      "body": null
+    }
+  ]
+}

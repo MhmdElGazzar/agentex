@@ -8,7 +8,7 @@ executions/
 └── execu_<YYYY-MM-DD_HH-MM-SS>/        # one folder per run
     ├── report.md                       # consolidated run report
     ├── browser-sessions/
-    │   └── <session>/
+    │   └── <session>/                   # uniquely named per run — never "default"
     │       ├── logs/                    # console / network captures
     │       └── screenshots/             # one per scenario (pass & fail)
     └── bugs/

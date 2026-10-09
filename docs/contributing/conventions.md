@@ -4,14 +4,16 @@ Rules established across AgenTeX's build-out. Follow these for any new skill, sc
 
 ## Naming
 
-**What:** skills = noun-style (`browser-testing`, `ask-kb`); commands = verb-style
+**What:** skills = noun-style (`test-execution`, `ask-kb`); commands = verb-style
 (`/execute-test`, `/design-test`).
 
 **Why:** the name alone signals capability vs. action.
 
 **When:** every new skill/command.
 
-**When not:** never — always applies.
+**When not:** one sanctioned exception — `define-flow` is a verb-style skill name,
+owner-approved in its design (2026-08-13) so the skill and its `/define-flow` command share
+a name; otherwise always applies.
 
 **How:** `skills/<noun>/`, `commands/<verb>.md`.
 
@@ -85,11 +87,38 @@ real-world shortcut.
 
 **How:** move the file into the shared skill's `references/`, update both skills' pointers.
 
-**Example:** `azure-devops-cli.md` moved into `azure-integration/references/` once a second
-skill needed it.
+**Example:** the shared ADO boards knowledge moved to the plugin-root `references/tracker/`
+(today `ado-boards.md`) once three skills consumed it across skill boundaries.
 
 **Pros/cons:** + no premature abstraction — but a brief window where content looks duplicated
 right before the move.
+
+## Scaffold-convention changes ship a migration module
+
+**What:** any PR that changes what `/init-test` scaffolds or how consumer-project files
+are laid out (folder names, config schemas, `.env` split, catalog format, `CLAUDE.md` /
+`.gitignore` entries) must also add a `scripts/migrations/NN-<slug>.js` module so
+`/update-agentex` can bring existing projects along.
+
+**Why:** updating the plugin never updates consumer projects; without a migration,
+users on the old convention silently miss the change (the exact complaint that created
+`/update-agentex`).
+
+**When:** every convention change that a fresh scaffold would express differently from
+an existing project.
+
+**When not:** plugin-internal changes (skills, prompts, scripts) that don't alter
+consumer-project files.
+
+**How:** export `{ id, title, detect(ctx), apply(ctx) }`; `detect` reads only the
+project's files (state-based, no version ledger), `apply` is idempotent and carries
+user values — never resets them; add era-fixture coverage in `scripts/migrate.test.js`.
+
+**Example:** `scripts/migrations/01-rename-integrations-folder.js` for the 0.7
+`integrations/` → `integration/` rename.
+
+**Pros/cons:** + old projects always have an upgrade path — but every convention change
+now costs a detector + tests (which is the point).
 
 ## Deterministic scripts print one JSON line
 

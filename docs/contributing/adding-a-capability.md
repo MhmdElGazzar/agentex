@@ -2,12 +2,12 @@
 
 [Adding a Skill](./adding-a-skill.md) walks through a small, single-script skill end to end.
 This page is for something bigger: a whole new **part** of AgenTeX — its own driven-tool, its
-own subagent, its own command, its own docs page — the way `browser-testing` /
+own subagent, its own command, its own docs page — the way `test-execution` /
 `qa-executor` / `/execute-test` fit together. Use it as a checklist when a change is more than
 "one skill, one script."
 
 The real (non-toy) worked example for this page is the **mobile-testing** capability — Appium
-support alongside the existing browser-testing flow. Every file category below names its
+support alongside the existing test-execution flow. Every file category below names its
 mobile-testing counterpart so you can read the actual files instead of a synthetic example.
 
 ## Checklist
@@ -26,7 +26,7 @@ mobile-testing counterpart so you can read the actual files instead of a synthet
 3. **`skills/<name>/SKILL.md`** — judgment layer, same shape as any skill: role, target/config
    resolution, tools pointer, execution output layout, modes, defect format, rules. Model it
    directly on the closest existing skill rather than inventing a new shape — `mobile-testing`
-   copies `browser-testing`'s structure almost verbatim, changing only what's mechanically
+   copies `test-execution`'s structure almost verbatim, changing only what's mechanically
    different (device sessions instead of browser sessions, capability-based target resolution
    instead of a URL).
 
@@ -63,7 +63,7 @@ mobile-testing counterpart so you can read the actual files instead of a synthet
 
 8. **Reuse tool-agnostic skills as-is.** Step types like `api:` / `db:` / `kb:` aren't
    browser-specific — the mobile-testing skill and subagent call `api-integration` /
-   `db-integration` / `ask-kb` exactly as browser-testing does, no duplication (see
+   `db-integration` / `ask-kb` exactly as test-execution does, no duplication (see
    [Conventions](./conventions.md#shared-reference-rule)).
 
 9. **If the config shape needs to grow** (a new kind of target beyond `portalUrl`), add it as
@@ -74,7 +74,7 @@ mobile-testing counterpart so you can read the actual files instead of a synthet
 
 10. **`docs/<name>.md`** — user-facing doc mirroring the closest existing one (walkthroughs,
     spec-writing guide, quick reference table, setup snippet, reference pointers). See
-    `docs/mobile-testing.md` next to `docs/browser-testing.md`.
+    `docs/mobile-testing.md` next to `docs/test-execution.md`.
 
 11. **Wire it up everywhere a skill would, plus:**
     - Row in `docs/README.md`'s table and the root `README.md` feature table (a new capability

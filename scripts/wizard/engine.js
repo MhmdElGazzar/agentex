@@ -4,14 +4,131 @@
 
 'use strict';
 
+// The prefilled, freely-editable default environment name — the ONE definition.
+// schema.json's default/placeholder, server.js's config-read fallback, and
+// ui.html's fallbacks all mirror this value; migrate.js requires it too.
+const DEFAULT_ENV_NAME = 'qc';
+
+/* ── Consumer-owned field schema (wizard design #4) ─────────────────────────
+ * The test-user and defaults field sets are DESCRIPTOR ARRAYS in the
+ * consumer's config/project.json (`userFields`, `defaultsFields`): defined
+ * once, shared across ALL environments — only VALUES are per-environment.
+ * `handle` is reserved: it keys the `users` object and is never in the array.
+ * The built-ins below describe exactly the fields the wizard has always
+ * written; templates/config/project.json ships the same arrays (m11 backfills
+ * existing projects) and ui.html mirrors them (browser copy — keep in sync).
+ * Descriptor: { key, label, labelEn?, type?: text|email|number|url,
+ * secret?: bool, required?: bool, default?, hint?, hintEn?, placeholder?, placeholderEn? }.
+ */
+const BUILTIN_USER_FIELDS = [
+  { key: 'phone', label: 'رقم الهاتف', labelEn: 'Phone', type: 'text', placeholder: '0550000001' },
+  { key: 'email', label: 'البريد الإلكتروني', labelEn: 'Email', type: 'email', placeholder: 'test@example.com' },
+  { key: 'role', label: 'الدور', labelEn: 'Role', type: 'text', placeholder: 'customer' },
+  { key: 'notes', label: 'ملاحظات', labelEn: 'Notes', type: 'text', placeholder: 'for negative login scenarios' },
+];
+const BUILTIN_DEFAULTS_FIELDS = [
+  { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+    hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+  { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+];
+
+const FIELD_KEY_RE = /^[a-zA-Z][a-zA-Z0-9_]*$/;
+const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const FIELD_TYPES = ['text', 'email', 'number', 'url'];
+
+// Tracker provider blocks the config shape knows about (mirrors
+// scripts/lib/tracker/index.js KNOWN_PROVIDERS). Q12 defense-in-depth: a
+// projectConfig carrying more than one is rejected at save with the same
+// fail-closed wording resolveTracker uses at runtime.
+const TRACKER_PROVIDERS = ['azure', 'jira'];
+
+/**
+ * Conditional-step gating (O8): a step may declare `when: { key, equals }` —
+ * it applies only while the named answer equals the given value. Steps without
+ * `when` always apply. Evaluated by the engine (validate) and mirrored by
+ * ui.html's navigation/progress/review.
+ */
+function stepApplies(step, answers) {
+  if (!step || !step.when) return true;
+  return String(((answers || {})[step.when.key]) ?? '') === String(step.when.equals);
+}
+
+/** Provider-block sanity for a projectConfig payload — at most ONE configured
+ *  (non-empty) tracker block; the wording mirrors resolveTracker's runtime error. */
+function validateTrackerBlocks(projectConfig) {
+  if (!projectConfig || typeof projectConfig !== 'object') return [];
+  const configured = TRACKER_PROVIDERS.filter(
+    (p) => projectConfig[p] && typeof projectConfig[p] === 'object' && !Array.isArray(projectConfig[p]) &&
+      Object.keys(projectConfig[p]).length > 0);
+  if (configured.length > 1) {
+    return [
+      `More than one tracker provider is configured (${configured.join(', ')}) — ` +
+      'every tracker script fails closed on such a config rather than silently picking one. ' +
+      'Keep exactly one provider block in config/project.json.'];
+  }
+  return [];
+}
+
+/**
+ * Validate one field-descriptor array (`userFields` / `defaultsFields`).
+ * `opts.reserved` names keys that may never appear (e.g. `handle`).
+ * Returns array of error strings (empty = valid).
+ */
+function validateFieldDescriptors(arr, which, opts = {}) {
+  if (!Array.isArray(arr)) return [`${which} must be an array of field descriptors`];
+  const errors = [];
+  const reserved = opts.reserved || [];
+  const seen = new Set();
+  arr.forEach((f, i) => {
+    const at = `${which}[${i}]`;
+    if (!f || typeof f !== 'object' || Array.isArray(f)) { errors.push(`${at}: descriptor must be an object`); return; }
+    const key = String(f.key || '');
+    if (!FIELD_KEY_RE.test(key)) {
+      errors.push(`${at}: key "${key}" must start with a letter and use only letters/digits/_ (it becomes a JSON key)`);
+      return;
+    }
+    if (reserved.includes(key)) {
+      errors.push(`${at}: key "${key}" is reserved — it keys the users object, always present, never renamed or removed`);
+    }
+    if (seen.has(key)) errors.push(`${at}: duplicate key "${key}"`);
+    seen.add(key);
+    if (f.type !== undefined && !FIELD_TYPES.includes(f.type)) {
+      errors.push(`${at}: type "${f.type}" is not one of ${FIELD_TYPES.join('|')} (secret is a flag, not a type)`);
+    }
+    if (f.secret !== undefined && typeof f.secret !== 'boolean') errors.push(`${at}: secret must be a boolean`);
+  });
+  return errors;
+}
+
+/** Descriptor-array validation for a projectConfig payload — both arrays, when present. */
+function validateProjectFieldSchema(projectConfig) {
+  if (!projectConfig || typeof projectConfig !== 'object') return [];
+  const errors = [];
+  if (projectConfig.userFields !== undefined) {
+    errors.push(...validateFieldDescriptors(projectConfig.userFields, 'userFields', { reserved: ['handle'] }));
+  }
+  if (projectConfig.defaultsFields !== undefined) {
+    errors.push(...validateFieldDescriptors(projectConfig.defaultsFields, 'defaultsFields'));
+  }
+  return errors;
+}
+
 /**
  * Given a flat answers object (keyed by field.key), build the two output config objects.
  * @param {object} answers  - e.g. { "name": "my-app", "azure.org": "myorg", "db.server": "..." }
  * @param {object[]} steps  - from schema.json
+ * @param {{userFields?: object[], defaultsFields?: object[]}} fields - the effective
+ *   consumer field schema (design #4); built-ins when absent.
  * @returns {{ projectConfig: object, envConfig: object, envName: string }}
  */
-function buildConfigs(answers, steps) {
-  const envName = answers['defaultEnvironment'] || 'qa';
+function buildConfigs(answers, steps, fields = {}) {
+  // envName names the environment FILE being configured. defaultEnvironment in
+  // project.json is derived output only (first-configured-claims-default) —
+  // never a page input.
+  const envName = answers['envName'] || DEFAULT_ENV_NAME;
+  const userFields = Array.isArray(fields.userFields) ? fields.userFields : BUILTIN_USER_FIELDS;
+  const defaultsFields = Array.isArray(fields.defaultsFields) ? fields.defaultsFields : BUILTIN_DEFAULTS_FIELDS;
 
   // ── project config skeleton ──────────────────────────────────────────────
   const projectConfig = {
@@ -28,16 +145,31 @@ function buildConfigs(answers, steps) {
       project: answers['kb.project'] || '',
     },
     login: { mode: answers['login.mode'] || 'session' },
+    // The EFFECTIVE field schema is always written — explicit round-trip, no
+    // hidden divergence between "absent" and "default" (design #4).
+    userFields: userFields.map(f => ({ ...f })),
+    defaultsFields: defaultsFields.map(f => ({ ...f })),
   };
 
   // ── environment config skeleton ──────────────────────────────────────────
+  // defaults iterates the descriptors (no hardcoded otp/password): a value
+  // sets the key, the descriptor's default fills an empty one, a secret
+  // descriptor stores the env-var NAME as { envSecret } (invariant #5).
+  const defaults = {};
+  for (const f of defaultsFields) {
+    if (f.secret) {
+      const n = answers[`defaults.${f.key}EnvVar`];
+      if (n) defaults[f.key] = { envSecret: String(n) };
+      continue;
+    }
+    const raw = answers[`defaults.${f.key}`];
+    const v = (raw !== undefined && raw !== null && raw !== '') ? raw : f.default;
+    if (v !== undefined && v !== null && v !== '') defaults[f.key] = v;
+  }
   const envConfig = {
     portalUrl: answers['portalUrl'] || 'https://example.com',
-    defaults: {
-      otp: answers['defaults.otp'] || '0000',
-      password: answers['defaults.password'] || 'Test@1234',
-    },
-    users: buildUsers(answers),
+    defaults,
+    users: buildUsers(answers, userFields),
   };
 
   // DB block (only if server is provided)
@@ -59,9 +191,46 @@ function buildConfigs(answers, steps) {
     };
   }
 
-  // Strip empty azure block
-  if (!projectConfig.azure.org && !projectConfig.azure.project &&
+  // Figma block (only if a file key is provided) — ui-check: design baselines
+  if (answers['figma.fileKey']) {
+    projectConfig.figma = {
+      fileKey: answers['figma.fileKey'],
+      token: { envSecret: answers['figma.tokenEnvVar'] || 'FIGMA_TOKEN' },
+    };
+  }
+
+  // ── Tracker provider block (Q12) ─────────────────────────────────────────
+  // When the tracker answer is present, it — and ONLY it — keys which provider
+  // block is emitted (never answer emptiness: switching selections mid-wizard
+  // must not leak the abandoned provider's stale answers into the save). The
+  // tracker answer itself is NOT persisted: the single provider block IS the
+  // selection; resolveTracker's detection stays the runtime source of truth.
+  // Without a tracker answer (legacy callers), the historical
+  // strip-empty-azure behavior below applies unchanged.
+  const tracker = answers['tracker'];
+  if (tracker === 'azure' || tracker === 'jira' || tracker === 'none') {
+    if (tracker !== 'azure') delete projectConfig.azure;
+    else if (!projectConfig.azure.org && !projectConfig.azure.project &&
+        !projectConfig.azure.team && !projectConfig.azure.assignee) {
+      delete projectConfig.azure;   // chosen but nothing filled yet — no empty placeholder
+    }
+    if (tracker === 'jira') {
+      projectConfig.jira = {
+        site: answers['jira.site'] || '',
+        project: answers['jira.project'] || '',
+        board: answers['jira.board'] || '',
+        assignee: answers['jira.assignee'] || '',
+      };
+      // Mirror the azure-block convention: fully-empty means nothing chosen yet.
+      if (!projectConfig.jira.site && !projectConfig.jira.project &&
+          !projectConfig.jira.board && !projectConfig.jira.assignee) {
+        delete projectConfig.jira;
+      }
+    }
+  } else if (projectConfig.azure &&
+      !projectConfig.azure.org && !projectConfig.azure.project &&
       !projectConfig.azure.team && !projectConfig.azure.assignee) {
+    // Strip empty azure block (legacy no-tracker-answer path)
     delete projectConfig.azure;
   }
 
@@ -76,10 +245,13 @@ function buildConfigs(answers, steps) {
 /**
  * Build the users object from answers.
  * Answers carry users as:
- *   users[0].handle, users[0].phone, users[0].role, users[0].email, users[0].notes
+ *   users[0].handle, users[0].<fieldKey>, ...
  *   users[1].handle, ...
+ * Schema-driven (design #4): the entry carries exactly the effective field
+ * set's keys — a secret field's value is an env-var NAME, stored as
+ * { envSecret } (the actual value goes to .env, never here).
  */
-function buildUsers(answers) {
+function buildUsers(answers, userFields = BUILTIN_USER_FIELDS) {
   const users = {};
   const rawUsers = answers['users'];
 
@@ -87,10 +259,11 @@ function buildUsers(answers) {
     for (const u of rawUsers) {
       if (!u.handle) continue;
       const entry = {};
-      if (u.phone)  entry.phone  = u.phone;
-      if (u.email)  entry.email  = u.email;
-      if (u.role)   entry.role   = u.role;
-      if (u.notes)  entry.notes  = u.notes;
+      for (const f of userFields) {
+        const v = u[f.key];
+        if (!v) continue;
+        entry[f.key] = f.secret ? { envSecret: String(v) } : v;
+      }
       users[u.handle] = entry;
     }
   }
@@ -115,6 +288,7 @@ function validate(answers, steps) {
   const errors = [];
   for (const step of steps) {
     if (!step.fields) continue;
+    if (!stepApplies(step, answers)) continue;   // when-gated away (O8): not shown, not enforced
     for (const field of step.fields) {
       if (field.required && !answers[field.key]) {
         errors.push(`"${field.label || field.key}" is required (step: ${step.id})`);
@@ -145,19 +319,9 @@ function validate(answers, steps) {
  * the user into the wizard's own secret fields.
  */
 
-// Canonical .env variable names → wizard answer keys.
-const ENV_KEY_MAP = {
-  QA_TARGET_URL: 'portalUrl', QA_URL: 'portalUrl', PORTAL_URL: 'portalUrl',
-  APP_URL: 'portalUrl', TARGET_URL: 'portalUrl', UAT_URL: 'portalUrl',
-  PROJECT_NAME: 'name',
-  AZURE_URL: 'azure.org', AZURE_ORG: 'azure.org', AZURE_DEVOPS_ORG: 'azure.org',
-  AZURE_PROJECT: 'azure.project', AZURE_TEAM: 'azure.team', AZURE_ASSIGNEE: 'azure.assignee',
-  DB_SERVER: 'db.server', DB_HOST: 'db.server', DB_PORT: 'db.port',
-  DB_NAME: 'db.name', DB_DATABASE: 'db.name', DB_USER: 'db.user', DB_USERNAME: 'db.user',
-  API_BASE_URL: 'api.baseUrl', API_URL: 'api.baseUrl',
-  KB_ASK_BASE_URL: 'kb.baseUrl', KB_PROJECT: 'kb.project',
-  OTP: 'defaults.otp', DEFAULT_OTP: 'defaults.otp', CAPTCHA: 'defaults.captcha',
-};
+// Canonical .env variable names → wizard answer keys — shared with the migration
+// engine (scripts/migrations/03-env-split.js): one mapping, no drift.
+const { ENV_KEY_MAP } = require('../lib/env_key_map.js');
 
 // Grouped lines: "DB: server=x, name=y" / "Azure Org: o, Project: p".
 const GROUPS = [
@@ -177,7 +341,7 @@ const GROUPS = [
 const LABELS = [
   [/^(?:اسم\s*المشروع|المشروع|project\s*name)$/i, 'name'],
   [/^(?:رابط\s*التطبيق|الرابط|portal\s*url|app\s*url|target\s*url|website|site)$/i, 'portalUrl'],
-  [/^(?:البيئة(?:\s*الافتراضية)?|environment|default\s*environment|env)$/i, 'defaultEnvironment'],
+  [/^(?:البيئة(?:\s*الافتراضية)?|environment|default\s*environment|env)$/i, 'envName'],
   [/^(?:otp|رمز\s*التحقق|كلمة\s*المرور\s*المؤقتة)$/i, 'defaults.otp'],
 ];
 
@@ -281,6 +445,18 @@ function validateConfigs(projectConfig, envConfig, envName) {
   const errors = [];
   if (!projectConfig || typeof projectConfig !== 'object') errors.push('projectConfig is required');
   else if (!String(projectConfig.name || '').trim()) errors.push('project name is required');
+  errors.push(...validateProjectFieldSchema(projectConfig));
+  errors.push(...validateTrackerBlocks(projectConfig));
+  return errors.concat(validateEnvConfig(envConfig, envName));
+}
+
+/**
+ * Per-environment validation — one environment config against its target file
+ * name. Split out of validateConfigs so the multi-environment save plan can run
+ * it once per environment.
+ */
+function validateEnvConfig(envConfig, envName) {
+  const errors = [];
   if (!ENV_NAME_RE.test(String(envName || ''))) {
     errors.push('envName must be lowercase letters/digits/-/_ (max 31 chars)');
   }
@@ -294,8 +470,213 @@ function validateConfigs(projectConfig, envConfig, envName) {
         Object.keys(envConfig.users).length === 0) {
       errors.push('at least one test user is required');
     }
+    // Secret fields (invariant #5): a stored { envSecret } must name a valid
+    // env var — garbage here becomes a broken .env lookup at run time.
+    for (const [handle, entry] of Object.entries(envConfig.users || {})) {
+      if (!entry || typeof entry !== 'object') continue;
+      for (const [k, v] of Object.entries(entry)) {
+        if (v && typeof v === 'object' && 'envSecret' in v && !ENV_VAR_NAME_RE.test(String(v.envSecret || ''))) {
+          errors.push(`users.${handle}.${k}: envSecret must be a valid env var name (letters/digits/_ only)`);
+        }
+      }
+    }
+    for (const [k, v] of Object.entries(envConfig.defaults || {})) {
+      if (v && typeof v === 'object' && 'envSecret' in v && !ENV_VAR_NAME_RE.test(String(v.envSecret || ''))) {
+        errors.push(`defaults.${k}: envSecret must be a valid env var name (letters/digits/_ only)`);
+      }
+    }
   }
   return errors;
+}
+
+/**
+ * Plan a multi-environment batch save (wizard design #3): validate every
+ * environment config plus the explicit, user-confirmed ops (renames/deletes),
+ * and compute the resulting on-disk state. Pure function — disk state comes in
+ * as data — so every rejection path of the wizard's first destructive
+ * capability is testable without IO.
+ *
+ * Consent is data (invariant #11): every rename/delete op must carry
+ * `confirmed: true`, set by the UI only after its confirm dialog. The server
+ * never renames or deletes anything not explicitly listed here — pristine
+ * sample reconciliation (announced, echoed) is the one design-#1 exception,
+ * and it too is computed in this plan, never improvised at write time.
+ *
+ * @param {{projectConfig: object, environments: object, ops: {renames?: {from,to,confirmed}[], deletes?: {name,confirmed}[]}}} payload
+ * @param {{envNames: string[], pristineNames: string[], unreadableNames?: string[]}} diskState  environments/*.json base names on disk; which are pristine samples; which would not parse
+ * @returns {{errors: string[], reconcile: string[], finalEnvNames: string[]}}
+ */
+function planSave(payload, diskState) {
+  const errors = [];
+  const projectConfig = payload && payload.projectConfig;
+  const environments = (payload && payload.environments) || {};
+  const ops = (payload && payload.ops) || {};
+  const renames = Array.isArray(ops.renames) ? ops.renames : [];
+  const deletes = Array.isArray(ops.deletes) ? ops.deletes : [];
+  const diskEnvs = ((diskState && diskState.envNames) || []).map(String);
+  const pristine = ((diskState && diskState.pristineNames) || []).map(String);
+  const unreadable = ((diskState && diskState.unreadableNames) || []).map(String);
+
+  if (!projectConfig || typeof projectConfig !== 'object') errors.push('projectConfig is required');
+  else if (!String(projectConfig.name || '').trim()) errors.push('project name is required');
+  // Field-descriptor arrays (design #4), when the payload carries them —
+  // defense-in-depth: the UI validates in its editor, the save re-checks.
+  errors.push(...validateProjectFieldSchema(projectConfig));
+  // Q12 defense-in-depth: no wizard payload may write a config resolveTracker
+  // would refuse (more than one provider block).
+  errors.push(...validateTrackerBlocks(projectConfig));
+
+  if (!environments || typeof environments !== 'object' || Array.isArray(environments)) {
+    return { errors: errors.concat('environments must be an object keyed by environment name'), reconcile: [], finalEnvNames: [] };
+  }
+
+  // ── Per-environment validation, each error naming its file ──────────────
+  const written = Object.keys(environments);
+  for (const [name, cfg] of Object.entries(environments)) {
+    for (const e of validateEnvConfig(cfg, name)) errors.push(`environments/${name}.json: ${e}`);
+  }
+
+  // ── An unreadable on-disk file is untouchable (design #3): the wizard
+  // could not read it, so it must not write over it, rename it, rename onto
+  // it, or delete it — the user fixes or removes it by hand.
+  const touchesUnreadable = (n) => unreadable.includes(n);
+  for (const n of written) {
+    if (touchesUnreadable(n)) {
+      errors.push(`environments/${n}.json exists but is not readable JSON — the wizard never overwrites what it could not read; fix or remove the file by hand`);
+    }
+  }
+  for (const r of renames) {
+    if (r && (touchesUnreadable(String(r.from || '')) || touchesUnreadable(String(r.to || '')))) {
+      errors.push(`rename touches an unreadable environment file ("${r.from}" → "${r.to}") — fix or remove it by hand`);
+    }
+  }
+  for (const d of deletes) {
+    if (d && touchesUnreadable(String(d.name || ''))) {
+      errors.push(`delete "${d.name}" refused — the file is not readable JSON, so its content was never shown; remove it by hand if you mean it`);
+    }
+  }
+
+  // ── Ops: explicit, enumerated, consented — or refused ───────────────────
+  const unconsented = [];
+  for (const r of renames) if (!r || r.confirmed !== true) unconsented.push(`rename "${r && r.from}" → "${r && r.to}"`);
+  for (const d of deletes) if (!d || d.confirmed !== true) unconsented.push(`delete "${d && d.name}"`);
+  if (unconsented.length) {
+    errors.push(`refused without explicit consent (confirmed: true): ${unconsented.join(', ')}`);
+  }
+
+  const renameFroms = [];
+  const renameTos = [];
+  for (const r of renames) {
+    if (!r) continue;
+    const from = String(r.from || '');
+    const to = String(r.to || '');
+    if (!ENV_NAME_RE.test(from) || !ENV_NAME_RE.test(to)) {
+      errors.push(`rename names must be valid environment names: "${from}" → "${to}"`);
+      continue;
+    }
+    if (from === to) { errors.push(`rename "${from}" → "${to}" is not a rename`); continue; }
+    if (!diskEnvs.includes(from)) errors.push(`rename source "${from}" is not an environment file this project has`);
+    if (written.includes(from)) errors.push(`rename source "${from}" collides with a file this save also writes`);
+    if (renameFroms.includes(from)) errors.push(`"${from}" is renamed more than once`);
+    if (renameTos.includes(to)) errors.push(`rename target "${to}" collides with another rename target`);
+    renameFroms.push(from);
+    renameTos.push(to);
+  }
+
+  const deleteNames = [];
+  for (const d of deletes) {
+    if (!d) continue;
+    const name = String(d.name || '');
+    if (!ENV_NAME_RE.test(name)) { errors.push(`delete name must be a valid environment name: "${name}"`); continue; }
+    if (!diskEnvs.includes(name)) errors.push(`delete "${name}" is not an environment file this project has`);
+    // Execution order is writes → renames → deletes: a delete aimed at a file
+    // this save creates would destroy the fresh write. Refused outright.
+    if (written.includes(name) || renameTos.includes(name)) errors.push(`delete "${name}" collides with a file this save creates`);
+    if (renameFroms.includes(name)) errors.push(`delete "${name}" collides with a rename of the same file`);
+    if (deleteNames.includes(name)) errors.push(`"${name}" is deleted more than once`);
+    deleteNames.push(name);
+  }
+
+  // ── Chained/swapped renames: a target that equals ANOTHER rename's source
+  // cannot execute correctly with in-order renames — depending on order, the
+  // first rename silently overwrites the second's still-on-disk source
+  // (fs.renameSync replaces an existing destination), destroying its data
+  // behind an ok response. Refused whole, whatever the order: rename in
+  // separate saves instead.
+  for (const to of renameTos) {
+    if (renameFroms.includes(to)) {
+      errors.push(`rename target "${to}" is another rename's source — chained or swapped renames cannot run in one save; save between renames`);
+    }
+  }
+
+  // ── Save-time reconciliation (design #1, generalized): a structurally-
+  // pristine leftover sample this save does not claim (write to, rename
+  // from/to, or explicitly delete) is a scaffold artifact and is removed —
+  // listed in the plan so the review step and the response can both name it.
+  const reconcile = pristine.filter(n =>
+    diskEnvs.includes(n) && !written.includes(n) &&
+    !renameTos.includes(n) && !renameFroms.includes(n) && !deleteNames.includes(n)).sort();
+
+  // ── Final-state arithmetic ───────────────────────────────────────────────
+  const surviving = diskEnvs.filter(n =>
+    !deleteNames.includes(n) && !renameFroms.includes(n) && !reconcile.includes(n));
+  for (const to of renameTos) {
+    // A target that collides with a file surviving this save would clobber an
+    // environment the user never consented to touch — refused either way
+    // (plain rename-onto or renamed-and-edited-onto).
+    if (surviving.includes(to)) {
+      errors.push(`rename target "${to}" collides with an existing environment file`);
+    }
+  }
+  const finalEnvNames = [...new Set([...surviving, ...renameTos, ...written])].sort();
+
+  if (finalEnvNames.length === 0) {
+    errors.push('at least one environment must remain after this save');
+  }
+
+  const finalDefault = String((projectConfig && projectConfig.defaultEnvironment) || '');
+  if (!finalDefault) {
+    errors.push('projectConfig.defaultEnvironment is required');
+  } else if (finalEnvNames.length && !finalEnvNames.includes(finalDefault)) {
+    errors.push(`defaultEnvironment "${finalDefault}" would not name any environment file after this save`);
+  }
+
+  return { errors, reconcile, finalEnvNames };
+}
+
+/**
+ * Build an environment file's users object from the wizard's user list,
+ * merging each entry onto its on-disk base entry so hand-added properties the
+ * wizard has no input for survive a save (invariant #11). Schema-driven
+ * (design #4): the managed keys are the effective `userFields`; a secret
+ * field's screen value is an env-var NAME stored as { envSecret }. `dropKeys`
+ * are the ONE exception to unknown-prop preservation: keys the user
+ * explicitly removed or renamed away this session (consented ops) are deleted
+ * from the base before the merge. The managed fields mirror the screen
+ * exactly: a value sets the key, an empty field unsets it.
+ * ui.html's buildUsersObj mirrors this logic (browser copy — keep in sync).
+ */
+function buildEnvUsers(list, baseUsers, userFields = BUILTIN_USER_FIELDS, dropKeys = []) {
+  const base = baseUsers || {};
+  const users = {};
+  for (const u of (list || [])) {
+    if (!u || !u.handle) continue;
+    const entry = Object.assign({}, base[u.handle]);
+    for (const k of dropKeys) delete entry[k];
+    for (const f of userFields) {
+      const v = u[f.key];
+      if (f.secret) {
+        const n = String(v || '').trim();
+        if (n) entry[f.key] = { envSecret: n }; else delete entry[f.key];
+      } else if (v) {
+        entry[f.key] = v;
+      } else {
+        delete entry[f.key];
+      }
+    }
+    users[u.handle] = entry;
+  }
+  return users;
 }
 
 /**
@@ -362,6 +743,10 @@ function flattenObject(obj, prefix = '') {
 }
 
 module.exports = {
-  buildConfigs, validate, validateConfigs, isHttpUrl,
+  DEFAULT_ENV_NAME,
+  BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS,
+  validateFieldDescriptors, validateProjectFieldSchema,
+  stepApplies, validateTrackerBlocks, TRACKER_PROVIDERS,
+  buildConfigs, validate, validateConfigs, validateEnvConfig, planSave, buildEnvUsers, isHttpUrl,
   extractFromText, extractUsers, mergeExtracted, mergeUsers, flattenObject,
 };

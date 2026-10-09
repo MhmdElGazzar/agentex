@@ -1,0 +1,13 @@
+{
+  "name": "shop-db",
+  "description": "Shop database checks. The queries below are the ONLY SQL the agent may execute.",
+  "engine": "sqlserver",
+  "queries": [
+    {
+      "name": "customer-by-email",
+      "description": "Verify a customer row exists by email",
+      "params": ["email"],
+      "query": "SELECT TOP 1 Id, Email, Status FROM Customers WHERE Email = '{email}' ORDER BY Id DESC"
+    }
+  ]
+}

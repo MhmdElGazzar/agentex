@@ -1,0 +1,64 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "stories",
+    "count": 2,
+    "stories": [
+      {
+        "id": "PROJ-9",
+        "type": "Story",
+        "title": "Story PROJ-9",
+        "state": "In Progress",
+        "storyPoints": 3,
+        "url": "https://example.atlassian.net/browse/PROJ-9",
+        "existingTestingTasks": []
+      },
+      {
+        "id": "PROJ-3",
+        "type": "Story",
+        "title": "Story PROJ-3",
+        "state": "In Progress",
+        "storyPoints": null,
+        "url": "https://example.atlassian.net/browse/PROJ-3",
+        "existingTestingTasks": []
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/field",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND issuetype = \\\"Story\\\" AND sprint in openSprints() ORDER BY key\",\"fields\":[\"summary\",\"customfield_10020\"],\"maxResults\":100}"
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=PROJ",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/agile/1.0/board/42/sprint?state=active",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-9?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-3?expand=renderedFields%2Cnames",
+      "body": null
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "story-not-a-user-story",
+        "story": 101,
+        "message": "#101 is a \"?\", not a User Story — [Testing] tasks hang only off User Stories"
+      },
+      {
+        "reason": "children-check-failed",
+        "story": 101,
+        "message": "the existing-children check on #101 could not complete — refusing to create blind (fails closed): Cannot read properties of null (reading 'relations')"
+      }
+    ],
+    "validation": {
+      "assignee": "qa.engineer@example.com",
+      "perStory": [
+        {
+          "id": 101,
+          "complexity": "Simple",
+          "tasks": 5,
+          "type": null,
+          "title": null,
+          "state": null,
+          "iterationPath": null,
+          "areaPath": null,
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/101"
+        },
+        {
+          "id": 103,
+          "complexity": "Medium",
+          "tasks": 5,
+          "type": "User Story",
+          "title": "Story 103",
+          "state": "Active",
+          "iterationPath": "Sample Project\\Sprint 9",
+          "areaPath": null,
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/103",
+          "existingTestingTasks": []
+        }
+      ],
+      "fields": [
+        {
+          "field": "Microsoft.VSTS.Common.Activity",
+          "value": "Testing",
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.OriginalEstimate",
+          "value": 1,
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.RemainingWork",
+          "value": 1,
+          "ok": true
+        }
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/103?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Task/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    }
+  ]
+}

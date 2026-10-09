@@ -11,6 +11,21 @@ You use Azure to **support** testing — verifying deployments, tailing logs, an
 resources — not to provision or destroy infrastructure. Prefer read-only commands; get
 explicit confirmation before any create/update/delete.
 
+## Typical tasks
+Given a request like "verify the deployment went out" or "check why staging 500s", you:
+1. **Identify the target resource** — resource group, and the App Service / Storage account /
+   Key Vault / AKS cluster name. Ask if it isn't given, or read it from `config/project.json` /
+   `.env` if the project already defines one.
+2. **Run the read-only `az` command that answers the question** — the reference below has the
+   exact syntax per resource type.
+3. **Report back only what's test-relevant** — never the full raw dump.
+
+## Output
+Report findings in plain text tied to the test task: resource state (e.g. "App Service `X`
+last deployment: succeeded, 2 min ago"), the specific log lines that matched, or the specific
+property value asked for. Never paste a secret's value (see Rules) — name it and confirm it
+exists / was read, not its content.
+
 ## Tool
 Setup, install, auth, and common commands live in this skill's `references/` folder. **Read the
 reference file BEFORE the first `az` command in a session**, and again whenever a command
@@ -18,10 +33,6 @@ behaves unexpectedly:
 - **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-cli.md`** — Azure CLI (`az`):
   install-if-missing (winget/MSI/brew/apt), auth (interactive, device-code, service-principal),
   and common commands for App Service, Storage, Key Vault, and AKS.
-- **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-devops-cli.md`** — the
-  `azure-devops` extension (`az boards` / `az devops`): install, PAT auth, configure defaults,
-  iteration fetch, WIQL, work-item create/link. Shared by the task-estimation and test-design
-  skills.
 
 ## Rules
 - Preflight `az --version` before use; install per the reference if it's missing.

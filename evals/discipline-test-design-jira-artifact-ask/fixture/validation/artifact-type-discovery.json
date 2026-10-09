@@ -1,0 +1,1 @@
+{"ok":false,"mode":"plan","blocked":[{"reason":"missing-artifact-type","options":["Story","Task","Sub-task (sub-task)","Bug"],"message":"Jira has no native Test Case type — the skill informs the user and asks what to create (Q11); the spec carries that choice as artifactType, and this script never defaults it"}]}

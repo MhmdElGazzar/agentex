@@ -9,7 +9,7 @@ Builds on [Claude Code 101](./claude-code-101.md) and [Architecture](./architect
 
 ## 1. Name it
 
-Skills are named noun-style (`browser-testing`, `ask-kb`, `optimize-login`) —
+Skills are named noun-style (`test-execution`, `ask-kb`, `optimize-login`) —
 `url-healthcheck` describes *what it is*, not an action. Its command counterpart will be
 verb-style: `/check-url`.
 

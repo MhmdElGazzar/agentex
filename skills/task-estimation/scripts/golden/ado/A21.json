@@ -1,0 +1,89 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "existing-testing-tasks",
+        "story": 102,
+        "ids": [
+          555
+        ],
+        "message": "story #102 already has 1 [Testing] task(s) (#555) — ask the user: skip = drop the story from the spec; add anyway = pass --allow-existing"
+      }
+    ],
+    "validation": {
+      "assignee": "qa.engineer@example.com",
+      "perStory": [
+        {
+          "id": 102,
+          "complexity": "Complex",
+          "tasks": 5,
+          "type": "User Story",
+          "title": "Story 102",
+          "state": "Active",
+          "iterationPath": "Sample Project\\Sprint 9",
+          "areaPath": "Sample Project\\Team Area",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/102",
+          "existingTestingTasks": [
+            {
+              "id": 555,
+              "title": "[Testing] Test Execution",
+              "state": "Active"
+            }
+          ]
+        }
+      ],
+      "fields": [
+        {
+          "field": "Microsoft.VSTS.Common.Activity",
+          "value": "Testing",
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.OriginalEstimate",
+          "value": 1,
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.RemainingWork",
+          "value": 1,
+          "ok": true
+        }
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/102?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/555?api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/556?api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Task/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    }
+  ]
+}

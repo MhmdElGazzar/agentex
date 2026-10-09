@@ -1,47 +1,60 @@
 ---
 name: test-design
 description: >
-  Designs test cases for Azure DevOps User Stories: analyze a story's acceptance criteria into
-  test conditions, map them to test case titles, create the test cases in ADO with structured
-  steps, and link them to the parent story (Tested By). Use this skill whenever the user wants to:
+  Designs test cases for User Stories on the configured tracker — Azure DevOps or Jira Cloud:
+  analyze a story's acceptance criteria into test conditions, map them to test case titles,
+  create the test artifacts (ADO Test Cases with structured steps, or the Jira issue type the
+  user chooses — Jira has no native Test Case type) and link them to the parent story —
+  validated first, then ONE consolidated approval, through bundled REST scripts (no Azure CLI,
+  no acli). Use this skill whenever the user wants to:
   - Analyze a user story and identify test conditions (what to test)
   - Map AC scenarios to test case titles using a naming convention
-  - Create test cases in ADO with proper steps
+  - Create test cases in ADO with proper steps, or design test cases for a Jira story
   - Link test cases to their parent story
   - Review whether a story's ACs are fully covered by test cases
-  Trigger on phrases like: "create test cases for story", "design tests for", "what test cases
-  do I need", "analyze story for testing", "map ACs to test conditions", or any time a user
-  story ID is mentioned alongside test design/coverage work.
+  Trigger on phrases like: "create test cases for story", "design tests for", "design test
+  cases for a Jira story", "what test cases do I need", "analyze story for testing", "map ACs
+  to test conditions", or any time a user story ID or Jira issue key is mentioned alongside
+  test design/coverage work.
 ---
 
-# Test Design — Azure DevOps
+# Test Design — Azure DevOps or Jira
 
-End-to-end methodology for designing, creating, and linking test cases to User Stories in
-Azure DevOps. This file is the **workflow** (how to analyze ACs, what test cases to derive,
-when to confirm). Command mechanics live in the references — **read them before the first
-`az boards` command in a session**:
+## Role
+You turn a User Story's acceptance criteria into structured test artifacts on the configured
+tracker (Azure DevOps test cases, or the Jira issue type the user chooses), linked back to
+the story. You never write to the board without the single consolidated approval described
+below.
 
-- **`${CLAUDE_PLUGIN_ROOT}/skills/test-design/references/test-case-mechanics.md`** — Test Case
-  creation specifics: Steps XML format, the file+`$STEPS` quoting trick, `Tested By` link
-  direction, the no-delete gotcha, retry notes.
-- **`${CLAUDE_PLUGIN_ROOT}/skills/azure-integration/references/azure-devops-cli.md`** — shared
-  `az devops` basics: extension install, auth, `configure --defaults`, fetching the current
-  iteration, WIQL queries.
+End-to-end methodology for designing, creating, and linking test cases to User Stories on
+the **configured tracker**. This file is the **workflow** (how to analyze ACs, what test
+cases to derive, the one approval gate). The mechanics live in the bundled scripts — never
+run `az` or `acli`, and never compose REST calls for board operations:
+
+- **`${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/create-cases.js`** — the story read and
+  the test-case creation/linking (dry run by default, `--execute` behind the one approval;
+  the script builds the Steps XML from structured steps on ADO, or ADF step lists on Jira,
+  and picks the configured provider itself). Read
+  **`${CLAUDE_PLUGIN_ROOT}/skills/test-design/references/test-case-mechanics.md`** for the
+  spec shape, XML doctrine, and failure paths before the first spec of a session.
+- **`${CLAUDE_PLUGIN_ROOT}/references/tracker/ado-boards.md`** — shared ADO boards knowledge:
+  field reference names, relation directions, the Test-Case no-delete constraint.
+- **`${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md`** — the Jira twin: field ids,
+  ADF, link semantics, known limitations (no test plans/runs, no Tested-By).
+- **`${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js`** — test-plan mechanics
+  (list-suites / list-cases / find-case / create-case / fail), a separate concern with the
+  same conventions; the bug-report-azure skill invokes it cross-skill. **ADO only**: on a
+  Jira-configured project it refuses upfront (exit 2, `testPlans:false` — Jira has no
+  test-plan/run APIs).
 
 ## Configuration (never hardcode)
 
-Same resolution as the task-estimation skill — from the user's message, `config/project.json`'s
-`azure` block or legacy `.env` (`AZURE_*` keys), or an existing `az devops configure --defaults`;
-**ask once** for anything missing and reuse it all session. Never bake an organization, project,
-team, or email into commands.
-
-| Setting | Source |
-|---|---|
-| Organization URL | `azure.org` (`config/project.json`) → `AZURE_URL` / ask |
-| Project | `azure.project` (`config/project.json`) → `AZURE_PROJECT` / ask |
-| Team | `azure.team` (`config/project.json`) → `AZURE_TEAM` / ask |
-| Assignee | `azure.assignee` (`config/project.json`) → `AZURE_ASSIGNEE` / ask |
-| PAT (auth) | `AZURE_DEVOPS_EXT_PAT` env in the user's shell — never print or pass it |
+Org/site, project, and assignee resolve from `config/project.json` — the `azure` block on
+ADO (legacy `AZURE_*` keys in `.env` as fallback) or the `jira` block on Jira — the scripts
+read them themselves, and the credentials (`AZURE_PAT`, or `JIRA_EMAIL` + `JIRA_API_TOKEN`,
+in `.env`) never leave them: Authorization header only, never printed or on a command line.
+Never bake an organization, site, project, team, or email into anything. Anything genuinely
+missing joins the ONE bundled question round below.
 
 ## Project conventions file
 
@@ -53,14 +66,52 @@ the languages text checks must cover.
   designing anything.
 - If it doesn't exist, offer to scaffold it: create the `./.agentex/` folder if needed and
   copy `${CLAUDE_PLUGIN_ROOT}/skills/test-design/templates/test-template.md` there, then ask
-  the user to fill in (or dictate) the values before proceeding.
-- If a needed convention is missing from the file, ask — do not guess.
+  the user to fill in (or dictate) the values before proceeding. (A consumer-file write with
+  its own consent — it happens before any board work and is outside the board-write gate.)
+- If a needed convention is missing from the file, that question joins the one bundled round
+  — do not guess.
+
+## On Jira — the artifact question comes first (Q11)
+
+Jira has no native Test Case type and no Tested-By link. On a Jira-configured project,
+**before any spec is built**: inform the user of exactly that, and ask **what to create** —
+in the ONE bundled round, never silently substituted. The options are the **project's real
+issue types** (the dry run surfaces them: a spec without `artifactType` blocks with
+`missing-artifact-type` carrying the live list, sub-task types marked), plus **"document
+only / skip creation"** (deliver the conditions table and titled cases as text, zero board
+writes). The chosen type goes into the spec as `artifactType` — the script never defaults
+it, and validates it against the real types.
+
+The choice can be **pinned** in `./.agentex/test-template.md` under a `## Jira` section
+(e.g. `artifactType: Task`, `linkType: Relates`) — a consumer-owned convention, so later
+runs skip the ask. A pinned value still shows on the consolidated screen.
+
+Mechanical deltas the script owns (details in
+`${CLAUDE_PLUGIN_ROOT}/references/tracker/jira-boards.md`):
+
+- Steps render as an **ADF ordered list** (action → expected) in the artifact's
+  description — same structured `{type, text, expected}` spec steps, no XML.
+- **Linking is a separate write**: no Tested-By exists, so the artifact links back to the
+  story via the configured/chosen issue link type (`jira.bugLinkType`, spec `linkType`, or
+  the bundled ask — `Relates` recommended). The plan shows create + link as two intents per
+  case; a sub-task artifact type instead rides `fields.parent` inside the create (no link
+  intent).
+- The assignee email resolves to an accountId at validation time (shown on the screen);
+  unresolvable/ambiguous blocks — never assigned blind.
+- No server-side `validateOnly` exists on Jira — the createmeta field cache carries
+  pre-gate validation, and the plan says `validateOnly: 'unsupported-on-jira'` so the
+  consolidated screen is honest about what was proven.
+- Coverage check closes the loop as on ADO: map every AC to a created artifact from the
+  ledger and re-read the story (free read) to show the links landed.
 
 ## Step 1 — Fetch the User Story
 
-Fetch with `--expand all` (see mechanics reference for the command and field names). Read the
-description + acceptance criteria, extract any design link (e.g. Figma) and translation tables
-from the HTML.
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/create-cases.js story --id <STORY_ID>
+```
+
+Read the description + acceptance criteria from the JSON (HTML — extract any design link,
+e.g. Figma, and translation tables from the tags yourself).
 
 ## Step 2 — Identify Test Conditions
 
@@ -93,28 +144,15 @@ info section) — treat each as its own test case whenever the story includes th
 6. **Conventions-file categories** — always a separate test case when the story includes that
    element.
 
-### Confirm before creating
-
-Present the mapped conditions and wait for approval:
-
-```
-## Test Conditions for Story [ID] — [Story Title]
-
-| # | Test Case Title | Covers |
-|---|---|---|
-| 1 | user checks the page UI | [what it covers] |
-| 2 | user checks the page text | [labels, languages] |
-...
-
-Is anything missing? Should I add or remove any test condition?
-```
+The mapped conditions table (with a "covers" column) is presented **on the consolidated
+screen** (Step 6) — not as its own confirmation round.
 
 ## Step 3 — Determine the Feature
 
 Each title includes the feature the story belongs to. A feature can be a step in a flow
 (e.g. `Step5`) but not always — it can also be any feature name (e.g. `Login`). Read the
 feature map from the conventions file; if the story isn't in the map, infer from the
-story's context or ask the user.
+story's context — or add the question to the one bundled round.
 
 ## Step 4 — Title Convention
 
@@ -144,32 +182,56 @@ prerequisites of the story's step) followed by ValidateSteps for the condition:
   spaces → error shown.
 - **Conventions-file categories** — per the checks the conventions file defines for them.
 
-XML structure, IDs, and quoting rules are in the mechanics reference.
+You write step *content* as structured JSON (`{type, text, expected}` — see the mechanics
+reference); the script owns the XML, IDs, and escaping.
 
-## Step 6 — Create the Test Cases
+## Step 6 — Validate, one screen, ONE approval
 
-Follow the mechanics reference exactly (file + `$STEPS` variable, iteration inherited from the
-story, assignee from config). Capture each new ID.
+**Bundled input round (only if needed):** anything genuinely unresolvable — a feature not in
+the map, a persona missing because the conventions file is incomplete, no assignee anywhere —
+is asked in ONE AskUserQuestion **before** validation, never as a series of asks. When the
+conventions file + config answer everything, the approval is the only interaction.
 
-## Step 7 — Link to the Story
+1. Build the spec (`storyId`, `assignee`, `cases` with structured steps), write it to the
+   **OS temp dir**, and dry-run:
+   ```bash
+   node …/create-cases.js --spec "$TMP/cases.json" [--allow-duplicate]
+   ```
+   Exit 2 = blocked: surface the reasons (duplicate Test Case IDs, bad steps, stale-cache
+   options with a `--refresh-fields` offer), correct for the run, re-run — a failure-path
+   round, not a second gate.
+2. Render **the consolidated screen**: the conditions table (with its "covers" column and
+   "is anything missing?" framed as part of this one screen), the titled cases with a
+   per-case step summary, the duplicate-check results, and **the exact write plan** (one
+   atomic create per case — Tested By inline on ADO; on Jira the chosen artifact type with
+   its create + link intents — routes listed) — plus the explicit statement
+   that **nothing has been written yet**. Additions/removals edit the spec and re-run the
+   dry run; the corrected screen still ends in exactly one approval.
+3. **One approval** → re-run with `--execute`. Anything else → stop, zero writes.
 
-Link every test case to the story with the **`Tested By`** relation — `--id` = STORY,
-`--target-id` = test case(s). Direction matters; verify afterwards (commands in the mechanics
-reference).
+## Step 7 — Report from the ledger
+
+Every intended case done (ID + URL) or not-done (reason), straight from the script's ledger.
+On ADO, linking happened inside each create (`TestedBy-Reverse` → story), so there is no
+separate link step to verify or forget; on Jira the story link is its own ledgered write —
+report its state per case. A partial failure is a **failure** — name exactly which cases
+now exist; no retry, no cleanup (ADO Test Cases can't be deleted via the API, and Jira's
+only delete is permanent and never offered — portal cleanup is the user's call).
 
 ## Step 8 — Coverage Check
 
-Map every AC scenario to a created test case and show the table. Flag anything uncovered and
-ask whether to add a test case for it.
+Map every AC scenario to a created test case **from the ledger**, re-read the story
+(`story --id <id>` — a free read) to show the Tested By links landed, and show the table.
+Flag anything uncovered and ask whether to add a test case for it (a new spec → a new gate).
 
 ## Common Mistakes to Avoid
 
 - ❌ Creating a test case for something the AC marks "handled separately" / out of scope
 - ❌ Merging text and UI into one test case
-- ❌ Reversing `--id`/`--target-id` on the link (must be `--id`=story, `--target-id`=TC)
-- ❌ Inlining raw Steps XML on the command line instead of the file + `$STEPS` variable
-- ❌ Forgetting to XML-escape `&`, `<`, `>` inside step text
-- ❌ Putting a PAT on the command line (auth flows through the extension)
 - ❌ Creating input test cases when the story has no input fields
 - ❌ Skipping non-primary-language text checks when the project is multilingual
 - ❌ Using a feature that doesn't match the feature map
+- ❌ Asking the condition-table question and the approval as two separate rounds — they are
+  ONE screen, one approval
+- ❌ Running `az` or composing REST calls for board operations — the scripts own transport
+  and auth (and the old XML/quoting/link-direction mistakes died with them)

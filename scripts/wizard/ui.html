@@ -56,8 +56,9 @@ body { min-height: 100vh; }
   width: 34px; height: 34px; border-radius: 9px;
   background: linear-gradient(135deg, var(--accent), #7c3aed);
   display: flex; align-items: center; justify-content: center;
-  font-size: 17px; box-shadow: 0 2px 8px rgba(91,80,240,.3);
+  color: #fff; box-shadow: 0 2px 8px rgba(91,80,240,.3);
 }
+.logo-mark svg { width: 18px; height: 18px; }
 .logo-name { font-size: 17px; font-weight: 800; color: var(--text-1); }
 .logo-sub  { font-size: 11px; color: var(--text-3); }
 .spacer    { flex: 1; }
@@ -67,6 +68,15 @@ body { min-height: 100vh; }
   border-radius: 20px; display: none;
 }
 .step-pill.show { display: block; }
+/* Language toggle — shows the language you GET, not the one you are in. */
+.lang-btn {
+  background: var(--bg-muted); color: var(--text-2);
+  border: 1px solid var(--border); border-radius: 20px;
+  font-family: inherit; font-size: 12px; font-weight: 700;
+  min-width: 42px; padding: 5px 12px; cursor: pointer; line-height: 1.2;
+}
+.lang-btn:hover { color: var(--accent); border-color: var(--accent); }
+.lang-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Progress bar ───────────────────────────────────────────────────────── */
 .progress-bar-wrap {
@@ -93,14 +103,6 @@ body { min-height: 100vh; }
   display: flex; flex-direction: column; align-items: center;
   gap: 6px; cursor: pointer; position: relative; min-width: 72px;
 }
-.snode + .snode::before {
-  content: '';
-  position: absolute; right: 100%; top: 17px;
-  width: calc(100% - 0px); height: 2px;
-  background: var(--border); transition: background .3s;
-  left: auto; right: auto;
-  width: 28px; right: 100%; margin-right: -14px;
-}
 .snode-connector {
   width: 28px; height: 2px; background: var(--border);
   flex-shrink: 0; margin-top: 18px; transition: background .3s;
@@ -122,6 +124,13 @@ body { min-height: 100vh; }
 .slabel { font-size: 11px; color: var(--text-3); text-align: center; max-width: 72px; line-height: 1.3; }
 .snode.active .slabel { color: var(--accent); font-weight: 700; }
 .snode.done .slabel { color: var(--text-2); }
+/* Group label in the track — the wizard teaches the file model: المشروع ثم البيئات */
+.sgroup-label {
+  align-self: flex-start; margin: 8px 6px 0;
+  font-size: 10px; font-weight: 800; color: var(--accent);
+  background: var(--accent-lt); border: 1px solid rgba(91,80,240,.2);
+  border-radius: 20px; padding: 3px 10px; white-space: nowrap;
+}
 
 /* ── Main ───────────────────────────────────────────────────────────────── */
 .main { display: flex; justify-content: center; padding: 32px 16px 48px; }
@@ -137,8 +146,9 @@ body { min-height: 100vh; }
   padding: 40px 36px;
   display: flex; flex-direction: column; gap: 28px;
 }
+.intro-head { display: flex; flex-direction: column; gap: 8px; }
 .intro-title { font-size: 24px; font-weight: 800; color: var(--text-1); }
-.intro-sub { font-size: 14px; color: var(--text-2); line-height: 1.7; margin-top: -18px; }
+.intro-sub { font-size: 14px; color: var(--text-2); line-height: 1.7; }
 
 .mode-grid { display: flex; flex-direction: column; gap: 12px; }
 .mode-card {
@@ -148,32 +158,45 @@ body { min-height: 100vh; }
   transition: all .2s var(--ease); background: var(--bg-card);
   position: relative; overflow: hidden;
 }
-.mode-card:hover { border-color: var(--accent); background: var(--accent-lt); }
+.mode-card:hover { border-color: var(--border-hi); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.mode-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mode-card.selected { border-color: var(--accent); background: var(--accent-lt); }
 .mode-card.selected::after {
-  content: '✓'; position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+  content: '✓'; position: absolute; inset-inline-start: 20px; top: 50%; transform: translateY(-50%);
   width: 22px; height: 22px; border-radius: 50%;
   background: var(--accent); color: white; font-size: 12px; font-weight: 800;
   display: flex; align-items: center; justify-content: center;
   line-height: 22px; text-align: center;
 }
-.mode-icon { font-size: 32px; flex-shrink: 0; }
+.mode-icon {
+  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  background: var(--accent-lt); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s var(--ease);
+}
+.mode-icon svg { width: 22px; height: 22px; }
+.mode-card.selected .mode-icon { background: var(--accent); color: #fff; }
 .mode-title { font-size: 15px; font-weight: 700; color: var(--text-1); margin-bottom: 3px; }
 .mode-desc { font-size: 13px; color: var(--text-2); line-height: 1.5; }
 
 .btn-start {
-  padding: 14px; border-radius: var(--radius-lg);
+  align-self: center; min-width: 220px;
+  padding: 14px 44px; border-radius: var(--radius-lg);
   background: var(--accent); border: none; color: white;
   font-family: var(--font); font-size: 15px; font-weight: 700;
   cursor: pointer; transition: all .2s var(--ease);
   box-shadow: 0 4px 12px rgba(91,80,240,.3);
 }
-.btn-start:hover { background: var(--accent-hi); box-shadow: 0 6px 20px rgba(91,80,240,.4); }
+.btn-start:not(:disabled):hover { background: var(--accent-hi); box-shadow: 0 6px 20px rgba(91,80,240,.4); }
+.btn-start:disabled {
+  background: var(--bg-muted); color: var(--text-3);
+  box-shadow: none; cursor: not-allowed;
+}
 
 /* ── Paste mode ─────────────────────────────────────────────────────────── */
 .paste-mode { padding: 32px 36px; display: flex; flex-direction: column; gap: 20px; }
 .paste-mode h2 { font-size: 20px; font-weight: 800; }
-.paste-mode p { font-size: 14px; color: var(--text-2); line-height: 1.7; margin-top: -12px; }
+.paste-mode p { font-size: 14px; color: var(--text-2); line-height: 1.7; }
 .paste-area {
   width: 100%; min-height: 220px; padding: 16px;
   background: var(--bg-input); border: 1.5px solid var(--border);
@@ -193,12 +216,21 @@ body { min-height: 100vh; }
 .head-icon { font-size: 32px; flex-shrink: 0; margin-top: 2px; }
 .head-title { font-size: 20px; font-weight: 800; color: var(--text-1); margin-bottom: 4px; }
 .head-desc { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+/* The ONE config file this page writes — monospaced, live-updating with the env name */
+.target-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 8px; padding: 3px 10px;
+  font-family: var(--mono); font-size: 11px; color: var(--text-2);
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: 6px; direction: ltr;
+}
+.target-chip::before { content: '📄'; font-size: 10px; }
 .optional-pill {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 10px; border-radius: 20px;
   background: var(--warning-lt); border: 1px solid rgba(217,119,6,.25);
   font-size: 11px; color: var(--warning); font-weight: 700;
-  margin-right: 8px; vertical-align: middle;
+  margin-inline-end: 8px; vertical-align: middle;
 }
 
 /* ── Card Body ──────────────────────────────────────────────────────────── */
@@ -232,6 +264,7 @@ body { min-height: 100vh; }
 }
 .field input[type="password"] { font-family: var(--mono); letter-spacing: 1px; }
 .field select { appearance: none; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238a92b2' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 12px center; padding-left: 36px; }
+[dir="ltr"] .field select { background-position: right 12px center; padding-left: 14px; padding-right: 36px; }
 .field input[type="number"] { -moz-appearance: textfield; }
 .field input.secret-input { border-color: rgba(217,119,6,.3); background: #fffbf0; }
 .field input.secret-input:focus { border-color: var(--warning); box-shadow: 0 0 0 3px rgba(217,119,6,.1); }
@@ -282,7 +315,9 @@ body { min-height: 100vh; }
   border-radius: var(--radius-lg); padding: 44px 24px; text-align: center;
   transition: all .2s; cursor: pointer; background: var(--bg-input);
 }
-.dropzone:hover, .dropzone.over { border-color: var(--accent); background: var(--accent-lt); }
+.dropzone:hover { border-color: var(--border-hi); background: var(--bg-hover); }
+.dropzone.over { border-color: var(--accent); background: var(--accent-lt); border-style: solid; }
+.dropzone > * { pointer-events: none; }
 .dz-icon { font-size: 44px; margin-bottom: 14px; }
 .dz-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
 .dz-sub { font-size: 13px; color: var(--text-2); margin-bottom: 16px; }
@@ -305,7 +340,7 @@ body { min-height: 100vh; }
 }
 .extract-preview.show { display: flex; }
 .ep-title { font-size: 13px; font-weight: 700; color: var(--success); }
-.ep-code { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); line-height: 1.7; max-height: 180px; overflow-y: auto; }
+.ep-code { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); line-height: 1.7; max-height: 180px; overflow-y: auto; white-space: pre; direction: ltr; text-align: left; }
 
 /* ── Review Step ────────────────────────────────────────────────────────── */
 .rtabs { display: flex; gap: 6px; margin-bottom: 14px; }
@@ -320,6 +355,7 @@ body { min-height: 100vh; }
   background: #1e2030; border-radius: var(--radius); padding: 18px;
   font-family: var(--mono); font-size: 12px; color: #a9dc76;
   line-height: 1.7; overflow: auto; max-height: 300px; white-space: pre;
+  direction: ltr; text-align: left;
 }
 .btn-copy {
   padding: 8px 16px; border-radius: var(--radius);
@@ -328,6 +364,18 @@ body { min-height: 100vh; }
   cursor: pointer; transition: all .2s;
 }
 .btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+/* .env keys summary on the review step — names only, never values */
+.env-summary {
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 8px; font-size: 13px;
+}
+.env-summary-title { font-weight: 700; color: var(--text-2); }
+.env-keys { display: flex; flex-wrap: wrap; gap: 6px; direction: ltr; }
+.env-key {
+  font-family: var(--mono); font-size: 11px; padding: 2px 8px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+}
 
 /* ── Card Footer ────────────────────────────────────────────────────────── */
 .card-foot {
@@ -343,6 +391,8 @@ body { min-height: 100vh; }
   cursor: pointer; transition: all .2s;
   display: inline-flex; align-items: center; gap: 7px; border: none;
 }
+.btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+.btn:focus-visible, .btn-start:focus-visible, .rtab:focus-visible, .btn-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn-outline { background: var(--bg-card); border: 1.5px solid var(--border); color: var(--text-2); }
 .btn-outline:hover { border-color: var(--border-hi); color: var(--text-1); }
 .btn-primary { background: var(--accent); color: white; box-shadow: 0 3px 10px rgba(91,80,240,.25); }
@@ -373,7 +423,75 @@ body { min-height: 100vh; }
   display: flex; align-items: center; gap: 8px;
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
-.toast.error { background: #C0392B; color: #FFFFFF; }
+.toast.error { background: var(--danger); color: #FFFFFF; }
+.toast.warn { background: var(--warning); color: #FFFFFF; }
+.toast.success { background: var(--success); color: #FFFFFF; }
+
+/* ── Environments manager (E0) ──────────────────────────────────────────── */
+.env-list { display: flex; flex-direction: column; gap: 10px; }
+.env-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px;
+}
+.env-row-name { font-family: var(--mono); font-size: 14px; font-weight: 700; direction: ltr; unicode-bidi: embed; }
+.env-badge {
+  font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-2);
+}
+.env-badge.default { background: var(--accent-lt); border-color: rgba(91,80,240,.25); color: var(--accent); }
+.env-badge.new     { background: var(--success-lt); border-color: rgba(22,163,74,.25); color: var(--success); }
+.env-badge.edited  { background: var(--warning-lt); border-color: rgba(217,119,6,.25); color: var(--warning); }
+.env-row-actions { margin-inline-start: auto; display: flex; gap: 6px; }
+.env-note { font-size: 11px; color: var(--text-3); font-family: var(--mono); direction: ltr; unicode-bidi: embed; width: 100%; }
+.btn-sm {
+  padding: 6px 12px; border-radius: 8px; font-family: var(--font);
+  font-size: 12px; font-weight: 700; cursor: pointer; transition: all .2s;
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-2);
+}
+.btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+.btn-sm.danger { color: var(--danger); border-color: rgba(220,38,38,.25); }
+.btn-sm.danger:hover { background: var(--danger-lt); border-color: var(--danger); color: var(--danger); }
+
+/* ── Modal (confirm dialogs — the moment-of-action consent) ─────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(26,29,46,.45); z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-card {
+  width: 100%; max-width: 480px; background: var(--bg-card);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  padding: 24px; display: flex; flex-direction: column; gap: 14px;
+  animation: fadeUp .18s ease; max-height: 90vh; overflow-y: auto;
+}
+.modal-title { font-size: 17px; font-weight: 800; }
+.modal-body { font-size: 13.5px; color: var(--text-2); line-height: 1.8; }
+.modal-fileop {
+  font-family: var(--mono); font-size: 12px; direction: ltr; text-align: left;
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px; word-break: break-all;
+}
+.modal-fileop.modal-danger { border-color: rgba(220,38,38,.35); background: var(--danger-lt); color: var(--danger); }
+.modal-actions { display: flex; gap: 8px; margin-top: 4px; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #b91c1c; }
+.copy-opts { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.copy-opts label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.copy-opts input[type="radio"], .copy-opts input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+
+/* ── Ops list (review + manager): every file op, before it happens ──────── */
+.ops-list {
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 6px; font-size: 13px;
+}
+.ops-list-title { font-weight: 700; color: var(--text-2); }
+.op-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.op-line code {
+  font-family: var(--mono); font-size: 11.5px; direction: ltr; unicode-bidi: embed;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 6px; padding: 1px 6px;
+}
 
 /* ── Animations ─────────────────────────────────────────────────────────── */
 @keyframes fadeUp {
@@ -387,14 +505,15 @@ body { min-height: 100vh; }
 
 <header class="header">
   <div class="logo">
-    <div class="logo-mark">⚡</div>
+    <div class="logo-mark"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
     <div>
       <div class="logo-name">AgenTeX</div>
-      <div class="logo-sub">إعداد المشروع</div>
+      <div class="logo-sub" id="logo-sub">إعداد المشروع</div>
     </div>
   </div>
   <div class="spacer"></div>
-  <div class="step-pill" id="hdr-pill">الخطوة 1 من 7</div>
+  <button type="button" class="lang-btn" id="lang-btn" onclick="toggleLang()">EN</button>
+  <div class="step-pill" id="hdr-pill"></div>
 </header>
 
 <div class="progress-bar-wrap">
@@ -430,10 +549,93 @@ function apiFetch(path, opts = {}) {
   });
 }
 
+/* ── Language ───────────────────────────────────────────────────────────── */
+// The wizard shipped Arabic-only. The schema already carried titleEn/labelEn
+// twins, but nothing ever read them, so an English-speaking tester had no way
+// in at all. Both languages now sit side by side at the point of use —
+// L('عربي', 'English') for the page's own copy, loc(obj, 'label') for anything
+// the schema supplies — so a string cannot quietly be added in one language.
+// Arabic stays the default: a tester who never touches the toggle sees exactly
+// the wizard they had before.
+const LANG_KEY = 'agentex-wizard-lang';
+function storedLang() {
+  // A file:// open or a locked-down browser throws on localStorage; a missing
+  // preference is not a reason to fail to boot.
+  try { return window.localStorage.getItem(LANG_KEY); } catch (e) { return null; }
+}
+const KNOWN_LANGS = ['ar', 'en'];
+// A default the host can ask for: the server rewrites this line when /setup is
+// opened as ?lang=en, and any page embedding the wizard can set
+// window.WIZARD_LANG before this script runs. A choice the tester made with
+// the toggle still wins — their own voice outranks the URL that opened the tab.
+const LANG_REQUESTED = window.WIZARD_LANG || '';
+let LANG = KNOWN_LANGS.includes(storedLang()) ? storedLang()
+  : (KNOWN_LANGS.includes(LANG_REQUESTED) ? LANG_REQUESTED : 'ar');
+
+/** The page's own copy: both languages at the call site. */
+function L(ar, en) { return LANG === 'en' ? en : ar; }
+
+/** A schema-supplied string: the `<key>En` twin when there is one, else the
+ *  original — a missing translation degrades to Arabic, never to `undefined`. */
+function loc(obj, key) {
+  if (!obj) return '';
+  const en = obj[key + 'En'];
+  if (LANG === 'en' && en !== undefined && en !== null && en !== '') return en;
+  return obj[key] !== undefined && obj[key] !== null ? obj[key] : '';
+}
+
+/** Which screen is on the card, so a language switch redraws exactly it. */
+let screen = 'intro';   // 'intro' | 'paste' | 'file' | 'step' | 'done'
+
+function setLang(next) {
+  if (!KNOWN_LANGS.includes(next) || next === LANG) return;
+  LANG = next;
+  try { window.localStorage.setItem(LANG_KEY, LANG); } catch (e) {}   // remembering is a nicety, not a requirement
+  applyLangChrome();
+  rerender();
+}
+function toggleLang() { setLang(LANG === 'ar' ? 'en' : 'ar'); }
+
+/** Everything outside the card: document direction, title, header, the toggle. */
+function applyLangChrome() {
+  const root = document.documentElement;
+  if (root && root.setAttribute) {
+    root.setAttribute('lang', LANG);
+    root.setAttribute('dir', LANG === 'en' ? 'ltr' : 'rtl');
+  }
+  document.title = L('AgenTeX — إعداد المشروع', 'AgenTeX — Project Setup');
+  const sub = document.getElementById('logo-sub');
+  if (sub) sub.textContent = L('إعداد المشروع', 'Project Setup');
+  const btn = document.getElementById('lang-btn');
+  if (btn) {
+    btn.textContent = L('EN', 'ع');
+    const hint = L('Switch to English', 'التبديل إلى العربية');
+    btn.setAttribute('aria-label', hint);
+    btn.setAttribute('title', hint);
+  }
+  updateProgress();
+}
+
+/** Redraw the current screen in the active language, keeping what was typed:
+ *  switching language is a display choice and must never cost work in progress. */
+function rerender() {
+  if (screen === 'step')  { collectAnswers(); renderStep(); return; }
+  if (screen === 'paste') {
+    const keep = (document.getElementById('paste-text') || {}).value || '';
+    renderPasteMode();
+    const box = document.getElementById('paste-text');
+    if (box) box.value = keep;
+    return;
+  }
+  if (screen === 'file')  { renderFileMode(); if (window._file) pickFile(window._file); return; }
+  if (screen === 'done')  { renderFinished(); return; }
+  renderIntro();
+}
+
 /* ── State ──────────────────────────────────────────────────────────────── */
 let schema   = null;
-let answers  = {};
-let secrets  = {};          // keyed by FIELD key; mapped to env var names at save → .env
+let answers  = {};          // ACTIVE working set: project answers + the active environment's env-scoped answers
+let secrets  = {};          // PROJECT-scoped secret fields (azure.pat, figma.token, kb.key); env-scoped secrets live per environment
 let users    = [
   { handle: 'valid_user',   phone: '', role: 'customer' },
   { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
@@ -448,140 +650,692 @@ let extractedData = null;
 // Config already on disk (re-run of the wizard) — the base saving merges onto,
 // so fields the wizard doesn't manage survive.
 let existingProject = null;
-let existingEnv     = null;
-let loadedEnvName   = null;   // environment the prefill came from
-let currentEnvSelection = null;
+// /api/config pristine report: the default's on-disk file is an untouched
+// scaffold sample (zero user values). It is never prefilled, and saving
+// reconciles unclaimed samples away (listed on the review step first).
+let samplePristine    = false;
+let sampleName        = null;
+// EVERY pristine sample on disk, whatever its name — the review step lists
+// each one a save that doesn't claim it will reconcile away.
+let pristineSamples   = [];
+// The existing default names an environment file that is not on disk at all.
+let defaultEnvMissing = false;
+// defaultEnvironment as read from config/project.json (or the shipped default).
+let diskDefault       = null;
+// On-disk environment files that would not parse: flagged by /api/config,
+// excluded from editing entirely, their names blocked for add/rename.
+let unreadableEnvNames = [];
+
+/* ── Multi-environment session store (design #3) ─────────────────────────
+ * `envs` is the primary store — one entry per environment (loaded from disk
+ * or added this session). The active environment's values live flattened in
+ * `answers`/`users` while it is open; switching snapshots them back in.
+ * File operations are NEVER performed here: renames are derived from
+ * diskName≠name (recorded via the rename confirm dialog), deletes accumulate
+ * in pendingDeletes (recorded via the delete confirm dialog), and ONE batch
+ * save executes everything after the review step lists it all.
+ */
+let envs = {};             // name → session entry (makeEnvEntry)
+let envOrder = [];         // display + claim order: first entry claims the default when none is valid
+let activeEnv = null;      // the environment currently flattened into `answers`/`users`
+let pendingDeletes = [];   // DISK names of on-disk environments the user confirmed for deletion
+let newDefaultName = null; // session name the user designated when deleting the default
+
+function makeEnvEntry() {
+  return {
+    answers: {},            // env-scoped keys only (see envScopedKeys)
+    users: starterUsers(),
+    usersPristine: true,
+    secrets: {},            // env-scoped secret values (db.password, api.token, defaults.<key>)
+    existsOnDisk: false,
+    diskName: null,         // the on-disk file name (rename ops derive from diskName ≠ current name)
+    loadedFrom: null,       // parsed disk JSON — the invariant-#11 merge base (incl. per-user props)
+    dirty: false,           // true → this save writes the file
+  };
+}
+
+/* ── Consumer-owned field schema (wizard design #4) ───────────────────────
+ * `userFieldsSession` / `defaultsFieldsSession` are the effective descriptor
+ * arrays — loaded from config/project.json when present, else the built-ins.
+ * ONE schema, defined once, shared across ALL environments: a rename migrates
+ * the key in every session environment (and, at save, in every file — all
+ * environments ride the batch save); a removal is consented with its blast
+ * radius. `_orig` tracks each field's on-disk key (null = added this session);
+ * removed*Fields collect the consented removals for the review ops list and
+ * the base-key drops. Values NEVER live here — they stay per-environment.
+ */
+// Browser copy of engine.js BUILTIN_USER_FIELDS / BUILTIN_DEFAULTS_FIELDS — keep in sync.
+const BUILTIN_USER_FIELDS = [
+  { key: 'phone', label: 'رقم الهاتف', labelEn: 'Phone', type: 'text', placeholder: '0550000001' },
+  { key: 'email', label: 'البريد الإلكتروني', labelEn: 'Email', type: 'email', placeholder: 'test@example.com' },
+  { key: 'role', label: 'الدور', labelEn: 'Role', type: 'text', placeholder: 'customer' },
+  { key: 'notes', label: 'ملاحظات', labelEn: 'Notes', type: 'text', placeholder: 'for negative login scenarios' },
+];
+const BUILTIN_DEFAULTS_FIELDS = [
+  { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+    hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+  { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+];
+const FIELD_KEY_RE_UI = /^[a-zA-Z][a-zA-Z0-9_]*$/;
+const ENV_VAR_RE_UI = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+let userFieldsSession = null;
+let defaultsFieldsSession = null;
+let removedUserFields = [];      // { key: ORIGINAL key, label, envs: [names with values] }
+let removedDefaultsFields = [];
+let overwrittenUserKeys = [];    // { key, envs } — consented rename-onto overwrites of hand-added disk values
+let overwrittenDefaultsKeys = [];
+
+/** Seed the effective field schema from config/project.json (or built-ins). */
+function seedFieldSchema(proj) {
+  const mk = (arr, builtins) => (Array.isArray(arr) ? arr : builtins)
+    .filter(f => f && typeof f === 'object' && FIELD_KEY_RE_UI.test(String(f.key || '')) && f.key !== 'handle')
+    .map(f => ({ ...f, _orig: f.key }));
+  userFieldsSession = mk(proj && proj.userFields, BUILTIN_USER_FIELDS);
+  defaultsFieldsSession = mk(proj && proj.defaultsFields, BUILTIN_DEFAULTS_FIELDS);
+  removedUserFields = [];
+  removedDefaultsFields = [];
+  overwrittenUserKeys = [];
+  overwrittenDefaultsKeys = [];
+}
+
+/** Strip session bookkeeping — what buildProjectConfig writes to the file. */
+function cleanDescriptor(f) { const c = { ...f }; delete c._orig; return c; }
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
+// Env-scoped secret field keys (db.password, api.token) — schema-derived; their
+// values are stored per environment, not in the global project secrets.
+let ENV_SECRET_KEYS = new Set();
+
 async function init() {
   schema = await loadSchema();
+  ENV_SECRET_KEYS = new Set(schema.steps.filter(s => s.group === 'environment')
+    .flatMap(s => s.fields || []).filter(f => f.secret).map(f => f.key));
+  seedFieldSchema(null);   // built-ins until a loaded config says otherwise
   await loadExistingConfig();
   renderIntro();
 }
 
 /**
  * Re-running the wizard on a configured project must show what is already there,
- * not a blank form. Flatten the saved files back into `answers` (and `users`), and
- * remember the untouched parts of project.json so saving can't drop hand-added
- * fields the wizard has no input for (e.g. azure.areaPath).
+ * not a blank form. /api/config enumerates EVERY environment: readable user
+ * data seeds the session store (one entry per environment, prefilled for
+ * editing), pristine samples are reported by name only (scaffolding — never
+ * presented as "your existing configuration"), unreadable files are announced
+ * and excluded from editing entirely.
  */
 async function loadExistingConfig() {
-  if (MODE !== 'local') return;
+  if (MODE !== 'local') { seedFreshEnv('qc'); return; }   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
   let cfg;
   try { cfg = await (await apiFetch('/api/config')).json(); }
-  catch { return; }
+  catch { seedFreshEnv('qc'); return; }
   const proj = cfg && cfg.projectConfig;
-  const env  = cfg && cfg.envConfig;
-  if (cfg && cfg.unreadable && cfg.unreadable.length) {
-    // Say it out loud: saving would replace a file we could not read.
-    alert(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقري:\n\n${cfg.unreadable.join('\n')}\n\n` +
-          `لو كملت وحفظت هتتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.`);
+  const envMap = (cfg && cfg.environments) || {};
+  const unreadable = (cfg && cfg.unreadable) || [];
+  samplePristine  = !!(cfg && cfg.samplePristine);
+  sampleName      = (cfg && cfg.sampleName) || null;
+  pristineSamples = (cfg && cfg.pristineSamples) || [];
+  diskDefault     = (cfg && cfg.defaultEnvironment) || 'qc';   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
+  const projPristine = !!(cfg && cfg.projectPristine);
+  unreadableEnvNames = Object.keys(envMap).filter(n => envMap[n] === null);
+  if (unreadable.length) {
+    // Say it out loud — and say each file's real fate. An unreadable
+    // project.json is rewritten on save; unreadable ENVIRONMENT files are
+    // excluded from the wizard entirely: never edited, never overwritten.
+    let msg = L(`⚠️ الملفات دي موجودة لكن مش صالحة JSON فمش هتتقرا:\n\n${unreadable.join('\n')}\n\n`, `⚠️ These files exist but are not valid JSON, so they cannot be read:\n\n${unreadable.join('\n')}\n\n`);
+    if (unreadable.includes('config/project.json')) {
+      msg += L('لو كملت وحفظت، config/project.json هيتكتب من أول وجديد — صلّح الـ JSON الأول لو محتاج تحافظ على محتواه.\n', 'If you continue and save, config/project.json is written from scratch — fix the JSON first if you need to keep what is in it.\n');
+    }
+    if (unreadableEnvNames.length) {
+      msg += L('ملفات البيئات دي مش هتظهر في الويزارد ومش هتتلمس — أسماؤها محجوزة، وصلّحها بإيدك لو محتاجها.', 'These environment files will not appear in the wizard and will not be touched — their names stay reserved; fix them by hand if you need them.');
+    }
+    alert(msg);
   }
-  if (!proj && !env) return;
 
+  // On-disk files stay the merge base, so keys the wizard has no input for
+  // survive saving — but a still-pristine template never PREFILLS the form:
+  // scaffolding presented as "your existing configuration" is exactly the
+  // phantom-environment bug. The wizard starts from schema defaults instead.
   existingProject = proj || null;
-  existingEnv     = env  || null;
+  // The field schema is config, not data: seed it from project.json whenever
+  // one is readable (a pristine template's arrays ARE the built-ins), BEFORE
+  // any environment is flattened — prefill and rendering both iterate it.
+  seedFieldSchema(proj);
+  const projLoaded = !!(proj && !projPristine);
 
-  if (proj) {
+  if (projLoaded) {
     if (proj.name) answers['name'] = proj.name;
-    answers['defaultEnvironment'] = cfg.envName || proj.defaultEnvironment || 'qa';
     if (proj.login && proj.login.mode) answers['login.mode'] = proj.login.mode;
-    for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']]]) {
+    for (const [group, keys] of [['azure', ['org','project','team','assignee']], ['kb', ['baseUrl','project']], ['jira', ['site','project','board','assignee']]]) {
       for (const k of keys) {
         const v = proj[group] && proj[group][k];
         if (v) answers[`${group}.${k}`] = v;
       }
     }
+    if (proj.figma && proj.figma.fileKey) answers['figma.fileKey'] = proj.figma.fileKey;
+    if (proj.figma && proj.figma.token && proj.figma.token.envSecret) answers['figma.tokenEnvVar'] = proj.figma.token.envSecret;
+    // Q12 prefill: on an existing project the tracker selection derives from
+    // the user's own file (derived state, not a default) — azure block →
+    // azure, jira block → jira, neither → none. Fresh projects get NO prefill:
+    // the required select demands an explicit pick.
+    answers['tracker'] = deriveTrackerFrom(proj);
   }
 
-  if (env) fillEnvironmentAnswers(env);
-  loadedEnvName = answers['defaultEnvironment'];
-  showToast('📂 تم تحميل إعدادات المشروع الحالية');
+  // Seed the session store: every readable, non-pristine environment on disk,
+  // the default first (it is also the first claimant when a default is needed).
+  const names = Object.keys(envMap).filter(n => envMap[n] !== null)
+    .sort((a, b) => (a === diskDefault ? -1 : b === diskDefault ? 1 : a.localeCompare(b)));
+  for (const name of names) {
+    const env = envMap[name];
+    const e = makeEnvEntry();
+    e.answers = envAnswersFrom(env);
+    e.users = usersFromEnv(env);
+    e.usersPristine = !(env.users && Object.keys(env.users).length);
+    e.existsOnDisk = true;
+    e.diskName = name;
+    e.loadedFrom = env;
+    envs[name] = e;
+    envOrder.push(name);
+  }
+  defaultEnvMissing = !!(proj && proj.defaultEnvironment && !envs[proj.defaultEnvironment] &&
+                         !samplePristine && !unreadableEnvNames.includes(proj.defaultEnvironment));
+  if (envOrder.length === 0) {
+    // Nothing configured yet (fresh scaffold / pristine-only): start a new
+    // environment under the default's name — first configured claims it.
+    seedFreshEnv(diskDefault);
+  } else {
+    restoreEnv(envOrder[0]);
+  }
+  // The toast announces USER data that was loaded — an untouched scaffold is not that.
+  if (projLoaded || names.length) showToast(L('📂 تم تحميل إعدادات المشروع الحالية', '📂 Loaded your existing project configuration'));
 }
 
-/** Environment-scoped answer keys — everything that belongs to ONE environment file. */
-const ENV_SCOPED_KEYS = [
-  'portalUrl', 'defaults.otp', 'defaults.password',
-  'db.server', 'db.port', 'db.name', 'db.user', 'db.passwordEnvVar',
-  'api.baseUrl', 'api.tokenEnvVar',
-];
+/** Environment-scoped answer keys — everything that belongs to ONE environment
+ *  file. Connection keys are fixed; the defaults keys follow the consumer's
+ *  defaultsFields schema (a secret defaults field scopes its env-var-NAME slot). */
+function envScopedKeys() {
+  const keys = [
+    'portalUrl',
+    'db.server', 'db.port', 'db.name', 'db.user', 'db.passwordEnvVar',
+    'api.baseUrl', 'api.tokenEnvVar',
+  ];
+  for (const f of (defaultsFieldsSession || [])) {
+    keys.push(f.secret ? `defaults.${f.key}EnvVar` : `defaults.${f.key}`);
+  }
+  return keys;
+}
 
 const starterUsers = () => ([
   { handle: 'valid_user',   phone: '', role: 'customer' },
   { handle: 'expired_user', phone: '', notes: 'for negative login scenarios' },
 ]);
 
-function fillEnvironmentAnswers(env) {
-  if (env.portalUrl) answers['portalUrl'] = env.portalUrl;
+/** Flatten one environment file's JSON into env-scoped answer keys —
+ *  schema-driven: the defaults keys come from the effective defaultsFields. */
+function envAnswersFrom(env) {
+  const a = {};
+  if (env.portalUrl) a['portalUrl'] = env.portalUrl;
   if (env.defaults) {
-    if (env.defaults.otp)      answers['defaults.otp']      = env.defaults.otp;
-    if (env.defaults.password) answers['defaults.password'] = env.defaults.password;
+    for (const f of defaultsFieldsSession) {
+      const v = env.defaults[f.key];
+      if (v === undefined || v === null || v === '') continue;
+      if (f.secret) {
+        if (typeof v === 'object' && v.envSecret) a[`defaults.${f.key}EnvVar`] = v.envSecret;
+      } else if (typeof v !== 'object') {
+        a[`defaults.${f.key}`] = String(v);
+      }
+    }
   }
   if (env.db) {
-    if (env.db.server) answers['db.server'] = env.db.server;
-    if (env.db.port)   answers['db.port']   = String(env.db.port);
-    if (env.db.name)   answers['db.name']   = env.db.name;
-    if (env.db.user)   answers['db.user']   = env.db.user;
-    if (env.db.password && env.db.password.envSecret) answers['db.passwordEnvVar'] = env.db.password.envSecret;
+    if (env.db.server) a['db.server'] = env.db.server;
+    if (env.db.port)   a['db.port']   = String(env.db.port);
+    if (env.db.name)   a['db.name']   = env.db.name;
+    if (env.db.user)   a['db.user']   = env.db.user;
+    if (env.db.password && env.db.password.envSecret) a['db.passwordEnvVar'] = env.db.password.envSecret;
   }
   if (env.api) {
-    if (env.api.baseUrl) answers['api.baseUrl'] = env.api.baseUrl;
-    if (env.api.token && env.api.token.envSecret) answers['api.tokenEnvVar'] = env.api.token.envSecret;
+    if (env.api.baseUrl) a['api.baseUrl'] = env.api.baseUrl;
+    if (env.api.token && env.api.token.envSecret) a['api.tokenEnvVar'] = env.api.token.envSecret;
   }
-  const entries = Object.entries(env.users || {});
-  if (entries.length) {
-    users = entries.map(([handle, u]) => ({ handle, phone: u.phone || '', role: u.role || '', email: u.email || '', notes: u.notes || '' }));
-    answers['users'] = users;
-    usersPristine = false;
-  }
+  return a;
 }
+
+/** Flatten a file's users into session list entries — one slot per effective
+ *  field; a secret field's slot carries the env-var NAME from { envSecret }. */
+function usersFromEnv(env) {
+  const entries = Object.entries(env.users || {});
+  if (!entries.length) return starterUsers();
+  return entries.map(([handle, u]) => {
+    const o = { handle };
+    for (const f of userFieldsSession) {
+      const v = u[f.key];
+      if (f.secret) o[f.key] = (v && typeof v === 'object' && v.envSecret) ? v.envSecret : '';
+      else o[f.key] = (v === undefined || v === null || typeof v === 'object') ? '' : String(v);
+    }
+    return o;
+  });
+}
+
+/* ── Session store mechanics ──────────────────────────────────────────────
+ * The active environment's env-scoped values live flattened in `answers` and
+ * `users` (so every existing field/validation path keeps working unchanged);
+ * snapshotActiveEnv() writes them back into its store entry, restoreEnv()
+ * flattens another entry out. Switching never touches connection targets of
+ * other environments — each entry is isolated by construction.
+ */
+/** Session copy of one user entry — `_secrets` (typed secret VALUES, never
+ *  persisted to JSON) is deep-copied so entries never share a store. */
+function cloneUser(u) {
+  const c = { ...u };
+  if (u._secrets) c._secrets = { ...u._secrets };
+  return c;
+}
+
+function snapshotActiveEnv() {
+  if (!activeEnv || !envs[activeEnv]) return;
+  const e = envs[activeEnv];
+  e.answers = {};
+  for (const k of envScopedKeys()) if (answers[k] !== undefined) e.answers[k] = answers[k];
+  e.users = users.map(cloneUser);
+  e.usersPristine = usersPristine;
+}
+
+function restoreEnv(name) {
+  const e = envs[name];
+  if (!e) return;
+  activeEnv = name;
+  for (const k of envScopedKeys()) {
+    if (e.answers[k] !== undefined) answers[k] = e.answers[k]; else delete answers[k];
+  }
+  users = e.users.map(cloneUser);
+  usersPristine = e.usersPristine;
+  answers['users'] = users;
+  answers['envName'] = name;
+}
+
+function switchEnv(name) {
+  if (name === activeEnv || !envs[name]) return;
+  snapshotActiveEnv();
+  restoreEnv(name);
+}
+
+function markActiveEnvDirty() {
+  if (activeEnv && envs[activeEnv]) envs[activeEnv].dirty = true;
+}
+
+function seedFreshEnv(name) {
+  const e = makeEnvEntry();
+  e.dirty = true;
+  envs = { [name]: e };
+  envOrder = [name];
+  restoreEnv(name);
+}
+
+/** Create a new environment; copy-on-create takes SAFE sections only (owner
+ *  decision): test-user VALUES and defaults VALUES. portalUrl / db / api are
+ *  never offered and never inherited — a new environment must not silently
+ *  point at another environment's systems. */
+function createEnv(name, opts = {}) {
+  snapshotActiveEnv();
+  const e = makeEnvEntry();
+  e.dirty = true;
+  const src = opts.copyFrom ? envs[opts.copyFrom] : null;
+  if (src) {
+    if (opts.copyUsers) {
+      e.users = src.users.map(cloneUser);
+      e.usersPristine = false;
+    }
+    if (opts.copyDefaults) {
+      // VALUES only (owner decision) — non-secret defaults; a secret defaults
+      // value and its env-var slot are per-environment and never inherited.
+      for (const f of defaultsFieldsSession) {
+        if (f.secret) continue;
+        const k = `defaults.${f.key}`;
+        if (src.answers[k] !== undefined) e.answers[k] = src.answers[k];
+      }
+    }
+  }
+  envs[name] = e;
+  envOrder.push(name);
+}
+
+/** Rename inside the session store. File ops are derived, not performed:
+ *  deriveRenames() emits {from: diskName, to: name} at save time (renaming
+ *  back to the disk name simply makes the op disappear). */
+function renameSessionEnv(oldName, newName) {
+  envs[newName] = envs[oldName];
+  delete envs[oldName];
+  envOrder = envOrder.map(n => (n === oldName ? newName : n));
+  if (activeEnv === oldName) { activeEnv = newName; answers['envName'] = newName; }
+  if (newDefaultName === oldName) newDefaultName = newName;
+}
+
+/** The rename ops this save performs — confirmed: the ONLY path that makes
+ *  diskName ≠ name is the rename confirm dialog. */
+function deriveRenames() {
+  return envOrder
+    .filter(n => envs[n].existsOnDisk && envs[n].diskName !== n)
+    .map(n => ({ from: envs[n].diskName, to: n, confirmed: true }));
+}
+
+/* ── Field-set operations (design #4) ─────────────────────────────────────
+ * add / rename / remove / mark-secret / reorder — ONE schema, session-global.
+ * A rename migrates the value key in EVERY session environment and marks them
+ * all dirty, so the save-all rewrites every file with the migrated key; the
+ * original key joins the drop list (the consented exception to invariant
+ * #11's unknown-prop preservation). A removal records its blast radius for
+ * the review ops list. No file changes happen here — only the batch save.
+ */
+function fieldList(kind) { return kind === 'user' ? userFieldsSession : defaultsFieldsSession; }
+
+function markAllEnvsDirty() { for (const n of envOrder) envs[n].dirty = true; }
+
+/** Why this key cannot be used for an add/rename right now — or null. */
+function fieldKeyProblem(kind, key, selfKey) {
+  if (!FIELD_KEY_RE_UI.test(String(key || ''))) {
+    return L('اسم الحقل لازم يبدأ بحرف إنجليزي ويحتوي حروفًا إنجليزية وأرقامًا و _ بس — هو المفتاح اللي بيتكتب في ملف الـ JSON', 'A field key must start with a letter and hold only letters, digits and _ — it is the key written into the JSON file');
+  }
+  if (kind === 'user' && key === 'handle') return L('«handle» محجوز — هو مفتاح المستخدم نفسه، موجود دايمًا ومش بيتغير', '«handle» is reserved — it is the user key itself: always there, never changed');
+  if (fieldList(kind).some(f => f.key === key && f.key !== selfKey)) return L(`«${key}» موجود بالفعل في مجموعة الحقول`, `«${key}» is already in the field set`);
+  return null;
+}
+
+function addField(kind, desc) {
+  // Re-adding a key removed this session cancels the pending removal — the
+  // base values stop being dropped and adoption below refills the slots.
+  const removed = kind === 'user' ? removedUserFields : removedDefaultsFields;
+  const idx = removed.findIndex(x => x.key === desc.key);
+  if (idx >= 0) removed.splice(idx, 1);
+  fieldList(kind).push({ ...desc, _orig: null });
+  return adoptDiskValues(kind, desc);
+}
+
+/* ── Collision adoption (invariant #11) ───────────────────────────────────
+ * A new/renamed field key may already exist in environment files as a
+ * hand-added prop — the flagship adoption journey. The values are ADOPTED
+ * into the session slots (prefilled, per environment) so the save round-trips
+ * them; without this, the screen-wins build would silently delete them.
+ */
+
+/** Fill empty session slots under desc.key from each environment's on-disk
+ *  base values, where the shape matches the descriptor. Returns true when
+ *  anything was adopted. */
+function adoptDiskValues(kind, desc) {
+  const key = desc.key;
+  snapshotActiveEnv();
+  let adopted = false;
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (kind === 'user') {
+      const baseUsers = (e.loadedFrom && e.loadedFrom.users) || {};
+      for (const u of e.users) {
+        if (u[key]) continue;   // the session already has a value — screen wins
+        const v = baseUsers[u.handle] && baseUsers[u.handle][key];
+        if (v === undefined || v === null || v === '') continue;
+        if (desc.secret) {
+          if (v && typeof v === 'object' && typeof v.envSecret === 'string') { u[key] = v.envSecret; adopted = true; }
+        } else if (typeof v !== 'object') {
+          u[key] = String(v); adopted = true;
+        }
+      }
+    } else {
+      const v = e.loadedFrom && e.loadedFrom.defaults && e.loadedFrom.defaults[key];
+      if (v === undefined || v === null || v === '') continue;
+      if (desc.secret) {
+        if (v && typeof v === 'object' && typeof v.envSecret === 'string' && !e.answers[`defaults.${key}EnvVar`]) {
+          e.answers[`defaults.${key}EnvVar`] = v.envSecret; adopted = true;
+        }
+      } else if (typeof v !== 'object' && !e.answers[`defaults.${key}`]) {
+        e.answers[`defaults.${key}`] = String(v); adopted = true;
+      }
+    }
+  }
+  restoreEnv(activeEnv);
+  return adopted;
+}
+
+/** Why adding this key with this shape would lose on-disk values — or null.
+ *  Adoption needs matching shapes; a mismatch is refused with guidance
+ *  instead of silently deleting the hand-added values at save. */
+function fieldAddShapeConflict(kind, key, secret) {
+  snapshotActiveEnv();
+  let plain = false, ref = false, other = false;
+  for (const n of envOrder) {
+    const e = envs[n];
+    const vals = [];
+    if (kind === 'user') {
+      const baseUsers = (e.loadedFrom && e.loadedFrom.users) || {};
+      for (const u of e.users) {
+        const v = baseUsers[u.handle] && baseUsers[u.handle][key];
+        if (v !== undefined && v !== null && v !== '') vals.push(v);
+      }
+    } else {
+      const v = e.loadedFrom && e.loadedFrom.defaults && e.loadedFrom.defaults[key];
+      if (v !== undefined && v !== null && v !== '') vals.push(v);
+    }
+    for (const v of vals) {
+      if (v && typeof v === 'object') {
+        if (typeof v.envSecret === 'string') ref = true; else other = true;
+      } else plain = true;
+    }
+  }
+  if (other) return L(`في قيم مركّبة (object) محفوظة على القرص تحت «${key}» — الويزارد مايقدرش يعرضها كحقل؛ اختر مفتاحًا تانيًا أو عدّل الملف بإيدك`, `there are structured (object) values on disk under «${key}» — the wizard cannot show those as a field; pick another key, or edit the file by hand`);
+  if (secret && plain) return L(`في قيم نصية محفوظة على القرص تحت «${key}» — أضفه كحقل نصي الأول عشان القيم تتحمّل، وبعدها حوّله لسرّي لو محتاج (التحويل بيمسح القيم بتأكيد صريح)`, `there are plain-text values on disk under «${key}» — add it as a text field first so those values load, then make it secret if you need to (that switch clears the values, on an explicit confirmation)`);
+  if (!secret && ref) return L(`«${key}» محفوظ على القرص بصيغة سرية (envSecret) — أضفه كحقل سرّي عشان اسم المتغير يتحمّل بدل ما القيمة تتمسح`, `«${key}» is on disk in secret form (envSecret) — add it as a secret field so the variable name loads instead of the value being wiped`);
+  return null;
+}
+
+/** Environments where renaming onto newKey would LOSE a hand-added disk value:
+ *  the value exists and is neither identical to the migrating session value
+ *  nor adoptable into an empty slot (shape mismatch counts as loss). */
+function renameOntoConflicts(kind, oldKey, newKey) {
+  snapshotActiveEnv();
+  const f = fieldList(kind).find(x => x.key === oldKey);
+  const secret = !!(f && f.secret);
+  const out = [];
+  const diskStr = (v) => (v && typeof v === 'object')
+    ? (secret && typeof v.envSecret === 'string' ? v.envSecret : null)
+    : (!secret ? String(v) : null);
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (kind === 'user') {
+      const baseUsers = (e.loadedFrom && e.loadedFrom.users) || {};
+      for (const u of e.users) {
+        const dv = baseUsers[u.handle] && baseUsers[u.handle][newKey];
+        if (dv === undefined || dv === null || dv === '') continue;
+        const d = diskStr(dv);
+        const sessionVal = String(u[oldKey] || '');
+        if (d !== null && (!sessionVal || sessionVal === d)) continue;   // adoptable or identical
+        out.push(n);
+        break;
+      }
+    } else {
+      const dv = e.loadedFrom && e.loadedFrom.defaults && e.loadedFrom.defaults[newKey];
+      if (dv === undefined || dv === null || dv === '') continue;
+      const d = diskStr(dv);
+      const sessionVal = String((secret ? e.answers[`defaults.${oldKey}EnvVar`] : e.answers[`defaults.${oldKey}`]) || '');
+      if (d !== null && (!sessionVal || sessionVal === d)) continue;
+      out.push(n);
+    }
+  }
+  return [...new Set(out)];
+}
+
+/** The editor's rename action: migrate, record any consented overwrite (the
+ *  editor gates on renameOntoConflicts BEFORE calling this), then adopt
+ *  matching disk values into slots the migration left empty. */
+function renameFieldAdopting(kind, oldKey, newKey, newLabel) {
+  const f = fieldList(kind).find(x => x.key === oldKey);
+  if (!f) return false;
+  const keyChanges = !!newKey && newKey !== oldKey;
+  const conflicts = keyChanges ? renameOntoConflicts(kind, oldKey, newKey) : [];
+  renameField(kind, oldKey, newKey, newLabel);
+  if (!keyChanges) return false;
+  if (conflicts.length) {
+    (kind === 'user' ? overwrittenUserKeys : overwrittenDefaultsKeys).push({ key: newKey, envs: conflicts });
+  }
+  return adoptDiskValues(kind, f);   // f.key is now newKey
+}
+
+/** Reorder a field one step up (-1) or down (+1). */
+function moveField(kind, key, delta) {
+  const list = fieldList(kind);
+  const i = list.findIndex(f => f.key === key);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+}
+
+/** Rename (and/or relabel) a field; a key change migrates every environment. */
+function renameField(kind, oldKey, newKey, newLabel) {
+  const f = fieldList(kind).find(x => x.key === oldKey);
+  if (!f) return;
+  if (newLabel) f.label = newLabel;
+  if (!newKey || newKey === oldKey) return;
+  snapshotActiveEnv();
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (kind === 'user') {
+      for (const u of e.users) {
+        if (Object.prototype.hasOwnProperty.call(u, oldKey)) { u[newKey] = u[oldKey]; delete u[oldKey]; }
+        if (u._secrets && Object.prototype.hasOwnProperty.call(u._secrets, oldKey)) {
+          u._secrets[newKey] = u._secrets[oldKey]; delete u._secrets[oldKey];
+        }
+      }
+    } else {
+      for (const suf of ['', 'EnvVar']) {
+        const from = `defaults.${oldKey}${suf}`, to = `defaults.${newKey}${suf}`;
+        if (e.answers[from] !== undefined) { e.answers[to] = e.answers[from]; delete e.answers[from]; }
+      }
+      if (e.secrets[`defaults.${oldKey}`] !== undefined) {
+        e.secrets[`defaults.${newKey}`] = e.secrets[`defaults.${oldKey}`];
+        delete e.secrets[`defaults.${oldKey}`];
+      }
+    }
+  }
+  f.key = newKey;
+  markAllEnvsDirty();
+  restoreEnv(activeEnv);
+}
+
+/** Environments holding a value under this field — the removal blast radius. */
+function userFieldBlastRadius(key) {
+  snapshotActiveEnv();
+  return envOrder.filter(n => envs[n].users.some(u => u[key] || (u._secrets && u._secrets[key])));
+}
+function defaultsFieldBlastRadius(key) {
+  snapshotActiveEnv();
+  return envOrder.filter(n => envs[n].answers[`defaults.${key}`] ||
+    envs[n].answers[`defaults.${key}EnvVar`] || envs[n].secrets[`defaults.${key}`]);
+}
+
+/** Clear every session value under a field, in every environment. */
+function clearFieldValues(kind, key) {
+  snapshotActiveEnv();
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (kind === 'user') {
+      for (const u of e.users) { delete u[key]; if (u._secrets) delete u._secrets[key]; }
+    } else {
+      delete e.answers[`defaults.${key}`];
+      delete e.answers[`defaults.${key}EnvVar`];
+      delete e.secrets[`defaults.${key}`];
+    }
+  }
+  restoreEnv(activeEnv);
+}
+
+/** Consented removal: record the ORIGINAL key + blast radius, drop the values. */
+function removeField(kind, key) {
+  const list = fieldList(kind);
+  const i = list.findIndex(x => x.key === key);
+  if (i < 0) return;
+  const f = list[i];
+  const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
+  list.splice(i, 1);
+  if (f._orig) {
+    (kind === 'user' ? removedUserFields : removedDefaultsFields)
+      .push({ key: f._orig, label: f.label || f.key, envs: blast });
+  }
+  clearFieldValues(kind, key);
+  markAllEnvsDirty();
+}
+
+/** Flip secret ↔ plaintext. Values do not survive the flip: a plaintext value
+ *  must never silently become an env-var name (or the reverse) — cleared, and
+ *  every file rewrites without the key until re-entered. */
+function toggleFieldSecret(kind, key) {
+  const f = fieldList(kind).find(x => x.key === key);
+  if (!f) return;
+  f.secret = !f.secret;
+  if (!f.secret) delete f.secret;
+  clearFieldValues(kind, key);
+  markAllEnvsDirty();
+}
+
+/** Field renames this save performs (original on-disk key → current key). */
+function deriveUserFieldRenames() {
+  return userFieldsSession.filter(f => f._orig && f._orig !== f.key).map(f => ({ from: f._orig, to: f.key }));
+}
+function deriveDefaultsFieldRenames() {
+  return defaultsFieldsSession.filter(f => f._orig && f._orig !== f.key).map(f => ({ from: f._orig, to: f.key }));
+}
+
+/** Base keys the build DROPS from on-disk entries — the consented exception
+ *  to unknown-prop preservation: removed keys + rename originals. */
+function userFieldDropKeys() {
+  return removedUserFields.map(x => x.key).concat(deriveUserFieldRenames().map(r => r.from));
+}
+function defaultsFieldDropKeys() {
+  return removedDefaultsFields.map(x => x.key).concat(deriveDefaultsFieldRenames().map(r => r.from));
+}
+
+/** Owner-confirmed prefill conventions for secret-field env-var names. */
+const suggestUserSecretName = (handle, key) => `USER_${envVarSuffix(handle || 'user')}_${envVarSuffix(key)}`;
+const suggestDefaultsSecretName = (key) => `DEFAULT_${envVarSuffix(key)}`;
 
 /**
- * Typing a different environment name means a NEW environment file. It starts
- * empty — inheriting the loaded environment's portal/db/api would quietly point
- * the new environment at the old one's database. Switching back restores what
- * you had IN THIS SESSION (including users added minutes ago), falling back to
- * the on-disk snapshot only if the name was never visited.
+ * The defaultEnvironment this save writes. Never silently re-pointed:
+ * a valid on-disk default stands (following its session rename); a deleted
+ * default moves to the user-designated replacement; otherwise — the default
+ * was scaffolding (pristine sample) or pointed at no file — the FIRST
+ * environment configured claims it.
  */
-const envSession = {};   // per-environment in-session edits, keyed by env name
-
-function snapshotEnvSession(name) {
-  if (!name) return;
-  const snap = { users: users.map(u => ({ ...u })), usersPristine };
-  for (const k of ENV_SCOPED_KEYS) if (answers[k] !== undefined) snap[k] = answers[k];
-  envSession[name] = snap;
+function currentDefaultName() {
+  const validDiskDefault = existingProject && existingProject.defaultEnvironment &&
+    !samplePristine && !defaultEnvMissing;
+  if (validDiskDefault) {
+    const d = existingProject.defaultEnvironment;
+    for (const n of envOrder) if (envs[n].existsOnDisk && envs[n].diskName === d) return n;
+    if (pendingDeletes.includes(d)) return newDefaultName || envOrder[0] || null;
+  }
+  return envOrder[0] || null;
 }
 
-function restoreEnvSession(snap) {
-  for (const k of ENV_SCOPED_KEYS) {
-    if (snap[k] !== undefined) answers[k] = snap[k]; else delete answers[k];
-  }
-  users = snap.users.map(u => ({ ...u }));
-  usersPristine = snap.usersPristine;
-  answers['users'] = users;
-}
+const ENV_NAME_RE_UI = /^[a-z0-9][a-z0-9_-]{0,30}$/;
 
-function onEnvironmentNameChanged(newName) {
-  if (!existingEnv || !loadedEnvName || newName === currentEnvSelection) return;
-  snapshotEnvSession(currentEnvSelection || loadedEnvName);
-  currentEnvSelection = newName;
-
-  const snap = envSession[newName];
-  if (snap) {
-    restoreEnvSession(snap);
-    showToast(`↩️ رجعنا لبيئة «${newName}» بتعديلات هذه الجلسة`);
-    return;
+/** Why this name cannot be used for an add/rename right now — or null. */
+function envNameProblem(name, opts = {}) {
+  if (!ENV_NAME_RE_UI.test(name)) return L('حروف إنجليزية صغيرة وأرقام و - أو _ فقط (بحد أقصى 31 حرفاً) — يصبح اسم ملف', 'lowercase letters, digits, - and _ only (31 characters max) — it becomes a file name');
+  if (envs[name]) return L(`«${name}» موجودة بالفعل في الجلسة`, `«${name}» already exists in this session`);
+  if (unreadableEnvNames.includes(name)) return L(`«${name}» اسم ملف موجود على القرص لكنه غير صالح JSON — الاسم محجوز لحد ما يتصلّح`, `«${name}» is a file on disk that is not valid JSON — the name stays reserved until it is fixed`);
+  if (pendingDeletes.includes(name)) return L(`«${name}» متعلَّم عليها حذف في الجلسة دي — استخدم اسمًا تانيًا`, `«${name}» is marked for deletion in this session — use another name`);
+  // A name may look free in the session while its FILE is still on disk,
+  // vacated by a pending rename: reusing it would chain renames into the
+  // batch save's in-order execution — the exact path that silently
+  // overwrites and destroys an environment file. Blocked until the save
+  // lands (the server refuses it too, as the backstop). The one exception:
+  // renaming an environment BACK to its own disk name (opts.self), which
+  // simply cancels its pending rename.
+  for (const n of envOrder) {
+    const e = envs[n];
+    if (n !== opts.self && e.existsOnDisk && e.diskName === name) {
+      return L(`«${name}» لسه اسم ملف موجود على القرص (هيتنقل لـ «${n}» عند الحفظ) — احفظ الأول وبعدين استخدم الاسم، أو اختر اسمًا تانيًا`, `«${name}» is still a file on disk (it moves to «${n}» on save) — save first and then use the name, or pick another one`);
+    }
   }
-  if (newName === loadedEnvName) {
-    fillEnvironmentAnswers(existingEnv);
-    showToast(`↩️ رجعنا لبيئة «${loadedEnvName}» بإعداداتها المحفوظة`);
-    return;
-  }
-  for (const key of ENV_SCOPED_KEYS) delete answers[key];
-  users = starterUsers();
-  usersPristine = true;
-  answers['users'] = users;
-  showToast(`🆕 بيئة جديدة «${newName}» — الحقول فاضية عشان متورثش إعدادات «${loadedEnvName}»`);
+  if (opts.forRename && pristineSamples.includes(name)) return L(`«${name}» ملف نموذجي لسه موجود على القرص — ماينفعش إعادة التسمية عليه`, `«${name}» is a sample file still on disk — renaming onto it is not allowed`);
+  return null;
 }
 
 async function loadSchema() {
@@ -594,6 +1348,7 @@ async function loadSchema() {
 
 /* ── Intro Screen ───────────────────────────────────────────────────────── */
 function renderIntro() {
+  screen = 'intro';
   current = -1;
   updateProgress();
   document.getElementById('hdr-pill').classList.remove('show');
@@ -601,46 +1356,59 @@ function renderIntro() {
 
   document.getElementById('card').innerHTML = `
     <div class="intro">
-      <div>
-        <div class="intro-title">مرحباً بك في AgenTeX 👋</div>
-        <div class="intro-sub">اختر الطريقة التي تريد إعداد مشروعك بها:</div>
+      <div class="intro-head">
+        <div class="intro-title">${L('مرحباً بك في AgenTeX 👋', 'Welcome to AgenTeX 👋')}</div>
+        <div class="intro-sub">${L('اختر الطريقة التي تريد إعداد مشروعك بها:', 'Choose how you want to set your project up:')}</div>
       </div>
 
-      <div class="mode-grid">
-        <div class="mode-card" id="mc-file" onclick="selectMode('file')">
-          <div class="mode-icon">📄</div>
+      <div class="mode-grid" role="radiogroup" aria-label="${L('طريقة الإعداد', 'Setup method')}">
+        <div class="mode-card" id="mc-file" role="radio" aria-checked="false" tabindex="0"
+             onclick="selectMode('file')" onkeydown="modeKey(event,'file')">
+          <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3-3 3 3"/></svg></div>
           <div>
-            <div class="mode-title">رفع ملف</div>
-            <div class="mode-desc">ارفع BRD أو Word أو PDF وسيستخلص Claude البيانات تلقائياً</div>
+            <div class="mode-title">${L('رفع ملف', 'Upload a file')}</div>
+            <div class="mode-desc">${L('ارفع ملفاً نصياً (md، txt، json…) وسيستخلص Claude البيانات تلقائياً', 'Upload a text file (md, txt, json…) and Claude pulls the data out of it')}</div>
           </div>
         </div>
-        <div class="mode-card" id="mc-paste" onclick="selectMode('paste')">
-          <div class="mode-icon">📋</div>
+        <div class="mode-card" id="mc-paste" role="radio" aria-checked="false" tabindex="0"
+             onclick="selectMode('paste')" onkeydown="modeKey(event,'paste')">
+          <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/></svg></div>
           <div>
-            <div class="mode-title">لصق تفاصيل</div>
-            <div class="mode-desc">الصق وصف المشروع أو أي نص وسيحلله Claude ويستخلص البيانات</div>
+            <div class="mode-title">${L('لصق تفاصيل', 'Paste details')}</div>
+            <div class="mode-desc">${L('الصق وصف المشروع ليقوم Claude بتحليله واستخراج البيانات', 'Paste a project description for Claude to read and extract the data from')}</div>
           </div>
         </div>
-        <div class="mode-card" id="mc-steps" onclick="selectMode('steps')">
-          <div class="mode-icon">📝</div>
+        <div class="mode-card" id="mc-steps" role="radio" aria-checked="false" tabindex="0"
+             onclick="selectMode('steps')" onkeydown="modeKey(event,'steps')">
+          <div class="mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h12"/><path d="M2 12h12"/><path d="M2 18h12"/><circle cx="19.5" cy="6" r="1.5"/><circle cx="19.5" cy="12" r="1.5"/><circle cx="19.5" cy="18" r="1.5"/></svg></div>
           <div>
-            <div class="mode-title">خطوة بخطوة</div>
-            <div class="mode-desc">أملأ بيانات مشروعك خطوة بخطوة بشكل يدوي</div>
+            <div class="mode-title">${L('خطوة بخطوة', 'Step by step')}</div>
+            <div class="mode-desc">${L(`املأ بيانات المشروع بنفسك في ${visibleStepIndexes().length} خطوات قصيرة`, `Fill your project data in yourself, across ${visibleStepIndexes().length} short steps`)}</div>
           </div>
         </div>
       </div>
 
       <button class="btn-start" onclick="startWizard()" id="btn-start" disabled>
-        ابدأ الإعداد ←
+        ${L('ابدأ الإعداد ←', 'Start setup →')}
       </button>
     </div>`;
+  if (importMode) selectMode(importMode);
 }
 
 function selectMode(m) {
   importMode = m;
-  document.querySelectorAll('.mode-card').forEach(el => el.classList.remove('selected'));
-  document.getElementById(`mc-${m}`).classList.add('selected');
+  document.querySelectorAll('.mode-card').forEach(el => {
+    el.classList.remove('selected');
+    el.setAttribute('aria-checked', 'false');
+  });
+  const card = document.getElementById(`mc-${m}`);
+  card.classList.add('selected');
+  card.setAttribute('aria-checked', 'true');
   document.getElementById('btn-start').disabled = false;
+}
+
+function modeKey(e, m) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectMode(m); }
 }
 
 function startWizard() {
@@ -652,28 +1420,29 @@ function startWizard() {
 
 /* ── Paste Mode ─────────────────────────────────────────────────────────── */
 function renderPasteMode() {
+  screen = 'paste';
   document.getElementById('hdr-pill').classList.remove('show');
   document.getElementById('steps-scroll').classList.remove('show');
   document.getElementById('card').innerHTML = `
     <div class="paste-mode">
-      <div>
-        <h2>📋 لصق تفاصيل المشروع</h2>
-        <p>الصق أي وصف أو مستند أو تفاصيل عن مشروعك في الحقل أدناه وسيستخلص Claude البيانات تلقائياً.</p>
+      <div class="intro-head">
+        <h2>${L('📋 لصق تفاصيل المشروع', '📋 Paste project details')}</h2>
+        <p>${L('الصق أي وصف أو مستند أو تفاصيل عن مشروعك في الحقل أدناه وسيستخلص Claude البيانات تلقائياً.', 'Paste any description, document or details about your project below and Claude extracts the data.')}</p>
       </div>
       <textarea class="paste-area" id="paste-text"
-        placeholder="مثال: اسم المشروع: تطبيق الإدارة&#10;الرابط: https://app.example.com&#10;Azure Org: myorg, Project: MyProject&#10;مستخدمون: valid_user (0550000001), admin (0550000002)&#10;..."></textarea>
+        placeholder="${L('مثال: اسم المشروع: تطبيق الإدارة&#10;الرابط: https://app.example.com&#10;Azure Org: myorg, Project: MyProject&#10;مستخدمون: valid_user (0550000001), admin (0550000002)&#10;...', 'Example: Project name: Admin App&#10;URL: https://app.example.com&#10;Azure Org: myorg, Project: MyProject&#10;Users: valid_user (0550000001), admin (0550000002)&#10;...')}"></textarea>
       <div style="display:flex;gap:10px;align-items:center">
         <button class="btn btn-primary" id="btn-extract-paste" onclick="extractFromPaste()">
-          🤖 استخلاص البيانات
+          ${L('🤖 استخلاص البيانات', '🤖 Extract the data')}
         </button>
-        <button class="btn btn-outline" onclick="renderIntro()">← رجوع</button>
+        <button class="btn btn-outline" onclick="renderIntro()">${L('→ رجوع', '← Back')}</button>
       </div>
       <div class="extract-preview" id="paste-preview">
-        <div class="ep-title">✅ تم الاستخلاص — راجع البيانات:</div>
+        <div class="ep-title">${L('✅ تم الاستخلاص — راجع البيانات:', '✅ Extracted — check the data:')}</div>
         <div class="ep-code" id="paste-preview-code"></div>
         <div style="display:flex;gap:8px;margin-top:4px">
-          <button class="btn btn-primary" onclick="applyAndStart()">تطبيق والمتابعة ←</button>
-          <button class="btn btn-outline" onclick="document.getElementById('paste-preview').classList.remove('show')">إعادة المحاولة</button>
+          <button class="btn btn-primary" onclick="applyAndStart()">${L('تطبيق والمتابعة ←', 'Apply and continue →')}</button>
+          <button class="btn btn-outline" onclick="document.getElementById('paste-preview').classList.remove('show')">${L('تعديل النص', 'Edit the text')}</button>
         </div>
       </div>
     </div>`;
@@ -681,10 +1450,10 @@ function renderPasteMode() {
 
 async function extractFromPaste() {
   const text = document.getElementById('paste-text').value.trim();
-  if (!text) { showToast('الرجاء لصق النص أولاً', 'warn'); return; }
+  if (!text) { showToast(L('الرجاء لصق النص أولاً', 'Paste some text first'), 'warn'); return; }
 
   const btn = document.getElementById('btn-extract-paste');
-  btn.innerHTML = '<div class="spin"></div> جارٍ الاستخلاص...';
+  btn.innerHTML = '<div class="spin"></div> ' + L('جارٍ الاستخلاص...', 'Extracting…');
   btn.disabled = true;
 
   try {
@@ -695,6 +1464,11 @@ async function extractFromPaste() {
         body: JSON.stringify({ text }),
       });
       extractedData = await r.json();
+      if (!r.ok || extractedData.error) {
+        showToast(L('فشل الاستخلاص: ', 'Extraction failed: ') + (extractedData.message || extractedData.error || ('HTTP ' + r.status)), 'error');
+        extractedData = null;
+        return;
+      }
     } else {
       extractedData = { _raw: text.substring(0, 300) };
     }
@@ -702,35 +1476,40 @@ async function extractFromPaste() {
       JSON.stringify(extractedData, null, 2);
     document.getElementById('paste-preview').classList.add('show');
   } catch(e) {
-    showToast('فشل الاستخلاص: ' + e.message, 'error');
+    showToast(L('فشل الاستخلاص: ', 'Extraction failed: ') + e.message, 'error');
   } finally {
-    btn.innerHTML = '🤖 استخلاص البيانات';
+    btn.innerHTML = L('🤖 استخلاص البيانات', '🤖 Extract the data');
     btn.disabled = false;
   }
 }
 
 function applyAndStart() {
   if (extractedData) applyExtracted(extractedData);
-  showToast('✅ تم تعبئة الحقول — راجعها خطوة بخطوة');
+  const n = Object.keys(extractedData || {}).filter(k => !k.startsWith('_')).length;
+  showToast(n
+    ? L('تم تعبئة الحقول — راجعها خطوة بخطوة', 'Fields filled in — review them step by step')
+    : L('لم نتعرف على أي بيانات — املأ الحقول يدوياً', 'Nothing recognizable found — fill the fields in by hand'),
+    n ? 'success' : 'warn');
   goTo(0);
 }
 
 /* ── File Import Mode (dedicated screen, like paste mode) ─────────────────── */
 function renderFileMode() {
+  screen = 'file';
   document.getElementById('hdr-pill').classList.remove('show');
   document.getElementById('steps-scroll').classList.remove('show');
   document.getElementById('card').innerHTML = `
     <div class="paste-mode">
-      <div>
-        <h2>📄 استيراد من ملف</h2>
-        <p>ارفع ملفاً نصياً (BRD بصيغة .md أو .txt، أو ملف .env قديم) وسيستخلص Claude البيانات تلقائياً.</p>
+      <div class="intro-head">
+        <h2>${L('📄 استيراد من ملف', '📄 Import from a file')}</h2>
+        <p>${L('ارفع ملفاً نصياً (BRD بصيغة .md أو .txt، أو ملف .env قديم) وسيستخلص Claude البيانات تلقائياً.', 'Upload a text file (a BRD as .md or .txt, or an old .env) and Claude extracts the data.')}</p>
       </div>
       <div class="dropzone" id="dz">
         <input type="file" id="fi" accept=".md,.txt,.env,.json,.yml,.yaml" style="display:none" />
         <div class="dz-icon">📄</div>
-        <div class="dz-title">اسحب الملف هنا أو انقر للاختيار</div>
-        <div class="dz-sub">ملفات نصية فقط — ملفات PDF/Word غير مدعومة حالياً</div>
-        <div class="dz-types">.env · .md · .txt · .json · .yml</div>
+        <div class="dz-title">${L('اسحب الملف هنا أو انقر للاختيار', 'Drop a file here, or click to choose one')}</div>
+        <div class="dz-sub">${L('ملفات نصية فقط — ملفات PDF/Word غير مدعومة حالياً', 'Text files only — PDF/Word are not supported yet')}</div>
+        <div class="dz-types">.env · .md · .txt · .json · .yml · .yaml</div>
       </div>
       <div class="file-ready" id="file-ready">
         <div style="font-size:28px">📋</div>
@@ -739,18 +1518,18 @@ function renderFileMode() {
           <div class="file-ready-size" id="fs">—</div>
         </div>
         <button class="btn btn-primary" id="btn-ex" onclick="runExtract()">
-          🤖 استخلاص البيانات
+          ${L('🤖 استخلاص البيانات', '🤖 Extract the data')}
         </button>
       </div>
       <div class="extract-preview" id="ep">
-        <div class="ep-title">✅ تم الاستخلاص — راجع البيانات قبل التطبيق:</div>
+        <div class="ep-title">${L('✅ تم الاستخلاص — راجع البيانات قبل التطبيق:', '✅ Extracted — check the data before applying it:')}</div>
         <div class="ep-code" id="ep-code"></div>
         <div style="display:flex;gap:8px;margin-top:6px">
-          <button class="btn btn-primary" onclick="applyAndStart()">تطبيق والمتابعة ←</button>
-          <button class="btn btn-outline" onclick="resetFile()">اختيار ملف آخر</button>
+          <button class="btn btn-primary" onclick="applyAndStart()">${L('تطبيق والمتابعة ←', 'Apply and continue →')}</button>
+          <button class="btn btn-outline" onclick="resetFile()">${L('اختيار ملف آخر', 'Choose another file')}</button>
         </div>
       </div>
-      <div><button class="btn btn-outline" onclick="renderIntro()">← رجوع</button></div>
+      <div><button class="btn btn-outline" onclick="renderIntro()">${L('→ رجوع', '← Back')}</button></div>
     </div>`;
   // Bind synchronously: this markup is already in the document, so there is no
   // render race (the old step-based version bound via setTimeout(…, 50) and
@@ -764,12 +1543,44 @@ function renderFileMode() {
   fi.onchange = () => pickFile(fi.files[0]);
 }
 
+/* ── Conditional steps (mirror of engine.js stepApplies — keep in sync) ──── */
+// A step may declare when: {key, equals}: it is visible only while that answer
+// holds. Q12 uses this to show exactly one provider page (azure OR jira).
+function stepVisible(step) {
+  if (!step || !step.when) return true;
+  return String(answers[step.when.key] ?? '') === String(step.when.equals);
+}
+function visibleStepIndexes() {
+  const out = [];
+  schema.steps.forEach((s, i) => { if (stepVisible(s)) out.push(i); });
+  return out;
+}
+function nextVisibleIndex(from) {
+  for (let i = from + 1; i < schema.steps.length; i++) if (stepVisible(schema.steps[i])) return i;
+  return -1;
+}
+function prevVisibleIndex(from) {
+  for (let i = from - 1; i >= 0; i--) if (stepVisible(schema.steps[i])) return i;
+  return -1;
+}
+
 /* ── Steps Track ────────────────────────────────────────────────────────── */
 function buildTrack() {
   const track = document.getElementById('steps-track');
   track.innerHTML = '';
+  let prevGroup = null;
+  let renderedAny = false;
   schema.steps.forEach((step, i) => {
-    if (i > 0) {
+    if (!stepVisible(step)) return;   // gated away: not on the track at all
+    const group = step.group || null;
+    if (group !== prevGroup && group && schema.groups && schema.groups[group]) {
+      // Group boundary: a label instead of a connector — the track reads
+      // "المشروع: … | البيئات: …", mirroring the two config homes.
+      const label = document.createElement('div');
+      label.className = 'sgroup-label';
+      label.textContent = loc(schema.groups[group], 'label');
+      track.appendChild(label);
+    } else if (renderedAny) {
       const conn = document.createElement('div');
       conn.className = `snode-connector${i <= current ? ' done' : ''}`;
       track.appendChild(conn);
@@ -778,19 +1589,23 @@ function buildTrack() {
     node.className = `snode${i === current ? ' active' : ''}${i < current ? ' done' : ''}`;
     node.innerHTML = `
       <div class="sbubble">${i < current ? '✓' : step.icon || (i+1)}</div>
-      <div class="slabel">${step.title}</div>`;
+      <div class="slabel">${loc(step, 'title')}</div>`;
     node.onclick = () => { if (i <= current) goTo(i); };
     track.appendChild(node);
+    renderedAny = true;
+    prevGroup = group;
   });
 }
 
 function updateProgress() {
-  const total = schema ? schema.steps.length : 1;
-  const pct   = current < 0 ? 0 : Math.round(((current + 1) / total) * 100);
+  const vis = schema ? visibleStepIndexes() : [];
+  const total = vis.length || 1;
+  const pos = current < 0 ? 0 : vis.filter(i => i <= current).length;
+  const pct   = current < 0 ? 0 : Math.round((pos / total) * 100);
   document.getElementById('prog-fill').style.width = pct + '%';
   const pill = document.getElementById('hdr-pill');
   if (current >= 0) {
-    pill.textContent = `الخطوة ${current + 1} من ${total}`;
+    pill.textContent = L(`الخطوة ${pos} من ${total}`, `Step ${pos} of ${total}`);
     pill.classList.add('show');
   } else {
     pill.classList.remove('show');
@@ -799,6 +1614,7 @@ function updateProgress() {
 
 /* ── Render Step ────────────────────────────────────────────────────────── */
 function renderStep() {
+  screen = 'step';
   updateProgress();
   buildTrack();
   document.getElementById('steps-scroll').classList.add('show');
@@ -814,10 +1630,11 @@ function renderStep() {
     <div class="head-icon">${step.icon || '📝'}</div>
     <div>
       <div class="head-title">
-        ${step.title}
-        ${step.optional ? '<span class="optional-pill">⚡ اختياري</span>' : ''}
+        ${loc(step, 'title')}
+        ${step.optional ? '<span class="optional-pill">' + L('⚡ اختياري', '⚡ Optional') + '</span>' : ''}
       </div>
-      <div class="head-desc">${step.description}</div>
+      <div class="head-desc">${loc(step, 'description')}</div>
+      ${step.target ? `<div class="target-chip" id="target-chip">${esc(resolveTarget(step.target))}</div>` : ''}
     </div>`;
   card.appendChild(head);
 
@@ -826,7 +1643,11 @@ function renderStep() {
   body.className = 'card-body';
   if (step.type === 'review') body.appendChild(renderReviewStep());
   else if (step.type === 'dynamic-list') body.appendChild(renderUsersStep(step));
-  else renderFields(step, body);
+  else if (step.type === 'env-manager') body.appendChild(renderEnvManagerStep());
+  else {
+    renderFields(step, body);
+    if (step.defaultsSection) body.appendChild(renderDefaultsSection());
+  }
   card.appendChild(body);
 
   // Footer
@@ -834,6 +1655,11 @@ function renderStep() {
 }
 
 /* ── Fields ─────────────────────────────────────────────────────────────── */
+/** The one config file this page writes — {envName} resolves to the ACTIVE environment. */
+function resolveTarget(target) {
+  return target.replace('{envName}', String(answers['envName'] || '').trim() || 'qc');   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
+}
+
 function renderFields(step, container) {
   if (!step.fields) return;
 
@@ -850,37 +1676,68 @@ function renderFields(step, container) {
   regular.forEach(f => wrap.appendChild(buildField(f)));
 
   if (secretFs.length > 0) {
-    if (needsGrid) container.appendChild(wrap);
     const div = document.createElement('div');
     div.className = 'section-divider';
-    div.textContent = 'بيانات الاتصال';
+    div.textContent = L('بيانات سرية', 'Secrets');
     container.appendChild(div);
     secretFs.forEach(f => container.appendChild(buildField(f)));
   }
 }
 
+// db/api env-var NAME fields: on a 2nd+ environment they prefill a suffixed
+// suggestion (API_TOKEN_UAT) so two environments do not silently share one
+// .env secret slot — a visible, editable prefill, never silent behavior (B5).
+const SUFFIXED_ENV_VAR_KEYS = ['db.passwordEnvVar', 'api.tokenEnvVar'];
+const envVarSuffix = (name) => String(name || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+
 function buildField(field) {
   const div = document.createElement('div');
   div.className = 'field';
 
-  const savedVal = field.secret
-    ? (secrets[field.key] || '')
+  // The environment name is managed by the environments page: shown here as a
+  // read-only label whose ONE affordance routes through the rename confirm
+  // dialog — typing can no longer silently fork a fresh environment.
+  if (field.readonly && field.key === 'envName') {
+    answers['envName'] = activeEnv;
+    div.innerHTML = `
+      <label class="field-label">${loc(field, 'label')}</label>
+      ${field.hint || field.hintEn ? `<div class="field-hint">${esc(loc(field, 'hint'))}</div>` : ''}
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" value="${esc(activeEnv || '')}" readonly
+          style="background:var(--bg-muted);cursor:default;direction:ltr" />
+        <button type="button" class="btn-sm" style="white-space:nowrap">${L('🏷️ إعادة تسمية', '🏷️ Rename')}</button>
+      </div>`;
+    div.querySelector('button').onclick = () => openRenameDialog(activeEnv);
+    return div;
+  }
+
+  // Environment-scoped secrets (db/api) live per environment — two
+  // environments may each carry a DB password without clobbering each other.
+  const isEnvSecret = field.secret && ENV_SECRET_KEYS.has(field.key);
+  const secretStore = isEnvSecret ? envs[activeEnv].secrets : secrets;
+
+  let savedVal = field.secret
+    ? (secretStore[field.key] || '')
     : (answers[field.key] !== undefined ? answers[field.key] : (field.default ?? ''));
+  if (!field.secret && answers[field.key] === undefined && field.default &&
+      SUFFIXED_ENV_VAR_KEYS.includes(field.key) && envOrder.indexOf(activeEnv) > 0) {
+    savedVal = `${field.default}_${envVarSuffix(activeEnv)}`;
+  }
 
   div.innerHTML = `
     <label class="field-label">
-      ${field.label}
+      ${loc(field, 'label')}
       ${field.required ? '<span class="req">*</span>' : ''}
     </label>
-    ${field.hint ? `<div class="field-hint">${field.hint}</div>` : ''}
+    ${field.hint || field.hintEn ? `<div class="field-hint">${esc(loc(field, 'hint'))}</div>` : ''}
     ${buildInput(field, savedVal)}
-    ${field.secret ? `<div class="field-secret-note">محفوظ بشكل آمن</div>` : ''}`;
+    ${field.secret ? `<div class="field-secret-note">${L('محفوظ بشكل آمن', 'Stored safely')}</div>` : ''}`;
 
   const inp = div.querySelector('input,select,textarea');
   if (inp) {
     if (field.secret) {
       inp.classList.add('secret-input');
-      inp.addEventListener('input', () => { secrets[field.key] = inp.value; });
+      inp.addEventListener('input', () => { secretStore[field.key] = inp.value; });
     } else {
       // Seed the answer with the rendered value (defaults included) so an
       // untouched field with a default — e.g. a preselected <select> — is
@@ -888,9 +1745,14 @@ function buildField(field) {
       if (answers[field.key] === undefined && inp.value !== '') answers[field.key] = inp.value;
       inp.addEventListener('change', () => {
         answers[field.key] = inp.value;
-        if (field.key === 'defaultEnvironment') onEnvironmentNameChanged(inp.value.trim());
+        // A gating answer (e.g. the tracker select) changes which steps exist —
+        // redraw the track and progress so the flow updates immediately.
+        if (schema.steps.some(s => s.when && s.when.key === field.key)) { buildTrack(); updateProgress(); }
       });
-      inp.addEventListener('input',  () => { answers[field.key] = inp.value; });
+      inp.addEventListener('input',  () => {
+        answers[field.key] = inp.value;
+        if (envScopedKeys().includes(field.key)) markActiveEnvDirty();
+      });
     }
   }
   return div;
@@ -898,15 +1760,87 @@ function buildField(field) {
 
 function buildInput(field, val) {
   if (field.type === 'select') {
+    // A select with no default and no saved answer must not let the browser
+    // silently preselect its first option (Q12: never a silent default) — a
+    // disabled placeholder holds the slot until the user picks explicitly.
+    const needsPlaceholder = (val === undefined || val === null || val === '') && field.default === undefined;
+    const placeholder = needsPlaceholder
+      ? `<option value="" selected disabled hidden>${L('— اختر —', '— choose —')}</option>` : '';
     const opts = field.options.map(o =>
-      `<option value="${o.value}"${val===o.value?' selected':''}>${o.label}</option>`).join('');
-    return `<select>${opts}</select>`;
+      `<option value="${o.value}"${val===o.value?' selected':''}>${loc(o, 'label')}</option>`).join('');
+    return `<select>${placeholder}${opts}</select>`;
   }
   const t = { password:'password', email:'email', number:'number', url:'url' }[field.type] || 'text';
-  return `<input type="${t}" value="${esc(val)}" placeholder="${esc(field.placeholder||'')}" />`;
+  return `<input type="${t}" value="${esc(val)}" placeholder="${esc(loc(field, 'placeholder'))}" />`;
 }
 
 function esc(s) { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+/* ── Defaults section (E1) — schema-driven from defaultsFields ────────────── */
+/** The environment page's defaults block: one input per descriptor (VALUES are
+ *  per-environment; the field set is shared), plus the field-set editor. */
+function renderDefaultsSection() {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:18px';
+  const div = document.createElement('div');
+  div.className = 'section-divider';
+  div.textContent = L('القيم الافتراضية', 'Default values');
+  wrap.appendChild(div);
+  for (const f of defaultsFieldsSession) {
+    if (f.secret) { wrap.appendChild(buildDefaultsSecretField(f)); continue; }
+    wrap.appendChild(buildField({
+      key: `defaults.${f.key}`, label: f.label || f.key, labelEn: f.labelEn, type: f.type || 'text',
+      placeholder: f.placeholder !== undefined ? f.placeholder : (f.default || ''),
+      placeholderEn: f.placeholderEn,
+      default: f.default, hint: f.hint, hintEn: f.hintEn, required: !!f.required,
+    }));
+  }
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn-add';
+  editBtn.innerHTML = L('⚙️ تعديل الحقول', '⚙️ Edit the fields');
+  editBtn.onclick = () => openFieldEditor('defaults');
+  wrap.appendChild(editBtn);
+  const hint = document.createElement('div');
+  hint.className = 'field-hint';
+  hint.textContent = L('الحقول دي معرّفة مرة واحدة ومشتركة بين كل البيئات — القيم بس هي اللي بتختلف من بيئة لبيئة.', 'These fields are defined once and shared by every environment — only the values differ from one environment to the next.');
+  wrap.appendChild(hint);
+  return wrap;
+}
+
+/** A secret defaults field: env-var NAME input + value input. The name lands
+ *  in the file as { envSecret }; the value goes to .env only (invariant #5). */
+function buildDefaultsSecretField(f) {
+  const div = document.createElement('div');
+  div.className = 'field';
+  const nameKey = `defaults.${f.key}EnvVar`;
+  const suggestion = suggestDefaultsSecretName(f.key);
+  const nameVal = answers[nameKey] !== undefined ? answers[nameKey] : '';
+  const secVal = (envs[activeEnv] && envs[activeEnv].secrets[`defaults.${f.key}`]) || '';
+  div.innerHTML = `
+    <label class="field-label">${esc(loc(f, 'label') || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
+    ${f.hint || f.hintEn ? `<div class="field-hint">${esc(loc(f, 'hint'))}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input type="text" class="df-name" value="${esc(nameVal)}" placeholder="${esc(suggestion)}"
+        style="direction:ltr;font-family:var(--mono);flex:1;min-width:150px" />
+      <input type="password" class="df-val secret-input" value="${esc(secVal)}" placeholder="••••••••"
+        style="flex:1;min-width:150px" />
+    </div>
+    <div class="field-secret-note">${L('القيمة بتتكتب في ‎.env تحت الاسم ده — عمرها ما بتتكتب في ملف البيئة', 'The value is written to ‎.env under this name — never into the environment file')}</div>`;
+  const nameInp = div.querySelector('.df-name');
+  const valInp = div.querySelector('.df-val');
+  nameInp.addEventListener('input', () => { answers[nameKey] = nameInp.value; markActiveEnvDirty(); });
+  valInp.addEventListener('input', () => {
+    envs[activeEnv].secrets[`defaults.${f.key}`] = valInp.value;
+    markActiveEnvDirty();
+    // Visible, editable prefill: typing a value fills an empty name with the
+    // convention suggestion — never silent behavior.
+    if (valInp.value && !String(nameInp.value || '').trim()) {
+      nameInp.value = suggestion;
+      answers[nameKey] = suggestion;
+    }
+  });
+  return div;
+}
 
 /* ── Users Step ─────────────────────────────────────────────────────────── */
 function renderUsersStep(_step) {
@@ -918,60 +1852,96 @@ function renderUsersStep(_step) {
   list.className = 'user-list'; list.id = 'user-list';
   refreshUserCards(list);
 
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap';
   const addBtn = document.createElement('button');
   addBtn.className = 'btn-add';
-  addBtn.innerHTML = '+ إضافة مستخدم';
+  addBtn.innerHTML = L('+ إضافة مستخدم', '+ Add a user');
   addBtn.onclick = () => {
-    users.push({ handle:'', phone:'', role:'' });
+    users.push({ handle: '' });
     usersDirty();
     refreshUserCards(document.getElementById('user-list'));
   };
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn-add';
+  editBtn.innerHTML = L('⚙️ تعديل الحقول', '⚙️ Edit the fields');
+  editBtn.onclick = () => openFieldEditor('user');
+  row.appendChild(addBtn);
+  row.appendChild(editBtn);
+
+  const hint = document.createElement('div');
+  hint.className = 'field-hint';
+  hint.textContent = L('مجموعة الحقول معرّفة مرة واحدة ومشتركة بين كل البيئات — أي تعديل فيها بيظهر لكل مستخدم في كل بيئة؛ القيم نفسها لكل بيئة على حدة.', 'The field set is defined once and shared by every environment — a change to it shows up for every user in every environment; the values themselves are per environment.');
 
   outer.appendChild(list);
-  outer.appendChild(addBtn);
+  outer.appendChild(row);
+  outer.appendChild(hint);
   return outer;
 }
 
+/** One card per user — the handle is fixed (it keys the users object); every
+ *  other input comes from the shared userFields schema. */
 function refreshUserCards(list) {
   list.innerHTML = '';
   users.forEach((u, i) => {
     const card = document.createElement('div');
     card.className = 'user-card';
+    const cells = [`
+        <div class="field">
+          <label class="field-label">${L('المعرّف', 'Handle')} <span class="req">*</span></label>
+          <input type="text" placeholder="valid_user" value="${esc(u.handle)}"
+            oninput="users[${i}].handle=this.value;usersDirty()" />
+        </div>`];
+    for (const f of userFieldsSession) {
+      if (f.secret) {
+        cells.push(`
+        <div class="field" style="grid-column:1/-1">
+          <label class="field-label">${esc(loc(f, 'label') || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input type="text" id="usf-${i}-${f.key}" value="${esc(u[f.key] || '')}"
+              placeholder="${esc(suggestUserSecretName(u.handle, f.key))}"
+              style="direction:ltr;font-family:var(--mono);flex:1;min-width:140px"
+              oninput="users[${i}]['${f.key}']=this.value;usersDirty()" />
+            <input type="password" class="secret-input" value="${esc((u._secrets && u._secrets[f.key]) || '')}"
+              placeholder="••••••••" style="flex:1;min-width:140px"
+              oninput="userSecretInput(${i},'${f.key}',this)" />
+          </div>
+          <div class="field-secret-note">${L('القيمة بتتكتب في ‎.env تحت الاسم ده — ملف البيئة بيشاور عليها بـ envSecret بس', 'The value is written to ‎.env under this name — the environment file only points at it with envSecret')}</div>
+        </div>`);
+      } else {
+        const t = { email: 'email', number: 'number', url: 'url' }[f.type] || 'text';
+        cells.push(`
+        <div class="field">
+          <label class="field-label">${esc(loc(f, 'label') || f.key)}${f.required ? ' <span class="req">*</span>' : ''}</label>
+          <input type="${t}" placeholder="${esc(loc(f, 'placeholder'))}" value="${esc(u[f.key] || '')}"
+            oninput="users[${i}]['${f.key}']=this.value;usersDirty()" />
+        </div>`);
+      }
+    }
     card.innerHTML = `
       <div class="user-card-head">
-        <div class="user-card-label">👤 مستخدم ${i+1}</div>
+        <div class="user-card-label">${L(`👤 مستخدم ${i+1}`, `👤 User ${i+1}`)}</div>
         ${users.length > 1
           ? `<button class="btn-rm" onclick="removeUser(${i})">✕</button>` : ''}
       </div>
-      <div class="field-grid-2">
-        <div class="field">
-          <label class="field-label">المعرّف <span class="req">*</span></label>
-          <input type="text" placeholder="valid_user" value="${esc(u.handle)}"
-            oninput="users[${i}].handle=this.value;usersDirty()" />
-        </div>
-        <div class="field">
-          <label class="field-label">الدور</label>
-          <input type="text" placeholder="customer" value="${esc(u.role||'')}"
-            oninput="users[${i}].role=this.value;usersDirty()" />
-        </div>
-        <div class="field">
-          <label class="field-label">الهاتف</label>
-          <input type="text" placeholder="0550000001" value="${esc(u.phone||'')}"
-            oninput="users[${i}].phone=this.value;usersDirty()" />
-        </div>
-        <div class="field">
-          <label class="field-label">البريد الإلكتروني</label>
-          <input type="email" placeholder="test@example.com" value="${esc(u.email||'')}"
-            oninput="users[${i}].email=this.value;usersDirty()" />
-        </div>
-        <div class="field" style="grid-column:1/-1">
-          <label class="field-label">ملاحظات</label>
-          <input type="text" placeholder="مثال: حساب منتهي الصلاحية" value="${esc(u.notes||'')}"
-            oninput="users[${i}].notes=this.value;usersDirty()" />
-        </div>
-      </div>`;
+      <div class="field-grid-2">${cells.join('')}</div>`;
     list.appendChild(card);
   });
+}
+
+/** A typed secret VALUE lives in the session only (never in JSON); typing it
+ *  fills an empty name slot with the USER_<HANDLE>_<KEY> prefill — visible
+ *  and editable, never silent. */
+function userSecretInput(i, key, inp) {
+  const u = users[i];
+  u._secrets = u._secrets || {};
+  u._secrets[key] = inp.value;
+  usersDirty();
+  if (inp.value && !String(u[key] || '').trim()) {
+    u[key] = suggestUserSecretName(u.handle, key);
+    const nameInp = document.getElementById(`usf-${i}-${key}`);
+    if (nameInp) nameInp.value = u[key];
+  }
 }
 
 function removeUser(i) {
@@ -984,6 +1954,449 @@ function removeUser(i) {
 function usersDirty() {
   usersPristine = false;
   answers['users'] = users;
+  markActiveEnvDirty();
+}
+
+/* ── Environments manager (E0) ──────────────────────────────────────────── */
+/** All environments — on disk and added this session — with state badges and
+ *  the explicit controls. No file changes happen here: every operation is
+ *  recorded in the session and executed once, by the reviewed batch save. */
+function renderEnvManagerStep() {
+  snapshotActiveEnv();
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
+
+  const list = document.createElement('div');
+  list.className = 'env-list';
+  const defName = currentDefaultName();
+  for (const name of envOrder) {
+    const e = envs[name];
+    const badges = [];
+    if (name === defName) badges.push('<span class="env-badge default">' + L('⭐ الافتراضية', '⭐ Default') + '</span>');
+    if (!e.existsOnDisk) badges.push('<span class="env-badge new">' + L('جديدة', 'New') + '</span>');
+    else if (e.dirty) badges.push('<span class="env-badge edited">' + L('معدّلة', 'Edited') + '</span>');
+    else badges.push('<span class="env-badge">' + L('على القرص', 'On disk') + '</span>');
+    const renameNote = (e.existsOnDisk && e.diskName !== name)
+      ? `<div class="env-note">${esc(e.diskName)}.json → ${esc(name)}.json ${L('عند الحفظ', 'on save')}</div>` : '';
+    const row = document.createElement('div');
+    row.className = 'env-row';
+    row.innerHTML = `
+      <span class="env-row-name">${esc(name)}.json</span>
+      ${badges.join('')}
+      ${renameNote}
+      <div class="env-row-actions">
+        <button class="btn-sm" data-act="open">${L('✏️ فتح', '✏️ Open')}</button>
+        <button class="btn-sm" data-act="rename">${L('🏷️ إعادة تسمية', '🏷️ Rename')}</button>
+        <button class="btn-sm danger" data-act="delete">${L('🗑️ حذف', '🗑️ Delete')}</button>
+      </div>`;
+    row.querySelector('[data-act="open"]').onclick = () => { switchEnv(name); goTo(current + 1); };
+    row.querySelector('[data-act="rename"]').onclick = () => openRenameDialog(name);
+    row.querySelector('[data-act="delete"]').onclick = () => openDeleteDialog(name);
+    list.appendChild(row);
+  }
+  wrap.appendChild(list);
+
+  if (pendingDeletes.length) {
+    const note = document.createElement('div');
+    note.className = 'ops-list';
+    note.innerHTML = `<div class="ops-list-title">${L('🗑️ هتتحذف عند الحفظ (بعد تأكيدك):', '🗑️ To be deleted on save (after you confirm):')}</div>` +
+      pendingDeletes.map(n => `<div class="op-line"><code>environments/${esc(n)}.json</code></div>`).join('');
+    wrap.appendChild(note);
+  }
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-add';
+  addBtn.innerHTML = L('+ إضافة بيئة', '+ Add an environment');
+  addBtn.onclick = openAddEnvDialog;
+  wrap.appendChild(addBtn);
+
+  const hint = document.createElement('div');
+  hint.className = 'field-hint';
+  hint.textContent = L('مافيش أي ملف بيتغير دلوقتي — كل العمليات بتتنفذ مرة واحدة عند الحفظ، بعد ما تراجعها كلها في الخطوة الأخيرة.', 'Nothing on disk changes right now — every operation runs once, on save, after you have reviewed them all in the last step.');
+  wrap.appendChild(hint);
+  return wrap;
+}
+
+/* ── Modal dialogs — moment-of-action consent (invariant #11) ───────────── */
+function openModal(html) {
+  closeModal();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.id = 'modal-overlay';
+  ov.innerHTML = `<div class="modal-card">${html}</div>`;
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
+  document.body.appendChild(ov);
+  return ov;
+}
+function closeModal() {
+  const ov = document.getElementById('modal-overlay');
+  if (ov) ov.remove();
+}
+
+/** Add a new environment: validated name + interactive copy-on-create.
+ *  SAFE sections only appear (test users values, defaults values) — the
+ *  connection targets (portalUrl / db / api) are never offered. */
+function openAddEnvDialog() {
+  snapshotActiveEnv();
+  const suggestion = ['uat', 'staging', 'dev', 'qa', 'preprod'].find(n => !envNameProblem(n)) || '';
+  const sources = envOrder.slice();
+  const ov = openModal(`
+    <div class="modal-title">${L('➕ إضافة بيئة جديدة', '➕ Add a new environment')}</div>
+    <div class="modal-body">${L('اختر اسم البيئة — هو نفسه اسم الملف اللي هيتكتب عند الحفظ.', 'Pick the environment name — it is also the name of the file written on save.')}</div>
+    <div class="field">
+      <label class="field-label">${L('اسم البيئة', 'Environment name')}</label>
+      <input type="text" id="add-env-name" value="${esc(suggestion)}" placeholder="uat" style="direction:ltr" />
+      <div class="field-hint" id="add-env-err"></div>
+    </div>
+    <div class="copy-opts">
+      <label><input type="radio" name="add-mode" value="blank" checked />${L(' ابدأ بيئة فاضية</label>', ' Start an empty environment</label>')}
+      <label><input type="radio" name="add-mode" value="copy"${sources.length ? '' : ' disabled'} />${L(' انسخ أقسامًا آمنة من بيئة موجودة</label>', ' Copy the safe sections from an existing environment</label>')}
+      <div id="copy-section" style="display:none;flex-direction:column;gap:8px;padding-inline-start:24px">
+        <select id="copy-src">${sources.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
+        <label><input type="checkbox" id="copy-users" checked />${L(' مستخدمو الاختبار (القيم)</label>', ' Test users (the values)</label>')}
+        <label><input type="checkbox" id="copy-defaults" checked />${L(' القيم الافتراضية (القيم بس — من غير الأسرار)</label>', ' Default values (values only — no secrets)</label>')}
+        <div class="field-hint">${L('روابط الاتصال (Portal URL وقاعدة البيانات والـ API) عمرها ما بتتنسخ — البيئة الجديدة بتبدأ من غيرها عشان ماتشاورش على أنظمة بيئة تانية.', 'Connection details (Portal URL, database, API) are never copied — a new environment starts without them so it cannot point at another environment’s systems.')}</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="add-env-ok">${L('إنشاء البيئة', 'Create the environment')}</button>
+      <button class="btn btn-outline" id="add-env-cancel">${L('إلغاء', 'Cancel')}</button>
+    </div>`);
+  const copySection = ov.querySelector('#copy-section');
+  ov.querySelectorAll('input[name="add-mode"]').forEach(r => {
+    r.onchange = () => {
+      copySection.style.display =
+        ov.querySelector('input[name="add-mode"]:checked').value === 'copy' ? 'flex' : 'none';
+    };
+  });
+  ov.querySelector('#add-env-cancel').onclick = closeModal;
+  ov.querySelector('#add-env-ok').onclick = () => {
+    const name = ov.querySelector('#add-env-name').value.trim();
+    const problem = envNameProblem(name);
+    if (problem) { ov.querySelector('#add-env-err').textContent = '❌ ' + problem; return; }
+    const mode = ov.querySelector('input[name="add-mode"]:checked').value;
+    const opts = mode === 'copy'
+      ? { copyFrom: ov.querySelector('#copy-src').value,
+          copyUsers: ov.querySelector('#copy-users').checked,
+          copyDefaults: ov.querySelector('#copy-defaults').checked }
+      : {};
+    createEnv(name, opts);
+    closeModal();
+    switchEnv(name);
+    showToast(opts.copyFrom
+      ? L(`🆕 بيئة جديدة «${name}» — اتنسخت الأقسام المختارة من «${opts.copyFrom}»، من غير أي روابط اتصال`,
+          `🆕 New environment «${name}» — the sections you picked were copied from «${opts.copyFrom}», with no connection details`)
+      : L(`🆕 بيئة جديدة «${name}» — ابدأ من الأول`,
+          `🆕 New environment «${name}» — start from scratch`), 'success');
+    renderStep();
+  };
+  setTimeout(() => ov.querySelector('#add-env-name').focus(), 50);
+}
+
+/** Rename: the confirm dialog states the exact file operation before anything
+ *  is recorded; renaming the default states that defaultEnvironment follows. */
+function openRenameDialog(name) {
+  snapshotActiveEnv();
+  const e = envs[name];
+  if (!e) return;
+  const isDefault = currentDefaultName() === name;
+  const ov = openModal(`
+    <div class="modal-title">${L(`🏷️ إعادة تسمية «${esc(name)}»`, `🏷️ Rename «${esc(name)}»`)}</div>
+    ${e.existsOnDisk
+      ? `<div class="modal-body">${L('عند الحفظ، الملف الموجود على القرص هيتنقل للاسم الجديد — العملية دي بتتنفذ مرة واحدة بعد ما تراجعها في خطوة المراجعة، ومش هيتلمس أي ملف تاني.', 'On save, the file on disk moves to the new name — it happens once, after you have reviewed it on the review step, and no other file is touched.')}</div>`
+      : `<div class="modal-body">${L('البيئة دي جديدة ولسه ماتحفظتش — تغيير الاسم هنا بيغيّر اسم الملف اللي هيتكتب، من غير أي عملية على ملفات موجودة.', 'This environment is new and has not been saved yet — renaming it here changes the name of the file that gets written, with no operation on any existing file.')}</div>`}
+    <div class="field">
+      <label class="field-label">${L('الاسم الجديد', 'New name')}</label>
+      <input type="text" id="rn-name" value="${esc(name)}" style="direction:ltr" />
+      <div class="field-hint" id="rn-err"></div>
+    </div>
+    <div class="modal-fileop" id="rn-fileop"></div>
+    ${isDefault ? '<div class="modal-body">' + L('⭐ دي البيئة الافتراضية — <code>defaultEnvironment</code> في config/project.json هيتحدّث للاسم الجديد في نفس الحفظة.', '⭐ This is the default environment — <code>defaultEnvironment</code> in config/project.json is updated to the new name in the same save.') + '</div>' : ''}
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="rn-ok">${L('تأكيد إعادة التسمية', 'Confirm the rename')}</button>
+      <button class="btn btn-outline" id="rn-cancel">${L('إلغاء', 'Cancel')}</button>
+    </div>`);
+  const input = ov.querySelector('#rn-name');
+  const fileop = ov.querySelector('#rn-fileop');
+  const refreshOp = () => {
+    const nn = input.value.trim() || '?';
+    fileop.textContent = e.existsOnDisk
+      ? `environments/${e.diskName}.json  →  environments/${nn}.json`
+      : `environments/${nn}.json ${L('(ملف جديد)', '(a new file)')}`;
+  };
+  input.oninput = refreshOp;
+  refreshOp();
+  ov.querySelector('#rn-cancel').onclick = closeModal;
+  ov.querySelector('#rn-ok').onclick = () => {
+    const newName = input.value.trim();
+    if (newName === name) { closeModal(); return; }
+    // Renaming an ON-DISK file onto a pristine sample's name would collide at
+    // execution time — blocked here (forRename); a NEW env may take the name
+    // (its write claims the sample). self allows renaming back to the env's
+    // own disk name, which cancels its pending rename.
+    const problem = envNameProblem(newName, { forRename: e.existsOnDisk, self: name });
+    if (problem) { ov.querySelector('#rn-err').textContent = '❌ ' + problem; return; }
+    renameSessionEnv(name, newName);
+    closeModal();
+    showToast(e.existsOnDisk
+      ? L(`🏷️ «${name}» → «${newName}» — الملف هيتنقل عند الحفظ`,
+          `🏷️ «${name}» → «${newName}» — the file moves on save`)
+      : `🏷️ «${name}» → «${newName}»`, 'success');
+    renderStep();
+  };
+}
+
+/** Delete: never silent. The dialog names the exact file; deleting the default
+ *  cannot be confirmed until a new default is designated in the same dialog;
+ *  the last environment cannot be deleted at all. */
+function openDeleteDialog(name) {
+  snapshotActiveEnv();
+  const e = envs[name];
+  if (!e) return;
+  if (envOrder.length <= 1) {
+    showToast(L('❌ لازم تفضل بيئة واحدة على الأقل — ماينفعش حذف آخر بيئة', '❌ At least one environment has to remain — the last one cannot be deleted'), 'error');
+    return;
+  }
+  const isDefault = currentDefaultName() === name;
+  const others = envOrder.filter(n => n !== name);
+  const ov = openModal(`
+    <div class="modal-title">${L(`🗑️ حذف «${esc(name)}»`, `🗑️ Delete «${esc(name)}»`)}</div>
+    ${e.existsOnDisk
+      ? `<div class="modal-body">${L('عند الحفظ، الملف ده هيتحذف نهائيًا من القرص — مافيش تراجع بعد الحفظ. العملية بتتنفذ مرة واحدة بعد المراجعة، ومش هيتلمس أي ملف تاني.', 'On save, this file is deleted from disk for good — there is no undo afterwards. It happens once, after the review, and no other file is touched.')}</div>
+         <div class="modal-fileop modal-danger">environments/${esc(e.diskName)}.json — DELETE</div>`
+      : `<div class="modal-body">${L('البيئة دي جديدة في الجلسة ولسه ماتحفظتش — هتتشال من الجلسة بس، من غير أي عملية على القرص.', 'This environment is new in this session and has not been saved — it is dropped from the session only, with no operation on disk.')}</div>`}
+    ${isDefault ? `
+      <div class="modal-body">${L('⭐ دي البيئة الافتراضية — لازم تختار بيئة افتراضية جديدة قبل تأكيد الحذف، عشان <code>defaultEnvironment</code> مايشاورش على ملف مش موجود.', '⭐ This is the default environment — pick a new default before confirming the delete, so <code>defaultEnvironment</code> does not point at a file that is not there.')}</div>
+      <div class="field">
+        <label class="field-label">${L('البيئة الافتراضية الجديدة', 'The new default environment')}</label>
+        <select id="del-new-default">
+          <option value="">${L('— اختر —', '— pick one —')}</option>
+          ${others.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+        </select>
+      </div>` : ''}
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="del-ok"${isDefault ? ' disabled' : ''}>${L('تأكيد الحذف', 'Confirm the delete')}</button>
+      <button class="btn btn-outline" id="del-cancel">${L('إلغاء', 'Cancel')}</button>
+    </div>`);
+  if (isDefault) {
+    ov.querySelector('#del-new-default').onchange = ev => {
+      ov.querySelector('#del-ok').disabled = !ev.target.value;
+    };
+  }
+  ov.querySelector('#del-cancel').onclick = closeModal;
+  ov.querySelector('#del-ok').onclick = () => {
+    if (isDefault) {
+      const nd = ov.querySelector('#del-new-default').value;
+      if (!nd) return;
+      newDefaultName = nd;
+    }
+    if (e.existsOnDisk) pendingDeletes.push(e.diskName);
+    delete envs[name];
+    envOrder = envOrder.filter(n => n !== name);
+    if (activeEnv === name) { activeEnv = null; restoreEnv(envOrder[0]); }
+    closeModal();
+    showToast(e.existsOnDisk
+      ? L(`🗑️ «${name}» هتتحذف عند الحفظ`, `🗑️ «${name}» will be deleted on save`)
+      : L(`🗑️ اتشالت «${name}» من الجلسة`, `🗑️ «${name}» was dropped from the session`), 'warn');
+    renderStep();
+  };
+}
+
+/* ── Field-set editor (design #4) — add / rename / remove / secret / reorder ─
+ * An affordance on the users page (userFields) and the defaults section
+ * (defaultsFields), never a step. Rename records the migration; remove asks
+ * inline with its blast radius; everything is listed again on the review. */
+function openFieldEditor(kind) {
+  snapshotActiveEnv();
+  renderFieldEditor(kind, {});
+}
+
+function fieldEditorRowHTML(kind, f, i, n, state) {
+  const key = f.key;
+  if (state.editing === key) {
+    return `<div class="env-row" data-key="${esc(key)}">
+      <input type="text" class="fe-edit-key" value="${esc(key)}" style="direction:ltr;font-family:var(--mono);flex:1;min-width:100px" />
+      <input type="text" class="fe-edit-label" value="${esc(f.label || '')}" placeholder="${L('الاسم المعروض', 'Display name')}" style="flex:1;min-width:100px" />
+      <div class="env-row-actions">
+        <button class="btn-sm" data-act="edit-ok">${L('حفظ', 'Save')}</button>
+        <button class="btn-sm" data-act="edit-cancel">${L('إلغاء', 'Cancel')}</button>
+      </div>
+      <div class="field-hint fe-edit-err" style="width:100%"></div>
+    </div>`;
+  }
+  if (state.removing === key) {
+    const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
+    const msg = blast.length
+      ? L(`في قيم محفوظة تحت «${esc(key)}» في ${blast.length === 1 ? 'بيئة واحدة' : blast.length + ' بيئات'} (${blast.map(esc).join('، ')}) — هتتشال من الملفات عند الحفظ.`,
+          `there are saved values under «${esc(key)}» in ${blast.length === 1 ? 'one environment' : blast.length + ' environments'} (${blast.map(esc).join(', ')}) — they are removed from those files on save.`)
+      : L(`مافيش قيم محفوظة تحت «${esc(key)}» في أي بيئة.`,
+          `no environment has a saved value under «${esc(key)}».`);
+    return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(220,38,38,.35)">
+      <div class="modal-body" style="width:100%">${L(`🗑️ حذف حقل «${esc(loc(f, 'label') || key)}»؟`, `🗑️ Delete the «${esc(loc(f, 'label') || key)}» field?`)} ${msg}</div>
+      <div class="env-row-actions">
+        <button class="btn-sm danger" data-act="remove-ok">${L('تأكيد الحذف', 'Confirm the delete')}</button>
+        <button class="btn-sm" data-act="remove-cancel">${L('إلغاء', 'Cancel')}</button>
+      </div>
+    </div>`;
+  }
+  if (state.renonto && state.renonto.from === key) {
+    const r = state.renonto;
+    return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(217,119,6,.35)">
+      <div class="modal-body" style="width:100%">${L(
+        `⚠️ في قيم يدوية محفوظة على القرص تحت «${esc(r.to)}» في ${r.envs.length === 1 ? 'بيئة واحدة' : r.envs.length + ' بيئات'} (${r.envs.map(esc).join('، ')}) مختلفة عن قيم الحقل — لو أكّدت، قيم الجلسة هتتكتب فوقها عند الحفظ، والخانة الفاضية هتتبنّى قيمة القرص زي ما هي. العملية هتظهر في قائمة عمليات المراجعة.`,
+        `⚠️ ${r.envs.length === 1 ? 'One environment' : r.envs.length + ' environments'} (${r.envs.map(esc).join(', ')}) hold hand-written values on disk under «${esc(r.to)}» that differ from this field\u2019s — if you confirm, the session values are written over them on save, and an empty box adopts the value on disk as-is. The operation is listed on the review step.`)}</div>
+      <div class="env-row-actions">
+        <button class="btn-sm danger" data-act="renonto-ok">${L('تأكيد الكتابة فوقها', 'Confirm the overwrite')}</button>
+        <button class="btn-sm" data-act="renonto-cancel">${L('إلغاء', 'Cancel')}</button>
+      </div>
+    </div>`;
+  }
+  if (state.toggling === key) {
+    const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
+    return `<div class="env-row" data-key="${esc(key)}" style="border-color:rgba(217,119,6,.35)">
+      <div class="modal-body" style="width:100%">${L(
+        `🔒 التبديل بين نصي وسرّي بيمسح القيم المحفوظة تحت «${esc(key)}» في ${blast.length === 1 ? 'بيئة واحدة' : blast.length + ' بيئات'} — القيمة النصية عمرها ما بتتحول لاسم متغير بصمت. تأكيد؟`,
+        `🔒 Flipping between text and secret clears the saved values under «${esc(key)}» in ${blast.length === 1 ? 'one environment' : blast.length + ' environments'} — a plain value is never silently turned into a variable name. Confirm?`)}</div>
+      <div class="env-row-actions">
+        <button class="btn-sm" data-act="toggle-ok">${L('تأكيد', 'Confirm')}</button>
+        <button class="btn-sm" data-act="toggle-cancel">${L('إلغاء', 'Cancel')}</button>
+      </div>
+    </div>`;
+  }
+  const badges = [];
+  if (f.secret) badges.push('<span class="env-badge">' + L('🔒 سرّي', '🔒 Secret') + '</span>');
+  if (f.type && f.type !== 'text') badges.push(`<span class="env-badge">${esc(f.type)}</span>`);
+  if (f._orig && f._orig !== f.key) badges.push(`<span class="env-badge edited">${esc(f._orig)} ← ${esc(f.key)}</span>`);
+  if (!f._orig) badges.push('<span class="env-badge new">' + L('جديد', 'New') + '</span>');
+  return `<div class="env-row" data-key="${esc(key)}">
+    <span class="env-row-name">${esc(key)}</span>
+    <span style="font-size:12px;color:var(--text-2)">${esc(f.label || '')}</span>
+    ${badges.join('')}
+    <div class="env-row-actions">
+      <button class="btn-sm" data-act="up"${i === 0 ? ' disabled' : ''}>⬆</button>
+      <button class="btn-sm" data-act="down"${i === n - 1 ? ' disabled' : ''}>⬇</button>
+      <button class="btn-sm" data-act="edit">${L('✏️ إعادة تسمية', '✏️ Rename')}</button>
+      <button class="btn-sm" data-act="secret">${f.secret ? L('🔓 إلغاء السرية', '🔓 Make it plain text') : L('🔒 اجعله سرّيًا', '🔒 Make it secret')}</button>
+      <button class="btn-sm danger" data-act="remove">🗑️</button>
+    </div>
+  </div>`;
+}
+
+function renderFieldEditor(kind, state) {
+  const list = fieldList(kind);
+  const title = kind === 'user'
+    ? L('⚙️ حقول مستخدمي الاختبار', '⚙️ Test-user fields')
+    : L('⚙️ حقول القيم الافتراضية', '⚙️ Default-value fields');
+  const rows = list.map((f, i) => fieldEditorRowHTML(kind, f, i, list.length, state)).join('') ||
+    '<div class="field-hint">' + L('مافيش حقول معرّفة — أضف أول حقل من الفورم اللي تحت.',
+      'No fields defined yet — add the first one in the form below.') + '</div>';
+  const ov = openModal(`
+    <div class="modal-title">${title}</div>
+    <div class="modal-body">${L(
+      `الحقول دي معرّفة مرة واحدة في config/project.json ومشتركة بين كل البيئات — أي تعديل هنا بيتطبق على ${kind === 'user' ? 'كل مستخدم في كل بيئة' : 'كل البيئات'} عند الحفظ، وهيظهر في قائمة العمليات في خطوة المراجعة.${kind === 'user' ? ' حقل «المعرّف» (handle) ثابت — هو مفتاح المستخدم ومش بيتغير من هنا.' : ''}`,
+      `These fields are defined once in config/project.json and shared by every environment — a change here applies to ${kind === 'user' ? 'every user in every environment' : 'every environment'} on save, and is listed among the operations on the review step.${kind === 'user' ? ' The «Handle» field is fixed — it is the user key and is not changed from here.' : ''}`)}</div>
+    <div class="env-list" id="fe-rows">${rows}</div>
+    <div class="field" style="border-top:1px solid var(--border);padding-top:12px">
+      <label class="field-label">${L('➕ إضافة حقل جديد', '➕ Add a new field')}</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input type="text" id="fe-add-key" placeholder="national_id" style="direction:ltr;font-family:var(--mono);flex:1;min-width:120px" />
+        <input type="text" id="fe-add-label" placeholder="${L('الاسم المعروض', 'Display name')}" style="flex:1;min-width:120px" />
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <select id="fe-add-type" style="width:auto">
+          <option value="text">text</option><option value="email">email</option>
+          <option value="number">number</option><option value="url">url</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="fe-add-secret" style="width:auto;accent-color:var(--accent)" /> ${L('🔒 سرّي (القيمة في ‎.env باسم متغير)', '🔒 Secret (the value lives in ‎.env under a variable name)')}
+        </label>
+        <button class="btn-sm" id="fe-add-ok">${L('إضافة', 'Add')}</button>
+      </div>
+      <div class="field-hint" id="fe-add-err"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="fe-done">${L('تم', 'Done')}</button>
+    </div>`);
+  // Closing by clicking the overlay must still refresh the step behind it.
+  ov.addEventListener('click', e => { if (e.target === ov) renderStep(); });
+
+  ov.querySelectorAll('#fe-rows .env-row').forEach(row => {
+    const key = row.getAttribute('data-key');
+    if (!key) return;
+    const on = (a, fn) => { const b = row.querySelector(`[data-act="${a}"]`); if (b) b.onclick = fn; };
+    on('up',   () => { moveField(kind, key, -1); renderFieldEditor(kind, {}); });
+    on('down', () => { moveField(kind, key, +1); renderFieldEditor(kind, {}); });
+    on('edit', () => renderFieldEditor(kind, { editing: key }));
+    on('edit-cancel', () => renderFieldEditor(kind, {}));
+    on('edit-ok', () => {
+      const newKey = row.querySelector('.fe-edit-key').value.trim();
+      const newLabel = row.querySelector('.fe-edit-label').value.trim();
+      const problem = fieldKeyProblem(kind, newKey, key);
+      if (problem) { row.querySelector('.fe-edit-err').textContent = '❌ ' + problem; return; }
+      // Renaming ONTO a key that holds hand-added disk values which would be
+      // overwritten (or lost to a shape mismatch) needs explicit consent —
+      // never silent (invariant #11).
+      if (newKey !== key) {
+        const conflicts = renameOntoConflicts(kind, key, newKey);
+        if (conflicts.length) {
+          renderFieldEditor(kind, { renonto: { from: key, to: newKey, label: newLabel, envs: conflicts } });
+          return;
+        }
+      }
+      const adopted = renameFieldAdopting(kind, key, newKey, newLabel);
+      if (newKey !== key) {
+        showToast(adopted
+          ? L(`🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات، والقيم الموجودة على القرص تحت الاسم الجديد اتحمّلت في الخانات`,
+              `🏷️ «${key}» → «${newKey}» — the key moves in every environment, and the values already on disk under the new name were loaded into the boxes`)
+          : L(`🏷️ «${key}» ← «${newKey}» — المفتاح هيتنقل في كل البيئات عند الحفظ`,
+              `🏷️ «${key}» → «${newKey}» — the key moves in every environment on save`), 'success');
+      }
+      renderFieldEditor(kind, {});
+    });
+    on('renonto-cancel', () => renderFieldEditor(kind, {}));
+    on('renonto-ok', () => {
+      renameFieldAdopting(kind, state.renonto.from, state.renonto.to, state.renonto.label);
+      showToast(L(`🏷️ «${state.renonto.from}» ← «${state.renonto.to}» — الكتابة فوق القيم اليدوية اتأكّدت وهتظهر في المراجعة`, `🏷️ «${state.renonto.from}» → «${state.renonto.to}» — overwriting the hand-written values is confirmed and is listed on the review step`), 'warn');
+      renderFieldEditor(kind, {});
+    });
+    on('secret', () => {
+      const blast = kind === 'user' ? userFieldBlastRadius(key) : defaultsFieldBlastRadius(key);
+      if (blast.length) { renderFieldEditor(kind, { toggling: key }); return; }
+      toggleFieldSecret(kind, key);
+      renderFieldEditor(kind, {});
+    });
+    on('toggle-cancel', () => renderFieldEditor(kind, {}));
+    on('toggle-ok', () => { toggleFieldSecret(kind, key); renderFieldEditor(kind, {}); });
+    on('remove', () => renderFieldEditor(kind, { removing: key }));
+    on('remove-cancel', () => renderFieldEditor(kind, {}));
+    on('remove-ok', () => {
+      removeField(kind, key);
+      showToast(L(`🗑️ اتشال حقل «${key}» — هيختفي من كل البيئات عند الحفظ`, `🗑️ The «${key}» field was removed — it disappears from every environment on save`), 'warn');
+      renderFieldEditor(kind, {});
+    });
+  });
+  ov.querySelector('#fe-add-ok').onclick = () => {
+    const key = ov.querySelector('#fe-add-key').value.trim();
+    const problem = fieldKeyProblem(kind, key);
+    if (problem) { ov.querySelector('#fe-add-err').textContent = '❌ ' + problem; return; }
+    const secret = ov.querySelector('#fe-add-secret').checked;
+    // Hand-added disk values under this key must survive: matching shapes are
+    // adopted below; a shape mismatch is refused with guidance, never lost.
+    const shape = fieldAddShapeConflict(kind, key, secret);
+    if (shape) { ov.querySelector('#fe-add-err').textContent = '❌ ' + shape; return; }
+    const desc = { key, label: ov.querySelector('#fe-add-label').value.trim() || key };
+    const type = ov.querySelector('#fe-add-type').value;
+    if (type && type !== 'text') desc.type = type;
+    if (secret) desc.secret = true;
+    const adopted = addField(kind, desc);
+    showToast(adopted
+      ? L(`📥 اتضاف حقل «${key}» — القيم الموجودة على القرص تحته اتحمّلت في الخانات، راجعها قبل الحفظ`,
+          `📥 The «${key}» field was added — the values already on disk under it were loaded into the boxes; review them before saving`)
+      : L(`➕ اتضاف حقل «${key}» لكل ${kind === 'user' ? 'المستخدمين في كل البيئات' : 'البيئات'}`,
+          `➕ The «${key}» field was added to ${kind === 'user' ? 'every user in every environment' : 'every environment'}`), 'success');
+    renderFieldEditor(kind, {});
+  };
+  ov.querySelector('#fe-done').onclick = () => { closeModal(); renderStep(); };
 }
 
 /* ── File pick / extract (used by the file-import screen) ─────────────────── */
@@ -1008,7 +2421,7 @@ async function runExtract() {
       const data = await r.json();
       if (!r.ok || data.error) {
         // e.g. a binary PDF/Word — refuse honestly, never fake a success preview.
-        showToast('❌ ' + (data.message || data.error || 'فشل الاستخلاص'), 'error');
+        showToast('❌ ' + (data.message || data.error || L('فشل الاستخلاص', 'Extraction failed')), 'error');
         return;
       }
       extractedData = data;
@@ -1018,26 +2431,40 @@ async function runExtract() {
     }
     document.getElementById('ep-code').textContent = JSON.stringify(extractedData, null, 2);
     document.getElementById('ep').classList.add('show');
-  } catch(e) { showToast('فشل الاستخلاص: ' + e.message, 'error'); }
-  finally { btn.innerHTML = '🤖 استخلاص البيانات'; btn.disabled = false; }
+  } catch(e) { showToast(L('فشل الاستخلاص: ', 'Extraction failed: ') + e.message, 'error'); }
+  finally { btn.innerHTML = L('🤖 استخلاص البيانات', '🤖 Extract the data'); btn.disabled = false; }
 }
 
 function resetFile() {
   window._file = null;
+  document.getElementById('fi').value = '';
   document.getElementById('file-ready').classList.remove('show');
   document.getElementById('ep').classList.remove('show');
   document.getElementById('dz').style.display = '';
 }
 
 function applyExtracted(data) {
+  let touchedEnvScoped = false;
   function flat(obj, p='') {
     for (const [k,v] of Object.entries(obj||{})) {
       const key = p ? `${p}.${k}` : k;
       if (v && typeof v==='object' && !Array.isArray(v)) flat(v, key);
-      else if (key !== 'users' && !key.startsWith('_') && !answers[key]) answers[key] = v;
+      else if (key !== 'users' && key !== 'envName' && !key.startsWith('_') && !answers[key]) {
+        answers[key] = v;
+        if (envScopedKeys().includes(key)) touchedEnvScoped = true;
+      }
     }
   }
   flat(data);
+  if (touchedEnvScoped) markActiveEnvDirty();
+  // An extracted environment name renames the CURRENT session environment only
+  // when it is a fresh, never-saved one — an on-disk environment's name changes
+  // only through the explicit rename dialog (invariant #11).
+  const extractedName = data && String(data.envName || '').trim();
+  if (extractedName && activeEnv && envs[activeEnv] && !envs[activeEnv].existsOnDisk &&
+      extractedName !== activeEnv && !envNameProblem(extractedName)) {
+    renameSessionEnv(activeEnv, extractedName);
+  }
   if (Array.isArray(data.users) && data.users.length > 0) {
     // Mirror of engine.js mergeUsers(): imports MERGE by handle — they never
     // replace users the user typed or that came from an existing config
@@ -1055,29 +2482,46 @@ function applyExtracted(data) {
     }
     usersPristine = false;
     answers['users'] = users;
+    markActiveEnvDirty();
   }
 }
 
 /* ── Review Step ─────────────────────────────────────────────────────────── */
-function renderReviewStep() {
-  const { projectConfig, envConfig, envName } = buildConfigs();
-  const tabs = [
-    { label: 'config/project.json',            data: projectConfig },
-    { label: `environments/${envName}.json`,   data: envConfig },
-  ];
-  let activeTab = 0;
+/** Environments this save writes: added this session, or edited this session.
+ *  A clean on-disk environment is not rewritten (its file already says this). */
+function dirtyEnvNames() {
+  return envOrder.filter(n => envs[n].dirty || !envs[n].existsOnDisk);
+}
 
+function renderReviewStep() {
+  snapshotActiveEnv();
+  const step = schema.steps[current];
+  const projectConfig = buildProjectConfig();
+  const writes = dirtyEnvNames();
+  const renames = deriveRenames();
+
+  // One tab per output file, straight from the schema's file-keyed outputs —
+  // the environments/{envName}.json output expands to one tab per environment
+  // file this save writes. Page order groups by file, review groups by file,
+  // the save writes by file: one story, told three times the same way.
+  const tabs = [];
+  for (const o of (step.outputs || [])) {
+    if (o.key === 'projectConfig') tabs.push({ label: String(o.file || ''), data: projectConfig });
+    else if (o.key === 'envConfig') {
+      for (const n of writes) tabs.push({ label: `environments/${n}.json`, data: buildEnvConfig(n) });
+    }
+  }
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px';
 
   const tabBar = document.createElement('div');
   tabBar.className = 'rtabs';
+  tabBar.style.flexWrap = 'wrap';
   tabs.forEach((t, i) => {
     const btn = document.createElement('button');
     btn.className = `rtab${i===0?' active':''}`;
     btn.textContent = t.label;
     btn.onclick = () => {
-      activeTab = i;
       tabBar.querySelectorAll('.rtab').forEach((el,j) => el.classList.toggle('active',j===i));
       code.textContent = JSON.stringify(tabs[i].data, null, 2);
     };
@@ -1090,12 +2534,91 @@ function renderReviewStep() {
 
   const copyBtn = document.createElement('button');
   copyBtn.className = 'btn-copy';
-  copyBtn.textContent = '📋 نسخ';
-  copyBtn.onclick = () => { navigator.clipboard.writeText(code.textContent); showToast('✅ تم النسخ'); };
+  copyBtn.textContent = L('📋 نسخ', '📋 Copy');
+  copyBtn.style.alignSelf = 'flex-start';
+  copyBtn.onclick = () => navigator.clipboard.writeText(code.textContent)
+    .then(() => showToast(L('تم النسخ', 'Copied'), 'success'), () => showToast(L('تعذر النسخ', 'Could not copy'), 'error'));
 
   wrap.appendChild(tabBar);
   wrap.appendChild(code);
   wrap.appendChild(copyBtn);
+
+  // ── The operations list: EVERY file operation this one save performs —
+  // listed here, before anything happens (the second half of the double
+  // consent; each rename/delete was already confirmed in its own dialog).
+  const ops = document.createElement('div');
+  ops.className = 'ops-list';
+  const lines = [];
+  for (const t of tabs) lines.push(L(`<div class="op-line">✍️ هيتكتب <code>${esc(t.label)}</code></div>`, `<div class="op-line">✍️ writes <code>${esc(t.label)}</code></div>`));
+  for (const r of renames) lines.push(L(`<div class="op-line">🏷️ إعادة تسمية مؤكّدة: <code>environments/${esc(r.from)}.json → environments/${esc(r.to)}.json</code></div>`, `<div class="op-line">🏷️ confirmed rename: <code>environments/${esc(r.from)}.json → environments/${esc(r.to)}.json</code></div>`));
+  for (const d of pendingDeletes) lines.push(L(`<div class="op-line">🗑️ حذف مؤكّد: <code>environments/${esc(d)}.json</code></div>`, `<div class="op-line">🗑️ confirmed delete: <code>environments/${esc(d)}.json</code></div>`));
+  // Field-schema ops (design #4): renames migrate the key in EVERY environment
+  // file this save writes; removals drop the consented values — both listed
+  // here before anything happens, like every other file operation.
+  for (const r of deriveUserFieldRenames()) {
+    lines.push(L(`<div class="op-line">🔧 إعادة تسمية حقل مستخدم: <code>${esc(r.from)} → ${esc(r.to)}</code> — المفتاح بيتنقل في كل ملفات البيئات</div>`, `<div class="op-line">🔧 user-field rename: <code>${esc(r.from)} → ${esc(r.to)}</code> — the key moves in every environment file</div>`));
+  }
+  for (const r of deriveDefaultsFieldRenames()) {
+    lines.push(L(`<div class="op-line">🔧 إعادة تسمية حقل افتراضي: <code>defaults.${esc(r.from)} → defaults.${esc(r.to)}</code> — المفتاح بيتنقل في كل ملفات البيئات</div>`, `<div class="op-line">🔧 defaults-field rename: <code>defaults.${esc(r.from)} → defaults.${esc(r.to)}</code> — the key moves in every environment file</div>`));
+  }
+  for (const x of removedUserFields) {
+    lines.push(L(`<div class="op-line">🗑️ حذف حقل مستخدم مؤكّد: <code>${esc(x.key)}</code>${x.envs.length ? ` — القيم اللي تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتشال من الملفات` : ' — مافيش قيم محفوظة تحته'}</div>`, `<div class="op-line">🗑️ confirmed user-field delete: <code>${esc(x.key)}</code>${x.envs.length ? ` — its values in ${x.envs.length === 1 ? 'one environment' : x.envs.length + ' environments'} are removed from those files` : ' — no environment has a value under it'}</div>`));
+  }
+  for (const x of removedDefaultsFields) {
+    lines.push(L(`<div class="op-line">🗑️ حذف حقل افتراضي مؤكّد: <code>defaults.${esc(x.key)}</code>${x.envs.length ? ` — القيم اللي تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتشال من الملفات` : ' — مافيش قيم محفوظة تحته'}</div>`, `<div class="op-line">🗑️ confirmed defaults-field delete: <code>defaults.${esc(x.key)}</code>${x.envs.length ? ` — its values in ${x.envs.length === 1 ? 'one environment' : x.envs.length + ' environments'} are removed from those files` : ' — no environment has a value under it'}</div>`));
+  }
+  for (const x of overwrittenUserKeys) {
+    lines.push(L(`<div class="op-line">✏️ كتابة مؤكّدة فوق قيم يدوية: <code>${esc(x.key)}</code> — قيم القرص تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتكتب فوقها قيم الجلسة</div>`, `<div class="op-line">✏️ confirmed overwrite of hand-written values: <code>${esc(x.key)}</code> — the disk values under it in ${x.envs.length === 1 ? 'one environment' : x.envs.length + ' environments'} are replaced by the session values</div>`));
+  }
+  for (const x of overwrittenDefaultsKeys) {
+    lines.push(L(`<div class="op-line">✏️ كتابة مؤكّدة فوق قيم يدوية: <code>defaults.${esc(x.key)}</code> — قيم القرص تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتكتب فوقها قيم الجلسة</div>`, `<div class="op-line">✏️ confirmed overwrite of hand-written values: <code>defaults.${esc(x.key)}</code> — the disk values under it in ${x.envs.length === 1 ? 'one environment' : x.envs.length + ' environments'} are replaced by the session values</div>`));
+  }
+  const untouched = envOrder.filter(n => envs[n].existsOnDisk && !envs[n].dirty && envs[n].diskName === n);
+  if (untouched.length) {
+    lines.push(L(`<div class="op-line">🔒 من غير أي تغيير: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join('، ')}</div>`, `<div class="op-line">🔒 left untouched: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join(', ')}</div>`));
+  }
+  // Provider switch (D14 consented-destructive): choosing a different tracker
+  // removes the old provider's block from config/project.json — said HERE,
+  // before anything happens. .env is never edited by a switch: old keys
+  // (e.g. AZURE_PAT) stay — secrets are only ever written, never removed.
+  for (const p of providerSwitchRemovals(projectConfig)) {
+    const pick = String(answers['tracker'] || '');
+    const chosenLabel = pick === 'jira' ? 'Jira' : pick === 'azure' ? 'Azure DevOps' : L('بدون tracker', 'no tracker');
+    lines.push(L(
+      `<div class="op-line">🔁 <code>config/project.json</code>: بلوك <code>${esc(p)}</code> هيتشال — الـ tracker اتغيّر إلى ${esc(chosenLabel)} (ملف ‎.env مش بيتلمس: مفاتيح قديمة زي AZURE_PAT بتفضل زي ما هي)</div>`,
+      `<div class="op-line">🔁 <code>config/project.json</code>: the <code>${esc(p)}</code> block will be removed — tracker switched to ${esc(chosenLabel)} (.env is left untouched: old keys like AZURE_PAT stay)</div>`));
+  }
+  lines.push(L(`<div class="op-line">⭐ البيئة الافتراضية: <code>${esc(currentDefaultName() || '?')}</code></div>`, `<div class="op-line">⭐ default environment: <code>${esc(currentDefaultName() || '?')}</code></div>`));
+  ops.innerHTML = `<div class="ops-list-title">${L('📋 العمليات اللي هتتنفذ عند الحفظ:', '📋 What this save will do:')}</div>` + lines.join('');
+  wrap.appendChild(ops);
+
+  // .env keys summary — names only, never values (invariant #5). The secret
+  // fields' "محفوظ بشكل آمن" note promised safe keeping; this says where.
+  const secretKeys = Object.keys(buildSecretsPayload());
+  const envSum = document.createElement('div');
+  envSum.className = 'env-summary';
+  envSum.innerHTML = secretKeys.length
+    ? `<div class="env-summary-title">${L('🔐 ‎.env — المفاتيح اللي هتتكتب (الأسماء فقط، القيم عمرها ما بتتعرض):', '🔐 ‎.env — the keys to be written (names only; values are never shown):')}</div>
+       <div class="env-keys">${secretKeys.map(k => `<span class="env-key">${esc(k)}</span>`).join('')}</div>`
+    : `<div class="env-summary-title">${L('🔐 ‎.env — مافيش أسرار جديدة في الجلسة دي، الملف مش هيتغير.', '🔐 ‎.env — no new secrets this session, so the file is left as it is.')}</div>`;
+  wrap.appendChild(envSum);
+
+  // Reconciliation transparency: the save removes EVERY structurally-pristine
+  // leftover sample this session does not claim (write / rename / delete) —
+  // all listed here BEFORE anything happens, never silently.
+  const claimed = new Set([...writes, ...renames.map(r => r.to), ...renames.map(r => r.from), ...pendingDeletes]);
+  const toReconcile = pristineSamples.filter(n => !claimed.has(n));
+  if (toReconcile.length) {
+    const files = toReconcile.map(n => `environments/${n}.json`).join(L('، ', ', '));
+    const note = document.createElement('div');
+    note.style.cssText = 'border:1px solid var(--warning);background:var(--warning-lt);color:var(--text-1);border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.7';
+    note.textContent = toReconcile.length === 1
+      ? L(`⚠️ عند الحفظ هيتشال ملف البيئة النموذجي ${files} (نسخة السكافولد من غير أي تعديل) — بيئاتك الحقيقية بتحل محله.`,
+          `⚠️ On save, the sample environment file ${files} is removed (an untouched scaffold copy) — your real environments take its place.`)
+      : L(`⚠️ عند الحفظ هتتشال ملفات البيئة النموذجية دي (نسخ السكافولد من غير أي تعديل): ${files} — بيئاتك الحقيقية بتحل محلها.`,
+          `⚠️ On save, these sample environment files are removed (untouched scaffold copies): ${files} — your real environments take their place.`);
+    wrap.appendChild(note);
+  }
   return wrap;
 }
 
@@ -1114,13 +2637,13 @@ function renderFooter(step) {
   if (!isFirst) {
     const back = document.createElement('button');
     back.className = 'btn btn-outline';
-    back.innerHTML = '→ السابق';
+    back.innerHTML = L('→ السابق', '← Back');
     back.onclick = prev;
     left.appendChild(back);
   } else {
     const home = document.createElement('button');
     home.className = 'btn-ghost';
-    home.innerHTML = '← الرئيسية';
+    home.innerHTML = L('→ الرئيسية', '← Home');
     home.onclick = renderIntro;
     left.appendChild(home);
   }
@@ -1130,15 +2653,15 @@ function renderFooter(step) {
   if (step.optional && !isLast) {
     const skip = document.createElement('button');
     skip.className = 'btn-text';
-    skip.textContent = 'تخطي';
-    skip.onclick = () => goTo(current + 1);
+    skip.textContent = L('تخطي', 'Skip');
+    skip.onclick = () => { const n = nextVisibleIndex(current); if (n !== -1) goTo(n); };
     foot.appendChild(skip);
   }
 
   // Next / Save
   const nextBtn = document.createElement('button');
   nextBtn.className = isLast ? 'btn btn-success' : 'btn btn-primary';
-  nextBtn.innerHTML = isLast ? '💾 حفظ' : '← التالي';
+  nextBtn.innerHTML = isLast ? L('💾 حفظ', '💾 Save') : L('التالي ←', 'Next →');
   nextBtn.onclick = isLast ? saveAndClose : next;
   foot.appendChild(nextBtn);
 
@@ -1153,36 +2676,65 @@ function validateStep() {
   const errs = [];
   for (const f of (step.fields || [])) {
     const v = String(answers[f.key] ?? '').trim();
-    if (f.required && !v) { errs.push(`«${f.label || f.key}» مطلوب`); continue; }
+    if (f.required && !v) { errs.push(L(`«${loc(f, 'label') || f.key}» مطلوب`, `«${loc(f, 'label') || f.key}» is required`)); continue; }
     if (!v) continue;
     if (f.type === 'url') {
       let ok = false;
       try { const u = new URL(v); ok = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
-      if (!ok) errs.push(`«${f.label || f.key}» يجب أن يكون رابط http(s) صحيحاً`);
+      if (!ok) errs.push(L(`«${loc(f, 'label') || f.key}» يجب أن يكون رابط http(s) صحيحاً`, `«${loc(f, 'label') || f.key}» has to be a valid http(s) URL`));
     }
     if (f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
-      errs.push(`«${f.label || f.key}» بريد إلكتروني غير صحيح`);
+      errs.push(L(`«${loc(f, 'label') || f.key}» بريد إلكتروني غير صحيح`, `«${loc(f, 'label') || f.key}» is not a valid email address`));
     }
     if (f.pattern && !new RegExp(f.pattern).test(v)) {
-      errs.push(`«${f.label || f.key}»: ${f.patternMsg || 'قيمة غير صالحة'}`);
+      errs.push(`«${loc(f, 'label') || f.key}»: ${loc(f, 'patternMsg') || L('قيمة غير صالحة', 'invalid value')}`);
     }
   }
   if (step.type === 'dynamic-list') {
     for (const u of users) {
-      const hasData = u.phone || u.email || u.role || u.notes;
-      if (hasData && !String(u.handle || '').trim()) { errs.push('كل مستخدم يحتاج «معرّف» قبل المتابعة'); break; }
+      const hasData = userFieldsSession.some(f => u[f.key] || (u._secrets && u._secrets[f.key]));
+      if (hasData && !String(u.handle || '').trim()) { errs.push(L('كل مستخدم يحتاج «معرّف» قبل المتابعة', 'Every user needs a handle before you continue')); break; }
     }
     const withHandle = users.filter(u => String(u.handle || '').trim()).length;
     if (withHandle < (step.minItems || 1)) {
-      errs.push('أضف مستخدم اختبار واحداً على الأقل (بمعرّف)');
+      errs.push(L('أضف مستخدم اختبار واحداً على الأقل (بمعرّف)', 'Add at least one test user (with a handle)'));
+    }
+    // Schema-driven per-user checks: required fields, secret env-var names.
+    for (const f of userFieldsSession) {
+      if (f.required && users.some(u => String(u.handle || '').trim() &&
+          !(f.secret ? ((u._secrets && u._secrets[f.key]) || u[f.key]) : u[f.key]))) {
+        errs.push(L(`«${loc(f, 'label') || f.key}» مطلوب لكل مستخدم`, `«${loc(f, 'label') || f.key}» is required for every user`));
+      }
+      if (f.secret && users.some(u => u[f.key] && !ENV_VAR_RE_UI.test(String(u[f.key]).trim()))) {
+        errs.push(L(`«${loc(f, 'label') || f.key}»: اسم متغير بيئة صالح فقط — حروف إنجليزية وأرقام و _ بدون مسافات`, `«${loc(f, 'label') || f.key}»: an environment-variable name only — letters, digits and _ , no spaces`));
+      }
+    }
+  }
+  if (step.defaultsSection) {
+    for (const f of defaultsFieldsSession) {
+      const label = loc(f, 'label') || f.key;
+      if (f.secret) {
+        const n = String(answers[`defaults.${f.key}EnvVar`] || '').trim();
+        if (n && !ENV_VAR_RE_UI.test(n)) errs.push(L(`«${label}»: اسم متغير بيئة صالح فقط — حروف إنجليزية وأرقام و _ بدون مسافات`, `«${label}»: an environment-variable name only — letters, digits and _ , no spaces`));
+        if (f.required && !n) errs.push(L(`«${label}» مطلوب`, `«${label}» is required`));
+        continue;
+      }
+      const v = String(answers[`defaults.${f.key}`] || '').trim();
+      if (f.required && !v && !f.default) errs.push(L(`«${label}» مطلوب`, `«${label}» is required`));
+      if (v && f.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) errs.push(L(`«${label}» بريد إلكتروني غير صحيح`, `«${label}» is not a valid email address`));
+      if (v && f.type === 'url') {
+        let ok = false;
+        try { const u = new URL(v); ok = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
+        if (!ok) errs.push(L(`«${label}» يجب أن يكون رابط http(s) صحيحًا`, `«${label}» has to be a valid http(s) URL`));
+      }
     }
   }
   if (errs.length) showToast('❌ ' + errs[0], 'error');
   return errs.length === 0;
 }
 
-function next() { collectAnswers(); if (!validateStep()) return; if (current < schema.steps.length-1) goTo(current+1); }
-function prev() { collectAnswers(); if (current > 0) goTo(current-1); }
+function next() { collectAnswers(); if (!validateStep()) return; const n = nextVisibleIndex(current); if (n !== -1) goTo(n); }
+function prev() { collectAnswers(); const p = prevVisibleIndex(current); if (p !== -1) goTo(p); }
 
 function goTo(idx) {
   if (finished) return;   // the wizard is over — nothing to navigate to
@@ -1199,79 +2751,194 @@ function collectAnswers() {
 }
 
 /**
- * Map typed secrets (keyed by field key) to the env var names they will live
- * under in .env. When the step has a sibling "env var name" answer (envKeyFrom
- * — e.g. db.passwordEnvVar), THAT name wins: it is the one the JSON's
- * envSecret references, so writing anywhere else produces a broken config.
+ * Map typed secrets to the env var names they will live under in .env.
+ * Project-scoped secret fields read the global store; environment-scoped ones
+ * (db/api) are collected from EVERY session environment, each resolving its
+ * own envKeyFrom answer — so two environments keep separate secret slots
+ * (API_TOKEN / API_TOKEN_UAT). When the step has a sibling "env var name"
+ * answer (envKeyFrom), THAT name wins: it is the one the JSON's envSecret
+ * references, so writing anywhere else produces a broken config.
+ * Call after snapshotActiveEnv() so the active environment's answers are fresh.
  */
 function buildSecretsPayload() {
   const out = {};
   for (const step of schema.steps) {
+    if (!stepVisible(step)) continue;   // a gated-away provider's typed secrets never ride the save
     for (const f of (step.fields || [])) {
-      if (!f.secret || !secrets[f.key]) continue;
-      let envKey = f.envKey;
-      if (f.envKeyFrom) {
-        const chosen = String(answers[f.envKeyFrom] || '').trim();
-        if (chosen) envKey = chosen;
+      if (!f.secret) continue;
+      if (step.group === 'environment') {
+        for (const n of envOrder) {
+          const v = envs[n].secrets[f.key];
+          if (!v) continue;
+          let envKey = f.envKey;
+          if (f.envKeyFrom) {
+            const chosen = String(envs[n].answers[f.envKeyFrom] || '').trim();
+            if (chosen) envKey = chosen;
+          }
+          out[envKey] = v;
+        }
+      } else {
+        if (!secrets[f.key]) continue;
+        let envKey = f.envKey;
+        if (f.envKeyFrom) {
+          const chosen = String(answers[f.envKeyFrom] || '').trim();
+          if (chosen) envKey = chosen;
+        }
+        out[envKey] = secrets[f.key];
       }
-      out[envKey] = secrets[f.key];
+    }
+  }
+  // Custom secret fields (design #4): per-user and per-defaults typed values,
+  // each under the env-var NAME its JSON { envSecret } references — the
+  // typed name wins, the owner-confirmed prefill fills an empty one.
+  for (const n of envOrder) {
+    const e = envs[n];
+    for (const f of userFieldsSession) {
+      if (!f.secret) continue;
+      for (const u of e.users) {
+        const v = u._secrets && u._secrets[f.key];
+        if (!v || !String(u.handle || '').trim()) continue;
+        const name = String(u[f.key] || '').trim() || suggestUserSecretName(u.handle, f.key);
+        out[name] = v;
+      }
+    }
+    for (const f of defaultsFieldsSession) {
+      if (!f.secret) continue;
+      const v = e.secrets[`defaults.${f.key}`];
+      if (!v) continue;
+      const name = String(e.answers[`defaults.${f.key}EnvVar`] || '').trim() || suggestDefaultsSecretName(f.key);
+      out[name] = v;
     }
   }
   return out;
 }
 
 /* ── Build Configs ───────────────────────────────────────────────────────── */
-function buildConfigs() {
-  const envName = answers['defaultEnvironment'] || 'qa';
+/** Q12 prefill derivation: which tracker an existing config selects — the
+ *  single provider block IS the selection (mirror of resolveTracker's detection). */
+function deriveTrackerFrom(proj) {
+  const has = (b) => proj && proj[b] && typeof proj[b] === 'object' && Object.keys(proj[b]).length > 0;
+  return has('azure') ? 'azure' : has('jira') ? 'jira' : 'none';
+}
+
+/** Provider blocks this save REMOVES from an existing config (a tracker
+ *  switch, D14 consented-destructive pattern) — listed on the review step and
+ *  echoed by the server; never silent. */
+function providerSwitchRemovals(projectConfig) {
+  const removed = [];
+  for (const p of ['azure', 'jira']) {
+    if (existingProject && existingProject[p] && typeof existingProject[p] === 'object' &&
+        Object.keys(existingProject[p]).length > 0 && !(p in projectConfig)) {
+      removed.push(p);
+    }
+  }
+  return removed;
+}
+
+function buildProjectConfig() {
   // Start from what's on disk so keys the wizard has no input for (azure.areaPath,
   // kb.org, custom fields) survive a re-run instead of being silently dropped.
   const proj = Object.assign({}, existingProject, {
     name: answers['name'] || 'my-project',
-    // Adding another environment must not silently re-point the project: the
-    // existing default stands, and only a brand-new project takes its first
-    // environment as the default.
-    defaultEnvironment: (existingProject && existingProject.defaultEnvironment) || envName,
+    // Never silently re-pointed: currentDefaultName() keeps a valid existing
+    // default (following its confirmed rename), moves a deleted default to the
+    // user-designated replacement, and lets the first configured environment
+    // claim a default that was scaffolding or missing.
+    defaultEnvironment: currentDefaultName() || 'qc',   // 'qc' mirrors engine.js DEFAULT_ENV_NAME
     login: Object.assign({}, existingProject && existingProject.login, { mode: answers['login.mode'] || 'session' }),
+    // The EFFECTIVE field schema is always written (design #4) — explicit
+    // round-trip, no hidden divergence between "absent" and "default".
+    userFields: userFieldsSession.map(cleanDescriptor),
+    defaultsFields: defaultsFieldsSession.map(cleanDescriptor),
   });
   // Managed keys mirror the screen EXACTLY: a value sets the key, an empty
   // field unsets it — clearing Org must not resurrect the saved value, and
   // filling only Team/Assignee must not drop them. Hand-added keys the wizard
   // has no input for are preserved; a block disappears only when nothing is
   // left in it.
-  setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
+  // Q12: the tracker answer keys which provider block the save carries —
+  // exactly one, never both (mirror of engine.js buildConfigs; a mid-wizard
+  // switch must not leak the abandoned provider's stale answers, and choosing
+  // a different provider on an existing project removes the old block — the
+  // review step announces that removal, and .env is never edited by a switch).
+  const trackerPick = String(answers['tracker'] || '');
+  if (trackerPick === 'jira') {
+    setManagedBlock(proj, 'jira', ['site', 'project', 'board', 'assignee']);
+    delete proj.azure;
+  } else if (trackerPick === 'azure') {
+    setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
+    delete proj.jira;
+  } else if (trackerPick === 'none') {
+    delete proj.azure;
+    delete proj.jira;
+  } else {
+    // No tracker answer (legacy session state): historical behavior.
+    setManagedBlock(proj, 'azure', ['org', 'project', 'team', 'assignee']);
+  }
   setManagedBlock(proj, 'kb', ['baseUrl', 'project']);
+  // figma follows the same mirror rule but not the flat shape: fileKey is a
+  // plain managed key, while the tokenEnvVar answer lands as
+  // { token: { envSecret: NAME } } — the documented home (docs/ui-check.md,
+  // the scaffold template) that ui-check's fetch_baseline.js reads. The token
+  // VALUE itself goes to .env via buildSecretsPayload, never here. A typed
+  // fileKey with an empty name field falls back to the schema default, exactly
+  // like db/api in buildEnvConfig.
+  const figma = Object.assign({}, existingProject && existingProject.figma);
+  const figmaFileKey = String(answers['figma.fileKey'] || '').trim();
+  if (figmaFileKey) figma.fileKey = figmaFileKey; else delete figma.fileKey;
+  const figmaTokenVar = String(answers['figma.tokenEnvVar'] || '').trim();
+  if (figmaTokenVar || figmaFileKey) figma.token = { envSecret: figmaTokenVar || 'FIGMA_TOKEN' };
+  else delete figma.token;
+  if (Object.keys(figma).length) proj.figma = figma; else delete proj.figma;
+  return proj;
+}
 
-  // Merge back only when rewriting the environment we loaded; a different name
-  // is a new environment file, which starts clean.
-  const envBase = (existingEnv && loadedEnvName === envName) ? existingEnv : null;
-  const env = Object.assign({}, envBase, {
-    portalUrl: answers['portalUrl'] || '',
-    defaults: Object.assign({}, envBase && envBase.defaults, {
-      otp:      answers['defaults.otp']      || '0000',
-      password: answers['defaults.password'] || 'Test@1234',
-    }),
-    users: buildUsersObj(),
+/** Build one environment's file content from its session entry, merging onto
+ *  its own on-disk JSON so values the wizard does not manage survive
+ *  (invariant #11) — except keys the user removed/renamed this session
+ *  (consented drops). The defaults block iterates the shared defaultsFields.
+ *  Call after snapshotActiveEnv(). */
+function buildEnvConfig(name) {
+  const e = envs[name];
+  const a = e.answers;
+  const base = e.loadedFrom || null;
+  const defaults = Object.assign({}, base && base.defaults);
+  for (const k of defaultsFieldDropKeys()) delete defaults[k];
+  for (const f of defaultsFieldsSession) {
+    if (f.secret) {
+      const n = String(a[`defaults.${f.key}EnvVar`] || '').trim();
+      if (n) defaults[f.key] = { envSecret: n }; else delete defaults[f.key];
+      continue;
+    }
+    const raw = a[`defaults.${f.key}`];
+    const v = (raw !== undefined && raw !== '') ? raw : (f.default !== undefined ? f.default : '');
+    if (v) defaults[f.key] = v; else delete defaults[f.key];
+  }
+  const env = Object.assign({}, base, {
+    portalUrl: a['portalUrl'] || '',
+    defaults,
+    users: buildUsersObj(e),
   });
-  if (answers['db.server']) {
+  if (a['db.server']) {
     env.db = {
-      server: answers['db.server'],
-      port:   Number(answers['db.port']) || 1433,
-      name:   answers['db.name']   || '',
-      user:   answers['db.user']   || '',
-      password: { envSecret: answers['db.passwordEnvVar'] || 'SQLCMDPASSWORD' },
+      server: a['db.server'],
+      port:   Number(a['db.port']) || 1433,
+      name:   a['db.name']   || '',
+      user:   a['db.user']   || '',
+      password: { envSecret: a['db.passwordEnvVar'] || 'SQLCMDPASSWORD' },
     };
   } else {
     delete env.db;    // cleared on screen → removed from the file, not restored
   }
-  if (answers['api.baseUrl']) {
+  if (a['api.baseUrl']) {
     env.api = {
-      baseUrl: answers['api.baseUrl'],
-      token:   { envSecret: answers['api.tokenEnvVar'] || 'API_TOKEN' },
+      baseUrl: a['api.baseUrl'],
+      token:   { envSecret: a['api.tokenEnvVar'] || 'API_TOKEN' },
     };
   } else {
     delete env.api;
   }
-  return { projectConfig: proj, envConfig: env, envName };
+  return env;
 }
 
 /** Write a group's managed keys from answers into target — set or unset, screen wins. */
@@ -1285,16 +2952,32 @@ function setManagedBlock(target, group, keys) {
   else delete target[group];
 }
 
-function buildUsersObj() {
+/** Mirror of engine.js buildEnvUsers(): each entry merges onto its on-disk
+ *  base entry, so hand-added per-user props the wizard has no input for
+ *  survive — except this session's consented drops (removed/renamed keys).
+ *  Managed keys come from the shared userFields schema: a secret field's
+ *  screen value is an env-var NAME stored as { envSecret }; set or unset,
+ *  screen wins. `_`-prefixed session props (typed secret values) never land
+ *  in the JSON. */
+function buildUsersObj(e) {
+  const base = (e.loadedFrom && e.loadedFrom.users) || {};
+  const drops = userFieldDropKeys();
   const obj = {};
-  for (const u of (answers['users'] || users)) {
+  for (const u of e.users) {
     if (!u.handle) continue;
-    const e = {};
-    if (u.phone) e.phone = u.phone;
-    if (u.email) e.email = u.email;
-    if (u.role)  e.role  = u.role;
-    if (u.notes) e.notes = u.notes;
-    obj[u.handle] = e;
+    const entry = Object.assign({}, base[u.handle]);
+    for (const k of drops) delete entry[k];
+    for (const f of userFieldsSession) {
+      if (f.secret) {
+        const n = String(u[f.key] || '').trim();
+        if (n) entry[f.key] = { envSecret: n }; else delete entry[f.key];
+      } else if (u[f.key]) {
+        entry[f.key] = u[f.key];
+      } else {
+        delete entry[f.key];
+      }
+    }
+    obj[u.handle] = entry;
   }
   return obj;
 }
@@ -1302,26 +2985,67 @@ function buildUsersObj() {
 /* ── Save ────────────────────────────────────────────────────────────────── */
 async function saveAndClose() {
   collectAnswers();
-  const { projectConfig, envConfig, envName } = buildConfigs();
+  snapshotActiveEnv();
+
+  // Client-side gate before the batch save (the server re-validates everything
+  // via planSave): every environment this save writes must be internally
+  // complete — the review can only be reached through the active environment's
+  // pages, so the OTHER environments get their completeness check here. A
+  // failure here means the user switched to a new environment (or opened one
+  // from the manager) without finishing another — jump them straight to the
+  // unfinished page instead of just naming it, or "open it yourself from the
+  // environments page" is easy to miss on a first pass through the wizard.
+  const writes = dirtyEnvNames();
+  for (const n of writes) {
+    const a = envs[n].answers;
+    let urlOk = false;
+    try { const u = new URL(a['portalUrl'] || ''); urlOk = u.protocol === 'http:' || u.protocol === 'https:'; } catch {}
+    if (!urlOk) {
+      showToast(L(`❌ بيئة «${n}»: رابط التطبيق ناقص أو غير صحيح — كمّلها هنا`, `❌ Environment «${n}»: the application URL is missing or invalid — finish it here`), 'error');
+      switchEnv(n);
+      goTo(schema.steps.findIndex(s => s.id === 'environment'));
+      return;
+    }
+    if (!envs[n].users.some(u => String(u.handle || '').trim())) {
+      showToast(L(`❌ بيئة «${n}»: محتاجة مستخدم اختبار واحداً على الأقل — كمّلها هنا`, `❌ Environment «${n}»: it needs at least one test user — finish it here`), 'error');
+      switchEnv(n);
+      goTo(schema.steps.findIndex(s => s.id === 'test-users'));
+      return;
+    }
+  }
+
+  const projectConfig = buildProjectConfig();
+  const environments = {};
+  for (const n of writes) environments[n] = buildEnvConfig(n);
+  // Every op is explicit and pre-confirmed: renames derive from the rename
+  // dialog's session changes, deletes accumulated through the delete dialog.
+  // confirmed: true is the consent the dialogs gathered, made wire-visible —
+  // the server refuses any op without it.
+  const ops = {
+    renames: deriveRenames(),
+    deletes: pendingDeletes.map(name => ({ name, confirmed: true })),
+  };
 
   if (MODE === 'local') {
     try {
       const r = await apiFetch('/api/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectConfig, envConfig, envName, secrets: buildSecretsPayload() }),
+        body: JSON.stringify({ projectConfig, environments, ops, secrets: buildSecretsPayload() }),
       });
       const res = await r.json();
       if (res.ok) {
         finishWizard();
         setTimeout(() => apiFetch('/api/done').catch(() => {}), 1500);
-      } else { showToast('❌ ' + (res.error || 'خطأ'), 'error'); }
+      } else { showToast('❌ ' + (res.error || L('خطأ', 'error')), 'error'); }
     } catch(e) { showToast('❌ ' + e.message, 'error'); }
   } else {
-    // Web mode
+    // Web mode: no server — download every file
     dlJSON(projectConfig, 'project.json');
-    setTimeout(() => dlJSON(envConfig, `${envName}.json`), 300);
-    showToast('✅ تم تحميل الملفات!');
+    Object.keys(environments).forEach((n, i) => {
+      setTimeout(() => dlJSON(environments[n], `${n}.json`), 300 * (i + 1));
+    });
+    showToast(L('✅ تم تحميل الملفات!', '✅ Files downloaded.'));
   }
 }
 
@@ -1333,16 +3057,23 @@ async function saveAndClose() {
  */
 function finishWizard() {
   finished = true;
+  screen = 'done';
+  renderFinished();
+  showToast(L('تم الحفظ بنجاح!', 'Saved.'), 'success');
+  window.scrollTo({ top: 0 });
+}
+
+function renderFinished() {
   document.getElementById('steps-scroll').classList.remove('show');
   document.getElementById('hdr-pill').classList.remove('show');
   document.getElementById('prog-fill').style.width = '100%';
   document.getElementById('card').innerHTML =
-    '<div class="paste-mode"><h2>✅ تم الإعداد بنجاح</h2>' +
-    '<p>تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — أغلق هذا التبويب وارجع إلى التيرمنال.</p>' +
-    '<p style="font-size:13px;color:var(--text-3)">لأي تعديل لاحق (إضافة مستخدمين مثلاً) شغّل المعالج من جديد — سيحمّل الإعدادات المحفوظة ويكمل من حيث وقفت.</p>' +
+    '<div class="paste-mode"><h2>' + L('✅ تم الإعداد بنجاح', '✅ Setup complete') + '</h2>' +
+    '<p>' + L('تم حفظ الملفات وإغلاق خادم المعالج تلقائياً — أغلق هذا التبويب وارجع إلى التيرمنال.',
+      'The files are saved and the wizard server has shut itself down — close this tab and go back to the terminal.') + '</p>' +
+    '<p style="font-size:13px;color:var(--text-3)">' + L('لأي تعديل لاحق (إضافة مستخدمين مثلاً) شغّل المعالج من جديد — سيحمّل الإعدادات المحفوظة ويكمل من حيث وقفت.',
+      'To change anything later (adding users, say) run the wizard again — it loads what you saved and picks up from there.') + '</p>' +
     '</div>';
-  showToast('✅ تم الحفظ بنجاح!');
-  window.scrollTo({ top: 0 });
 }
 
 function dlJSON(data, name) {
@@ -1369,6 +3100,7 @@ function showToast(msg, type='') {
 }
 
 /* ── Boot ─────────────────────────────────────────────────────────────────── */
+applyLangChrome();
 init();
 </script>
 </body>

@@ -1,0 +1,605 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "validation": {
+      "assignee": "qa.engineer@example.com",
+      "assigneeAccountId": "acc-123",
+      "subtaskType": "Sub-task",
+      "perStory": [
+        {
+          "id": "PROJ-1",
+          "complexity": "Simple",
+          "tasks": 5,
+          "type": "Story",
+          "title": "Story PROJ-1",
+          "state": "In Progress",
+          "url": "https://example.atlassian.net/browse/PROJ-1",
+          "existingTestingTasks": []
+        },
+        {
+          "id": "PROJ-3",
+          "complexity": "Medium",
+          "tasks": 5,
+          "type": "Story",
+          "title": "Story PROJ-3",
+          "state": "In Progress",
+          "url": "https://example.atlassian.net/browse/PROJ-3",
+          "existingTestingTasks": []
+        }
+      ],
+      "fields": [
+        {
+          "field": "labels",
+          "ok": true
+        },
+        {
+          "field": "assignee",
+          "ok": true
+        },
+        {
+          "field": "parent",
+          "ok": true
+        }
+      ],
+      "validateOnly": "unsupported-on-jira",
+      "notes": [
+        "iteration/area have no Jira analog — sub-tasks ride their parent story's sprint"
+      ],
+      "hours": {
+        "mode": "none",
+        "message": "hours will NOT be written: the \"Sub-task\" create screen has no time tracking and PROJ-77's edit screen could not be read (listEditFields failed: HTTP 403 — no edit permission (https://example.atlassian.net/rest/api/3/issue/PROJ-77/editmeta)). The sub-tasks are created without time tracking and each description carries \"Estimate: <n>h\". A Jira admin can put the \"Time tracking\" field on the \"Sub-task\" screen (see references/tracker/jira-boards.md, \"Project prerequisites\")."
+      }
+    },
+    "plan": [
+      {
+        "step": "create-task",
+        "story": "PROJ-1",
+        "title": "[Testing] Requirement Review",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-1 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Requirement Review",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 1h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-1"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step": "create-task",
+        "story": "PROJ-1",
+        "title": "[Testing] Test Creation",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-1 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Test Creation",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 2h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-1"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step": "create-task",
+        "story": "PROJ-1",
+        "title": "[Testing] Test Execution",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-1 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Test Execution",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 3h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-1"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step": "create-task",
+        "story": "PROJ-1",
+        "title": "[Testing] Bug Review and Retest",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-1 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Bug Review and Retest",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 1.5h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-1"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step": "create-task",
+        "story": "PROJ-1",
+        "title": "[Testing] Automation",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-1 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Automation",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 0.5h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-1"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step": "create-task",
+        "story": "PROJ-3",
+        "title": "[Testing] Requirement Review",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-3 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Requirement Review",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 1h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-3"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step": "create-task",
+        "story": "PROJ-3",
+        "title": "[Testing] Test Creation",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-3 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Test Creation",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 2h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-3"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step": "create-task",
+        "story": "PROJ-3",
+        "title": "[Testing] Test Execution",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-3 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Test Execution",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 3h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-3"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step": "create-task",
+        "story": "PROJ-3",
+        "title": "[Testing] Bug Review and Retest",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-3 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Bug Review and Retest",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 1.5h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-3"
+              }
+            }
+          }
+        }
+      },
+      {
+        "step": "create-task",
+        "story": "PROJ-3",
+        "title": "[Testing] Automation",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue (parent -> PROJ-3 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "project": {
+                "key": "PROJ"
+              },
+              "issuetype": {
+                "name": "Sub-task"
+              },
+              "summary": "[Testing] Automation",
+              "description": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Estimate: 0.5h"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "labels": [
+                "testing"
+              ],
+              "assignee": {
+                "accountId": "acc-123"
+              },
+              "parent": {
+                "key": "PROJ-3"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-jira.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/user/search?query=qa.engineer%40example.com",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes?maxResults=100",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-3?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes/10002?startAt=0&maxResults=100",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND issuetype = \\\"Sub-task\\\" ORDER BY created DESC\",\"fields\":[\"summary\"],\"maxResults\":1}"
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-77/editmeta",
+      "body": null
+    }
+  ]
+}

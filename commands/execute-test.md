@@ -2,7 +2,9 @@
 description: Execute tests against a target, optionally from a named suite folder (e.g. suite3/). Sequential (human-in-the-loop) by default; say "parallel" for an autonomous run.
 ---
 
-Use the **browser-testing** skill to test the target described below.
+Use the **test-execution** skill to test the target described below. It routes each spec step
+to its driver (browser, `api:`, `db:`, `kb:`, `ui-check:`); a spec with no browser steps runs
+without a browser.
 
 Target / scope: $ARGUMENTS
 
@@ -26,7 +28,18 @@ Target / scope: $ARGUMENTS
   exists), tell the user they're editable examples, then continue.
 - If `test/` already has the user's own specs, skip the scaffold and use theirs.
 
+**CI mode (if the arguments contain the `ci` token):**
+- This is a headless pipeline run (normally spawned by the bundled `ci_gate.js` with
+  `AGENTEX_CI=1` set): use **parallel**-mode orchestration with ZERO user interaction —
+  no checkpoints, no questions, no tracker writes.
+- Read `${CLAUDE_PLUGIN_ROOT}/skills/test-execution/references/procedures/ci-run.md` FIRST — it carries
+  the hard rules (NEEDS-USER → BLOCKED with the named question, captcha/OTP → BLOCKED,
+  always generate `extent-report.html`, and the deterministic `write_verdict.js` step at the end
+  of MERGE).
+- The scope token `all` means every spec file under `test/`.
+
 - If no mode is stated, use **sequential** mode (stop at each checkpoint for approval).
 - If the request says parallel / fast / regression / autonomous, use **parallel** mode and
   dispatch one `qa-executor` subagent per test file.
-- Read the skill's `references/playwright-cli.md` before the first browser action.
+- When the run's drivers include browser, read `${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/SKILL.md`
+  before the first browser action.

@@ -28,8 +28,8 @@ executions/   NOT shipped in the plugin — output folder created in the consume
 
 **How:** `SKILL.md` says "read `references/x.md` before the first use of tool X."
 
-**Example:** `browser-testing/SKILL.md` → read `references/playwright-cli.md` before driving a
-browser.
+**Example:** `browser-driver/SKILL.md` → read `references/tools/playwright-cli.md` before the
+first browser command.
 
 **Pros/cons:** + short main file, on-demand detail — but one more file to keep in sync.
 
@@ -64,7 +64,7 @@ executions/execu_<YYYY-MM-DD_HH-MM-SS>/
 └── bugs/{bug-list.md, screenshots/}
 ```
 
-`skills/browser-testing/scripts/init_run.js` creates this tree in one call rather than a chain
+`skills/test-execution/scripts/init_run.js` creates this tree in one call rather than a chain
 of `mkdir`s — see [testing.md](./testing.md) for how scripts like this get tested.
 
 ## Dispatching the qa-executor subagent
@@ -76,13 +76,16 @@ of `mkdir`s — see [testing.md](./testing.md) for how scripts like this get tes
 
 **When:** parallel/autonomous mode — one spec file, one subagent, one session.
 
-**When not:** sequential mode — a single `default` session, no dispatch needed.
+**When not:** sequential mode — a single uniquely-named session driven by the main agent, no
+dispatch needed (in every mode, session names come from `init_run.js`; the shared
+playwright-cli `default` session is prohibited).
 
 **How:** the main agent batches dispatch (one call, many subagents), injecting each one's
 `SESSION`/`SESSION_DIR`/`TARGET_URL`/`TEST_SPEC`.
 
-**Example:** `browser-testing/SKILL.md`'s parallel mode — ~6–8 sessions run concurrently, the
-rest queue automatically; the main agent then merges every report into one `report.md`/`bugs/`.
+**Example:** `test-execution`'s parallel mode — executors go out in waves of at most 6 (nothing
+queues automatically: a spawn past the session's subagent limit fails); the main agent then
+merges every report into one `report.md`/`bugs/`.
 `mobile-testing/SKILL.md` follows the identical dispatch/merge shape with `mobile-qa-executor`,
 just bounded by available devices/emulators instead of CPU/RAM.
 

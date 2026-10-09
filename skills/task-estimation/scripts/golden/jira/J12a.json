@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "stories",
+    "blocked": [
+      {
+        "reason": "no-open-sprint",
+        "message": "no \"Story\" sits in an open sprint of project PROJ — a kanban/simple board has no sprints, or no sprint is started, or the sprint holds no stories. Fix on Jira: turn Sprints on (team-managed: Project settings → Features → Sprints; company-managed: a Scrum board), then start a sprint holding the stories — or re-run with --ids <KEY,KEY> to estimate named stories. See references/tracker/jira-boards.md, \"Project prerequisites\"."
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/field",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND issuetype = \\\"Story\\\" AND sprint in openSprints() ORDER BY key\",\"fields\":[\"summary\",\"customfield_10020\"],\"maxResults\":100}"
+    }
+  ]
+}
