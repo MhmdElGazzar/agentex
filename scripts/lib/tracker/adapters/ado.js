@@ -29,10 +29,14 @@ const pc = require(path.join(__dirname, '..', '..', 'project_config.js'));
 // The shared error class lives in ../errors.js (one home, O1); re-exported
 // below unchanged so existing `require('./ado.js').TrackerError` keeps working.
 const { TrackerError } = require('../errors.js');
+const { htmlToText } = require('../plaintext.js');
 
 const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
 const REDACTED_AUTH = '<Basic ***, not printed>';
+const BATCH_CHUNK = 200;                 // wit/workitemsbatch accepts at most 200 ids per call
+const COMMENTS_API_VERSION = '7.1-preview.4';
+const ITERATION_TIMEFRAMES = ['current', 'future', 'past', 'all'];
 
 function configError(message) {
   const e = new Error(message);
@@ -168,7 +172,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     return `${cfg.base}${project ? '/' + projSeg : ''}/_apis/${route}?${query}`;
   }
 
-  async function request(op, method, requestUrl, { body, contentType } = {}) {
+  async function request(op, method, requestUrl, { body, contentType, withHeaders = false } = {}) {
     const { header, resolvedName } = auth(op, requestUrl);
     const headers = { Authorization: header, Accept: 'application/json' };
     if (contentType) headers['Content-Type'] = contentType;
@@ -196,8 +200,31 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       });
       throw err;
     }
-    if (!text.trim()) return null;
-    try { return JSON.parse(text); } catch { return text; }
+    let parsed = null;
+    if (text.trim()) { try { parsed = JSON.parse(text); } catch { parsed = text; } }
+    if (!withHeaders) return parsed;
+    // Response headers (continuation tokens). A response object without a
+    // headers accessor reads as "no header".
+    const readHeader = (name) => (res.headers && typeof res.headers.get === 'function' ? res.headers.get(name) : null);
+    return { body: parsed, header: readHeader };
+  }
+
+  // Positive-integer work-item ids, or an exit-2 error naming the offender.
+  function intIds(ids, op) {
+    return [].concat(ids).map((id) => {
+      const n = Number(id);
+      if (!Number.isInteger(n) || n <= 0) throw configError(`${op} needs positive integer work-item ids (got ${JSON.stringify(id)})`);
+      return n;
+    });
+  }
+
+  // The org's identity host — derived ONLY from the two hosted URL shapes.
+  function identityHost() {
+    let m = cfg.base.match(/^https:\/\/dev\.azure\.com\/([^/]+)$/i);
+    if (m) return `https://vssps.dev.azure.com/${m[1]}`;
+    m = cfg.base.match(/^https:\/\/([^./]+)\.visualstudio\.com$/i);
+    if (m) return `https://${m[1]}.vssps.visualstudio.com`;
+    return null;
   }
 
   // Dry-run descriptor: the full request, minus anything secret, minus the send.
@@ -242,20 +269,30 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       attachments: true,                // binary upload API exists
       testPlans: true,
       testRuns: true,
-      relations: { parent: true, testedBy: true, attachedFile: true },
+      relations: { parent: true, child: true, related: true, testedBy: true, attachedFile: true },
       dialect: 'json-patch',            // work-item write body dialect ('json' for Jira)
       query: 'wiql',                    // 'jql' for Jira
       deleteWorkItem: 'partial',        // ADO: most types yes, Test Case no
+      batchRead: true,                  // wit/workitemsbatch (getWorkItems)
+      sprints: true,                    // team iterations (listIterations)
     },
 
     // ── READS (free, no gating) ────────────────────────────────────────────────
-    async getWorkItem(id, { expand } = {}) {
-      const u = url(`wit/workitems/${id}`, expand ? { $expand: expand === true ? 'all' : expand } : {});
-      return request('getWorkItem', 'GET', u);
+    // opts.fields (array) adds a fields= param; ADO rejects fields together
+    // with $expand, so that pair is refused before any request.
+    async getWorkItem(id, { expand, fields } = {}) {
+      if (fields && fields.length && expand) {
+        throw configError('getWorkItem: fields and expand cannot be combined (Azure DevOps rejects the pair) — ask for specific fields OR expand, not both');
+      }
+      const params = expand ? { $expand: expand === true ? 'all' : expand } : {};
+      if (fields && fields.length) params.fields = [].concat(fields).join(',');
+      return request('getWorkItem', 'GET', url(`wit/workitems/${id}`, params));
     },
 
-    async query(text) {
-      return request('query', 'POST', url('wit/wiql'), {
+    // WIQL. opts.top adds $top (only when given — the request is otherwise
+    // byte-identical); the service caps a WIQL result at 20,000 items.
+    async query(text, { top } = {}) {
+      return request('query', 'POST', url('wit/wiql', top ? { $top: top } : {}), {
         body: JSON.stringify({ query: text }), contentType: 'application/json',
       });
     },
@@ -277,9 +314,21 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return (res && res.value) || [];
     },
 
+    // Follows the x-ms-continuationtoken response header (additive: the first
+    // request URL is unchanged; a response without the header is the last page).
     async listSuites(planId) {
-      const res = await request('listSuites', 'GET', url(`testplan/Plans/${planId}/suites`));
-      return (res && res.value) || [];
+      const out = [];
+      let token = null;
+      const seen = new Set();
+      for (;;) {
+        const u = url(`testplan/Plans/${planId}/suites`, token ? { continuationToken: token } : {});
+        const { body, header } = await request('listSuites', 'GET', u, { withHeaders: true });
+        out.push(...((body && body.value) || []));
+        token = header('x-ms-continuationtoken');
+        if (!token) return out;
+        if (seen.has(token)) throw new TrackerError({ op: 'listSuites', url: u, serverMessage: `the service repeated continuation token "${token}" — stopping rather than looping` });
+        seen.add(token);
+      }
     },
 
     async listSuiteCases(planId, suiteId) {
@@ -352,6 +401,110 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const res = await this.query(iterationWiql(cfg.project, team, storyType));
       const rows = Array.isArray(res) ? res : (res && res.workItems) || [];
       return { ok: true, sprint: null, refs: rows.map((w) => w.id).filter((id) => id !== undefined && id !== null) };
+    },
+
+    // ── NEUTRAL READS for the tracker CLI (skill-consolidation-foundation) ───
+
+    // Batch read: POST wit/workitemsbatch, chunks of 200, errorPolicy 'omit'.
+    // Returns { items: [raw work item…] in INPUT order, missing: [id…] } — an id
+    // the service does not return is listed, never dropped.
+    async getWorkItems(ids, { fields } = {}) {
+      const wanted = intIds(ids, 'getWorkItems');
+      const byId = new Map();
+      for (let i = 0; i < wanted.length; i += BATCH_CHUNK) {
+        const chunk = wanted.slice(i, i + BATCH_CHUNK);
+        const body = { ids: chunk, ...(fields && fields.length ? { fields: [...fields] } : {}), errorPolicy: 'omit' };
+        const res = await request('getWorkItems', 'POST', url('wit/workitemsbatch'), { body: JSON.stringify(body), contentType: 'application/json' });
+        for (const wi of (res && res.value) || []) if (wi && wi.id !== undefined) byId.set(Number(wi.id), wi);
+      }
+      return {
+        items: wanted.filter((id) => byId.has(id)).map((id) => byId.get(id)),
+        missing: wanted.filter((id) => !byId.has(id)),
+      };
+    },
+
+    // Comment thread, oldest first: GET wit/workItems/{id}/comments (comments
+    // API 7.1-preview.4, order=asc), following continuationToken. Comment HTML
+    // becomes plain text (plaintext.htmlToText).
+    //   [{ id, author, date, text, user: { id, displayName, email } }]
+    async listComments(id) {
+      const out = [];
+      let token = null;
+      const seen = new Set();
+      for (;;) {
+        const u = url(`wit/workItems/${id}/comments`, { order: 'asc', ...(token ? { continuationToken: token } : {}) }, { apiVersion: COMMENTS_API_VERSION });
+        const res = await request('listComments', 'GET', u);
+        for (const c of (res && res.comments) || []) {
+          const by = c.createdBy || {};
+          out.push({
+            id: c.id, author: by.displayName || null, date: c.createdDate || null, text: htmlToText(c.text),
+            user: { id: by.id || null, displayName: by.displayName || null, email: by.uniqueName || null },
+          });
+        }
+        token = res && res.continuationToken;
+        if (!token) return out;
+        if (seen.has(token)) throw new TrackerError({ op: 'listComments', url: u, serverMessage: `the service repeated continuation token "${token}" — stopping rather than looping` });
+        seen.add(token);
+      }
+    },
+
+    // The team's iterations: ONE GET {project}/{team}/_apis/work/teamsettings/iterations,
+    // filtered client-side on attributes.timeFrame. No team -> exit 2 naming
+    // the setting, ZERO requests.
+    //   [{ id, name, path, startDate, finishDate, timeFrame }]
+    async listIterations({ team, timeframe = 'all' } = {}) {
+      if (!team) throw configError('No team resolved — iterations are team settings. Pass --team "<name>" or set azure.team in config/project.json.');
+      if (!ITERATION_TIMEFRAMES.includes(timeframe)) throw configError(`unknown timeframe ${JSON.stringify(timeframe)} — accepted: ${ITERATION_TIMEFRAMES.join(', ')}`);
+      const u = `${cfg.base}/${projSeg}/${encodeURIComponent(team)}/_apis/work/teamsettings/iterations?api-version=${encodeURIComponent(cfg.apiVersion)}`;
+      const res = await request('listIterations', 'GET', u);
+      return ((res && res.value) || [])
+        .map((it) => {
+          const a = it.attributes || {};
+          return { id: it.id, name: it.name, path: it.path || null, startDate: a.startDate || null, finishDate: a.finishDate || null, timeFrame: a.timeFrame || null };
+        })
+        .filter((it) => timeframe === 'all' || it.timeFrame === timeframe);
+    },
+
+    // Child refs of many parents in ONE project-scoped WIQL — a constant request
+    // count however many children there are (listChildren stays per-child).
+    async listChildRefs(parentIds) {
+      const ids = intIds(parentIds, 'listChildRefs');
+      if (!ids.length) return [];
+      const res = await this.query(
+        `SELECT [System.Id] FROM workitems WHERE [System.Parent] IN (${ids.join(', ')}) AND [System.TeamProject] = @project ORDER BY [System.Id]`);
+      const rows = Array.isArray(res) ? res : (res && res.workItems) || [];
+      return rows.map((w) => w.id).filter((x) => x !== undefined && x !== null);
+    },
+
+    // Identity search by email on the org's identity host (for a mention of
+    // someone who never touched the item). Same Authorization header; a 401/403
+    // names the PAT scope it needs and is never retried. Any host other than
+    // the two hosted shapes refuses (exit 2) with zero requests.
+    //   [{ id, displayName, email }]
+    async findIdentity(email) {
+      const host = identityHost();
+      if (!host) {
+        throw configError(`mention by email is not available for ${cfg.base} — the identity search needs a dev.azure.com or *.visualstudio.com organization; mention someone already on the item or its thread instead`);
+      }
+      const q = new URLSearchParams({ searchFilter: 'General', filterValue: String(email), queryMembership: 'None', 'api-version': cfg.apiVersion });
+      const u = `${host}/_apis/identities?${q.toString()}`;
+      let res;
+      try {
+        res = await request('findIdentity', 'GET', u);
+      } catch (e) {
+        if (e instanceof TrackerError && (e.status === 401 || e.status === 403)) {
+          throw new TrackerError({
+            op: 'findIdentity', status: e.status, url: u, credentialHint: e.credentialHint,
+            serverMessage: 'the identity search was refused — the PAT needs the Identity (Read) scope to resolve a mention by email',
+          });
+        }
+        throw e;
+      }
+      return ((res && res.value) || []).map((v) => ({
+        id: v.id,
+        displayName: v.providerDisplayName || v.customDisplayName || null,
+        email: (v.properties && v.properties.Mail && v.properties.Mail.$value) || null,
+      }));
     },
 
     // ── WRITES (each takes {execute}; execute:false returns the descriptor) ──

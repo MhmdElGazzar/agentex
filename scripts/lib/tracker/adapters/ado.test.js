@@ -428,7 +428,7 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(a.capabilities.testRuns, true);
     assert.strictEqual(a.capabilities.dialect, 'json-patch');
     assert.strictEqual(a.capabilities.query, 'wiql');
-    assert.deepStrictEqual(a.capabilities.relations, { parent: true, testedBy: true, attachedFile: true });
+    assert.deepStrictEqual(a.capabilities.relations, { parent: true, child: true, related: true, testedBy: true, attachedFile: true });
     assert.strictEqual(a.capabilities.deleteWorkItem, 'partial');
     assert.deepStrictEqual(PAT_ENV_NAMES, ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT']);
   });
@@ -632,6 +632,190 @@ const PROJ = 'Sample%20Project';
     const f = fakeFetch([]);
     await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listSprintStories({ team: 'T' }), /storyType/);
     assert.strictEqual(f.calls.length, 0);
+  });
+
+  // ════ neutral reads for the tracker CLI (skill-consolidation-foundation WP-6) ════
+  // A richer fake: respond(call, n) per route, optional response headers.
+  function fake2(routes = []) {
+    const calls = []; const hits = new Map();
+    const fn = async (url, opts = {}) => {
+      const call = { url: String(url), method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body };
+      calls.push(call);
+      for (const r of routes) {
+        if ((r.method || 'GET') !== call.method || !call.url.includes(r.match)) continue;
+        const n = (hits.get(r) || 0) + 1; hits.set(r, n);
+        const resp = r.respond ? r.respond(call, n) : r;
+        const status = resp.status || 200;
+        const text = resp.text !== undefined ? resp.text : JSON.stringify(resp.json ?? {});
+        const hdrs = resp.headers || {};
+        return { ok: status >= 200 && status < 300, status, text: async () => text, headers: { get: (k) => hdrs[k.toLowerCase()] ?? null } };
+      }
+      return { ok: true, status: 200, text: async () => '{}', headers: { get: () => null } };
+    };
+    fn.calls = calls;
+    return fn;
+  }
+  // workitemsbatch echo: returns every requested id except those in `drop`, SHUFFLED (reversed).
+  const batchEcho = (drop = []) => ({
+    method: 'POST', match: '/wit/workitemsbatch',
+    respond: (call) => {
+      const b = JSON.parse(call.body);
+      return { json: { count: b.ids.length, value: b.ids.filter((i) => !drop.includes(i)).reverse().map((id) => ({ id, fields: { 'System.Title': `T${id}` } })) } };
+    },
+  });
+
+  await test('getWorkItems: ceil(n/200) POST workitemsbatch requests for 1/200/201/450 ids; input order kept', async () => {
+    for (const [n, reqs] of [[1, 1], [200, 1], [201, 2], [450, 3]]) {
+      const ids = Array.from({ length: n }, (_, i) => 1000 + n - i); // descending: order is the caller's, not sorted
+      const f = fake2([batchEcho()]);
+      const res = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems(ids, { fields: ['System.Title'] });
+      assert.strictEqual(f.calls.length, reqs, `${n} ids`);
+      assert.ok(f.calls.every((c) => c.method === 'POST' && c.url.startsWith(`${BASE}/${PROJ}/_apis/wit/workitemsbatch?api-version=7.1`)));
+      assert.ok(f.calls.every((c) => JSON.parse(c.body).ids.length <= 200));
+      assert.deepStrictEqual(res.items.map((w) => w.id), ids);
+      assert.deepStrictEqual(res.missing, []);
+    }
+  });
+
+  await test('getWorkItems: body carries ids (numbers), fields, errorPolicy omit; missing ids listed, never dropped', async () => {
+    const f = fake2([batchEcho([12])]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems(['11', 12, 13], { fields: ['System.Title', 'System.State'] });
+    assert.deepStrictEqual(JSON.parse(f.calls[0].body), { ids: [11, 12, 13], fields: ['System.Title', 'System.State'], errorPolicy: 'omit' });
+    assert.deepStrictEqual(res.items.map((w) => w.id), [11, 13]);
+    assert.deepStrictEqual(res.missing, [12]);
+    const f2 = fake2([{ method: 'POST', match: '/workitemsbatch', json: { value: [{ id: 11, fields: {} }, null] } }]);
+    const r2 = await createAdapter({ cwd: proj(), fetch: f2 }).getWorkItems([11, 12]);
+    assert.ok(!('fields' in JSON.parse(f2.calls[0].body)), 'no fields -> the key is omitted');
+    assert.deepStrictEqual(r2.missing, [12], 'a null slot (errorPolicy omit) counts as missing');
+  });
+
+  await test('getWorkItems: a non-integer id is a config error (exit 2) before any request; [] reads nothing', async () => {
+    const f = fake2([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await assert.rejects(a.getWorkItems([1, 'PROJ-1']), (e) => e.exitCode === 2 && /PROJ-1/.test(e.message));
+    assert.deepStrictEqual(await a.getWorkItems([]), { items: [], missing: [] });
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('getWorkItem {fields}: a fields= param; combining fields with expand is refused (exit 2, zero requests)', async () => {
+    const f = fake2([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await a.getWorkItem(42, { fields: ['System.Title', 'System.Description'] });
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/wit/workitems/42?fields=System.Title%2CSystem.Description&api-version=7.1`);
+    await assert.rejects(a.getWorkItem(42, { fields: ['System.Title'], expand: 'all' }), (e) => e.exitCode === 2 && /fields.*expand|expand.*fields/.test(e.message));
+    assert.strictEqual(f.calls.length, 1);
+    await a.getWorkItem(42);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/wit/workitems/42?api-version=7.1`, 'no option -> the URL is unchanged');
+  });
+
+  await test('query {top}: $top only when passed; the request bytes are otherwise unchanged', async () => {
+    const f = fake2([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await a.query('SELECT [System.Id] FROM workitems');
+    await a.query('SELECT [System.Id] FROM workitems', { top: 50 });
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/wit/wiql?api-version=7.1`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/wit/wiql?$top=50&api-version=7.1`);
+    assert.strictEqual(f.calls[0].body, f.calls[1].body);
+  });
+
+  const COMMENT = (id, name, date, text) => ({ id, createdBy: { id: `guid-${name}`, displayName: name, uniqueName: `${name.toLowerCase()}@example.com` }, createdDate: date, text });
+  await test('listComments: comments API 7.1-preview.4, order=asc, continuationToken followed; HTML -> plain; oldest first', async () => {
+    const f = fake2([{ match: '/wit/workItems/42/comments', respond: (call, n) => (n === 1
+      ? { json: { count: 2, continuationToken: 'tok-2', comments: [COMMENT(1, 'Ana', '2026-01-01T10:00:00Z', '<div>first &amp; &lt;b&gt;</div>'), COMMENT(2, 'Ben', '2026-01-02T10:00:00Z', 'second<br>line')] } }
+      : { json: { count: 1, comments: [COMMENT(3, 'Ana', '2026-01-03T10:00:00Z', '<div>مرحبا</div>')] } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listComments(42);
+    assert.strictEqual(f.calls.length, 2);
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/wit/workItems/42/comments?order=asc&api-version=7.1-preview.4`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/wit/workItems/42/comments?order=asc&continuationToken=tok-2&api-version=7.1-preview.4`);
+    assert.deepStrictEqual(res.map((c) => c.text), ['first & <b>', 'second\nline', 'مرحبا']);
+    assert.deepStrictEqual(res[0], { id: 1, author: 'Ana', date: '2026-01-01T10:00:00Z', text: 'first & <b>', user: { id: 'guid-Ana', displayName: 'Ana', email: 'ana@example.com' } });
+  });
+
+  await test('listComments: a repeated continuation token fails closed instead of looping', async () => {
+    const f = fake2([{ match: '/comments', json: { comments: [], continuationToken: 'same' } }]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listComments(42), (e) => e instanceof TrackerError && /continuation/.test(e.message));
+    assert.strictEqual(f.calls.length, 2);
+  });
+
+  const ITERS = { value: [
+    { id: 'g1', name: 'Sprint 8', path: 'Sample Project\\Sprint 8', attributes: { startDate: '2026-01-01T00:00:00Z', finishDate: '2026-01-14T00:00:00Z', timeFrame: 'past' } },
+    { id: 'g2', name: 'Sprint 9', path: 'Sample Project\\Sprint 9', attributes: { startDate: '2026-01-15T00:00:00Z', finishDate: '2026-01-28T00:00:00Z', timeFrame: 'current' } },
+    { id: 'g3', name: 'Sprint 10', path: 'Sample Project\\Sprint 10', attributes: { timeFrame: 'future' } },
+  ] };
+  await test('listIterations: ONE team-scoped request; neutral rows; client-side timeframe filter', async () => {
+    const f = fake2([{ match: '/_apis/work/teamsettings/iterations', json: ITERS }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const all = await a.listIterations({ team: 'Sample Team' });
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/Sample%20Team/_apis/work/teamsettings/iterations?api-version=7.1`);
+    assert.deepStrictEqual(all[1], { id: 'g2', name: 'Sprint 9', path: 'Sample Project\\Sprint 9', startDate: '2026-01-15T00:00:00Z', finishDate: '2026-01-28T00:00:00Z', timeFrame: 'current' });
+    assert.deepStrictEqual(all[2], { id: 'g3', name: 'Sprint 10', path: 'Sample Project\\Sprint 10', startDate: null, finishDate: null, timeFrame: 'future' });
+    assert.deepStrictEqual((await a.listIterations({ team: 'Sample Team', timeframe: 'future' })).map((i) => i.name), ['Sprint 10']);
+    assert.deepStrictEqual((await a.listIterations({ team: 'Sample Team', timeframe: 'past' })).map((i) => i.name), ['Sprint 8']);
+    assert.strictEqual(f.calls.length, 3, 'one request per call');
+  });
+
+  await test('listIterations: no team -> exit-2 error naming azure.team, ZERO requests; unknown timeframe refused', async () => {
+    const f = fake2([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await assert.rejects(a.listIterations({}), (e) => e.exitCode === 2 && /azure\.team/.test(e.message));
+    await assert.rejects(a.listIterations({ team: 'T', timeframe: 'soon' }), (e) => e.exitCode === 2 && /current, future, past, all/.test(e.message));
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('listChildRefs: ONE project-scoped WIQL on [System.Parent] IN (...) whatever the parent count', async () => {
+    const f = fake2([{ method: 'POST', match: '/wit/wiql', json: { workItems: [{ id: 501 }, { id: 502 }] } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    assert.deepStrictEqual(await a.listChildRefs([42, '43']), [501, 502]);
+    assert.strictEqual(f.calls.length, 1);
+    assert.strictEqual(JSON.parse(f.calls[0].body).query,
+      'SELECT [System.Id] FROM workitems WHERE [System.Parent] IN (42, 43) AND [System.TeamProject] = @project ORDER BY [System.Id]');
+    await assert.rejects(a.listChildRefs(['x']), (e) => e.exitCode === 2);
+    assert.deepStrictEqual(await a.listChildRefs([]), []);
+    assert.strictEqual(f.calls.length, 1);
+  });
+
+  const IDENT = { count: 1, value: [{ id: 'guid-po', providerDisplayName: 'Pat Owner', properties: { Mail: { $type: 'System.String', $value: 'po@example.com' } } }] };
+  await test('findIdentity: identity host derived from the org URL; same Authorization header; neutral rows', async () => {
+    for (const [org, host] of [
+      ['exampleorg', 'https://vssps.dev.azure.com/exampleorg'],
+      ['https://exampleorg.visualstudio.com', 'https://exampleorg.vssps.visualstudio.com'],
+    ]) {
+      const f = fake2([{ match: '/_apis/identities', json: IDENT }]);
+      const res = await createAdapter({ cwd: proj({ org }), fetch: f }).findIdentity('po@example.com');
+      assert.strictEqual(f.calls[0].url, `${host}/_apis/identities?searchFilter=General&filterValue=po%40example.com&queryMembership=None&api-version=7.1`);
+      assert.strictEqual(f.calls[0].headers.Authorization, `Basic ${SENTINEL_B64}`);
+      assert.deepStrictEqual(res, [{ id: 'guid-po', displayName: 'Pat Owner', email: 'po@example.com' }]);
+    }
+  });
+
+  await test('findIdentity: any other host refuses "mention by email" (exit 2, zero requests); 401 names the Identity (Read) scope', async () => {
+    const f = fake2([]);
+    await assert.rejects(createAdapter({ cwd: proj({ org: 'https://tfs.example.com/Collection' }), fetch: f }).findIdentity('a@example.com'),
+      (e) => e.exitCode === 2 && /mention by email/.test(e.message));
+    assert.strictEqual(f.calls.length, 0);
+    const f2 = fake2([{ match: '/_apis/identities', status: 401, text: 'no' }]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f2 }).findIdentity('a@example.com'),
+      (e) => e instanceof TrackerError && e.status === 401 && /Identity \(Read\)/.test(e.message) && Boolean(e.credentialHint));
+    assert.strictEqual(f2.calls.length, 1, 'never retried');
+  });
+
+  await test('listSuites follows x-ms-continuationtoken; the first request URL is unchanged', async () => {
+    const f = fake2([{ match: '/testplan/Plans/3/suites', respond: (call, n) => (n === 1
+      ? { json: { value: [{ id: 4, name: 'A' }] }, headers: { 'x-ms-continuationtoken': 'c2' } }
+      : { json: { value: [{ id: 5, name: 'B' }] } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listSuites(3);
+    assert.deepStrictEqual(res.map((s) => s.id), [4, 5]);
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/testplan/Plans/3/suites?api-version=7.1`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/testplan/Plans/3/suites?continuationToken=c2&api-version=7.1`);
+    const plain = fakeFetch([{ match: '/suites', json: { value: [{ id: 4 }] } }]);
+    assert.strictEqual((await createAdapter({ cwd: proj(), fetch: plain }).listSuites(3)).length, 1, 'a response without headers is one page');
+  });
+
+  await test('new capability flags: batchRead, sprints, relations child/related', async () => {
+    const c = createAdapter({ cwd: proj(), fetch: fakeFetch([]) }).capabilities;
+    assert.strictEqual(c.batchRead, true);
+    assert.strictEqual(c.sprints, true);
+    assert.deepStrictEqual(c.relations, { parent: true, child: true, related: true, testedBy: true, attachedFile: true });
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
