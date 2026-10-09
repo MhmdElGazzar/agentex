@@ -138,6 +138,19 @@ Honest capability gaps, declared by the adapter's capability flags — each one 
 Everything else — one consolidated approval per write batch, fail-closed validation, exact
 per-write ledgers, secrets never printed — is identical to the ADO flows.
 
+Two gaps that are not capability flags, known as of 0.23.0:
+
+- **The write path has not run against a live Jira site yet.** Every Jira flow is covered
+  by offline tests, and the reads were checked live, but creating sub-tasks, test artifacts,
+  and bugs on a real site has not. Read the approval screen with that in mind, and check
+  the first run's ledger on the board.
+- **A rejected token can look like an empty project.** Jira answers a wrong email/token pair
+  as an anonymous user. A missing issue now reports the credentials (see
+  [Troubleshooting](#troubleshooting)), but a search can still come back empty instead of
+  failing. So "no story in an open sprint" or "no duplicates found" can mean your
+  credentials were rejected. If you see one you don't expect, check `JIRA_EMAIL` and
+  `JIRA_API_TOKEN` first.
+
 ## Troubleshooting
 
 - **"Jira is not fully configured — missing: jira.site / jira.project"** — fill the `jira`
