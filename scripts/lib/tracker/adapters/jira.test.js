@@ -14,7 +14,7 @@ async function test(name, fn) {
   catch (e) { failures.push(name); console.error(`  FAIL - ${name}: ${e.message}`); }
 }
 
-const SENTINEL_TOKEN = 'SENTINEL-JIRA-TOKEN-a1b2c3d4e5f60718293a4b5c';
+const SENTINEL_TOKEN = 'SENTINEL-JIRA-TOKEN-a1b2c3d4e5f60718293a4b5c'; // ggignore — synthetic test sentinel, not a credential
 const SENTINEL_EMAIL = 'sentinel.qa@example.com';
 const SENTINEL_B64 = Buffer.from(`${SENTINEL_EMAIL}:${SENTINEL_TOKEN}`).toString('base64');
 
