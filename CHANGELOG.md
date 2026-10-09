@@ -140,11 +140,11 @@ All notable changes to AgenTeX are documented here.
   is byte-identical on both trackers.
 
 ### Credits
-- The Jira operation semantics and field mappings were harvested from community **PR #4** ([Testing] task → Sub-task with parent;
+- The Jira operation semantics and field mappings were harvested from community **PR #4** by @mabdel130 ([Testing] task → Sub-task with parent;
   `Activity=Testing` → label `testing`; `OriginalEstimate`/`RemainingWork` →
   `timetracking.originalEstimate`/`remainingEstimate`; Story Points as a site-specific
   custom field confirmed once per project, never guessed; the configurable bug→story link
-  type; the `.agentex/test-template.md` Jira-section pin) and **PR #11** (verification
+  type; the `.agentex/test-template.md` Jira-section pin) and **PR #11** by @YoussefAbdellah2023 (verification
   that `parent` works only for sub-task types; the sub-task-with-text-steps artifact model
   offered by `/design-test`'s artifact ask). Their acli/CLI transport approach was not
   adopted (CLI dependency, no attachment upload, no custom-field writes) — no code was
