@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { run } = require('./bug-report.js');
+const qaRecords = require('../../../scripts/qa-records.js');
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -1435,6 +1436,45 @@ function projectBugRoutes(board, { wiqlStatus } = {}) {
     assert.strictEqual(stale.code, 2, JSON.stringify(stale.out));
     assert.strictEqual(stale.out.blocked[0].reason, 'duplicate-review-stale');
     assert.ok(stale.out.duplicateCandidates.some((candidate) => candidate.id === 9200));
+  });
+
+  await test('watchlist: an open entry describing the defect is surfaced on context and the approval', async () => {
+    const dir = project();
+    const parked = await qaRecords.run(['append', '--kind', 'pendingRechecks', '--ref', '321',
+      '--text', 'Re-check checkout: clicking Pay showed an HTTP 500 error page; fix deployed to QA'], { cwd: dir });
+    assert.strictEqual(parked.code, 0, JSON.stringify(parked.out));
+    const unrelated = await qaRecords.run(['append', '--kind', 'envIssues',
+      '--text', 'Staging SMTP relay rejects outbound mail'], { cwd: dir });
+    assert.strictEqual(unrelated.code, 0, JSON.stringify(unrelated.out));
+    const fetch = fakeFetch();
+    const prepared = await prepare(dir, fetch, { action: 'skip' });
+    assert.strictEqual(prepared.code, 0, JSON.stringify(prepared.out));
+    for (const matches of [prepared.review.watchlistMatches, prepared.out.approval.watchlistMatches]) {
+      assert.deepStrictEqual(matches.map((m) => m.id), [parked.out.id]);
+      assert.strictEqual(matches[0].kind, 'pendingRechecks');
+      assert.strictEqual(matches[0].file, 'qa-watchlist/awaiting-retest.md');
+      assert.strictEqual(matches[0].sameStory, true);
+      assert.ok(matches[0].matchedTerms.includes('500'), JSON.stringify(matches[0]));
+    }
+    assert.strictEqual(actualWrites(fetch.calls).length, 0);
+  });
+
+  await test('watchlist: no watchlist files means no matches and no block', async () => {
+    const dir = project(); const fetch = fakeFetch();
+    const reviewed = await review(dir, fetch, intent(dir));
+    assert.strictEqual(reviewed.code, 0, JSON.stringify(reviewed.out));
+    assert.strictEqual(Object.prototype.hasOwnProperty.call(reviewed.out, 'watchlistMatches'), false);
+    assert.strictEqual(fs.existsSync(path.join(dir, 'qa-watchlist')), false);
+  });
+
+  await test('watchlist: a watchlist file that cannot be read fails the check closed', async () => {
+    const dir = project();
+    fs.mkdirSync(path.join(dir, 'qa-watchlist', 'awaiting-answers.md'), { recursive: true });
+    const fetch = fakeFetch();
+    const reviewed = await review(dir, fetch, intent(dir));
+    assert.strictEqual(reviewed.code, 2, JSON.stringify(reviewed.out));
+    assert.strictEqual(reviewed.out.blocked[0].reason, 'watchlist-unreadable');
+    assert.strictEqual(actualWrites(fetch.calls).length, 0);
   });
 
   await test('a Jira-configured project is refused before any request', async () => {

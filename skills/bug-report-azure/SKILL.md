@@ -178,6 +178,22 @@ on the approval screen: the defect may already be filed under a different story.
 that cannot complete blocks the filing (`dup-check-failed`), like any duplicate-check
 failure. An edit to a project Bug that is not shortlisted does not make the review stale.
 
+`watchlistMatches` (present only when there are any) lists open **QA watchlist** entries
+(`qa-watchlist/`, read through `scripts/qa-records.js`) that share terms with this defect or
+are recorded against the same story (`sameStory: true`). They are not Bugs, and they are
+not part of the review receipt, but each one changes what the user should decide:
+
+| `kind` | What the match means for this filing |
+|---|---|
+| `pendingRechecks` | A fix was already expected here. The defect may be a failed retest of known work, not a new Bug. |
+| `pendingQuestions` | The behaviour is waiting on a requirement answer. It may not be a defect yet. |
+| `envIssues` | A known environment problem may be the cause. |
+| `deferredConditions` | The condition was deferred on purpose, with a recorded reason. |
+
+Show every match on the approval screen with its kind, file, and text, and let the user
+decide. A watchlist file that exists but cannot be read blocks the filing
+(`watchlist-unreadable`). No watchlist files means no matches.
+
 The Top-25 view is the default semantic decision surface unless additional normalized
 exact-title candidates are pinned. Closed and Resolved Bugs remain eligible, and state is
 not a ranking signal. A truncated list or nonzero omitted count alone is not a reason to
@@ -247,7 +263,9 @@ Render each successful result's `approval` object, including:
 - reproduction content;
 - ATTACH/REJECT evidence with reasons/warnings;
 - the compact duplicate-review receipt and decision, plus any project-wide exact-title
-  exception candidates (never the full parent candidate list);
+  exception candidates (never the full parent candidate list), and any project-wide
+  candidate the user should weigh, named with its parent story;
+- the approval's `watchlistMatches`, each with its kind and text;
 - test-case decision;
 - every logical effect in `writePlan`, in order;
 - an explicit statement that nothing has been written to Azure yet.

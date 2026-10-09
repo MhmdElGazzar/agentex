@@ -29,6 +29,7 @@ const fieldCache = require(path.join(TRACKER_LIB, 'cache.js'));
 const createBug = require('./create-bug.js');
 const { checkFiles } = require('./check-image.js');
 const bugCache = require('./bug-cache.js');
+const qaRecords = require(path.join(__dirname, '..', '..', '..', 'scripts', 'qa-records.js'));
 const {
   rankDuplicateCandidates,
   projectShortlist,
@@ -53,6 +54,7 @@ const DUPLICATE_CANDIDATE_FIELDS = Object.freeze([
   FIELD_REFS.reproSteps,
 ]);
 const DUPLICATE_FALLBACK_CONCURRENCY = 8;
+const WATCHLIST_MATCH_LIMIT = 10;
 
 const FIELD_NAMES = Object.freeze({
   [FIELD_REFS.workItemType]: 'work item type',
@@ -636,11 +638,67 @@ async function loadRuntime(cwd, fetch, { parentStoryId, refreshFields = false } 
     });
   }
 
+  // The QA watchlist (scripts/qa-records.js): open items parked on someone outside QA.
+  // Local and lazily created — no files is zero entries, not an error; a file that
+  // exists but cannot be read blocks, so a parked item is never silently missed.
+  let watchlist = [];
+  try {
+    watchlist = await openWatchlistEntries(cwd);
+  } catch (e) {
+    blocked.push({
+      reason: 'watchlist-unreadable',
+      message: `the QA watchlist could not be read — refusing to file blind (fails closed): ${safeFailureMessage(e)}`,
+    });
+  }
+
   return {
     adapter, cacheInfo, fieldMap, blocked, template, templateFields,
     templateDefaults: templateDefaults(templateFields), parent, parentFields,
     duplicateCandidates: [...parentCandidates, ...projectCandidates],
+    watchlist,
   };
+}
+
+async function openWatchlistEntries(cwd) {
+  const { code, out } = await qaRecords.run(['list', '--kind', 'all', '--status', 'open'], { cwd });
+  if (code !== 0) throw new Error((out && out.error && out.error.message) || 'qa-records.js list failed');
+  return (out && out.entries) || [];
+}
+
+// Open watchlist entries that may describe this same defect: ranked against the intent
+// with the duplicate ranker, kept when they share at least two informative terms or are
+// recorded against the selected parent story. Informational — never a verdict, never
+// part of the review receipt.
+function watchlistMatches(runtime, intent) {
+  const entries = runtime.watchlist || [];
+  if (!entries.length) return [];
+  const parentId = runtime.parent && positiveId(runtime.parent.id);
+  const documents = entries.map((entry) => ({
+    id: entry.id,
+    title: String(entry.text || '').split('\n')[0],
+    reproductionSummary: entry.text || '',
+    entry,
+  }));
+  const { ranked } = rankDuplicateCandidates(intent, documents);
+  return ranked
+    .filter(({ candidate, match }) => match.uniqueMatchedTermCount >= 2 ||
+      (parentId && positiveId(candidate.entry.ref) === parentId))
+    .slice(0, WATCHLIST_MATCH_LIMIT)
+    .map(({ candidate, match }) => ({
+      id: candidate.entry.id,
+      kind: candidate.entry.kind,
+      file: candidate.entry.file,
+      ref: candidate.entry.ref,
+      createdAt: candidate.entry.createdAt,
+      text: candidate.entry.text,
+      sameStory: Boolean(parentId && positiveId(candidate.entry.ref) === parentId),
+      matchedTerms: [...new Set([...match.matchedTitleTerms, ...match.matchedReproductionTerms])].slice(0, 8),
+    }));
+}
+
+function watchlistOutput(runtime, intent) {
+  const matches = watchlistMatches(runtime, intent);
+  return matches.length ? { watchlistMatches: matches } : {};
 }
 
 // A mirrored Bug as a review candidate. `source: 'project'` marks it as found outside
@@ -1427,6 +1485,7 @@ async function prepare(argv, opts) {
     },
     duplicateReview: reviewReceipt,
     ...(exactTitleCandidates.length ? { exactTitleCandidates } : {}),
+    ...watchlistOutput(runtime, intent),
     duplicateDecision: normalized.flags.allowDuplicate ? 'file despite returned candidates' : 'no exception requested',
     testCase: testCaseSummary,
     writePlan,
@@ -1772,6 +1831,7 @@ async function run(argv, {
           mode: 'context',
           ...context,
           ...duplicateOutput,
+          ...(intent ? watchlistOutput(runtime, intent) : {}),
           ...(args['emit-intent'] ? { intentTemplate: buildIntentTemplate(runtime) } : {}),
           nothingWritten: true,
         },
