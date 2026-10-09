@@ -63,8 +63,10 @@ Close the retest stage only when all three hold:
 
 - no linked bug is open (every linked bug's state is in `terminalStates`);
 - no test outcome on the story's cases is Blocked;
-- no pending question on the story is still awaiting a reply (the
-  `qaRecords.pendingQuestions` record).
+- no pending question on the story is still awaiting a reply: the QA watchlist's
+  `pendingQuestions` kind has no open entry for it
+  (`${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js list --kind pendingQuestions --ref <story>`;
+  see `qa-records.md`).
 
 If any fails, report which one and leave the stage open.
 
