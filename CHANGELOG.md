@@ -59,6 +59,21 @@ All notable changes to AgenTeX are documented here.
   explicitly in `skills/mobile-testing/SKILL.md` and `agents/mobile-qa-executor.md` — a run's
   device footprint never goes beyond installing/launching/exercising/closing the app under test.
 
+- **Bug filing checks the whole project for duplicates, not only the selected story.**
+  `bug-report-azure` keeps a local copy of the project's recent Bugs
+  (`.agentex/cache/tracker-bugs-ado.json`, gitignored) and ranks the defect against it
+  together with the parent story's Bugs. Each filing refreshes the copy with one read of
+  the Bugs changed since the last sync, so a Bug filed a minute ago counts. A match under
+  another story is marked `source: "project"` with its `parentId`. Scope: the project
+  (under `azure.areaPath` when set), Bugs changed in the last `azure.bugCacheDays` days
+  (default 365; `0` turns it off). A sync that cannot complete blocks the filing, like any
+  duplicate-check failure.
+- **Bug filing shows matching QA watchlist entries.** Open `qa-watchlist/` entries (a fix
+  awaiting retest, a question awaiting an answer, an environment blocker, a deferred
+  condition) that match the defect or sit on the same story appear as `watchlistMatches`
+  on the approval screen, so a parked item is not filed as a new Bug by mistake. A
+  watchlist file that cannot be read blocks the filing.
+
 ### Changed
 - **`bug-report-azure` rebuilt around one agent-facing operation
   (`skills/bug-report-azure/scripts/bug-report.js context/prepare/execute`).** The agent no
@@ -76,6 +91,13 @@ All notable changes to AgenTeX are documented here.
   `discipline-bug-filing-early-bundle`, `discipline-bug-filing-efficient-flow`,
   `discipline-bug-filing-fallback-trigger`) alongside updated fixtures/prompts for the
   existing `discipline-bug-filing-*` cases.
+- **On Jira, bug filing keeps the 0.23.0 flow.** The rebuilt `bug-report.js` files Azure
+  DevOps Bugs only and refuses a Jira config before any request (`unsupported-tracker`);
+  the Jira path (`create-bug.js`) is unchanged and documented in
+  `skills/bug-report-azure/references/jira-filing.md`. Annotated screenshots (attach the
+  annotated copy followed by the raw one) carry over to the rebuilt flow. Candidate
+  discovery reads through the shared `getWorkItems` batch read, and every candidate now
+  carries its web URL.
 - **Azure DevOps comments are supported** by `tracker.js comment` (the comments API;
   previously refused upfront), and an ADO `search` whose WIQL names no project is now
   scoped to the configured project.
@@ -129,6 +151,11 @@ All notable changes to AgenTeX are documented here.
   renderer and lacked flaky / warning / view-mismatch statuses, timing, evidence and defects,
   so the ideas were rebuilt inside `make_html_report.js` instead. Closed with credit, not
   merged.
+- The rebuilt bug filing flow (`bug-report.js` context/prepare/execute, the
+  deterministic duplicate ranking in `duplicate-ranking.js`, and its tests and evals) is
+  community **PR #19** by @Hager-Helmy, carried in with her authorship. Its batch read was
+  folded into the shared `getWorkItems`, and the project-wide Bug mirror and QA watchlist
+  matches were added on top of her ranking.
 
 ## [0.23.0] — 2026-10-09
 ### Added

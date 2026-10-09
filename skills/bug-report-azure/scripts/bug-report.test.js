@@ -9,6 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { run } = require('./bug-report.js');
 const qaRecords = require('../../../scripts/qa-records.js');
+const { STRUCTURED_DEFAULTS } = require('../../../scripts/lib/project_config.js');
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -1452,7 +1453,7 @@ function projectBugRoutes(board, { wiqlStatus } = {}) {
     for (const matches of [prepared.review.watchlistMatches, prepared.out.approval.watchlistMatches]) {
       assert.deepStrictEqual(matches.map((m) => m.id), [parked.out.id]);
       assert.strictEqual(matches[0].kind, 'pendingRechecks');
-      assert.strictEqual(matches[0].file, 'qa-watchlist/awaiting-retest.md');
+      assert.strictEqual(matches[0].file, STRUCTURED_DEFAULTS.qaRecords.pendingRechecks);
       assert.strictEqual(matches[0].sameStory, true);
       assert.ok(matches[0].matchedTerms.includes('500'), JSON.stringify(matches[0]));
     }
@@ -1464,12 +1465,12 @@ function projectBugRoutes(board, { wiqlStatus } = {}) {
     const reviewed = await review(dir, fetch, intent(dir));
     assert.strictEqual(reviewed.code, 0, JSON.stringify(reviewed.out));
     assert.strictEqual(Object.prototype.hasOwnProperty.call(reviewed.out, 'watchlistMatches'), false);
-    assert.strictEqual(fs.existsSync(path.join(dir, 'qa-watchlist')), false);
+    assert.strictEqual(fs.existsSync(path.join(dir, path.dirname(STRUCTURED_DEFAULTS.qaRecords.pendingQuestions))), false);
   });
 
   await test('watchlist: a watchlist file that cannot be read fails the check closed', async () => {
     const dir = project();
-    fs.mkdirSync(path.join(dir, 'qa-watchlist', 'awaiting-answers.md'), { recursive: true });
+    fs.mkdirSync(path.join(dir, STRUCTURED_DEFAULTS.qaRecords.pendingQuestions), { recursive: true });
     const fetch = fakeFetch();
     const reviewed = await review(dir, fetch, intent(dir));
     assert.strictEqual(reviewed.code, 2, JSON.stringify(reviewed.out));
