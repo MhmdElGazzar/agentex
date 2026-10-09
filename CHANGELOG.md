@@ -2,6 +2,19 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **Bug screenshots are attached annotated.** `bug-report-azure` now uploads, ahead of each
+  raw screenshot, a copy with a red box and label on the defect (optionally a green one on
+  something correct) and a one-line summary banner above it, drawn by the new
+  `skills/bug-report-azure/scripts/annotate-image.js` through the project's playwright-cli.
+  The raw capture is still attached beside it, since the overlay can hide what is under it.
+  Both files, and the text the copy adds, are what the one approval lists and uploads, on
+  Azure DevOps and Jira alike; `create-bug.js` is unchanged. Without playwright-cli, or when a box is still off after
+  two fixes, the raw screenshot is attached and the consolidated screen says why —
+  annotation never blocks a filing or adds a question. Covered by
+  `skills/bug-report-azure/scripts/annotate-image.test.js`.
+
 ## [0.23.0] — 2026-10-09
 ### Added
 - **Jira Cloud tracker support — every tracker flow now runs on Azure DevOps OR Jira
