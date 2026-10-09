@@ -45,6 +45,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const trackerLib = require(path.join(__dirname, 'lib', 'tracker', 'index.js'));
 const { defaultRegistry } = require(path.join(__dirname, 'lib', 'tracker', 'ops', 'index.js'));
+const { WritePlan } = require(path.join(__dirname, 'lib', 'tracker', 'ledger.js'));
 
 const { TrackerError } = trackerLib;
 
@@ -117,6 +118,23 @@ function unsupported(mode, op, flag, adapter) {
   };
 }
 
+// THE one discussion path shared by `comment` and `update --discussion`:
+// resolve the mention (free reads) -> render the provider's exact body ->
+// one addComment. The dry run and --execute run this same code, so the plan
+// shows exactly the body that is written. An unresolvable or ambiguous
+// mention returns { blocked } — nothing is written and a bare "@text" is
+// never posted in its place.
+async function postDiscussion(adapter, strategy, id, text, who) {
+  let mention = null;
+  if (who !== undefined) {
+    const r = await strategy.resolveMention(adapter, id, String(who));
+    if (r.blocked) return { blocked: r.blocked };
+    mention = r.mention;
+  }
+  const body = strategy.renderDiscussion(text, mention);
+  return { mention, body, send: (execute) => adapter.addComment(id, body, { execute }) };
+}
+
 // The --out emitter (non-ASCII never travels through a pipe): the payload is
 // written as UTF-8 JSON to <file>.tmp and renamed into place (parent folders
 // created); the stdout line carries the absolute path, the byte count and
@@ -159,6 +177,16 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
   };
   // A read's result: the payload on stdout, or written to --out with a
   // counts-only stdout line.
+  // --<name> "<text>" or --<name>-file <path> (UTF-8): { text } | { error } | null.
+  const textArg = (name) => {
+    const inline = args[name]; const file = args[`${name}-file`];
+    if (inline === undefined && file === undefined) return null;
+    if (inline !== undefined && file !== undefined) return { error: `pass --${name} or --${name}-file, not both. ${USAGE}` };
+    if (inline === true || file === true) return { error: `--${inline === true ? name : `${name}-file`} needs a value. ${USAGE}` };
+    if (inline !== undefined) return { text: String(inline) };
+    try { return { text: fs.readFileSync(path.resolve(cwd, String(file)), 'utf8') }; }
+    catch (e) { return { error: `could not read --${name}-file: ${e.message}` }; }
+  };
   const deliver = (payload, counts) => {
     if (args.out === undefined) return { code: 0, out: payload };
     return { code: 0, out: emitToFile(cwd, args.out, payload, counts) };
@@ -288,19 +316,54 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
     }
 
     if (cmd === 'update') {
-      if (!args.id || !args.spec) return bad(mode, `--id and --spec are required. ${USAGE}`);
-      let spec;
-      try { spec = readSpec(args.spec); }
-      catch (e) { return bad(mode, `could not read spec: ${e.message}`); }
-      const { adapter, strategy } = open();
-      const blocked = strategy.refusedUpdateFields(spec);
-      if (blocked.length) return { code: 2, out: { ok: false, mode, blocked } };
-      if (!execute) {
-        const d = await adapter.updateWorkItem(args.id, spec, { execute: false });
-        return { code: 0, out: { ok: true, mode, plan: [planEntry('update', d)], note: PLAN_NOTE } };
+      const disc = textArg('discussion');
+      if (!args.id || (!args.spec && !disc)) return bad(mode, `--id and --spec are required. ${USAGE}`);
+      if (disc && disc.error) return bad(mode, disc.error);
+      if (args.mention !== undefined && !disc) return bad(mode, `--mention goes with --discussion / --discussion-file. ${USAGE}`);
+      if (args.mention === true) return bad(mode, `--mention needs a value (createdBy, assignedTo, an email, or a display name). ${USAGE}`);
+      let spec = null;
+      if (args.spec) {
+        try { spec = readSpec(args.spec); }
+        catch (e) { return bad(mode, `could not read spec: ${e.message}`); }
       }
-      const result = await adapter.updateWorkItem(args.id, spec, { execute: true });
-      return { code: 0, out: { ok: true, mode, result } };
+      const { adapter, strategy } = open();
+      if (spec) {
+        const blocked = strategy.refusedUpdateFields(spec);
+        if (blocked.length) return { code: 2, out: { ok: false, mode, blocked } };
+      }
+      if (!disc) {
+        if (!execute) {
+          const d = await adapter.updateWorkItem(args.id, spec, { execute: false });
+          return { code: 0, out: { ok: true, mode, plan: [planEntry('update', d)], note: PLAN_NOTE } };
+        }
+        const result = await adapter.updateWorkItem(args.id, spec, { execute: true });
+        return { code: 0, out: { ok: true, mode, result } };
+      }
+      if (!adapter.capabilities.comments || typeof adapter.addComment !== 'function') return unsupported(mode, 'update --discussion', 'comments', adapter);
+      if (args.mention !== undefined && !adapter.capabilities.mentions) return unsupported(mode, '--mention', 'mentions', adapter);
+      const post = await postDiscussion(adapter, strategy, args.id, disc.text, args.mention);
+      if (post.blocked) return { code: 2, out: { ok: false, mode, blocked: [post.blocked] } };
+      const withMention = post.mention ? { mention: post.mention } : {};
+      if (!execute) {
+        const plan = [];
+        if (spec) plan.push(planEntry('update-fields', await adapter.updateWorkItem(args.id, spec, { execute: false })));
+        plan.push(planEntry('post-discussion', await post.send(false)));
+        return { code: 0, out: { ok: true, mode, plan, ...withMention, note: PLAN_NOTE } };
+      }
+      const intents = [];
+      if (spec) {
+        intents.push({
+          step: 'update-fields', describe: `update the fields of ${args.id} (the request shown in the plan)`,
+          run: async () => { const r = await adapter.updateWorkItem(args.id, spec, { execute: true }); return { id: r.id, url: r.url }; },
+        });
+      }
+      intents.push({
+        step: 'post-discussion', describe: `post the discussion comment on ${args.id} (the exact body shown in the plan)`,
+        run: async () => { const r = await post.send(true); return { id: r && r.id }; },
+      });
+      const ledger = await new WritePlan(intents).execute();
+      const allDone = ledger.every((l) => l.status === 'done');
+      return { code: allDone ? 0 : 1, out: { ok: allDone, mode, ledger, ...withMention } };
     }
 
     if (cmd === 'transition') {
@@ -317,23 +380,21 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
     }
 
     if (cmd === 'comment') {
-      if (!args.id || !args.body) return bad(mode, `--id and --body are required. ${USAGE}`);
+      const disc = textArg('body');
+      if (!args.id || !disc) return bad(mode, `--id and --body are required. ${USAGE}`);
+      if (disc.error) return bad(mode, disc.error);
+      if (args.mention === true) return bad(mode, `--mention needs a value (createdBy, assignedTo, an email, or a display name). ${USAGE}`);
       const { adapter, strategy } = open();
-      if (!adapter.capabilities.comments || typeof adapter.addComment !== 'function') {
-        return {
-          code: 2,
-          out: { ok: false, mode, blocked: [{ reason: 'unsupported-op', message: `comment is not supported on this tracker (capabilities.comments: ${adapter.capabilities.comments ?? 'undefined'}) — no comment API is wired for provider "${adapter.name}"` }] },
-        };
-      }
-      // The provider's exact body (encoding, rich text) is rendered here, so
-      // the dry run shows precisely what --execute sends.
-      const body = strategy.renderDiscussion(args.body, null);
+      if (!adapter.capabilities.comments || typeof adapter.addComment !== 'function') return unsupported(mode, 'comment', 'comments', adapter);
+      if (args.mention !== undefined && !adapter.capabilities.mentions) return unsupported(mode, '--mention', 'mentions', adapter);
+      const post = await postDiscussion(adapter, strategy, args.id, disc.text, args.mention);
+      if (post.blocked) return { code: 2, out: { ok: false, mode, blocked: [post.blocked] } };
+      const withMention = post.mention ? { mention: post.mention } : {};
       if (!execute) {
-        const d = await adapter.addComment(args.id, body, { execute: false });
-        return { code: 0, out: { ok: true, mode, plan: [planEntry('comment', d)], note: PLAN_NOTE } };
+        return { code: 0, out: { ok: true, mode, plan: [planEntry('comment', await post.send(false))], ...withMention, note: PLAN_NOTE } };
       }
-      const result = await adapter.addComment(args.id, body, { execute: true });
-      return { code: 0, out: { ok: true, mode, result } };
+      const result = await post.send(true);
+      return { code: 0, out: { ok: true, mode, result, ...withMention } };
     }
 
     if (cmd === 'link') {

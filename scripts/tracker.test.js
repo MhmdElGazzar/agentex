@@ -746,6 +746,185 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     }
   });
 
+  // ════ WP-8: CLI writes — RemainingWork refusal, update --discussion, comment --mention ════
+  const isWrite2 = (c) => c.method !== 'GET' && !c.url.includes('/wiql') && !c.url.includes('/workitemsbatch') && !c.url.includes('/search/jql') && !c.url.includes('/bulkfetch');
+
+  await test('update (ADO) refuses RemainingWork (any case) — exit 2, TF401320 named, zero requests, dry run AND --execute', async () => {
+    for (const field of ['Microsoft.VSTS.Scheduling.RemainingWork', 'microsoft.vsts.scheduling.remainingwork']) {
+      for (const extra of [[], ['--execute']]) {
+        const dir = aproj();
+        const spec = writeSpec(dir, { fields: { 'System.Title': 'x', [field]: 0 } });
+        const f = fake2([]);
+        const { code, out } = await run(['update', '--id', '42', '--spec', spec, ...extra], { cwd: dir, fetch: f });
+        assert.strictEqual(code, 2, JSON.stringify(out));
+        assert.deepStrictEqual(out.blocked.map((b) => [b.reason, b.field]), [['remaining-work-refused', field]]);
+        assert.match(out.blocked[0].message, /TF401320/);
+        assert.match(out.blocked[0].message, /CompletedWork/, 'offers completed work instead');
+        assert.strictEqual(f.calls.length, 0);
+      }
+    }
+  });
+
+  await test('update (Jira) does NOT refuse a remaining estimate — it is legitimate there', async () => {
+    const dir = jproj();
+    const spec = writeSpec(dir, { fields: { timetracking: { remainingEstimate: '2h' } } });
+    const { code, out } = await run(['update', '--id', 'PROJ-1', '--spec', spec], { cwd: dir, fetch: fake2([]) });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.mode, 'plan');
+  });
+
+  await test('update --spec + --discussion: plan [update-fields, post-discussion]; --execute runs both through the ledger', async () => {
+    const dir = aproj();
+    const spec = writeSpec(dir, { fields: { 'System.Title': 'Renamed' } });
+    const r1 = await run(['update', '--id', '42', '--spec', spec, '--discussion', 'Retested — <fine> & done'], { cwd: dir, fetch: fake2([]) });
+    assert.strictEqual(r1.code, 0, JSON.stringify(r1.out));
+    assert.deepStrictEqual(r1.out.plan.map((p) => p.step), ['update-fields', 'post-discussion']);
+    assert.deepStrictEqual(r1.out.plan[1].request.body, { text: 'Retested — &lt;fine&gt; &amp; done' });
+    const f = fake2([{ method: 'PATCH', match: '/wit/workitems/42', json: { id: 42, rev: 5 } }, { method: 'POST', match: '/wit/workItems/42/comments', json: { id: 3 } }]);
+    const r2 = await run(['update', '--id', '42', '--spec', spec, '--discussion', 'Retested — <fine> & done', '--execute'], { cwd: dir, fetch: f });
+    assert.strictEqual(r2.code, 0, JSON.stringify(r2.out));
+    assert.deepStrictEqual(r2.out.ledger.map((l) => [l.step, l.status]), [['update-fields', 'done'], ['post-discussion', 'done']]);
+    assert.deepStrictEqual(f.calls.filter(isWrite2).map((c) => c.method), ['PATCH', 'POST']);
+    assert.strictEqual(JSON.parse(f.calls.filter(isWrite2)[1].body).text, r1.out.plan[1].request.body.text, 'the executed body is the dry-run body');
+  });
+
+  await test('update partial failure: the ledger names what landed; exit 1; no retry', async () => {
+    const dir = aproj();
+    const spec = writeSpec(dir, { fields: { 'System.Title': 'Renamed' } });
+    const f = fake2([{ method: 'PATCH', match: '/wit/workitems/42', json: { id: 42, rev: 5 } }, { method: 'POST', match: '/comments', status: 500, text: JSON.stringify({ message: 'boom' }) }]);
+    const { code, out } = await run(['update', '--id', '42', '--spec', spec, '--discussion', 'x', '--execute'], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 1, JSON.stringify(out));
+    assert.strictEqual(out.ok, false);
+    assert.deepStrictEqual(out.ledger.map((l) => [l.step, l.status]), [['update-fields', 'done'], ['post-discussion', 'failed']]);
+    assert.match(out.ledger[1].reason, /boom/);
+    assert.strictEqual(f.calls.filter((c) => c.url.includes('/comments')).length, 1, 'never retried');
+  });
+
+  await test('update --discussion-file (non-ASCII) alone plans one post; bad usage exits 2 with zero requests', async () => {
+    const dir = aproj();
+    const file = path.join(dir, 'reply.txt');
+    fs.writeFileSync(file, `${NON_ASCII}\nسطر`, 'utf8');
+    const r = await run(['update', '--id', '42', '--discussion-file', file], { cwd: dir, fetch: fake2([]) });
+    assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+    assert.deepStrictEqual(r.out.plan.map((p) => p.step), ['post-discussion']);
+    assert.strictEqual(r.out.plan[0].request.body.text, `${NON_ASCII}<br>سطر`);
+    const none = fake2([]);
+    for (const argv of [
+      ['update', '--id', '42'],
+      ['update', '--id', '42', '--spec', writeSpec(dir, { fields: {} }), '--mention', 'createdBy'],
+      ['update', '--id', '42', '--discussion', 'a', '--discussion-file', file],
+      ['comment', '--id', '42', '--body', 'a', '--body-file', file],
+      ['comment', '--id', '42', '--body', 'a', '--mention'],
+    ]) {
+      const { code, out } = await run(argv, { cwd: dir, fetch: none });
+      assert.strictEqual(code, 2, `${argv.join(' ')}: ${JSON.stringify(out)}`);
+    }
+    assert.strictEqual(none.calls.length, 0);
+  });
+
+  const IDENT = (id, name, email) => ({ id, displayName: name, uniqueName: email, descriptor: `aad.${id}` });
+  const ADO_ITEM = { id: 42, fields: {
+    'System.Title': 'Totals', 'System.CreatedBy': IDENT('g-po', 'Pat Owner', 'po@example.com'),
+    'System.AssignedTo': IDENT('g-dev', 'Dana Dev', 'dana@example.com'), 'System.ChangedBy': IDENT('g-qa', 'Quinn QA', 'quinn@example.com'),
+  } };
+  const ADO_THREAD = { comments: [
+    { id: 1, createdBy: IDENT('g-sam1', 'Sam Lee', 'sam.lee@example.com'), createdDate: '2026-01-01T00:00:00Z', text: 'a' },
+    { id: 2, createdBy: IDENT('g-sam2', 'Sam Lee', 'sam.lee2@example.com'), createdDate: '2026-01-02T00:00:00Z', text: 'b' },
+  ] };
+  const adoMentionRoutes = (extra = []) => [
+    ...extra,
+    { match: '/wit/workitems/42?', json: ADO_ITEM },
+    { match: '/wit/workItems/42/comments', json: ADO_THREAD },
+    { method: 'POST', match: '/wit/workItems/42/comments', json: { id: 9 } },
+  ];
+
+  await test('comment --mention createdBy (ADO): the real mention anchor; dry-run body == executed body', async () => {
+    const dir = aproj();
+    const f1 = fake2(adoMentionRoutes());
+    const r1 = await run(['comment', '--id', '42', '--body', 'Which total is right?', '--mention', 'createdBy'], { cwd: dir, fetch: f1 });
+    assert.strictEqual(r1.code, 0, JSON.stringify(r1.out));
+    const want = '<a href="#" data-vss-mention="version:2.0,g-po">@Pat Owner</a> Which total is right?';
+    assert.strictEqual(r1.out.plan[0].request.body.text, want);
+    assert.deepStrictEqual(r1.out.mention, { id: 'g-po', displayName: 'Pat Owner' });
+    assert.strictEqual(f1.calls.filter(isWrite2).length, 0);
+    const f2 = fake2(adoMentionRoutes());
+    const r2 = await run(['comment', '--id', '42', '--body', 'Which total is right?', '--mention', 'createdBy', '--execute'], { cwd: dir, fetch: f2 });
+    assert.strictEqual(r2.code, 0, JSON.stringify(r2.out));
+    const w = f2.calls.filter(isWrite2);
+    assert.strictEqual(w.length, 1);
+    assert.strictEqual(JSON.parse(w[0].body).text, want);
+  });
+
+  await test('comment --mention by email (ADO): found on the item/thread -> no identity search; otherwise ONE identity search', async () => {
+    const f1 = fake2(adoMentionRoutes());
+    const r1 = await run(['comment', '--id', '42', '--body', 'x', '--mention', 'quinn@example.com'], { cwd: aproj(), fetch: f1 });
+    assert.strictEqual(r1.code, 0, JSON.stringify(r1.out));
+    assert.deepStrictEqual(r1.out.mention, { id: 'g-qa', displayName: 'Quinn QA' });
+    assert.ok(!f1.calls.some((c) => c.url.includes('/_apis/identities')));
+    const f2 = fake2(adoMentionRoutes([{ match: 'vssps.dev.azure.com/exampleorg/_apis/identities', json: { value: [{ id: 'g-new', providerDisplayName: 'Nia New', properties: { Mail: { $value: 'nia@example.com' } } }] } }]));
+    const r2 = await run(['comment', '--id', '42', '--body', 'x', '--mention', 'nia@example.com'], { cwd: aproj(), fetch: f2 });
+    assert.strictEqual(r2.code, 0, JSON.stringify(r2.out));
+    assert.deepStrictEqual(r2.out.mention, { id: 'g-new', displayName: 'Nia New' });
+    assert.strictEqual(f2.calls.filter((c) => c.url.includes('/_apis/identities')).length, 1);
+  });
+
+  await test('comment --mention unresolvable or ambiguous: exit 2, candidates listed, ZERO writes, never a bare @', async () => {
+    const f1 = fake2(adoMentionRoutes());
+    const r1 = await run(['comment', '--id', '42', '--body', 'x', '--mention', 'Sam Lee', '--execute'], { cwd: aproj(), fetch: f1 });
+    assert.strictEqual(r1.code, 2, JSON.stringify(r1.out));
+    assert.strictEqual(r1.out.blocked[0].reason, 'mention-ambiguous');
+    assert.deepStrictEqual(r1.out.blocked[0].candidates.map((c) => c.email).sort(), ['sam.lee2@example.com', 'sam.lee@example.com']);
+    assert.strictEqual(f1.calls.filter(isWrite2).length, 0);
+    const f2 = fake2(adoMentionRoutes([{ match: '/_apis/identities', json: { value: [] } }]));
+    const r2 = await run(['comment', '--id', '42', '--body', 'x', '--mention', 'ghost@example.com', '--execute'], { cwd: aproj(), fetch: f2 });
+    assert.strictEqual(r2.code, 2, JSON.stringify(r2.out));
+    assert.strictEqual(r2.out.blocked[0].reason, 'mention-unresolved');
+    assert.ok(r2.out.blocked[0].candidates.length >= 3, 'lists who CAN be mentioned');
+    assert.strictEqual(f2.calls.filter(isWrite2).length, 0);
+    const f3 = fake2(adoMentionRoutes());
+    const r3 = await run(['comment', '--id', '42', '--body', 'x', '--mention', 'Nobody Here'], { cwd: aproj(), fetch: f3 });
+    assert.strictEqual(r3.code, 2);
+    assert.strictEqual(f3.calls.filter(isWrite2).length, 0);
+  });
+
+  const J_ITEM = { key: 'PROJ-1', fields: { summary: 'S', reporter: { accountId: 'acc-po', displayName: 'Pat Owner' }, assignee: { accountId: 'acc-dev', displayName: 'Dana Dev' } } };
+  await test('comment --mention (Jira): role -> accountId; email -> exactly one active user; the ADF mention node is sent', async () => {
+    const f1 = fake2([{ match: '/rest/api/3/issue/PROJ-1?', json: J_ITEM }, { method: 'POST', match: '/issue/PROJ-1/comment', json: { id: '1' } }]);
+    const r1 = await run(['comment', '--id', 'PROJ-1', '--body', 'please check', '--mention', 'assignedTo', '--execute'], { cwd: jproj(), fetch: f1 });
+    assert.strictEqual(r1.code, 0, JSON.stringify(r1.out));
+    const sent = JSON.parse(f1.calls.filter(isWrite2)[0].body).body;
+    assert.deepStrictEqual(sent.content[0].content.slice(0, 3), [
+      { type: 'mention', attrs: { id: 'acc-dev', text: '@Dana Dev' } }, { type: 'text', text: ' ' }, { type: 'text', text: 'please check' },
+    ]);
+    const f2 = fake2([{ match: '/rest/api/3/user/search', json: [{ accountId: 'acc-x', displayName: 'Xi', active: true }, { accountId: 'acc-old', displayName: 'Xi (old)', active: false }] }]);
+    const r2 = await run(['comment', '--id', 'PROJ-1', '--body', 'x', '--mention', 'xi@example.com'], { cwd: jproj(), fetch: f2 });
+    assert.strictEqual(r2.code, 0, JSON.stringify(r2.out));
+    assert.deepStrictEqual(r2.out.mention, { id: 'acc-x', displayName: 'Xi' });
+    assert.deepStrictEqual(r2.out.plan[0].request.body.body.content[0].content[0], { type: 'mention', attrs: { id: 'acc-x', text: '@Xi' } });
+    const f3 = fake2([{ match: '/rest/api/3/user/search', json: [{ accountId: 'a1', displayName: 'Xi', active: true }, { accountId: 'a2', displayName: 'Xi B', active: true }] }]);
+    const r3 = await run(['comment', '--id', 'PROJ-1', '--body', 'x', '--mention', 'Xi', '--execute'], { cwd: jproj(), fetch: f3 });
+    assert.strictEqual(r3.code, 2, JSON.stringify(r3.out));
+    assert.strictEqual(r3.out.blocked[0].reason, 'mention-ambiguous');
+    assert.strictEqual(f3.calls.filter(isWrite2).length, 0);
+  });
+
+  await test('CI: update --discussion / comment --mention with --execute refused BEFORE any read (zero requests)', async () => {
+    process.env.AGENTEX_CI = '1';
+    try {
+      for (const [dir, argv] of [
+        [aproj(), ['update', '--id', '42', '--discussion', 'x', '--mention', 'createdBy', '--execute']],
+        [aproj(), ['comment', '--id', '42', '--body', 'x', '--mention', 'createdBy', '--execute']],
+        [jproj(), ['comment', '--id', 'PROJ-1', '--body', 'x', '--mention', 'assignedTo', '--execute']],
+      ]) {
+        const f = fake2([]);
+        const { code, out } = await run(argv, { cwd: dir, fetch: f });
+        assert.strictEqual(code, 2, JSON.stringify(out));
+        assert.strictEqual(out.blocked[0].reason, 'ci-mode');
+        assert.strictEqual(f.calls.length, 0);
+      }
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
   // ── sentinel sweep: credentials in ZERO bytes of any output ────────────────
   await test('sentinel credentials absent from every mode\'s output on both providers', async () => {
     const outs = [];

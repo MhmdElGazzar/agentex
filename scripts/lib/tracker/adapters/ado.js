@@ -275,6 +275,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       deleteWorkItem: 'partial',        // ADO: most types yes, Test Case no
       batchRead: true,                  // wit/workitemsbatch (getWorkItems)
       comments: true,                   // comments API: listComments + addComment
+      mentions: true,                   // data-vss-mention anchors (identity ids)
       sprints: true,                    // team iterations (listIterations)
     },
 

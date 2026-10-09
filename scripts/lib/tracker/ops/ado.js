@@ -218,12 +218,58 @@ function renderDiscussion(text, mention) {
   return `<a href="#" data-vss-mention="version:2.0,${escapeHtml(mention.id)}">@${escapeHtml(mention.displayName)}</a> ${body}`;
 }
 
-// update: fields this tracker refuses before any request (none yet).
-function refusedUpdateFields() {
-  return [];
+// update: fields refused before any request. Azure DevOps rejects a
+// RemainingWork update server-side (TF401320), so a spec that sets it is
+// refused upfront (any case) — completed work is the field to offer.
+const REMAINING_WORK = 'Microsoft.VSTS.Scheduling.RemainingWork';
+function refusedUpdateFields(spec) {
+  const fields = (spec && typeof spec === 'object' && spec.fields && typeof spec.fields === 'object') ? spec.fields : {};
+  return Object.keys(fields)
+    .filter((k) => k.toLowerCase() === REMAINING_WORK.toLowerCase())
+    .map((field) => ({
+      reason: 'remaining-work-refused', field,
+      message: `${field} is refused on Azure DevOps — the server rejects remaining-work updates (TF401320). ` +
+        'Record completed work instead (Microsoft.VSTS.Scheduling.CompletedWork, confirmed by the user); nothing was sent.',
+    }));
+}
+
+// discussion: who a --mention names -> { mention: {id, displayName} } or
+// { blocked: {reason, who, message, candidates} } (never a guess, never a bare @).
+//   createdBy / assignedTo -> that identity field on the item;
+//   an email or a display name -> a unique match among the item's identities
+//     and the thread's authors; an email found nowhere there -> ONE identity
+//     search on the org's identity host.
+const ROLE_FIELDS = { createdBy: 'System.CreatedBy', assignedTo: 'System.AssignedTo' };
+const identity = (v) => (v && typeof v === 'object' && v.id && (v.displayName || v.uniqueName)
+  ? { id: v.id, displayName: v.displayName || v.uniqueName, email: v.uniqueName || null } : null);
+async function resolveMention(adapter, id, who) {
+  const wi = await adapter.getWorkItem(id);
+  const f = (wi && wi.fields) || {};
+  const pick1 = (p) => ({ mention: { id: p.id, displayName: p.displayName } });
+  if (Object.prototype.hasOwnProperty.call(ROLE_FIELDS, who)) {
+    const p = identity(f[ROLE_FIELDS[who]]);
+    if (p) return pick1(p);
+    return { blocked: { reason: 'mention-unresolved', who, candidates: [], message: `--mention ${who}: work item ${id} has no ${ROLE_FIELDS[who]} identity — nothing was written` } };
+  }
+  const pool = new Map();
+  for (const v of Object.values(f)) { const p = identity(v); if (p) pool.set(p.id, p); }
+  for (const c of await adapter.listComments(id)) { if (c.user && c.user.id) pool.set(c.user.id, { id: c.user.id, displayName: c.user.displayName, email: c.user.email }); }
+  const people = [...pool.values()];
+  const isEmail = /^[^\s@]+@[^\s@]+$/.test(who);
+  const norm = (x) => String(x || '').trim().toLowerCase();
+  let matches = people.filter((p) => (isEmail ? norm(p.email) === norm(who) : norm(p.displayName) === norm(who)));
+  if (!matches.length && isEmail) {
+    matches = (await adapter.findIdentity(who)).filter((p) => norm(p.email) === norm(who));
+  }
+  if (matches.length === 1) return pick1(matches[0]);
+  const list = (arr) => arr.map((p) => ({ id: p.id, displayName: p.displayName, email: p.email }));
+  if (matches.length > 1) {
+    return { blocked: { reason: 'mention-ambiguous', who, candidates: list(matches), message: `--mention "${who}" matches ${matches.length} people — name one by email; nothing was written` } };
+  }
+  return { blocked: { reason: 'mention-unresolved', who, candidates: list(people), message: `--mention "${who}" matches nobody on work item ${id}, its thread${isEmail ? ', or the identity search' : ''} — pick one of the candidates; nothing was written` } };
 }
 
 module.exports = {
   provider, summarize, scopeQuery, searchOptions, searchResults, batchRead, comments, relations, iterations,
-  transition, refusedUpdateFields, renderDiscussion,
+  transition, refusedUpdateFields, resolveMention, renderDiscussion,
 };

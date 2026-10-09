@@ -23,6 +23,8 @@
 //   transition(adapter, id, to, {execute})    dry run -> { step, request, extra?, note? }
 //                                             execute -> { result, note? }
 //   refusedUpdateFields(spec) -> Blocked[]    fields `update` refuses before any request
+//   resolveMention(adapter, id, who)          free reads only -> { mention: {id, displayName} }
+//                                             | { blocked: {reason, who, message, candidates} }
 //   renderDiscussion(text, mention|null)      the EXACT comment body the adapter's
 //     -> provider body                        addComment sends (ADO HTML string /
 //                                             Jira ADF doc); mention = {id, displayName}
@@ -33,7 +35,7 @@ const path = require('node:path');
 const { createRegistry } = require(path.join(__dirname, '..', 'registry.js'));
 
 const REQUIRED_MEMBERS = ['provider', 'summarize', 'scopeQuery', 'searchOptions', 'searchResults', 'batchRead', 'comments',
-  'relations', 'iterations', 'transition', 'refusedUpdateFields', 'renderDiscussion'];
+  'relations', 'iterations', 'transition', 'refusedUpdateFields', 'resolveMention', 'renderDiscussion'];
 const LABEL = 'tracker-ops strategy';
 
 const ado = require('./ado.js');

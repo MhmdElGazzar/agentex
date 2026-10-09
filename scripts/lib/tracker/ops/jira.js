@@ -166,7 +166,29 @@ function refusedUpdateFields() {
   return [];
 }
 
+// discussion: who a --mention names -> { mention: {id: accountId, displayName} }
+// or { blocked: {reason, who, message, candidates} } (never a guess, never a bare @).
+//   createdBy -> the reporter, assignedTo -> the assignee (one item read);
+//   anything else -> the user search, which must give exactly one ACTIVE user.
+const ROLE_FIELDS = { createdBy: 'reporter', assignedTo: 'assignee' };
+async function resolveMention(adapter, key, who) {
+  const pick1 = (u) => ({ mention: { id: u.accountId, displayName: u.displayName } });
+  if (Object.prototype.hasOwnProperty.call(ROLE_FIELDS, who)) {
+    const wi = await adapter.getWorkItem(key);
+    const u = ((wi && wi.fields) || {})[ROLE_FIELDS[who]];
+    if (u && u.accountId) return pick1(u);
+    return { blocked: { reason: 'mention-unresolved', who, candidates: [], message: `--mention ${who}: ${key} has no ${ROLE_FIELDS[who]} — nothing was written` } };
+  }
+  const found = (await adapter.findUser(who)).filter((u) => u && u.accountId && u.active !== false);
+  if (found.length === 1) return pick1(found[0]);
+  const list = found.map((u) => ({ id: u.accountId, displayName: u.displayName, email: u.emailAddress || null }));
+  if (found.length > 1) {
+    return { blocked: { reason: 'mention-ambiguous', who, candidates: list, message: `--mention "${who}" matches ${found.length} active users — name one by email; nothing was written` } };
+  }
+  return { blocked: { reason: 'mention-unresolved', who, candidates: [], message: `--mention "${who}" matches no active user on this site — nothing was written` } };
+}
+
 module.exports = {
   provider, summarize, scopeQuery, searchOptions, searchResults, batchRead, comments, relations, iterations,
-  transition, refusedUpdateFields, renderDiscussion,
+  transition, refusedUpdateFields, resolveMention, renderDiscussion,
 };

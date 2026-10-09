@@ -36,6 +36,7 @@ const strategy = {
     return { result: await adapter.updateWorkItem(id, payload, { execute: true }) };
   },
   refusedUpdateFields: () => [],
+  resolveMention: async (adapter, id, who) => (who === 'createdBy' ? { mention: { id: 'u-1', displayName: 'Owner' } } : { blocked: { reason: 'mention-unresolved', who, candidates: [], message: 'no such person' } }),
   renderDiscussion: (text, mention) => (mention ? `@[${mention.id}] ${text}` : String(text)),
 };
 

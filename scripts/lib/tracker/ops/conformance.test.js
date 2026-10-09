@@ -205,6 +205,19 @@ async function conformance(key, strategy, fixture, registry) {
     assert.strictEqual(r.calls.length, 0);
   });
 
+  await test('[acme] mentions:false refuses --mention upfront (zero calls); with the flag, the strategy\'s mention is rendered', async () => {
+    const r = await exec(stub, stubRegistry, ['comment', '--id', 'A-1', '--body', 'x', '--mention', 'createdBy'], { caps: { mentions: false } });
+    assert.strictEqual(r.code, 2, JSON.stringify(r.out));
+    assert.deepStrictEqual(r.out.blocked.map((b) => [b.reason, b.flag]), [['unsupported-op', 'mentions']]);
+    assert.strictEqual(r.calls.length, 0);
+    const ok = await exec(stub, stubRegistry, ['comment', '--id', 'A-1', '--body', 'x', '--mention', 'createdBy'], { caps: { mentions: true } });
+    assert.strictEqual(ok.code, 0, JSON.stringify(ok.out));
+    assert.strictEqual(ok.out.plan[0].request.body, '@[u-1] x');
+    const no = await exec(stub, stubRegistry, ['update', '--id', 'A-1', '--discussion', 'x', '--mention', 'nobody', '--execute'], { caps: { mentions: true } });
+    assert.strictEqual(no.code, 2, JSON.stringify(no.out));
+    assert.strictEqual(no.calls.filter((c) => c.method !== 'GET').length, 0, 'an unresolved mention writes nothing');
+  });
+
   await test('[acme] without its registry line the same adapter is refused — read and write, zero calls', async () => {
     for (const argv of [['show', '--id', 'A-1'], ['update', '--id', 'A-1', '--spec', '{SPEC}', '--execute']]) {
       const r = await exec(stub, defaultRegistry, argv);
