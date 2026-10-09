@@ -23,14 +23,25 @@
 // reads and dry-run plans are unaffected — the adapters carry the same guard
 // one level down.
 //
-// Usage:
-//   node tracker.js show --id <id> [--expand all]
-//   node tracker.js search --query "<jql|wiql>"            (the configured provider's query language)
-//   node tracker.js create --type <type> --spec <file.json>            [--execute]
-//   node tracker.js update --id <id> --spec <file.json>                [--execute]
-//   node tracker.js transition --id <id> --to <state-name-or-id>       [--execute]
-//   node tracker.js comment --id <id> --body "<text>"                  [--execute]
-//   node tracker.js link --id <id> --type <linkType> --target <id> [--direction inward] [--execute]
+// Usage (reads are free; every write is a dry run unless --execute):
+//   node tracker.js show --id <id> [--expand all] [--fields f1,f2] [--out <file>]
+//   node tracker.js search --query "<jql|wiql>" [--fields f1,f2] [--top n] [--out <file>]
+//   node tracker.js batch (--ids a,b,… | --ids-file <file>) --fields f1,f2 [--out <file>]
+//   node tracker.js comments --id <id> [--out <file>]
+//   node tracker.js relations --id <id>[,<id>…] [--kind parent|child|tested-by|related|link|all] [--fields f1,f2] [--out <file>]
+//   node tracker.js iterations [--team <name> | --board <id|name>] [--timeframe current|future|past|all] [--out <file>]
+//   node tracker.js create --type <type> --spec <file.json>                                  [--execute]
+//   node tracker.js update --id <id> [--spec <file.json>] [--discussion "<text>" | --discussion-file <file>] [--mention <who>] [--execute]
+//   node tracker.js transition --id <id> --to <state-name-or-id>                             [--execute]
+//   node tracker.js comment --id <id> (--body "<text>" | --body-file <file>) [--mention <who>] [--execute]
+//   node tracker.js link --id <id> --type <linkType> --target <id> [--direction inward]      [--execute]
+//
+// --out <file>: the result is written as UTF-8 JSON to that file and stdout
+// carries only the path, the byte count and counts/flags — text you will
+// analyse never travels through a pipe (which can drop non-ASCII).
+// --mention <who>: createdBy | assignedTo | an email | a display name —
+// resolved to the tracker's real mention form, or refused (exit 2) with the
+// candidates; never posted as a bare "@text".
 //
 // Spec shapes: create -> { fields: {...}, relations?: [{rel, targetId}] };
 //              update -> { fields: {...}, addRelations?: [{rel, targetId}] }.
@@ -68,9 +79,15 @@ function parseArgs(argv) {
 }
 
 const USAGE =
-  'usage: tracker.js show --id <id> [--expand all] | search --query "<jql|wiql>" | ' +
-  'create --type <type> --spec <file.json> [--execute] | update --id <id> --spec <file.json> [--execute] | ' +
-  'transition --id <id> --to <name-or-id> [--execute] | comment --id <id> --body "<text>" [--execute] | ' +
+  'usage: tracker.js show --id <id> [--expand all] [--fields f1,f2] [--out <file>] | ' +
+  'search --query "<jql|wiql>" [--fields f1,f2] [--top n] [--out <file>] | ' +
+  'batch (--ids a,b,… | --ids-file <file>) --fields f1,f2 [--out <file>] | comments --id <id> [--out <file>] | ' +
+  'relations --id <id>[,<id>…] [--kind parent|child|tested-by|related|link|all] [--fields f1,f2] [--out <file>] | ' +
+  'iterations [--team <name> | --board <id|name>] [--timeframe current|future|past|all] [--out <file>] | ' +
+  'create --type <type> --spec <file.json> [--execute] | ' +
+  'update --id <id> [--spec <file.json>] [--discussion "<text>" | --discussion-file <file>] [--mention <who>] [--execute] | ' +
+  'transition --id <id> --to <name-or-id> [--execute] | ' +
+  'comment --id <id> (--body "<text>" | --body-file <file>) [--mention <who>] [--execute] | ' +
   'link --id <id> --type <linkType> --target <id> [--direction inward] [--execute]';
 
 const PLAN_NOTE =
