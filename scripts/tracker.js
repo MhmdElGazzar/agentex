@@ -1,19 +1,25 @@
 #!/usr/bin/env node
 // tracker.js — the plugin's ONE tracker CLI (moved from skills/tracker-ops/scripts/
 // in skill-consolidation-foundation WP-2; tracker-ops and later skills call it
-// via ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.js): show / search / create / update / transition / comment / link
-// on WHICHEVER tracker the project configures (azure or jira block — resolved
-// by scripts/lib/tracker/, never per-run). Everything goes through the tracker
-// layer's REST adapters over Node's built-in fetch — no az, no acli, no
-// process spawning, zero npm dependencies.
+// via ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.js): show / search / create / update /
+// transition / comment / link on WHICHEVER tracker the project configures
+// (azure or jira block — resolved by scripts/lib/tracker/, never per-run).
+// Everything goes through the tracker layer's REST adapters over Node's
+// built-in fetch — no az, no acli, no process spawning, zero npm dependencies.
+//
+// SPINE vs. STRATEGY: this file is the provider-neutral spine — arg parsing,
+// USAGE, the CI guard, capability checks, plan entries, error mapping and the
+// CLI tail. Every provider-shaped mapping (summaries, result shapes, the
+// transition route, refused fields) lives in a per-provider TrackerOpsStrategy
+// under scripts/lib/tracker/ops/, looked up through a fail-closed registry: a
+// provider with an adapter but no strategy is refused (exit 2) before any
+// request — never a fallback to another provider's behavior (invariant 10).
 //
 // ONE GATE (invariant 4): every write subcommand is a DRY RUN by default — it
 // returns the exact request plan and writes nothing; `--execute` performs it,
 // and the skill puts that flag behind ONE user approval per write batch.
-// Capability flags answer unsupported ops UPFRONT (exit 2, the flag named) —
-// and a `transition` ask on ADO routes to the honest equivalent, a
-// System.State field update via updateWorkItem, stated to the user in the
-// plan. CI (AGENTEX_CI=1) refuses --execute before any read (exit 2, ci-mode);
+// Capability flags answer unsupported ops UPFRONT (exit 2, the flag named).
+// CI (AGENTEX_CI=1) refuses --execute before any read (exit 2, ci-mode);
 // reads and dry-run plans are unaffected — the adapters carry the same guard
 // one level down.
 //
@@ -28,8 +34,7 @@
 //
 // Spec shapes: create -> { fields: {...}, relations?: [{rel, targetId}] };
 //              update -> { fields: {...}, addRelations?: [{rel, targetId}] }.
-// Fields are provider-level (System.* on ADO, flat ids on Jira) — see
-// references/tracker/{ado,jira}-boards.md.
+// Fields are provider-level field ids — see references/tracker/{ado,jira}-boards.md.
 //
 // Output: ONE JSON line; exit 0 = ok/plan, 1 = tracker/write failure,
 // 2 = blocked/bad usage/config (repo convention D2 / invariant 9). Credentials
@@ -38,7 +43,10 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { resolveTracker, TrackerError } = require(path.join(__dirname, 'lib', 'tracker', 'index.js'));
+const trackerLib = require(path.join(__dirname, 'lib', 'tracker', 'index.js'));
+const { defaultRegistry } = require(path.join(__dirname, 'lib', 'tracker', 'ops', 'index.js'));
+
+const { TrackerError } = trackerLib;
 
 // ---- CLI arg parser: --key value / --key=value / --flag ----------------------
 function parseArgs(argv) {
@@ -67,6 +75,8 @@ const USAGE =
 const PLAN_NOTE =
   'nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute';
 
+const WRITES = ['create', 'update', 'transition', 'comment', 'link'];
+
 function bad(mode, message) {
   return { code: 2, out: { ok: false, mode, error: { message } } };
 }
@@ -83,32 +93,6 @@ function trackerErrorOut(e) {
   };
 }
 
-// Provider-neutral summary — one output shape whichever tracker is configured.
-function summarizeWorkItem(adapter, wi) {
-  const f = (wi && wi.fields) || {};
-  if (adapter.name === 'jira') {
-    const key = wi.key || wi.id;
-    return {
-      id: key,
-      type: (f.issuetype && f.issuetype.name) || null,
-      title: f.summary || null,
-      state: (f.status && f.status.name) || null,
-      url: adapter.webUrl(key),
-      fields: f,
-      ...(wi.renderedFields ? { renderedFields: wi.renderedFields } : {}),
-    };
-  }
-  return {
-    id: wi.id,
-    type: f['System.WorkItemType'] || null,
-    title: f['System.Title'] || null,
-    state: f['System.State'] || null,
-    url: adapter.webUrl(wi.id),
-    fields: f,
-    ...(wi.relations ? { relations: wi.relations } : {}),
-  };
-}
-
 function readSpec(specPath) {
   return JSON.parse(fs.readFileSync(specPath, 'utf8'));
 }
@@ -119,13 +103,21 @@ function planEntry(step, d, extra = {}) {
 }
 
 // The whole script as a callable: returns { code, out } and prints nothing —
-// the CLI tail below owns the one JSON line. opts.fetch is the offline seam.
-async function run(argv, { cwd = process.cwd(), fetch } = {}) {
+// the CLI tail below owns the one JSON line. Seams (tests inject them; the CLI
+// passes none): fetch (offline transport), registry (ops strategies),
+// resolveTracker (the adapter).
+async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistry, resolveTracker = trackerLib.resolveTracker } = {}) {
   const args = parseArgs(argv);
   const cmd = args._[0];
   const execute = Boolean(args.execute);
   const mode = execute ? 'executed' : 'plan';
-  const WRITES = ['create', 'update', 'transition', 'comment', 'link'];
+  // The configured adapter and its strategy — resolved together, fail-closed:
+  // resolveTracker sends nothing (auth is lazy), registry.get refuses an
+  // unregistered provider before any adapter method runs.
+  const open = () => {
+    const adapter = resolveTracker(cwd, { fetch });
+    return { adapter, strategy: registry.get(adapter.name) };
+  };
   try {
     // CI guard (invariant 4 / ci-quality-gate): CI mode performs no tracker
     // writes of any kind — refuse --execute BEFORE any read; ad-hoc tracker
@@ -141,25 +133,21 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
     // ── reads (free, no gating) ────────────────────────────────────────────
     if (cmd === 'show') {
       if (!args.id) return bad(mode, `--id is required. ${USAGE}`);
-      const adapter = resolveTracker(cwd, { fetch });
+      const { adapter, strategy } = open();
       const wi = await adapter.getWorkItem(args.id, args.expand ? { expand: args.expand } : {});
-      return { code: 0, out: { ok: true, provider: adapter.name, workItem: summarizeWorkItem(adapter, wi) } };
+      return { code: 0, out: { ok: true, provider: adapter.name, workItem: strategy.summarize(adapter, wi, {}) } };
     }
 
     if (cmd === 'search') {
       if (!args.query) return bad(mode, `--query is required (the configured provider's query language). ${USAGE}`);
-      const adapter = resolveTracker(cwd, { fetch });
-      const res = await adapter.query(args.query);
-      const results = adapter.name === 'jira'
-        ? ((res && res.issues) || []).map((i) => ({
-          id: i.key, title: ((i.fields || {}).summary) ?? null, url: adapter.webUrl(i.key),
-        }))
-        : ((res && res.workItems) || []).map((w) => ({ id: w.id, url: adapter.webUrl(w.id) }));
+      const { adapter, strategy } = open();
+      const res = await adapter.query(strategy.scopeQuery(adapter, args.query));
+      const { results, truncated } = strategy.searchResults(adapter, res, {});
       return {
         code: 0,
         out: {
           ok: true, provider: adapter.name, queryLanguage: adapter.capabilities.query,
-          count: results.length, results, ...(res && res.truncated ? { truncated: true } : {}),
+          count: results.length, results, ...(truncated ? { truncated: true } : {}),
         },
       };
     }
@@ -170,7 +158,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       let spec;
       try { spec = readSpec(args.spec); }
       catch (e) { return bad(mode, `could not read spec: ${e.message}`); }
-      const adapter = resolveTracker(cwd, { fetch });
+      const { adapter } = open();
       if (!execute) {
         const d = await adapter.createWorkItem(args.type, spec, { execute: false });
         return { code: 0, out: { ok: true, mode, plan: [planEntry('create', d)], note: PLAN_NOTE } };
@@ -184,7 +172,9 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       let spec;
       try { spec = readSpec(args.spec); }
       catch (e) { return bad(mode, `could not read spec: ${e.message}`); }
-      const adapter = resolveTracker(cwd, { fetch });
+      const { adapter, strategy } = open();
+      const blocked = strategy.refusedUpdateFields(spec);
+      if (blocked.length) return { code: 2, out: { ok: false, mode, blocked } };
       if (!execute) {
         const d = await adapter.updateWorkItem(args.id, spec, { execute: false });
         return { code: 0, out: { ok: true, mode, plan: [planEntry('update', d)], note: PLAN_NOTE } };
@@ -195,32 +185,20 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
 
     if (cmd === 'transition') {
       if (!args.id || !args.to) return bad(mode, `--id and --to are required. ${USAGE}`);
-      const adapter = resolveTracker(cwd, { fetch });
-      if (adapter.capabilities.transitions && typeof adapter.transition === 'function') {
-        // Jira: resolved against the issue's REAL transitions (fails closed
-        // listing them); the dry run performs the free read only.
-        if (!execute) {
-          const d = await adapter.transition(args.id, args.to, { execute: false });
-          return { code: 0, out: { ok: true, mode, plan: [planEntry('transition', d, { transition: d.transition })], note: PLAN_NOTE } };
-        }
-        const result = await adapter.transition(args.id, args.to, { execute: true });
-        return { code: 0, out: { ok: true, mode, result } };
-      }
-      // ADO has no transition API: the honest equivalent is a State-field
-      // update (System.State) — routed through updateWorkItem and STATED to
-      // the user, never dressed up as a workflow transition.
-      const note = `this tracker has no transition API — the honest equivalent is a State-field update (System.State = "${args.to}") via updateWorkItem, shown below`;
+      const { adapter, strategy } = open();
+      const t = await strategy.transition(adapter, args.id, args.to, { execute });
       if (!execute) {
-        const d = await adapter.updateWorkItem(args.id, { fields: { 'System.State': args.to } }, { execute: false });
-        return { code: 0, out: { ok: true, mode, plan: [planEntry('transition-as-state-update', d)], note: `${note}. ${PLAN_NOTE}` } };
+        return {
+          code: 0,
+          out: { ok: true, mode, plan: [planEntry(t.step, t.request, t.extra)], note: t.note ? `${t.note}. ${PLAN_NOTE}` : PLAN_NOTE },
+        };
       }
-      const result = await adapter.updateWorkItem(args.id, { fields: { 'System.State': args.to } }, { execute: true });
-      return { code: 0, out: { ok: true, mode, result, note } };
+      return { code: 0, out: { ok: true, mode, result: t.result, ...(t.note ? { note: t.note } : {}) } };
     }
 
     if (cmd === 'comment') {
       if (!args.id || !args.body) return bad(mode, `--id and --body are required. ${USAGE}`);
-      const adapter = resolveTracker(cwd, { fetch });
+      const { adapter } = open();
       if (!adapter.capabilities.comments || typeof adapter.addComment !== 'function') {
         return {
           code: 2,
@@ -238,7 +216,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
     if (cmd === 'link') {
       if (!args.id || !args.type || !args.target) return bad(mode, `--id, --type and --target are required. ${USAGE}`);
       const attributes = args.direction ? { direction: String(args.direction) } : undefined;
-      const adapter = resolveTracker(cwd, { fetch });
+      const { adapter } = open();
       if (!execute) {
         const d = await adapter.addRelation(args.id, args.type, args.target, { execute: false, ...(attributes ? { attributes } : {}) });
         return { code: 0, out: { ok: true, mode, plan: [planEntry('link', d)], note: PLAN_NOTE } };
@@ -254,7 +232,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
   }
 }
 
-module.exports = { run };
+module.exports = { run, USAGE };
 
 if (require.main === module) {
   run(process.argv.slice(2)).then(({ code, out }) => {

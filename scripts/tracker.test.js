@@ -283,6 +283,38 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     assert.ok(!src.includes('process.exit('), 'tracker.js must not force-exit (exit-drain doctrine)');
   });
 
+  // ── strategy spine (WP-4): no provider branches, fail-closed registry ───────
+  await test('structural: tracker.js has no adapter.name comparison, no provider literal, no provider field token', async () => {
+    const src = fs.readFileSync(path.join(__dirname, 'tracker.js'), 'utf8');
+    assert.ok(!/adapter\.name\s*[!=]==?|[!=]==?\s*adapter\.name/.test(src), 'adapter.name must not be compared');
+    assert.ok(!/['"`](ado|jira|azure)['"`]/.test(src), 'no provider-name string literal in the spine');
+    for (const tok of ['System.', 'issuetype', 'issues', 'workItems']) {
+      assert.ok(!src.includes(tok), `provider field token "${tok}" in tracker.js — provider mapping belongs in scripts/lib/tracker/ops/<provider>.js`);
+    }
+  });
+
+  await test('a provider with an adapter but no strategy is refused (exit 2) on a read AND a write — zero requests', async () => {
+    const calls = [];
+    const acme = {
+      name: 'acme', capabilities: { query: 'aql', comments: true, transitions: true },
+      webUrl: (id) => `https://acme.example.com/item/${id}`,
+    };
+    for (const m of ['getWorkItem', 'query', 'createWorkItem', 'updateWorkItem', 'addComment', 'addRelation', 'transition']) {
+      acme[m] = async (...a) => { calls.push([m, ...a]); return {}; };
+    }
+    const f = fakeFetch([]);
+    const dir = aproj();
+    const spec = writeSpec(dir, { fields: { title: 't' } });
+    for (const argv of [['show', '--id', '1'], ['search', '--query', 'x'], ['update', '--id', '1', '--spec', spec, '--execute'], ['comment', '--id', '1', '--body', 'x']]) {
+      const { code, out } = await run(argv, { cwd: dir, fetch: f, resolveTracker: () => acme });
+      assert.strictEqual(code, 2, `${argv[0]}: ${JSON.stringify(out)}`);
+      assert.strictEqual(out.ok, false);
+      assert.match(out.error.message, /No tracker-ops strategy is registered for tracker provider 'acme' — providers with one: ado, jira\. Refusing rather than falling back/);
+    }
+    assert.strictEqual(calls.length, 0, 'no adapter method was called');
+    assert.strictEqual(f.calls.length, 0, 'no request left the machine');
+  });
+
   // ── the move (WP-2): one CLI, no trace of the old path ──────────────────────
   await test('no reference to the old skill-local CLI path anywhere in the plugin outside CHANGELOG.md', async () => {
     const root = path.join(__dirname, '..');
