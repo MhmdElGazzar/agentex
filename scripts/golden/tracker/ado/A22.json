@@ -6,16 +6,29 @@
     "--body",
     "retested — passes"
   ],
-  "code": 2,
+  "code": 0,
   "out": {
-    "ok": false,
+    "ok": true,
     "mode": "plan",
-    "blocked": [
+    "plan": [
       {
-        "reason": "unsupported-op",
-        "message": "comment is not supported on this tracker (capabilities.comments: undefined) — no comment API is wired for provider \"ado\""
+        "step": "comment",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workItems/42/comments?api-version=7.1-preview.4",
+        "request": {
+          "op": "addComment",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workItems/42/comments?api-version=7.1-preview.4",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "text": "retested — passes"
+          }
+        }
       }
-    ]
+    ],
+    "note": "nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
   },
   "requests": []
 }

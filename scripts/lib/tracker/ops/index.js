@@ -17,13 +17,16 @@
 //   transition(adapter, id, to, {execute})    dry run -> { step, request, extra?, note? }
 //                                             execute -> { result, note? }
 //   refusedUpdateFields(spec) -> Blocked[]    fields `update` refuses before any request
+//   renderDiscussion(text, mention|null)      the EXACT comment body the adapter's
+//     -> provider body                        addComment sends (ADO HTML string /
+//                                             Jira ADF doc); mention = {id, displayName}
 //
 // get(name) fails closed (exit 2, before any adapter call) for an unregistered
 // provider, a strategy missing a required member, or a provider/key mismatch.
 const path = require('node:path');
 const { createRegistry } = require(path.join(__dirname, '..', 'registry.js'));
 
-const REQUIRED_MEMBERS = ['provider', 'summarize', 'scopeQuery', 'searchResults', 'transition', 'refusedUpdateFields'];
+const REQUIRED_MEMBERS = ['provider', 'summarize', 'scopeQuery', 'searchResults', 'transition', 'refusedUpdateFields', 'renderDiscussion'];
 const LABEL = 'tracker-ops strategy';
 
 const ado = require('./ado.js');

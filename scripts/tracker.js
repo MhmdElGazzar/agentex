@@ -198,18 +198,21 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
 
     if (cmd === 'comment') {
       if (!args.id || !args.body) return bad(mode, `--id and --body are required. ${USAGE}`);
-      const { adapter } = open();
+      const { adapter, strategy } = open();
       if (!adapter.capabilities.comments || typeof adapter.addComment !== 'function') {
         return {
           code: 2,
           out: { ok: false, mode, blocked: [{ reason: 'unsupported-op', message: `comment is not supported on this tracker (capabilities.comments: ${adapter.capabilities.comments ?? 'undefined'}) — no comment API is wired for provider "${adapter.name}"` }] },
         };
       }
+      // The provider's exact body (encoding, rich text) is rendered here, so
+      // the dry run shows precisely what --execute sends.
+      const body = strategy.renderDiscussion(args.body, null);
       if (!execute) {
-        const d = await adapter.addComment(args.id, args.body, { execute: false });
+        const d = await adapter.addComment(args.id, body, { execute: false });
         return { code: 0, out: { ok: true, mode, plan: [planEntry('comment', d)], note: PLAN_NOTE } };
       }
-      const result = await adapter.addComment(args.id, args.body, { execute: true });
+      const result = await adapter.addComment(args.id, body, { execute: true });
       return { code: 0, out: { ok: true, mode, result } };
     }
 

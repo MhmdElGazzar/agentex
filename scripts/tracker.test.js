@@ -225,14 +225,38 @@ const isWrite = (c) => c.method !== 'GET' && !(c.method === 'POST' && c.url.incl
     assert.match(r2.out.note, /State[- ]field update/i);
   });
 
-  await test('comment (ADO) is refused UPFRONT naming the capability flag — exit 2, zero requests', async () => {
-    const f = fakeFetch([]);
-    const { code, out } = await run(['comment', '--id', '42', '--body', 'x'], { cwd: aproj(), fetch: f });
-    assert.strictEqual(code, 2, JSON.stringify(out));
-    assert.ok(out.blocked.some((b) => b.reason === 'unsupported-op'), JSON.stringify(out));
-    assert.match(JSON.stringify(out.blocked), /capabilities\.comments/);
-    assert.match(JSON.stringify(out.blocked), /not supported on this tracker/);
-    assert.strictEqual(f.calls.length, 0);
+  await test('comment (ADO) plans and executes through the comments API — the body HTML-encoded, markup literal', async () => {
+    const body = 'Totals <b>wrong</b> & "rounded" — it\'s off\nسطر ثانٍ';
+    const encoded = 'Totals &lt;b&gt;wrong&lt;/b&gt; &amp; &quot;rounded&quot; — it&#39;s off<br>سطر ثانٍ';
+    const f1 = fakeFetch([]);
+    const r1 = await run(['comment', '--id', '42', '--body', body], { cwd: aproj(), fetch: f1 });
+    assert.strictEqual(r1.code, 0, JSON.stringify(r1.out));
+    assert.strictEqual(r1.out.mode, 'plan');
+    assert.deepStrictEqual(r1.out.plan[0].request.body, { text: encoded }, 'the dry run shows the exact body');
+    assert.strictEqual(f1.calls.length, 0);
+    const f2 = fakeFetch([{ method: 'POST', match: '/wit/workItems/42/comments', json: { id: 9 } }]);
+    const r2 = await run(['comment', '--id', '42', '--body', body, '--execute'], { cwd: aproj(), fetch: f2 });
+    assert.strictEqual(r2.code, 0, JSON.stringify(r2.out));
+    assert.strictEqual(f2.calls.length, 1);
+    assert.strictEqual(JSON.parse(f2.calls[0].body).text, encoded, 'request body: markup characters literal, Arabic literal');
+    assert.ok(f2.calls[0].body.includes('سطر ثانٍ'), 'non-ASCII travels unescaped');
+  });
+
+  await test('renderDiscussion: ADO HTML (encoded, <br>, mention anchor) / Jira ADF (toAdf, mention node) — byte-exact', async () => {
+    const { defaultRegistry } = require('./lib/tracker/ops/index.js');
+    const { toAdf } = require('./lib/tracker/adf.js');
+    const adoR = defaultRegistry.get('ado').renderDiscussion;
+    const jiraR = defaultRegistry.get('jira').renderDiscussion;
+    assert.strictEqual(adoR('a < b & c > "d" \'e\'\nnext', null), 'a &lt; b &amp; c &gt; &quot;d&quot; &#39;e&#39;<br>next');
+    assert.strictEqual(adoR('please check', { id: 'guid-1', displayName: 'Pat <PO>' }),
+      '<a href="#" data-vss-mention="version:2.0,guid-1">@Pat &lt;PO&gt;</a> please check');
+    assert.deepStrictEqual(jiraR('two\n\nparas', null), toAdf('two\n\nparas'), 'no mention: exactly today\'s toAdf body');
+    assert.deepStrictEqual(jiraR('please check\nnow', { id: 'acc-9', displayName: 'Pat Owner' }), {
+      type: 'doc', version: 1, content: [{ type: 'paragraph', content: [
+        { type: 'mention', attrs: { id: 'acc-9', text: '@Pat Owner' } }, { type: 'text', text: ' ' },
+        { type: 'text', text: 'please check' }, { type: 'hardBreak' }, { type: 'text', text: 'now' },
+      ] }],
+    });
   });
 
   // ── CI guard (AGENTEX_CI=1): writes refused, reads and dry runs unaffected ──

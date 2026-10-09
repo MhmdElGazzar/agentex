@@ -19,8 +19,8 @@ flags the adapters declare, so this table cannot drift from the code.
 | `tracker.js search` (query text, `--fields`, `--top`) | `query` | supported (wiql) | supported (jql) |
 | `tracker.js show --fields --out` | — | supported | supported |
 | `tracker.js batch` (many ids, chosen fields) | `batchRead` | supported | supported |
-| `tracker.js comments` (read the thread) | `comments` | refused (`comments` unset) | supported |
-| `tracker.js comment` / `update --discussion` (post) | `comments` | refused (`comments` unset) | supported |
+| `tracker.js comments` (read the thread) | `comments` | supported | supported |
+| `tracker.js comment` / `update --discussion` (post) | `comments` | supported | supported |
 | `--mention` on a discussion post | `mentions` | refused (`mentions` unset) | supported |
 | `tracker.js relations --kind parent` | `relations.parent` | supported | supported |
 | `tracker.js relations --kind child` | `relations.child` | supported | supported |

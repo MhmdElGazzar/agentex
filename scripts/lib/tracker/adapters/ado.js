@@ -274,6 +274,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       query: 'wiql',                    // 'jql' for Jira
       deleteWorkItem: 'partial',        // ADO: most types yes, Test Case no
       batchRead: true,                  // wit/workitemsbatch (getWorkItems)
+      comments: true,                   // comments API: listComments + addComment
       sprints: true,                    // team iterations (listIterations)
     },
 
@@ -529,6 +530,20 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         body: JSON.stringify(ops), contentType: 'application/json-patch+json',
       });
       return { id: (res && res.id) ?? id, rev: res && res.rev, url: webUrl(id) };
+    },
+
+    // A discussion comment: POST wit/workItems/{id}/comments (comments API
+    // 7.1-preview.4) with { text: <html> }. The caller renders the HTML (the
+    // tracker-ops strategy's renderDiscussion — encoding + mention anchor);
+    // the dry-run descriptor carries that EXACT body, never a summary, so the
+    // approved text is the written text.
+    async addComment(id, html, { execute = false } = {}) {
+      const u = url(`wit/workItems/${id}/comments`, {}, { apiVersion: COMMENTS_API_VERSION });
+      const body = { text: String(html) };
+      if (!execute) return descriptor('addComment', 'POST', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('addComment');
+      const res = await request('addComment', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
+      return { id: res && res.id, workItemId: (res && res.workItemId) ?? Number(id) };
     },
 
     async addRelation(id, relType, targetId, { execute = false, attributes } = {}) {

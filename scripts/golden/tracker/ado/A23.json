@@ -7,16 +7,19 @@
     "retested — passes",
     "--execute"
   ],
-  "code": 2,
+  "code": 0,
   "out": {
-    "ok": false,
+    "ok": true,
     "mode": "executed",
-    "blocked": [
-      {
-        "reason": "unsupported-op",
-        "message": "comment is not supported on this tracker (capabilities.comments: undefined) — no comment API is wired for provider \"ado\""
-      }
-    ]
+    "result": {
+      "workItemId": 42
+    }
   },
-  "requests": []
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workItems/42/comments?api-version=7.1-preview.4",
+      "body": "{\"text\":\"retested — passes\"}"
+    }
+  ]
 }

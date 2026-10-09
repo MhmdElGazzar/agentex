@@ -47,9 +47,21 @@ async function transition(adapter, id, to, { execute = false } = {}) {
   return { result, note };
 }
 
+// discussion: the exact HTML the comments API receives. Markup characters are
+// encoded (they render literally), newlines become <br>, non-ASCII stays
+// literal. A resolved mention ({id, displayName}) is prepended as ADO's real
+// mention anchor — never a bare "@text".
+const HTML_ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' };
+const escapeHtml = (t) => String(t).replace(/[&<>"']/g, (c) => HTML_ESC[c]);
+function renderDiscussion(text, mention) {
+  const body = escapeHtml(text).replace(/\r?\n/g, '<br>');
+  if (!mention) return body;
+  return `<a href="#" data-vss-mention="version:2.0,${escapeHtml(mention.id)}">@${escapeHtml(mention.displayName)}</a> ${body}`;
+}
+
 // update: fields this tracker refuses before any request (none yet).
 function refusedUpdateFields() {
   return [];
 }
 
-module.exports = { provider, summarize, scopeQuery, searchResults, transition, refusedUpdateFields };
+module.exports = { provider, summarize, scopeQuery, searchResults, transition, refusedUpdateFields, renderDiscussion };

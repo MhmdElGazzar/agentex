@@ -26,6 +26,7 @@ const strategy = {
     return { result: await adapter.updateWorkItem(id, payload, { execute: true }) };
   },
   refusedUpdateFields: () => [],
+  renderDiscussion: (text, mention) => (mention ? `@[${mention.id}] ${text}` : String(text)),
 };
 
 // capabilities: overrides for a scenario (e.g. { comments: false }).

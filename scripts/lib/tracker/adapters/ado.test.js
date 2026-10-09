@@ -818,6 +818,38 @@ const PROJ = 'Sample%20Project';
     assert.deepStrictEqual(c.relations, { parent: true, child: true, related: true, testedBy: true, attachedFile: true });
   });
 
+  await test('addComment: POST wit/workItems/{id}/comments (7.1-preview.4) {text}; the dry-run body is EXACT (never summarized)', async () => {
+    const long = `<div>${'x'.repeat(300)} &lt;tag&gt; مرحبا</div>`;
+    const f = fake2([{ method: 'POST', match: '/wit/workItems/42/comments', json: { id: 77, workItemId: 42 } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const d = await a.addComment(42, long, { execute: false });
+    assert.strictEqual(f.calls.length, 0, 'dry run sends nothing');
+    assert.strictEqual(d.method, 'POST');
+    assert.strictEqual(d.url, `${BASE}/${PROJ}/_apis/wit/workItems/42/comments?api-version=7.1-preview.4`);
+    assert.deepStrictEqual(d.body, { text: long }, 'the exact body the execute run sends');
+    assert.strictEqual(d.headers.authorization, '<Basic ***, not printed>');
+    const r = await a.addComment(42, long, { execute: true });
+    assert.strictEqual(f.calls.length, 1);
+    assert.deepStrictEqual(JSON.parse(f.calls[0].body), { text: long });
+    assert.strictEqual(f.calls[0].headers['Content-Type'], 'application/json');
+    assert.deepStrictEqual(r, { id: 77, workItemId: 42 });
+  });
+
+  await test('addComment: the CI choke point refuses execute:true (exit 2, ci-mode, zero requests); the dry run still works', async () => {
+    process.env.AGENTEX_CI = '1';
+    try {
+      const f = fake2([]);
+      const a = createAdapter({ cwd: proj(), fetch: f });
+      await assert.rejects(a.addComment(42, 'x', { execute: true }), (e) => e.exitCode === 2 && e.reason === 'ci-mode');
+      assert.strictEqual((await a.addComment(42, 'x', { execute: false })).method, 'POST');
+      assert.strictEqual(f.calls.length, 0);
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
+  await test('capability comments is now true on ADO (comment threads read + written via the comments API)', async () => {
+    assert.strictEqual(createAdapter({ cwd: proj(), fetch: fakeFetch([]) }).capabilities.comments, true);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
