@@ -19,7 +19,12 @@ fixtures file.
 
 **Example:** `skills/ask-kb/scripts/ask_kb.test.js` (happy path, config precedence,
 `404`/`401`/`429`, retries, secret headers); the smaller `check_url.test.js` built in
-[Adding a Skill](./adding-a-skill.md).
+[Adding a Skill](./adding-a-skill.md). For a script whose real dependency is optional and
+resolved from the *caller's* project (see
+[Adding a Capability](./adding-a-capability.md#checklist) on that pattern),
+`skills/mobile-testing/scripts/appium_client.test.js` shows the shape: write a minimal fake
+module into a temp `node_modules/` so the `BLOCKED`/argument-validation paths are provable
+without the real dependency, a live server, or a device.
 
 **Pros/cons:** + catches regressions in safety rules, no framework overhead — but one more
 file to write per script.

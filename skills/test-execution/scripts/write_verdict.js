@@ -221,4 +221,6 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { computeVerdict, COUNT_KEYS, RUN_REASON_CODES, DEFAULTS };
+// resolvePolicy is exported for the extent-report verdict banner, so the dashboard
+// resolves the same policy the gate does.
+module.exports = { computeVerdict, resolvePolicy, COUNT_KEYS, RUN_REASON_CODES, DEFAULTS };

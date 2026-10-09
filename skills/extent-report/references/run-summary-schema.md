@@ -75,6 +75,12 @@ steps or flakes.
 `warnings` (plural) while the step/test-case *status* key is `warning` (singular). Unchanged
 from the legacy shape.
 
+**Derived from the counts (v2 only):** the dashboard's verdict banner runs these counts through
+the CI gate's mapping and policy (`write_verdict.js` `computeVerdict` + `resolvePolicy`), and
+its pass rate is (`passed` + `flaky`) ÷ (`passed` + `flaky` + `failed`). Nothing in this file
+carries run-level reasons (needs-user, timeout, …), so `verdict.json` — not the banner — is the
+authoritative verdict.
+
 ### `testCases[]`
 
 | Field | Type | Presence | Notes |
@@ -127,7 +133,7 @@ writes the JSON; release-gate runs additionally sweep artifacts via `scan-secret
 
 | Input | Rendering |
 |---|---|
-| No `schemaVersion` (legacy shape) | The legacy code path — output exactly as today |
+| No `schemaVersion` (legacy shape) | The legacy code path — output exactly as today (no verdict banner, pass rate, step counts, Issues-only filter or print styles) |
 | v2, any optional field absent | That section/column/chip omitted; nothing else affected |
 | v2, required-by-capture field absent | Chip omitted; report still renders |
 | v2, evidence path missing/unreadable | Labeled text placeholder; exit 0 |

@@ -100,6 +100,43 @@ function serve(handler) {
     assert.strictEqual(code, 0);
   });
 
+  await test('legacy path reads .env: catalog ${API_BASE_URL} + bearer tokenEnv with nothing exported', async () => {
+    let auth = null;
+    const { srv, port } = await serve((req, res) => { auth = req.headers.authorization; res.end('{}'); });
+    const dir = proj({
+      'integration/sample_api.json': { ...CATALOG, auth: { type: 'bearer', tokenEnv: 'API_TOKEN' } },
+      '.env': `API_BASE_URL=http://127.0.0.1:${port}\nAPI_TOKEN="tok-from-dotenv"\n`,
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(auth, 'Bearer tok-from-dotenv');
+  });
+
+  await test('legacy basic auth reads userEnv/passEnv from .env', async () => {
+    let auth = null;
+    const { srv, port } = await serve((req, res) => { auth = req.headers.authorization; res.end('{}'); });
+    const dir = proj({
+      'integration/sample_api.json': { ...CATALOG, auth: { type: 'basic', userEnv: 'API_USER_T', passEnv: 'API_PASS_T' } },
+      '.env': `API_BASE_URL=http://127.0.0.1:${port}\nAPI_USER_T=qa\nAPI_PASS_T=pw\n`,
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(auth, 'Basic ' + Buffer.from('qa:pw').toString('base64'));
+  });
+
+  await test('legacy bearer token missing from both process env and .env -> BLOCKED naming the var', async () => {
+    const dir = proj({
+      'integration/sample_api.json': { ...CATALOG, auth: { type: 'bearer', tokenEnv: 'API_TOKEN' } },
+      '.env': 'API_BASE_URL=http://127.0.0.1:9\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    assert.strictEqual(code, 2);
+    assert.match(out.reason, /API_TOKEN/);
+    assert.match(out.reason, /\.env/);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

@@ -33,6 +33,32 @@ All notable changes to AgenTeX are documented here.
   add of a non-member pooled test case, an independent re-read, ledgered and removed at
   teardown as an association only.
 
+- **Mobile testing** — a new `mobile-testing` skill automates native Android/iOS apps through
+  a real [Appium](https://appium.io/docs/en/latest/) session, mirroring the existing
+  browser-testing flow: sequential (human-in-the-loop) or parallel (autonomous, one
+  `mobile-qa-executor` subagent per spec file, per device/emulator).
+- `/execute-mobile-test` command, `agents/mobile-qa-executor.md` subagent, and bundled starter
+  specs in `test/mobile-suite1/`.
+- Two ways to drive an Appium session, documented in
+  `skills/mobile-testing/references/`: raw W3C WebDriver REST via `curl`
+  (`appium-server-cli.md`, no extra dependency) or the bundled `webdriverio`-based
+  `scripts/appium_client.js` wrapper (`appium-client-wrapper.md`, requires the project's own
+  `webdriverio` devDependency).
+- `skills/mobile-testing/scripts/preflight.js` / `init_run.js` / `merge_run.js` — the same
+  deterministic orchestration pattern as `browser-testing`'s scripts, adapted for
+  `mobile-sessions/`.
+- Optional `mobile` block in `environments/<env>.json` (`platformName`, `automationName`,
+  `app`/`appPackage`+`appActivity`/`bundleId`, `deviceName`, `platformVersion`, `udid`) —
+  additive, browser-only projects are unaffected. Documented in `docs/configuration.md`.
+- `docs/mobile-testing.md` and `docs/contributing/adding-a-capability.md` — the latter is a new
+  contributing guide for additions bigger than one skill (its own subagent/command/docs page),
+  using this mobile-testing addition as the worked example.
+- `settings.example.json` — `appium` and read-only `adb`/`xcrun simctl` commands pre-approved;
+  destructive device actions (`adb uninstall`, `adb reboot`, `xcrun simctl erase`, …) prompt
+  instead, matching the existing `az` destructive-action pattern. The same boundary is stated
+  explicitly in `skills/mobile-testing/SKILL.md` and `agents/mobile-qa-executor.md` — a run's
+  device footprint never goes beyond installing/launching/exercising/closing the app under test.
+
 ### Changed
 - **Azure DevOps comments are supported** by `tracker.js comment` (the comments API;
   previously refused upfront), and an ADO `search` whose WIQL names no project is now
@@ -47,6 +73,46 @@ All notable changes to AgenTeX are documented here.
   Subcommands, flags, output and exit codes are unchanged apart from the script name in
   the usage text — pinned by a golden suite recorded from the 0.23.0 script before the
   move.
+- `docs/getting-started.md` and `docs/contributing/architecture.md` updated to reflect the new
+  mobile-testing capability (no longer describe `qa-executor` as the only subagent).
+- **Bug screenshots are attached annotated.** `bug-report-azure` now uploads, ahead of each
+  raw screenshot, a copy with a red box and label on the defect (optionally a green one on
+  something correct) and a one-line summary banner above it, drawn by the new
+  `skills/bug-report-azure/scripts/annotate-image.js` through the project's playwright-cli.
+  The raw capture is still attached beside it, since the overlay can hide what is under it.
+  Both files, and the text the copy adds, are what the one approval lists and uploads, on
+  Azure DevOps and Jira alike; `create-bug.js` is unchanged. Without playwright-cli, or when a box is still off after
+  two fixes, the raw screenshot is attached and the consolidated screen says why —
+  annotation never blocks a filing or adds a question. Covered by
+  `skills/bug-report-azure/scripts/annotate-image.test.js`.
+- **The extent report opens with the run's verdict.** On a `schemaVersion: 2` run summary,
+  `make_html_report.js` now renders a PASSED / FAILED / BLOCKED banner computed by the CI
+  gate's own mapping and policy (`write_verdict.js` `computeVerdict` + `resolvePolicy`, now
+  exported), so the dashboard can never read PASSED while the gate says FAIL on the same
+  counts; `verdict.json` stays authoritative, since run-level reasons (needs-user, timeout, …)
+  never reach the report. Under it, one line names every non-zero failed / blocked / view
+  mismatch / warning / flaky / not-run count, beside a pass rate of (Passed + Flaky) ÷
+  (Passed + Flaky + Failed). Each test-case card gains a step-count chip (steps · pass ·
+  issues) after its pill and duration, an **Issues only** checkbox hides passed and N/A
+  cards, and print styles switch to a light palette with every card expanded. The legacy
+  (no `schemaVersion`) output is byte-identical, and the release-gate name→pill window is
+  untouched. Covered by six new cases in `make_html_report.test.js`.
+### Fixed
+- **`api:` steps read catalog secrets from `.env`.** `run_api.js` resolved a catalog's own
+  env-var names (`${API_BASE_URL}` in `baseUrl`, `auth.tokenEnv`, `auth.userEnv` /
+  `passEnv`) from the shell environment only, so a token kept in `.env`, the documented home
+  for secrets, left the step BLOCKED with "not set". These names now resolve like every other
+  secret, from the environment and then `.env`, and the BLOCKED reason names both places.
+  The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
+  three new cases in `run_api.test.js`. Thanks to @MarwahZain, whose PR #9 flagged the
+  inconsistent `API_TOKEN` handling (closed with credit, not merged).
+### Credits
+- The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
+  and print styles were harvested from community **PR #6** by @YoussefAbdellah2023. Its
+  parallel v2/v3 generator files were not adopted: they forked the pre-`schemaVersion: 2`
+  renderer and lacked flaky / warning / view-mismatch statuses, timing, evidence and defects,
+  so the ideas were rebuilt inside `make_html_report.js` instead. Closed with credit, not
+  merged.
 
 ## [0.23.0] — 2026-10-09
 ### Added
@@ -164,11 +230,11 @@ All notable changes to AgenTeX are documented here.
   is byte-identical on both trackers.
 
 ### Credits
-- The Jira operation semantics and field mappings were harvested from community **PR #4** ([Testing] task → Sub-task with parent;
+- The Jira operation semantics and field mappings were harvested from community **PR #4** by @mabdel130 ([Testing] task → Sub-task with parent;
   `Activity=Testing` → label `testing`; `OriginalEstimate`/`RemainingWork` →
   `timetracking.originalEstimate`/`remainingEstimate`; Story Points as a site-specific
   custom field confirmed once per project, never guessed; the configurable bug→story link
-  type; the `.agentex/test-template.md` Jira-section pin) and **PR #11** (verification
+  type; the `.agentex/test-template.md` Jira-section pin) and **PR #11** by @YoussefAbdellah2023 (verification
   that `parent` works only for sub-task types; the sub-task-with-text-steps artifact model
   offered by `/design-test`'s artifact ask). Their acli/CLI transport approach was not
   adopted (CLI dependency, no attachment upload, no custom-field writes) — no code was

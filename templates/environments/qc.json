@@ -18,5 +18,11 @@
   "api": {
     "baseUrl": "https://jsonplaceholder.typicode.com",
     "token": { "envSecret": "API_TOKEN" }
+  },
+  "mobile": {
+    "platformName": "Android",
+    "automationName": "UiAutomator2",
+    "app": "/absolute/path/to/app.apk",
+    "deviceName": "emulator-5554"
   }
 }
