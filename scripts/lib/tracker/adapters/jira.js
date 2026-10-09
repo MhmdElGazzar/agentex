@@ -730,6 +730,10 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // Test-plan/run surface: Jira has no equivalent APIs. Consumers branch on
     // the capability flags first — these are honest backstops, never reached
     // by shipped flows.
+    listPlans: unsupported('listPlans', 'testPlans'),
+    getPlan: unsupported('getPlan', 'testPlans'),
+    createPlan: unsupported('createPlan', 'testPlans'),
+    createSuite: unsupported('createSuite', 'testPlans'),
     listSuites: unsupported('listSuites', 'testPlans'),
     listSuiteCases: unsupported('listSuiteCases', 'testPlans'),
     getPoint: unsupported('getPoint', 'testPlans'),

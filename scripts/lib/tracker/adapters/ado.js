@@ -37,6 +37,8 @@ const REDACTED_AUTH = '<Basic ***, not printed>';
 const BATCH_CHUNK = 200;                 // wit/workitemsbatch accepts at most 200 ids per call
 const COMMENTS_API_VERSION = '7.1-preview.4';
 const ITERATION_TIMEFRAMES = ['current', 'future', 'past', 'all'];
+const PLAN_PAGE_CAP = 50;                // listPlans pages before it reports truncated
+const SUITE_TYPES = { requirement: 'requirementTestSuite', static: 'staticTestSuite' };
 
 function configError(message) {
   const e = new Error(message);
@@ -333,6 +335,28 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       }
     },
 
+    // Test plans of the project: GET testplan/plans following
+    // x-ms-continuationtoken, at most opts.maxPages pages. { plans, truncated }
+    // — truncated means "more pages exist", so a name cannot be proven absent.
+    async listPlans({ maxPages = PLAN_PAGE_CAP } = {}) {
+      const plans = [];
+      let token = null;
+      for (let page = 0; page < maxPages; page++) {
+        const u = url('testplan/plans', token ? { continuationToken: token } : {});
+        const { body, header } = await request('listPlans', 'GET', u, { withHeaders: true });
+        plans.push(...((body && body.value) || []));
+        const next = header('x-ms-continuationtoken');
+        if (!next) return { plans, truncated: false };
+        if (next === token) throw new TrackerError({ op: 'listPlans', url: u, serverMessage: `the service repeated continuation token "${next}" — stopping rather than looping` });
+        token = next;
+      }
+      return { plans, truncated: true };
+    },
+
+    async getPlan(planId) {
+      return request('getPlan', 'GET', url(`testplan/plans/${planId}`));
+    },
+
     async listSuiteCases(planId, suiteId) {
       const res = await request('listSuiteCases', 'GET', url(`testplan/Plans/${planId}/Suites/${suiteId}/TestCase`));
       return (res && res.value) || [];
@@ -600,6 +624,34 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         }
       }
       return { ids: ids.map(Number), added: toAdd.map(Number), alreadyPresent: alreadyPresent.map(Number), suiteId, planId };
+    },
+
+    // POST testplan/plans { name, areaPath?, iteration? } -> { id, name, rootSuiteId }.
+    async createPlan({ name, areaPath, iteration } = {}, { execute = false } = {}) {
+      if (!name) throw configError('createPlan needs a plan name');
+      const u = url('testplan/plans');
+      const body = { name: String(name), ...(areaPath ? { areaPath: String(areaPath) } : {}), ...(iteration ? { iteration: String(iteration) } : {}) };
+      if (!execute) return descriptor('createPlan', 'POST', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('createPlan');
+      const res = await request('createPlan', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
+      return { id: res && res.id, name: res && res.name, rootSuiteId: res && res.rootSuite ? res.rootSuite.id : null };
+    },
+
+    // POST testplan/Plans/{p}/suites — a requirement-based suite (by
+    // requirementId) or a static suite (by name), under parentSuite.
+    async createSuite(planId, { type, requirementId, name, parent } = {}, { execute = false } = {}) {
+      if (!SUITE_TYPES[type]) throw configError(`createSuite: type must be ${Object.keys(SUITE_TYPES).join(' or ')} (got ${JSON.stringify(type)})`);
+      if (!parent) throw configError('createSuite needs a parent suite id');
+      const u = url(`testplan/Plans/${planId}/suites`);
+      const body = {
+        suiteType: SUITE_TYPES[type],
+        ...(type === 'requirement' ? { requirementId: Number(requirementId) } : { name: String(name) }),
+        parentSuite: { id: Number(parent) },
+      };
+      if (!execute) return descriptor('createSuite', 'POST', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('createSuite');
+      const res = await request('createSuite', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
+      return { id: res && res.id, name: res && res.name, suiteType: res && res.suiteType };
     },
 
     async createRun(body, { execute = false } = {}) {

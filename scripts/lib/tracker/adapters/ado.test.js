@@ -850,6 +850,67 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(createAdapter({ cwd: proj(), fetch: fakeFetch([]) }).capabilities.comments, true);
   });
 
+  // ════ test-plan "ensure" ops (WP-9) ════
+  await test('listPlans: GET testplan/plans following x-ms-continuationtoken -> { plans, truncated:false }', async () => {
+    const f = fake2([{ match: '/_apis/testplan/plans', respond: (call, n) => (n === 1
+      ? { json: { value: [{ id: 1, name: 'A', rootSuite: { id: 10 } }] }, headers: { 'x-ms-continuationtoken': 't2' } }
+      : { json: { value: [{ id: 2, name: 'B', rootSuite: { id: 20 } }] } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listPlans();
+    assert.deepStrictEqual(res.plans.map((p) => p.id), [1, 2]);
+    assert.strictEqual(res.truncated, false);
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/testplan/plans?api-version=7.1`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/testplan/plans?continuationToken=t2&api-version=7.1`);
+  });
+
+  await test('listPlans: a page cap reports truncated:true (the caller then cannot prove a name absent)', async () => {
+    const f = fake2([{ match: '/_apis/testplan/plans', respond: (call, n) => ({ json: { value: [{ id: n, name: `P${n}` }] }, headers: { 'x-ms-continuationtoken': `t${n + 1}` } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listPlans({ maxPages: 3 });
+    assert.strictEqual(res.truncated, true);
+    assert.strictEqual(f.calls.length, 3);
+  });
+
+  await test('getPlan: GET testplan/plans/{id}', async () => {
+    const f = fake2([{ match: '/testplan/plans/7', json: { id: 7, name: 'P', rootSuite: { id: 70 } } }]);
+    const p = await createAdapter({ cwd: proj(), fetch: f }).getPlan(7);
+    assert.strictEqual(p.rootSuite.id, 70);
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/testplan/plans/7?api-version=7.1`);
+  });
+
+  await test('createPlan: dry-run descriptor (POST testplan/plans {name, areaPath?, iteration?}); execute hits the CI choke point', async () => {
+    const f = fake2([{ method: 'POST', match: '/_apis/testplan/plans', json: { id: 9, name: 'Gate', rootSuite: { id: 90 } } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const d = await a.createPlan({ name: 'Gate', areaPath: 'Sample Project\\QA' }, { execute: false });
+    assert.strictEqual(d.method, 'POST');
+    assert.strictEqual(d.url, `${BASE}/${PROJ}/_apis/testplan/plans?api-version=7.1`);
+    assert.deepStrictEqual(d.body, { name: 'Gate', areaPath: 'Sample Project\\QA' });
+    assert.strictEqual(f.calls.length, 0);
+    const r = await a.createPlan({ name: 'Gate' }, { execute: true });
+    assert.deepStrictEqual(JSON.parse(f.calls[0].body), { name: 'Gate' });
+    assert.deepStrictEqual(r, { id: 9, name: 'Gate', rootSuiteId: 90 });
+    process.env.AGENTEX_CI = '1';
+    try { await assert.rejects(a.createPlan({ name: 'Gate' }, { execute: true }), (e) => e.reason === 'ci-mode'); }
+    finally { delete process.env.AGENTEX_CI; }
+    assert.strictEqual(f.calls.length, 1);
+  });
+
+  await test('createSuite: requirement and static bodies under a parent; execute hits the CI choke point', async () => {
+    const f = fake2([{ method: 'POST', match: '/testplan/Plans/7/suites', json: { id: 71, name: 'S', suiteType: 'staticTestSuite' } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const d1 = await a.createSuite(7, { type: 'requirement', requirementId: 42, parent: 70 }, { execute: false });
+    assert.strictEqual(d1.url, `${BASE}/${PROJ}/_apis/testplan/Plans/7/suites?api-version=7.1`);
+    assert.deepStrictEqual(d1.body, { suiteType: 'requirementTestSuite', requirementId: 42, parentSuite: { id: 70 } });
+    const d2 = await a.createSuite(7, { type: 'static', name: 'Regression — gate', parent: 70 }, { execute: false });
+    assert.deepStrictEqual(d2.body, { suiteType: 'staticTestSuite', name: 'Regression — gate', parentSuite: { id: 70 } });
+    await assert.rejects(a.createSuite(7, { type: 'dynamic', parent: 70 }, { execute: false }), (e) => e.exitCode === 2);
+    assert.strictEqual(f.calls.length, 0);
+    const r = await a.createSuite(7, { type: 'static', name: 'S', parent: 70 }, { execute: true });
+    assert.deepStrictEqual(r, { id: 71, name: 'S', suiteType: 'staticTestSuite' });
+    process.env.AGENTEX_CI = '1';
+    try { await assert.rejects(a.createSuite(7, { type: 'static', name: 'S', parent: 70 }, { execute: true }), (e) => e.reason === 'ci-mode'); }
+    finally { delete process.env.AGENTEX_CI; }
+    assert.strictEqual(f.calls.length, 1);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
