@@ -892,6 +892,194 @@ test('m05 + init: fresh scaffold gitignores sessions and scratch, not just .env'
   assert.match(gi, /^\.playwright-cli\/$/m);
 });
 
+// ── m12 qa-records-and-workflow — the plugin-owned config blocks (R6) ────────
+// A 0.22/0.23-shaped project: today's full scaffold, but config/project.json
+// predates the four plugin blocks and its provider block has no workflow.
+// Every expectation reads STRUCTURED_DEFAULTS — the default QA watchlist paths
+// live only in that constant.
+const { STRUCTURED_DEFAULTS: SD, withPluginConfigBlocks } = require('./lib/project_config.js');
+const M12 = require('./migrations/12-qa-records-and-workflow.js');
+const PLUGIN_BLOCKS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+const QA_FOLDER = path.posix.dirname(SD.qaRecords.pendingQuestions);
+const AZ_BLOCK = { org: 'https://dev.azure.com/exampleorg', project: 'Sample Project', team: 'QA Team', assignee: '' };
+const JI_BLOCK = { site: 'example', project: 'PROJ', board: '42', assignee: '' };
+
+function preOneZero(configExtra = {}, { omit = PLUGIN_BLOCKS } = {}) {
+  const dir = proj();
+  runInit(dir);
+  const cfg = readJson(dir, 'config/project.json');
+  for (const k of omit) delete cfg[k];
+  Object.assign(cfg, configExtra);
+  addFiles(dir, {
+    'config/project.json': cfg,
+    // the user's own environment (not the pristine sample), and their spec
+    'environments/qc.json': { ...readJson(dir, 'environments/qc.json'), portalUrl: 'https://app.example.test' },
+    'test/suite1/mine.md': SPEC_02,
+    '.agentex/version.json': { version: '0.22.1' },
+    '.env': `${readText(dir, '.env')}AZURE_PAT=${SENTINELS.pat}\n`,
+  });
+  gitInit(dir);
+  return dir;
+}
+function m12ctx(dir) {
+  const lines = [];
+  return {
+    projectRoot: dir, pluginRoot: PLUGIN_ROOT, lines,
+    templates: { project: TPL_PROJECT },
+    saveJson(file, data) { fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf8'); },
+    report: {
+      migrated: (id, d) => lines.push(`[migrated] ${id} — ${d}`),
+      flag: (m) => lines.push(`[flag] ${m}`), ok: (m) => lines.push(`[ok] ${m}`), manual: (m) => lines.push(`[manual] ${m}`),
+    },
+  };
+}
+
+test('m12: a pre-1.0 ADO project gains the four blocks and azure.workflow; only config/project.json changes; no watchlist file', () => {
+  const dir = preOneZero({ azure: { ...AZ_BLOCK } });
+  const beforeCfg = readJson(dir, 'config/project.json');
+  const before = snapshot(dir);
+  assert.strictEqual(M12.detect(m12ctx(dir)), true, 'detect is true on a pre-1.0 config');
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[migrated\] qa-records-and-workflow — /m);
+  const cfg = readJson(dir, 'config/project.json');
+  for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k], `${k} added from the defaults`);
+  assert.deepStrictEqual(cfg.azure, { ...AZ_BLOCK, workflow: SD.workflow }, 'azure keeps its keys and gains the EMPTY workflow');
+  assert.ok(!('jira' in cfg), 'never creates a provider block');
+  assert.ok(!('reproSummaryRow' in cfg.azure), 'reproSummaryRow is never written');
+  assert.deepStrictEqual(Object.keys(cfg), [...Object.keys(beforeCfg), ...PLUGIN_BLOCKS], 'key order kept; new blocks appended');
+  for (const k of Object.keys(beforeCfg)) if (k !== 'azure') assert.deepStrictEqual(cfg[k], beforeCfg[k], `${k} untouched`);
+  const after = snapshot(dir);
+  const changed = Object.keys({ ...before, ...after }).filter((f) => before[f] !== after[f]).sort();
+  assert.deepStrictEqual(changed, ['.agentex/version.json', 'config/project.json'], 'environments, specs and .env are never touched');
+  assert.ok(!exists(dir, QA_FOLDER), 'no QA watchlist folder or file is created (lazy)');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED);
+  assert.strictEqual(M12.detect(m12ctx(dir)), false, 'a second detect is false');
+});
+
+test('m12: a second run is a zero-write no-op', () => {
+  const dir = preOneZero({ azure: { ...AZ_BLOCK } });
+  assert.strictEqual(run(dir).code, 0);
+  commitAll(dir);
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.22.1' }, null, 2) + '\n');
+  commitAll(dir);
+  const mid = snapshot(dir);
+  const r2 = run(dir);
+  assert.strictEqual(r2.code, 0, r2.out);
+  assert.ok(!r2.out.includes('[migrated]'), `nothing left to migrate:\n${r2.out}`);
+  assert.match(r2.out, /no migrations needed/i);
+  const after = snapshot(dir);
+  assert.deepStrictEqual(subset(after, 'config/'), subset(mid, 'config/'), 'config byte-identical on the second run');
+});
+
+test('m12: customized blocks are preserved; only the missing ones are added', () => {
+  const custom = {
+    azure: { ...AZ_BLOCK, areaPath: 'Sample Project\\QA', workflow: { inTestState: 'In QA', devDoneStates: ['Dev Complete'], closeOut: { state: 'Accepted' } } },
+    testingTasks: [{ stage: 'automation', enabled: false }],
+    testDesign: { approval: 'per-story' },
+  };
+  const dir = preOneZero(JSON.parse(JSON.stringify(custom)));
+  const beforeCfg = readJson(dir, 'config/project.json');
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] qa-records-and-workflow/);
+  const cfg = readJson(dir, 'config/project.json');
+  assert.deepStrictEqual(cfg.azure, custom.azure, 'a customized workflow is never rewritten');
+  assert.deepStrictEqual(cfg.testingTasks, custom.testingTasks, 'a customized testingTasks is never rewritten');
+  assert.deepStrictEqual(cfg.testDesign, custom.testDesign);
+  assert.deepStrictEqual(cfg.estimation, SD.estimation, 'the missing block is added');
+  assert.deepStrictEqual(cfg.qaRecords, SD.qaRecords);
+  assert.deepStrictEqual(Object.keys(cfg), [...Object.keys(beforeCfg), 'estimation', 'qaRecords'], 'key order kept');
+  for (const k of Object.keys(beforeCfg)) assert.deepStrictEqual(cfg[k], beforeCfg[k], `pre-existing ${k} parsed-equal`);
+});
+
+test('m12: a Jira project gets jira.workflow and no azure key', () => {
+  const dir = preOneZero({ jira: { ...JI_BLOCK } });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  const cfg = readJson(dir, 'config/project.json');
+  assert.deepStrictEqual(cfg.jira, { ...JI_BLOCK, workflow: SD.workflow });
+  assert.ok(!('azure' in cfg), 'no azure block, so no azure.workflow');
+  for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k]);
+});
+
+test('m12: a tracker-less project gets the four blocks and no provider key', () => {
+  const dir = preOneZero({});
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] qa-records-and-workflow/);
+  const cfg = readJson(dir, 'config/project.json');
+  assert.ok(!('azure' in cfg) && !('jira' in cfg), 'no provider block is created');
+  for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k]);
+  const all = preOneZero({}, { omit: [] });
+  assert.strictEqual(M12.detect(m12ctx(all)), false, 'all four present + no tracker: nothing to do');
+});
+
+test('m12: two provider blocks are left alone and flagged; the top-level blocks are still added', () => {
+  const dir = preOneZero({ azure: { ...AZ_BLOCK }, jira: { ...JI_BLOCK } });
+  const ctx = m12ctx(dir);
+  assert.strictEqual(M12.detect(ctx), true);
+  M12.apply(ctx);
+  const cfg = readJson(dir, 'config/project.json');
+  assert.deepStrictEqual(cfg.azure, AZ_BLOCK, 'azure untouched');
+  assert.deepStrictEqual(cfg.jira, JI_BLOCK, 'jira untouched');
+  for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k]);
+  assert.ok(ctx.lines.some((l) => /^\[flag\] .*more than one tracker block.*wizard/i.test(l)), ctx.lines.join('\n'));
+  assert.ok(ctx.lines.some((l) => l.startsWith('[migrated] qa-records-and-workflow')));
+  assert.strictEqual(M12.detect(m12ctx(dir)), false, 'nothing more m12 may do — two blocks are the wizard\'s to fix');
+});
+
+test('m12: an unreadable or absent config/project.json is not this migration\'s business', () => {
+  const dir = proj({ 'config/project.json': '{ "name": "broken", ' });
+  const ctx = m12ctx(dir);
+  assert.strictEqual(M12.detect(ctx), false);
+  assert.strictEqual(readText(dir, 'config/project.json'), '{ "name": "broken", ');
+  assert.strictEqual(M12.detect(m12ctx(proj())), false, 'absent: m07 scaffolds it from the template');
+});
+
+test('m12: detect is true when only the provider block lacks workflow', () => {
+  const dir = preOneZero({ azure: { ...AZ_BLOCK } }, { omit: [] });
+  const ctx = m12ctx(dir);
+  assert.strictEqual(M12.detect(ctx), true);
+  M12.apply(ctx);
+  assert.deepStrictEqual(readJson(dir, 'config/project.json').azure.workflow, SD.workflow);
+  assert.ok(ctx.lines.some((l) => /azure\.workflow/.test(l)), ctx.lines.join('\n'));
+  assert.strictEqual(M12.detect(m12ctx(dir)), false);
+});
+
+test('m12 uses the ONE shared function: apply == withPluginConfigBlocks on the parsed config', () => {
+  for (const extra of [{ azure: { ...AZ_BLOCK } }, { jira: { ...JI_BLOCK } }, {}, { azure: { ...AZ_BLOCK }, jira: { ...JI_BLOCK } }]) {
+    const dir = preOneZero(extra);
+    const want = withPluginConfigBlocks(readJson(dir, 'config/project.json'));
+    M12.apply(m12ctx(dir));
+    assert.deepStrictEqual(readJson(dir, 'config/project.json'), want, JSON.stringify(Object.keys(extra)));
+  }
+});
+
+test('migrations 01→12 chain on a 0.10-era project: m12 applies after m11, the stamp moves, a second run is a no-op', () => {
+  const dir = fixture010();
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  const ids = [...r.out.matchAll(/^\[migrated\] ([\w-]+)/gm)].map((m) => m[1]);
+  assert.strictEqual(ids[ids.length - 1], 'qa-records-and-workflow', `m12 runs last: ${ids.join(', ')}`);
+  const order = fs.readdirSync(path.join(__dirname, 'migrations')).filter((f) => /^\d{2}-.*\.js$/.test(f)).sort()
+    .map((f) => require(path.join(__dirname, 'migrations', f)).id);
+  assert.strictEqual(order[order.length - 1], 'qa-records-and-workflow');
+  assert.strictEqual(order.length, 12, 'twelve migrations, 01→12');
+  const pos = ids.map((id) => order.indexOf(id));
+  assert.deepStrictEqual(pos, [...pos].sort((a, b) => a - b), 'applied in file order');
+  const cfg = readJson(dir, 'config/project.json');
+  for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k]);
+  assert.deepStrictEqual(cfg.azure.workflow, SD.workflow, 'the carried azure block gains the empty workflow');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED);
+  assert.ok(!exists(dir, QA_FOLDER), 'no QA watchlist file appears through the chain');
+  commitAll(dir);
+  const mid = snapshot(dir);
+  const r2 = run(dir);
+  assert.match(r2.out, /already up to date/i);
+  assert.deepStrictEqual(snapshot(dir), mid);
+});
+
 // ── secrecy ───────────────────────────────────────────────────────────────────
 test('no secret value ever appears in any migration output', () => {
   assert.ok(ALL_OUTPUT.length > 0, 'outputs were collected');
