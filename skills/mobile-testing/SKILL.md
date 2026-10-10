@@ -37,6 +37,13 @@ values that aren't in the file. A spec naming a user that is not defined for the
 environment is **BLOCKED** (report the missing handle), never improvised. Record the active
 environment name and the resolved `platformName`/`deviceName` in `report.md`.
 
+**Capabilities file.** Build each session's W3C caps from the `mobile` block, starting from
+`templates/sample-android-caps.json` or `templates/sample-ios-caps.json` in this skill. Every
+caps file you write sets `"appium:noReset": true`. Appium's default (`noReset: false`) clears
+the app's data on session start, with no prompt. Never set `"appium:fullReset": true` or
+`"appium:noReset": false` without the user's explicit approval for that run. In parallel mode
+no one can approve, so a spec or `mobile` block that asks for a reset is BLOCKED.
+
 ## Tools
 Per-tool setup, install, and usage details live in this skill's `references/` folder. **Read
 the relevant file BEFORE the first use of that tool in a session**, and again whenever a

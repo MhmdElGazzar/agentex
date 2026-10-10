@@ -36,6 +36,13 @@ capabilities are prefixed `appium:`. These map directly to the `mobile` block in
 | `deviceName` | `appium:deviceName` |
 | `platformVersion` | `appium:platformVersion` |
 | `udid` | `appium:udid` (target one specific real device/simulator) |
+| *(always added)* | `"appium:noReset": true` — keep the app's data |
+
+**Always set `"appium:noReset": true`.** Appium's default is `noReset: false`: the server
+clears the app's data when the session starts, without any prompt. A test run must not
+wipe user state as a side effect. Never send `"appium:fullReset": true` (uninstall and
+reinstall) or `"appium:noReset": false` unless the user explicitly approved a reset for
+this run. In an autonomous (parallel) run nobody can approve, so the session is BLOCKED.
 
 Android example (`caps.json`):
 ```json
@@ -43,7 +50,8 @@ Android example (`caps.json`):
   "platformName": "Android",
   "appium:automationName": "UiAutomator2",
   "appium:app": "/absolute/path/to/app.apk",
-  "appium:deviceName": "emulator-5554"
+  "appium:deviceName": "emulator-5554",
+  "appium:noReset": true
 } } }
 ```
 
@@ -54,7 +62,8 @@ iOS example:
   "appium:automationName": "XCUITest",
   "appium:app": "/absolute/path/to/app.app",
   "appium:deviceName": "iPhone 15",
-  "appium:platformVersion": "17.5"
+  "appium:platformVersion": "17.5",
+  "appium:noReset": true
 } } }
 ```
 

@@ -91,6 +91,12 @@ Mobile targets live in the `mobile` block of `environments/<env>.json` (alongsid
 }
 ```
 
+Claude turns that block into Appium capabilities and **always adds `"appium:noReset": true`**.
+Appium's own default (`noReset: false`) clears the app's data when a session starts, without
+asking. Claude never requests a reset (`appium:fullReset: true` or `appium:noReset: false`)
+unless you explicitly approve it for that run. A parallel run can't ask, so it reports
+BLOCKED instead.
+
 There's no legacy `.env`-only fallback for mobile targets (unlike `QA_TARGET_URL` for
 browser testing) — an environment file with no `mobile` block means Claude asks you for the
 app path and device capabilities rather than guessing.

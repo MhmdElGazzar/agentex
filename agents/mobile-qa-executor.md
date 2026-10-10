@@ -28,6 +28,10 @@ APPIUM SESSION
   agent's device or session. Build the W3C capabilities payload from MOBILE_CAPS (see
   `appium-server-cli.md`'s capability table) and write it to
   `{{SESSION_DIR}}/caps.json` before creating the session.
+- The caps payload ALWAYS includes `"appium:noReset": true`. Appium's default
+  (`noReset: false`) silently clears the app's data. NEVER set `"appium:fullReset": true` or
+  `"appium:noReset": false`: you cannot get the user's approval mid-run, so a spec or
+  MOBILE_CAPS that asks for a reset is BLOCKED (report it).
 - Drive the session using EITHER approach documented in the mobile-testing skill (read the
   relevant reference file before the first use in this session):
   - Raw WebDriver REST via `curl` — `${CLAUDE_PLUGIN_ROOT}/skills/mobile-testing/references/appium-server-cli.md`.
