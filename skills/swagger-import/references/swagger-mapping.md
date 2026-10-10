@@ -83,8 +83,11 @@ value, or the spec's `info.title` when `--name` is omitted (`Pet Store` →
 `PET_STORE_BASE_URL`, `PET_STORE_TOKEN`, …). The bare `API_` prefix is never used: it would
 collide with the project's own `API_BASE_URL` / `API_TOKEN`, and a catalog whose `baseUrl` is
 exactly `${API_BASE_URL}` is treated as the project's own API (the active environment's `api`
-block overrides it — see `api-integration`'s `api-requests.md`). Token/credential env vars are never written to `.env` — same shell-export
-rule as everywhere else in this project (see the root `.env.example`).
+block overrides it — see `api-integration`'s `api-requests.md`). Where the values go — the house rule from `docs/configuration.md`: **secrets (tokens,
+user/pass) go in the project's `.env`**, never in the catalog/suite files. `run_api.js`
+resolves the catalog's `${VAR}` names from the process environment first, then `.env`. The
+`<NAME>_BASE_URL` value is not a secret: put it in `.env` too, or replace the catalog's
+`baseUrl` with the literal URL. The importer itself never writes `.env`.
 
 ## Request names
 

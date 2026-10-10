@@ -339,9 +339,17 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2) + '\n');
   fs.writeFileSync(suitePath, JSON.stringify(suite, null, 2) + '\n');
 
+  const SECRET_HINT = "<secret — add to the project's .env>";
   out({
     result: 'OK', catalogPath, suitePath, operationsImported: requests.length, casesGenerated: cases.length,
-    envVarsToSet: { [baseUrlEnvVar]: baseUrlLiteral, ...(auth.tokenEnv ? { [auth.tokenEnv]: '<set in your shell, never in .env>' } : {}), ...(auth.userEnv ? { [auth.userEnv]: '<set in your shell>', [auth.passEnv]: '<set in your shell>' } : {}) },
+    // House rule (docs/configuration.md): secrets live in the project's .env; run_api.js resolves
+    // catalog ${VAR} names from the process environment first, then .env.
+    envVarsToSet: {
+      [baseUrlEnvVar]: baseUrlLiteral,
+      ...(auth.tokenEnv ? { [auth.tokenEnv]: SECRET_HINT } : {}),
+      ...(auth.userEnv ? { [auth.userEnv]: SECRET_HINT, [auth.passEnv]: SECRET_HINT } : {}),
+    },
+    envVarsNote: `add these to the project's .env (secrets stay there, never in the catalog/suite files); run_api.js resolves catalog \${VAR} names from the environment, then .env. ${baseUrlEnvVar} is not a secret: you may instead replace the catalog's baseUrl with the literal URL`,
     review,
   }, 0);
 })();

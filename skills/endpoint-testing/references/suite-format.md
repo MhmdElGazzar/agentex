@@ -88,15 +88,17 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
 
 ## Worked example
 
-Full sequence for a standalone run: create the run folder, load env vars (`.env` for
-non-secret values, shell `export` for tokens — never into `.env`), then run the suite.
+Full sequence for a standalone run: create the run folder, then run the suite. Secrets
+(tokens, user/pass) go in the project's `.env` — `run_api.js` resolves each catalog `${VAR}`
+name from the process environment first, then `.env`, so nothing needs to be exported.
 
 ```bash
 TS=$(date +%Y-%m-%d_%H-%M-%S)
 mkdir -p "executions/execu_${TS}/api-tests"
 
-set -a; source .env; set +a       # loads e.g. PETSTORE_BASE_URL
-export PETSTORE_TOKEN="..."       # shell-only, never written to .env
+# .env (secrets live here — never in catalog/suite files):
+#   PETSTORE_BASE_URL=https://petstore.example.com/api/v3
+#   PETSTORE_TOKEN=...
 
 node skills/endpoint-testing/scripts/run_suite.js \
   --catalog ./integration --suites ./integration/api_test_suites \
@@ -104,10 +106,8 @@ node skills/endpoint-testing/scripts/run_suite.js \
 ```
 
 Prints the final JSON summary line to stdout; per-case evidence lands in
-`executions/execu_<TS>/api-tests/logs/<suiteBase>__<index>-<case-name>.log`. `env` vars must be present in the
-*same* shell invocation that runs the script — they don't persist across separate shell
-sessions, so `source .env` and any `export` need to happen right before this command, not in
-an earlier one.
+`executions/execu_<TS>/api-tests/logs/<suiteBase>__<index>-<case-name>.log`. A variable
+exported in the shell overrides the same name in `.env` for that invocation only.
 
 This is what `/test-endpoints` does for you automatically via the **`api-executor`** subagent
 (which also writes a human-readable `result.md` next to the logs) — running it manually like

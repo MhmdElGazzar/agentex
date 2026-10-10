@@ -197,6 +197,17 @@ test('a non-JSON request body is dropped and flagged on the request', () => {
   assert.ok(r.review && r.review.some(n => /application\/xml/.test(n) && /dropped/.test(n)), JSON.stringify(r));
 });
 
+test('envVarsToSet points secrets at the project .env, never "shell only"', () => {
+  const { out } = importOne(spec3({ components: { securitySchemes: { b: { type: 'http', scheme: 'basic' } } }, paths: { '/a': getOp('a') } }), 'shop');
+  for (const k of ['SHOP_USER', 'SHOP_PASS']) {
+    assert.match(out.envVarsToSet[k], /\.env/, k);
+    assert.doesNotMatch(out.envVarsToSet[k], /shell|never in/i, k);
+  }
+  const bearer = importOne(spec3({ components: { securitySchemes: { t: { type: 'http', scheme: 'bearer' } } }, paths: { '/a': getOp('a') } }), 'shop').out;
+  assert.match(bearer.envVarsToSet.SHOP_TOKEN, /\.env/);
+  assert.doesNotMatch(bearer.envVarsToSet.SHOP_TOKEN, /shell|never in/i);
+});
+
 // async: the importer fetches from a local server, so it must not be spawned synchronously
 (async () => {
   await new Promise(resolve => {

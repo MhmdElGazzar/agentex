@@ -58,9 +58,11 @@ here — from the script's point of view it's just another local file.
 
 ## After a successful import
 
-1. Report `envVarsToSet` to the user verbatim — the base URL literal to put in `.env`, and
-   any token/credential env var names to export in their shell (never in `.env` — same rule
-   as everywhere else in this project).
+1. Report `envVarsToSet` (and `envVarsNote`) to the user verbatim — every name listed goes in
+   the project's `.env`: secrets (tokens, user/pass) always live there, never in the
+   catalog/suite files; `run_api.js` resolves catalog `${VAR}` names from the environment,
+   then `.env` (see `docs/configuration.md`). The base URL is not a secret, so it may instead
+   be written as a literal `baseUrl` in the catalog.
 2. Report every entry in `review` — these are real gaps (skipped header params, generated
    request bodies, placeholder "not found" values, unsupported auth schemes) that need human
    verification before the generated suite means anything.
