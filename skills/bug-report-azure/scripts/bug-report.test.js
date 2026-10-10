@@ -1403,6 +1403,10 @@ function projectBugRoutes(board, { wiqlStatus } = {}) {
     assert.strictEqual(top.parentId, 555);
     assert.strictEqual(top.url, 'https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/9001');
     assert.strictEqual(reviewed.out.duplicateReview.projectWideCandidates, 2);
+    // One mirror read per call: one ChangedDate WIQL and one batch, nothing per Bug.
+    assert.strictEqual(fetch.calls.filter((c) => c.url.includes('/wit/wiql') && String(c.body).includes('System.ChangedDate')).length, 1);
+    assert.strictEqual(fetch.calls.filter((c) => c.url.includes('/wit/workitemsbatch')).length, 1);
+    assert.strictEqual(fetch.calls.some((c) => c.method === 'GET' && /\/wit\/workitems\/900[12]/.test(c.url)), false);
     assert.ok(fs.existsSync(path.join(dir, '.agentex', 'cache', 'bugs', 'tracker-bugs-ado.json')));
     assert.strictEqual(fs.readFileSync(path.join(dir, '.agentex', 'cache', 'bugs', '.gitignore'), 'utf8').split('\n').includes('*'), true);
     assert.strictEqual(actualWrites(fetch.calls).length, 0);
@@ -1494,13 +1498,26 @@ function projectBugRoutes(board, { wiqlStatus } = {}) {
     assert.strictEqual(actualWrites(fetch.calls).length, 0);
   });
 
+  await test('project-wide: moving a shortlisted project Bug to another story stales the review', async () => {
+    const dir = project({ bugCacheDays: 365 });
+    const board = new Map([[9001, projectBug(9001, 'Payment fails at checkout with HTTP 500', 555)]]);
+    const fetch = fakeFetch(projectBugRoutes(board));
+    const intentFile = intent(dir);
+    const reviewed = await review(dir, fetch, intentFile);
+    assert.strictEqual(reviewed.code, 0, JSON.stringify(reviewed.out));
+    board.set(9001, projectBug(9001, 'Payment fails at checkout with HTTP 500', 777));
+    const stale = await run(['prepare', '--intent', intentFile, '--duplicate-review', reviewed.out.duplicateReview.reviewId, '--plan', planPath(dir)], { cwd: dir, fetch });
+    assert.strictEqual(stale.code, 2, JSON.stringify(stale.out));
+    assert.strictEqual(stale.out.blocked[0].reason, 'duplicate-review-stale');
+  });
+
   await test('a Jira-configured project is refused before any request', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-br-'));
     fs.mkdirSync(path.join(dir, 'config'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'config', 'project.json'), JSON.stringify({
       jira: { site: 'example', project: 'PROJ', assignee: 'qa.engineer@example.com' },
     }));
-    for (const argv of [['context', '--parent', 'PROJ-9', '--emit-intent'], ['execute', '--plan', 'missing.json']]) {
+    for (const argv of [['context', '--parent', 'PROJ-9', '--emit-intent'], ['prepare', '--intent', 'missing.json', '--plan', 'p.json'], ['execute', '--plan', 'missing.json']]) {
       const fetch = fakeFetch();
       const result = await run(argv, { cwd: dir, fetch });
       assert.strictEqual(result.code, 2, JSON.stringify(result.out));

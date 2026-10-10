@@ -449,6 +449,8 @@ function canonicalDuplicateCandidate(candidate) {
     url: candidate && candidate.url || null,
     reproductionSummary: candidate && candidate.reproductionSummary || null,
     detailsUnavailable: candidate && candidate.detailsUnavailable || null,
+    source: candidate && candidate.source || null,
+    parentId: candidate && candidate.parentId || null,
   };
 }
 
