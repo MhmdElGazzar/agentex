@@ -637,7 +637,7 @@ async function loadRuntime(cwd, fetch, { parentStoryId, refreshFields = false, r
   } catch (e) {
     blocked.push({
       reason: 'dup-check-failed',
-      message: `project-wide duplicate check failed — refusing to file blind (fails closed): ${safeFailureMessage(e)}. A project over WIQL's 20,000-result cap needs a narrower azure.areaPath or a smaller azure.bugCacheDays (0 turns the project-wide mirror off)`,
+      message: `project-wide duplicate check failed — refusing to file blind (fails closed): ${safeFailureMessage(e)}${wiqlCapHint(e)}`,
     });
   }
 
@@ -702,6 +702,15 @@ function watchlistMatches(runtime, intent) {
 function watchlistOutput(runtime, intent) {
   const matches = watchlistMatches(runtime, intent);
   return matches.length ? { watchlistMatches: matches } : {};
+}
+
+// Only a WIQL result-cap rejection (VS402337, 20,000 items) gets the scope advice; a 503
+// or a config error must not point the user at the wrong fix.
+function wiqlCapHint(error) {
+  const text = `${(error && error.serverMessage) || ''} ${(error && error.message) || ''}`;
+  return /VS402337|20,?000/.test(text)
+    ? '. The project is over WIQL\'s 20,000-result cap: narrow azure.areaPath or lower azure.bugCacheDays (0 turns the project-wide mirror off)'
+    : '';
 }
 
 // A mirrored Bug as a review candidate. `source: 'project'` marks it as found outside

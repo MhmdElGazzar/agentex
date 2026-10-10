@@ -282,12 +282,12 @@ function projectBug(id, title, parent, repro) {
 }
 
 // The mirror's WIQL (it alone filters on ChangedDate) lists the board; the batch reads it.
-function projectBugRoutes(board, { wiqlStatus } = {}) {
+function projectBugRoutes(board, { wiqlStatus, wiqlMessage } = {}) {
   return [
     {
       method: 'POST', match: '/wit/wiql', bodyMatch: 'System.ChangedDate',
       respond: async () => (wiqlStatus
-        ? { status: wiqlStatus, text: JSON.stringify({ message: 'WIQL service unavailable' }) }
+        ? { status: wiqlStatus, text: JSON.stringify({ message: wiqlMessage || 'WIQL service unavailable' }) }
         : { json: { workItems: [...board.keys()].map((id) => ({ id })) } }),
     },
     {
@@ -1419,6 +1419,7 @@ function projectBugRoutes(board, { wiqlStatus } = {}) {
     assert.strictEqual(reviewed.code, 2, JSON.stringify(reviewed.out));
     assert.strictEqual(reviewed.out.blocked[0].reason, 'dup-check-failed');
     assert.match(reviewed.out.blocked[0].message, /project-wide duplicate check failed/);
+    assert.doesNotMatch(reviewed.out.blocked[0].message, /20,000/, 'a 503 is not the WIQL cap');
     assert.strictEqual(actualWrites(fetch.calls).length, 0);
   });
 
@@ -1509,6 +1510,31 @@ function projectBugRoutes(board, { wiqlStatus } = {}) {
     const stale = await run(['prepare', '--intent', intentFile, '--duplicate-review', reviewed.out.duplicateReview.reviewId, '--plan', planPath(dir)], { cwd: dir, fetch });
     assert.strictEqual(stale.code, 2, JSON.stringify(stale.out));
     assert.strictEqual(stale.out.blocked[0].reason, 'duplicate-review-stale');
+  });
+
+  await test('project-wide: a WIQL result-cap rejection names the scope remedy', async () => {
+    const dir = project({ bugCacheDays: 365 });
+    const fetch = fakeFetch(projectBugRoutes(new Map(), {
+      wiqlStatus: 400, wiqlMessage: 'VS402337: The number of work items returned exceeds the size limit of 20000.',
+    }));
+    const reviewed = await review(dir, fetch, intent(dir));
+    assert.strictEqual(reviewed.code, 2, JSON.stringify(reviewed.out));
+    assert.match(reviewed.out.blocked[0].message, /azure\.bugCacheDays/);
+  });
+
+  await test('project-wide: --refresh-bugs rebuilds a valid mirror over the full window', async () => {
+    const dir = project({ bugCacheDays: 365 });
+    const board = new Map([[9001, projectBug(9001, 'Payment fails at checkout with HTTP 500', 555)]]);
+    const fetch = fakeFetch(projectBugRoutes(board));
+    const intentFile = intent(dir);
+    assert.strictEqual((await review(dir, fetch, intentFile)).code, 0);
+    const mirrorQueries = () => fetch.calls.filter((c) => c.url.includes('/wit/wiql') && String(c.body).includes('System.ChangedDate'));
+    const windowDay = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const before = mirrorQueries().length;
+    assert.strictEqual((await review(dir, fetch, intentFile)).code, 0);
+    assert.ok(!String(mirrorQueries()[before].body).includes(windowDay), 'a plain call is a delta');
+    assert.strictEqual((await review(dir, fetch, intentFile, ['--refresh-bugs'])).code, 0);
+    assert.ok(String(mirrorQueries()[before + 1].body).includes(windowDay), 'refresh queries the full window');
   });
 
   await test('a Jira-configured project is refused before any request', async () => {

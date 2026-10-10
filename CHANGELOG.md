@@ -90,13 +90,14 @@ All notable changes to AgenTeX are documented here.
   device footprint never goes beyond installing/launching/exercising/closing the app under test.
 - **Bug filing checks the whole project for duplicates, not only the selected story.**
   `bug-report-azure` keeps a local copy of the project's recent Bugs
-  (`.agentex/cache/tracker-bugs-ado.json`, gitignored) and ranks the defect against it
+  (`.agentex/cache/bugs/tracker-bugs-ado.json`, which stays out of git even with the
+  `!.agentex/cache/` opt-in) and ranks the defect against it
   together with the parent story's Bugs. Each filing refreshes the copy with one read of
   the Bugs changed since the last sync, so a Bug filed a minute ago counts. A match under
   another story is marked `source: "project"` with its `parentId`. Scope: the project
   (under `azure.areaPath` when set), Bugs changed in the last `azure.bugCacheDays` days
   (default 365; `0` turns it off). A sync that cannot complete blocks the filing, like any
-  duplicate-check failure.
+  duplicate-check failure. `--refresh-bugs` on `context`/`prepare` forces a full rebuild.
 - **Bug filing shows matching QA watchlist entries.** Open `qa-watchlist/` entries (a fix
   awaiting retest, a question awaiting an answer, an environment blocker, a deferred
   condition) that match the defect or sit on the same story appear as `watchlistMatches`

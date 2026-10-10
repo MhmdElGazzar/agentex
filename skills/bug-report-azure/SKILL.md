@@ -23,7 +23,7 @@ Use only this agent-facing operation for the filing flow:
 
 ```text
 node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js context --parent <story-id> --emit-intent
-node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js context --intent <intent.json> [--duplicate-view all]
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js context --intent <intent.json> [--duplicate-view all] [--refresh-bugs]
 node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js prepare --intent <intent.json> --duplicate-review <review-id> --plan <new-plan.json>
 node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js execute --plan <prepare.planFile>
 ```
@@ -175,7 +175,7 @@ total/shown/omitted counts, truncation, exact-title pin count, and shortlist IDs
 
 Candidates come from two places, ranked together. The selected parent's direct Bug
 children are always read in full. The **project-wide Bug mirror** adds Bugs under other
-stories: a local copy in `.agentex/cache/tracker-bugs-ado.json`, brought up to date on every
+stories: a local copy in `.agentex/cache/bugs/tracker-bugs-ado.json`, brought up to date on every
 call by one read of the Bugs changed since the last sync. Its scope is the project (under
 `azure.areaPath` when set), Bugs changed in the last `azure.bugCacheDays` days (default
 365; `0` turns it off). A mirrored candidate carries `source: "project"` and its `parentId`,
@@ -183,6 +183,8 @@ and `duplicateReview.projectWideCandidates` counts them. When one matches, name 
 on the approval screen: the defect may already be filed under a different story. A sync
 that cannot complete blocks the filing (`dup-check-failed`), like any duplicate-check
 failure. An edit to a project Bug that is not shortlisted does not make the review stale.
+If a mirrored candidate looks deleted or moved on the board, rerun the same `context` call
+with `--refresh-bugs` (a full rebuild of the mirror) before deciding.
 
 `watchlistMatches` (present only when there are any) lists open **QA watchlist** entries
 (`qa-watchlist/`, read through `scripts/qa-records.js`) that share terms with this defect or
