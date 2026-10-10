@@ -8,7 +8,9 @@
 //     [--env <environment-name>] [--catalog ./integration] --log <path>
 //
 // A declared param whose name appears as a `{name}` path placeholder is substituted into the
-// path; any other declared param is sent as a URL query string param instead.
+// path; a param listed in the request's optional "query": [..] array is sent in the query
+// string; a param used only as a `{name}` placeholder in the body stays in the body; a param
+// referenced nowhere in the request template falls back to the query string.
 // auth.type: "bearer" | "basic" | "apiKey" (custom header, e.g. X-API-Key) | "none".
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL|BLOCKED", ...}. Exit: 0 PASS, 1 FAIL, 2 BLOCKED.
@@ -88,16 +90,25 @@ try { target = pc.resolveApiTarget(process.cwd(), envName); }
 catch (e) { blocked(e.message); }
 if (target && target.hasToken && !target.token) blocked(`${target.tokenHint} (api token) is not set`);
 const baseUrl = target ? target.baseUrl : resolveEnvRefs(def.baseUrl || '');
+// Param placement (order matters):
+//   1. `{k}` in the path            → substituted into the path
+//   2. k listed in req.query        → query string (explicit; swagger-import writes this)
+//   3. `{k}` in the body template   → body only (never leaks into the URL)
+//   4. referenced nowhere           → query string (backward-compat fallback)
+const queryList = req.query === undefined ? [] : req.query;
+if (!Array.isArray(queryList)) blocked(`"query" of ${entry} must be an array of param names`);
+for (const k of queryList) if (!declared.includes(k)) blocked(`query param "${k}" of ${entry} is not declared in "params" (declared: ${declared.join(', ') || 'none'})`);
+const bodyTemplate = req.body === undefined ? '' : JSON.stringify(req.body);
 let urlPath = req.path || '';
 const queryParams = [];
 for (const [k, v] of Object.entries(params)) {
   const placeholder = `{${k}}`;
-  if (urlPath.includes(placeholder)) urlPath = urlPath.split(placeholder).join(encodeURIComponent(v));
-  else queryParams.push([k, v]);
+  const inPath = urlPath.includes(placeholder);
+  if (inPath) urlPath = urlPath.split(placeholder).join(encodeURIComponent(v));
+  if (queryList.includes(k) || (!inPath && !bodyTemplate.includes(placeholder))) queryParams.push([k, v]);
 }
 const unresolved = urlPath.match(/\{[a-zA-Z0-9_]+\}/);
 if (unresolved) blocked(`unresolved placeholder ${unresolved[0]} in path`);
-// declared params not consumed by a path placeholder are sent as query string params
 const query = queryParams.length ? '?' + queryParams.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&') : '';
 const url = baseUrl.replace(/\/$/, '') + urlPath + query;
 

@@ -19,10 +19,14 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js" \
   `--expect-equals <dot.path>=<value>`. Non-default catalog dir: `--catalog <dir>`.
 - A `BLOCKED` result tells you exactly what's missing (entry, param, or env var) — surface it
   to the user; do not work around it.
-- **Params**: a declared param whose name matches a `{name}` placeholder in `path` is
-  substituted into the path; any other declared param is sent as a URL query string param
-  instead (e.g. `params: ["userId"]` with a path of `/todos` and no `{userId}` placeholder
-  becomes `?userId=<value>`).
+- **Params** — placement, in order:
+  1. a `{name}` placeholder in `path` → substituted into the path;
+  2. listed in the request's optional `"query": ["name", ...]` → sent in the query string
+     (`swagger-import` writes this for every `in: query` param);
+  3. a `{name}` placeholder in `body` → stays in the body only (never added to the URL);
+  4. referenced nowhere in the request → query string (backward-compatible fallback, e.g.
+     `params: ["userId"]` with a path of `/todos` and no placeholder becomes `?userId=<value>`).
+  A `query` entry that isn't in `params` is BLOCKED.
 - **`auth.type`**: `bearer`, `basic`, `apiKey` (custom header — e.g.
   `{"type":"apiKey","headerName":"X-Api-Key","tokenEnv":"API_TOKEN"}`), or `none`. Same
   missing-env-var → BLOCKED behavior for all three.

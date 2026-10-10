@@ -172,6 +172,41 @@ function serve(handler) {
     assert.strictEqual(url, '/pets/7?status=sold');
   });
 
+  await test('POST param used only in the body is NOT sent as a query param (pre-#25 behavior)', async () => {
+    let url = null, body = '';
+    const { srv, port } = await serve((req, res) => { url = req.url; req.on('data', d => (body += d)); req.on('end', () => res.end('{}')); });
+    const cat = { ...CATALOG, baseUrl: `http://127.0.0.1:${port}`,
+      requests: [{ name: 'create-todo', method: 'POST', path: '/todos', params: ['title'], body: { title: '{title}', completed: false } }] };
+    const dir = proj({ 'integration/sample_api.json': cat });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.create-todo', '--param', 'title=Buy milk & eggs', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(url, '/todos');
+    assert.strictEqual(JSON.parse(body).title, 'Buy milk & eggs');
+  });
+
+  await test('params listed in req.query go to the query string, even when also used in the body', async () => {
+    let url = null;
+    const { srv, port } = await serve((req, res) => { url = req.url; res.end('{}'); });
+    const cat = { ...CATALOG, baseUrl: `http://127.0.0.1:${port}`,
+      requests: [{ name: 'tag', method: 'POST', path: '/pets/{id}', params: ['id', 'dryRun', 'name'], query: ['dryRun'],
+        body: { name: '{name}', dry: '{dryRun}' } }] };
+    const dir = proj({ 'integration/sample_api.json': cat });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.tag', '--param', 'id=3', '--param', 'dryRun=true', '--param', 'name=rex', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(url, '/pets/3?dryRun=true');
+  });
+
+  await test('req.query naming an undeclared param -> BLOCKED', async () => {
+    const cat = { ...CATALOG, baseUrl: 'http://127.0.0.1:9',
+      requests: [{ name: 'list', method: 'GET', path: '/pets', params: [], query: ['status'] }] };
+    const dir = proj({ 'integration/sample_api.json': cat });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.list', '--log', path.join(dir, 'x.log')]);
+    assert.strictEqual(code, 2);
+    assert.match(out.reason, /status/);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
