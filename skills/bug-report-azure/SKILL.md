@@ -220,7 +220,8 @@ has exactly one interaction: the approval.
 2. **Render THE consolidated screen** from the plan JSON — one message covering:
    template choice · parent story (id, title, state — validated) · severity + priority
    with the one-line reasoning · assignee · test-case decision · the ATTACH/REJECT list
-   with reasons · **the exact write plan** (every intended write, in order, with its
+   with reasons (per annotated copy: the banner + labels it burns in, or the one-line
+   reason it is raw-only) · **the exact write plan** (every intended write, in order, with its
    target route) · the explicit note that **nothing has been written yet**.
 3. **One approval.** On the user's "yes":
    ```
