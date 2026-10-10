@@ -5,7 +5,8 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const http = require('node:http');
+const { spawnSync, spawn } = require('node:child_process');
 
 const IMPORTER = path.join(__dirname, 'import_swagger.js');
 let passed = 0; const failures = [];
@@ -138,5 +139,85 @@ test('review notes are written into the generated request and case objects', () 
   assert.ok(Array.isArray(err.review) && err.review.some(n => /placeholder param value/.test(n)), JSON.stringify(err));
 });
 
-console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
-process.exitCode = failures.length ? 1 : 0;
+const spec3 = (extra) => ({ openapi: '3.0.0', info: { title: 'Pet Store' }, servers: [{ url: 'https://p.example.com' }], ...extra });
+const getOp = (operationId, more = {}) => ({ get: { operationId, responses: { 200: { description: 'ok' } }, ...more } });
+
+test('duplicate generated request names are de-duplicated with -2, -3 and flagged', () => {
+  const { code, out, cat, suite } = importOne(spec3({ paths: {
+    '/a': getOp('listThings'), '/b': getOp('listThings'), '/c': getOp('listThings'),
+  } }));
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  assert.deepStrictEqual(cat.requests.map(r => r.name), ['listthings', 'listthings-2', 'listthings-3']);
+  assert.ok(cat.requests[1].review.some(n => /duplicate/i.test(n)), JSON.stringify(cat.requests[1]));
+  assert.strictEqual(new Set(suite.cases.map(c => c.name)).size, suite.cases.length);
+});
+
+test('env-var prefix defaults to the service name, not API', () => {
+  const dir = tmp(); const f = write(dir, 'spec.json', spec3({ paths: { '/a': getOp('a') } }));
+  const { code, out } = run(dir, [f]);
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  const cat = JSON.parse(fs.readFileSync(path.join(dir, 'integration/api_test_suites/pet-store/pet-store_api.json'), 'utf8'));
+  assert.strictEqual(cat.baseUrl, '${PET_STORE_BASE_URL}');
+  assert.ok('PET_STORE_BASE_URL' in out.envVarsToSet);
+});
+
+test('auth preference is bearer > apiKey(header) > basic regardless of declaration order', () => {
+  const schemes = (o) => importOne(spec3({ components: { securitySchemes: o }, paths: { '/a': getOp('a') } })).cat.auth.type;
+  assert.strictEqual(schemes({ b: { type: 'http', scheme: 'basic' }, k: { type: 'apiKey', in: 'header', name: 'X-K' }, t: { type: 'http', scheme: 'bearer' } }), 'bearer');
+  assert.strictEqual(schemes({ b: { type: 'http', scheme: 'basic' }, k: { type: 'apiKey', in: 'header', name: 'X-K' } }), 'apiKey');
+});
+
+test('apiKey header scheme without a header name is not used and is flagged', () => {
+  const { cat, out } = importOne(spec3({ components: { securitySchemes: { k: { type: 'apiKey', in: 'header' } } }, paths: { '/a': getOp('a') } }));
+  assert.strictEqual(cat.auth.type, 'none');
+  assert.ok(out.review.some(n => /name/.test(n) && /k/.test(n)), JSON.stringify(out.review));
+});
+
+test('inferred happy-path param values are flagged in the case; documented examples are not', () => {
+  const { suite } = importOne(spec3({ paths: { '/pets/{id}': getOp('getPet', { parameters: [
+    { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+    { name: 'tag', in: 'query', schema: { type: 'string', example: 'dog' } },
+  ] }) } }));
+  const happy = suite.cases.find(c => c.name === 'getpet-happy-path');
+  assert.ok(happy.review && happy.review.some(n => /"id"/.test(n) && /inferred/.test(n)), JSON.stringify(happy));
+  assert.ok(!happy.review.some(n => /"tag"/.test(n)), JSON.stringify(happy));
+});
+
+test('an invented expect.status 200 (no 2xx documented) is flagged in the case', () => {
+  const { suite } = importOne(spec3({ paths: { '/a': { get: { operationId: 'a', responses: { default: { description: 'x' } } } } } }));
+  const happy = suite.cases[0];
+  assert.strictEqual(happy.expect.status, 200);
+  assert.ok(happy.review && happy.review.some(n => /2xx/.test(n)), JSON.stringify(happy));
+});
+
+test('a non-JSON request body is dropped and flagged on the request', () => {
+  const { cat } = importOne(spec3({ paths: { '/a': { post: { operationId: 'up', requestBody: { content: { 'application/xml': { schema: { type: 'object' } } } }, responses: { 200: { description: 'ok' } } } } } }));
+  const r = cat.requests[0];
+  assert.strictEqual(r.body, undefined);
+  assert.ok(r.review && r.review.some(n => /application\/xml/.test(n) && /dropped/.test(n)), JSON.stringify(r));
+});
+
+// async: the importer fetches from a local server, so it must not be spawned synchronously
+(async () => {
+  await new Promise(resolve => {
+    const srv = http.createServer((req, res) => { res.writeHead(404); res.end(JSON.stringify(spec3({ paths: { '/a': getOp('a') } }))); });
+    srv.listen(0, '127.0.0.1', () => {
+      const dir = tmp();
+      const p = spawn(process.execPath, [IMPORTER, `http://127.0.0.1:${srv.address().port}/spec.json`, '--name', 'x'], { cwd: dir });
+      let o = '';
+      p.stdout.on('data', d => (o += d));
+      p.on('close', code => {
+        srv.close();
+        test('spec URL answering non-2xx -> BLOCKED with the status', () => {
+          const out = JSON.parse(o.trim().split('\n').pop() || '{}');
+          assert.strictEqual(code, 2, o);
+          assert.match(out.reason, /404/);
+          assert.ok(!fs.existsSync(path.join(dir, 'integration')));
+        });
+        resolve();
+      });
+    });
+  });
+  console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
+  process.exitCode = failures.length ? 1 : 0;
+})();

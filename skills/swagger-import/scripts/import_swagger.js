@@ -37,8 +37,10 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
 (async () => {
   let raw;
   if (/^https?:\/\//i.test(source)) {
-    try { raw = await (await fetch(source)).text(); }
+    let res;
+    try { res = await fetch(source); raw = await res.text(); }
     catch (e) { blocked(`could not fetch ${source}: ${e.message}`); }
+    if (!res.ok) blocked(`could not fetch ${source}: HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`, { status: res.status });
   } else {
     if (!fs.existsSync(source)) blocked(`file not found: ${source}`);
     raw = fs.readFileSync(source, 'utf8');
@@ -56,7 +58,9 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   if (!isSwagger2 && !isOpenApi3) blocked('document has neither "swagger": "2.0" nor "openapi": "3.x" — not a recognized spec');
 
   const name = nameArg ? slug(nameArg) : slug(doc.info && doc.info.title);
-  const envPrefix = nameArg ? upper(nameArg) : 'API';
+  // Env-var prefix = the service name in UPPER_SNAKE (e.g. PET_STORE_BASE_URL) — never the
+  // bare "API" prefix, which collides with the project's own API_BASE_URL / API_TOKEN.
+  const envPrefix = upper(name);
   const review = [];
 
   // ---- base URL ----
@@ -89,14 +93,28 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   let auth = { type: 'none' };
   const schemeNames = Object.keys(schemesRaw);
   if (schemeNames.length) {
-    // pick the first supported scheme; note the rest if there were several
+    // Preference, regardless of declaration order: bearer > apiKey (header) > basic.
+    const kindOf = (key) => {
+      const s = schemesRaw[key] || {};
+      const scheme = String(s.scheme || '').toLowerCase();
+      if (s.type === 'http' && scheme === 'bearer') return 'bearer';
+      if (s.type === 'apiKey' && s.in === 'header') {
+        if (typeof s.name === 'string' && s.name.trim()) return 'apiKey';
+        review.push(`security scheme "${key}" is apiKey-in-header but declares no header "name" — not used; set auth.headerName manually`);
+        return null;
+      }
+      if ((s.type === 'http' && scheme === 'basic') || (isSwagger2 && s.type === 'basic')) return 'basic';
+      return null;
+    };
+    const kinds = schemeNames.map(key => ({ key, kind: kindOf(key) }));
     let picked = null;
-    for (const key of schemeNames) {
-      const s = schemesRaw[key];
-      if (s.type === 'http' && s.scheme === 'bearer') { picked = { type: 'bearer', tokenEnv: `${envPrefix}_TOKEN` }; break; }
-      if (s.type === 'http' && s.scheme === 'basic') { picked = { type: 'basic', userEnv: `${envPrefix}_USER`, passEnv: `${envPrefix}_PASS` }; break; }
-      if (isSwagger2 && s.type === 'basic') { picked = { type: 'basic', userEnv: `${envPrefix}_USER`, passEnv: `${envPrefix}_PASS` }; break; }
-      if (s.type === 'apiKey' && s.in === 'header') { picked = { type: 'apiKey', headerName: s.name, tokenEnv: `${envPrefix}_TOKEN` }; break; }
+    for (const want of ['bearer', 'apiKey', 'basic']) {
+      const hit = kinds.find(k => k.kind === want);
+      if (!hit) continue;
+      if (want === 'bearer') picked = { type: 'bearer', tokenEnv: `${envPrefix}_TOKEN` };
+      else if (want === 'apiKey') picked = { type: 'apiKey', headerName: schemesRaw[hit.key].name.trim(), tokenEnv: `${envPrefix}_TOKEN` };
+      else picked = { type: 'basic', userEnv: `${envPrefix}_USER`, passEnv: `${envPrefix}_PASS` };
+      break;
     }
     if (picked) {
       auth = picked;
@@ -209,6 +227,7 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   const requests = [];
   const cases = [];
   const methods = ['get', 'post', 'put', 'patch', 'delete'];
+  const usedNames = new Set();
   const WRITE_SKIP = 'review: write operation — remove this line to enable';
   let writeOps = 0;
   for (const [urlPath, pathItem] of Object.entries(doc.paths || {})) {
@@ -230,15 +249,31 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
       const skippedParams = [...byName.values()].filter(p => p.in !== 'path' && p.in !== 'query' && p.in !== 'body');
       if (skippedParams.length) note(reqReview, `skipped ${skippedParams.map(p => `${p.name} (in: ${p.in})`).join(', ')} — only path/query params are supported`);
 
-      const reqName = slug(op.operationId) !== 'imported-api' ? slug(op.operationId) : slug(`${method}-${urlPath}`);
+      const baseReqName = slug(op.operationId) !== 'imported-api' ? slug(op.operationId) : slug(`${method}-${urlPath}`);
+      // Request names must be unique within the catalog (entries are <catalog>.<request>).
+      let reqName = baseReqName;
+      for (let n = 2; usedNames.has(reqName); n++) reqName = `${baseReqName}-${n}`;
+      usedNames.add(reqName);
+      if (reqName !== baseReqName) note(reqReview, `duplicate request name "${baseReqName}" (another operation already produced it) — renamed to "${reqName}"; rename it to something meaningful`);
       const declaredParams = usableParams.map(p => p.name);
       const queryParams = usableParams.filter(p => p.in === 'query').map(p => p.name);
 
       // request body (POST/PUT/PATCH)
       let bodySchema, body;
       if (['post', 'put', 'patch'].includes(method)) {
-        if (isOpenApi3 && op.requestBody) bodySchema = op.requestBody.content && op.requestBody.content['application/json'] && op.requestBody.content['application/json'].schema;
-        else { const bodyParam = opParams.find(p => p.in === 'body'); if (bodyParam) bodySchema = bodyParam.schema; }
+        const isJson = t => /^application\/(.+\+)?json\b/i.test(t);
+        if (isOpenApi3 && op.requestBody) {
+          const content = op.requestBody.content || {};
+          const jsonType = Object.keys(content).find(isJson);
+          if (jsonType) bodySchema = content[jsonType].schema;
+          else if (Object.keys(content).length) note(reqReview, `request body dropped — only JSON bodies are supported, the spec declares ${Object.keys(content).join(', ')}; add the body manually if this call needs one`);
+        } else {
+          const bodyParam = opParams.find(p => p.in === 'body');
+          const consumes = op.consumes || doc.consumes;
+          if (bodyParam && Array.isArray(consumes) && consumes.length && !consumes.some(isJson)) {
+            note(reqReview, `request body dropped — only JSON bodies are supported, the spec consumes ${consumes.join(', ')}; add the body manually if this call needs one`);
+          } else if (bodyParam) bodySchema = bodyParam.schema;
+        }
         if (bodySchema) { body = bodyExampleFor(bodySchema); note(reqReview, 'request body generated from schema — verify/adjust values'); }
       }
 
@@ -262,9 +297,11 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
       for (const p of usableParams) {
         const ex = exampleFor(paramSchema(p));
         happyParams[p.name] = ex.value;
+        if (ex.inferred) note(happyReview, `param "${p.name}" = ${JSON.stringify(ex.value)} is inferred (the spec gives no example/default) — replace it with a value that exists in your target`);
         if (ex.isArray) note(happyReview, `param "${p.name}" is array-typed — using a single representative value, not full array serialization (style/explode) — verify it's accepted`);
       }
       const expectHappy = { status: okCode ? parseInt(okCode, 10) : 200 };
+      if (!okCode) note(happyReview, 'no 2xx response is documented — expect.status 200 is a guess; set the real success status');
       // Only assert schema-required properties, not every documented one — optional fields are
       // routinely omitted by a real server (null/absent), so asserting on all of them would
       // fail correct responses. If the schema declares no required[], no fields are asserted

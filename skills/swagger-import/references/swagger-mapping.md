@@ -19,6 +19,8 @@ first `/import-swagger` invocation in a session.
   `servers[].url` note below for the one consequence of that).
 - **Format detection**: `"swagger": "2.0"` or `"openapi": "3.x"` at the document root. Anything
   else is BLOCKED.
+- **URL sources**: a spec URL answering a non-2xx status is BLOCKED with that status (the
+  error page is never parsed as a spec).
 
 ## Everything generated is a best-effort skeleton
 
@@ -66,8 +68,9 @@ Boundaries, both flagged in `review` rather than guessed:
 ## Auth scheme selection
 
 The catalog format supports **one auth shape per file** — but a spec can declare several
-security schemes. The importer picks the first it recognizes, in this order: `bearer` →
-`apiKey` (header only) → `basic`. If the spec declared more than one, the others are noted in
+security schemes. The importer picks by preference, **regardless of declaration order**:
+`bearer` → `apiKey` (header only, and only when it declares a header `name` — one without is
+flagged in `review` and skipped) → `basic`. If the spec declared more than one, the others are noted in
 `review` — the catalog format has no per-request auth override, so multi-scheme APIs need a
 manual second catalog file if you actually need both.
 
@@ -75,15 +78,25 @@ Unsupported schemes (`oauth2`, `openIdConnect`, `apiKey` with `in: query`) are *
 auto-wired — the generated `auth` is left as `{"type":"none"}` and flagged in `review` rather
 than silently guessing something wrong.
 
-Generated env var names default to `API_BASE_URL`/`API_TOKEN` (matching the project's
-existing single-service convention) unless `--name` is passed, in which case they're
-namespaced (`<NAME>_BASE_URL`, `<NAME>_TOKEN`, etc.) to avoid collisions across multiple
-imported services. Token/credential env vars are never written to `.env` — same shell-export
+Generated env var names are prefixed with the service name in UPPER_SNAKE — the `--name`
+value, or the spec's `info.title` when `--name` is omitted (`Pet Store` →
+`PET_STORE_BASE_URL`, `PET_STORE_TOKEN`, …). The bare `API_` prefix is never used: it would
+collide with the project's own `API_BASE_URL` / `API_TOKEN`, and a catalog whose `baseUrl` is
+exactly `${API_BASE_URL}` is treated as the project's own API (the active environment's `api`
+block overrides it — see `api-integration`'s `api-requests.md`). Token/credential env vars are never written to `.env` — same shell-export
 rule as everywhere else in this project (see the root `.env.example`).
+
+## Request names
+
+Request names come from `operationId` (slugged), else `<method>-<path>`. Two operations that
+produce the same name are de-duplicated with a `-2`, `-3`, … suffix and flagged in that
+request's `review` — rename them to something meaningful.
 
 ## Param example values
 
 - An `example`/`default` on the param's schema is used first.
+- Any value **not** taken from the spec's `example`/`default` (enum first value, type-based
+  placeholder) is flagged in the happy-path case's `review` as inferred.
 - An **enum** picks its first listed value (e.g. a `status` param with
   `enum: [available, pending, sold]` gets `"available"`) — far more likely to be accepted
   than a generic placeholder.
@@ -120,8 +133,12 @@ guessing "all of them" when nothing is actually guaranteed present.
 
 - **Header/cookie params** (`in: header`, `in: cookie`) — the catalog format has no mechanism
   for custom per-request headers beyond auth. Skipped, and noted in `review`.
-- **Non-JSON response/request bodies** (e.g. XML, form-encoded) — only `application/json` is
-  read; other content types are ignored for that operation's body/response schema.
+- **Non-JSON response/request bodies** (e.g. XML, form-encoded) — only JSON
+  (`application/json`, `application/*+json`) is read. A request body offered only in another
+  content type is dropped and flagged in that request's `review`; response schemas in other
+  types are ignored.
+- **No documented 2xx response** — the happy-path case still gets `expect.status: 200`, flagged
+  in its `review` as a guess.
 - **Array-typed 2xx responses** — `expect.fields` isn't generated for these (no top-level
   object properties to check); only `expect.status` is set.
 
