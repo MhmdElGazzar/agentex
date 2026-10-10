@@ -45,7 +45,18 @@ have multiple cases (happy path, not-found, validation error, …).
 - **`expect.status`** — expected HTTP status code.
 - **`expect.fields`** — array of dot-paths that must exist in the JSON response.
 - **`expect.equals`** — object of `{dot.path: expectedValue}`.
-  All three are optional; omit what you don't need to assert.
+  Each is optional, but a case must assert **at least one** — a case with no `expect` (or an
+  empty one) is reported BLOCKED ("case has no expect") and never executed, so it can never
+  PASS on an arbitrary status.
+- **`skip`** (optional) — a reason string. A case carrying `skip` is **never executed**: it is
+  reported **BLOCKED** with the reason quoted (`case skipped: "<reason>"`), counted like any
+  other BLOCKED case in the roll-up. `swagger-import` writes
+  `"skip": "review: write operation — remove this line to enable"` on every generated
+  POST/PUT/PATCH/DELETE case — delete that line once you've reviewed the case to enable it.
+- **`review`** (optional) — an array of notes from `swagger-import` (inferred param values,
+  invented statuses, placeholder error values, …). Informational only: the runner ignores it.
+  Since every generated write-method case also carries `skip`, a generated case with review
+  notes runs as-is only when it is a GET — read the notes, fix the values, then delete them.
 
 Every case in every suite file runs every time — there's no scope/tag filtering. Suite files
 are simply how you organize cases into files (e.g. one per service); which cases exist under
@@ -55,14 +66,20 @@ are simply how you organize cases into files (e.g. one per service); which cases
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
-  --catalog ./integration --suites ./integration/api_test_suites --run-dir "$RUN_DIR"
+  --catalog ./integration --suites ./integration/api_test_suites --run-dir "$RUN_DIR" \
+  [--env <environment-name>]
 ```
 
 - Recursively finds every `*_suite.json` under `integration/api_test_suites/`, flattens their
   `cases`, and for each one shells out to **api-integration**'s `run_api.js` (never duplicates
   its catalog/auth/assertion logic — that script stays the single source of truth for one
   call).
-- Writes one evidence log per case to `<run-dir>/logs/<case-name>.log`.
+- `--env <name>` is passed through to every `run_api.js` call (selects
+  `environments/<name>.json`; omitted = the project's `defaultEnvironment`).
+- Writes one evidence log per case to `<run-dir>/logs/<suiteBase>__<index>-<case-name>.log`
+  (`suiteBase` = the suite file's path under `--suites`, minus `_suite.json`; `index` = the
+  case's 1-based position in that file), so two cases with the same name never overwrite each
+  other's evidence. Each case's `log` field in the summary gives the exact path.
 - Prints ONE final JSON summary:
   `{"result":"PASS|FAIL|BLOCKED","total":N,"passed":N,"failed":N,"blocked":N,"cases":[...]}`.
   Exit: `0` all PASS, `1` any FAIL, `2` zero FAIL but any BLOCKED.
@@ -71,15 +88,17 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
 
 ## Worked example
 
-Full sequence for a standalone run: create the run folder, load env vars (`.env` for
-non-secret values, shell `export` for tokens — never into `.env`), then run the suite.
+Full sequence for a standalone run: create the run folder, then run the suite. Secrets
+(tokens, user/pass) go in the project's `.env` — `run_api.js` resolves each catalog `${VAR}`
+name from the process environment first, then `.env`, so nothing needs to be exported.
 
 ```bash
 TS=$(date +%Y-%m-%d_%H-%M-%S)
 mkdir -p "executions/execu_${TS}/api-tests"
 
-set -a; source .env; set +a       # loads e.g. PETSTORE_BASE_URL
-export PETSTORE_TOKEN="..."       # shell-only, never written to .env
+# .env (secrets live here — never in catalog/suite files):
+#   PETSTORE_BASE_URL=https://petstore.example.com/api/v3
+#   PETSTORE_TOKEN=...
 
 node skills/endpoint-testing/scripts/run_suite.js \
   --catalog ./integration --suites ./integration/api_test_suites \
@@ -87,10 +106,8 @@ node skills/endpoint-testing/scripts/run_suite.js \
 ```
 
 Prints the final JSON summary line to stdout; per-case evidence lands in
-`executions/execu_<TS>/api-tests/logs/<case-name>.log`. `env` vars must be present in the
-*same* shell invocation that runs the script — they don't persist across separate shell
-sessions, so `source .env` and any `export` need to happen right before this command, not in
-an earlier one.
+`executions/execu_<TS>/api-tests/logs/<suiteBase>__<index>-<case-name>.log`. A variable
+exported in the shell overrides the same name in `.env` for that invocation only.
 
 This is what `/test-endpoints` does for you automatically via the **`api-executor`** subagent
 (which also writes a human-readable `result.md` next to the logs) — running it manually like
@@ -103,4 +120,5 @@ this is useful for a quick one-off check without going through the full command/
   env vars inside `run_api.js`, exactly as they do for `api:` steps.
 - Write-method cases (POST/PUT/DELETE) run if cataloged, same authorization model as
   `api-integration` — be deliberate about which write operations you add cases for, since
-  every case under `integration/api_test_suites/` runs on every invocation.
+  every case under `integration/api_test_suites/` without a `skip` runs on every invocation.
+  Generated write-method cases arrive with `skip` set, so they are opt-in.

@@ -37,8 +37,10 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
 (async () => {
   let raw;
   if (/^https?:\/\//i.test(source)) {
-    try { raw = await (await fetch(source)).text(); }
+    let res;
+    try { res = await fetch(source); raw = await res.text(); }
     catch (e) { blocked(`could not fetch ${source}: ${e.message}`); }
+    if (!res.ok) blocked(`could not fetch ${source}: HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`, { status: res.status });
   } else {
     if (!fs.existsSync(source)) blocked(`file not found: ${source}`);
     raw = fs.readFileSync(source, 'utf8');
@@ -56,7 +58,9 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   if (!isSwagger2 && !isOpenApi3) blocked('document has neither "swagger": "2.0" nor "openapi": "3.x" — not a recognized spec');
 
   const name = nameArg ? slug(nameArg) : slug(doc.info && doc.info.title);
-  const envPrefix = nameArg ? upper(nameArg) : 'API';
+  // Env-var prefix = the service name in UPPER_SNAKE (e.g. PET_STORE_BASE_URL) — never the
+  // bare "API" prefix, which collides with the project's own API_BASE_URL / API_TOKEN.
+  const envPrefix = upper(name) === 'API' ? 'API_SERVICE' : upper(name);
   const review = [];
 
   // ---- base URL ----
@@ -89,14 +93,28 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   let auth = { type: 'none' };
   const schemeNames = Object.keys(schemesRaw);
   if (schemeNames.length) {
-    // pick the first supported scheme; note the rest if there were several
+    // Preference, regardless of declaration order: bearer > apiKey (header) > basic.
+    const kindOf = (key) => {
+      const s = schemesRaw[key] || {};
+      const scheme = String(s.scheme || '').toLowerCase();
+      if (s.type === 'http' && scheme === 'bearer') return 'bearer';
+      if (s.type === 'apiKey' && s.in === 'header') {
+        if (typeof s.name === 'string' && s.name.trim()) return 'apiKey';
+        review.push(`security scheme "${key}" is apiKey-in-header but declares no header "name" — not used; set auth.headerName manually`);
+        return null;
+      }
+      if ((s.type === 'http' && scheme === 'basic') || (isSwagger2 && s.type === 'basic')) return 'basic';
+      return null;
+    };
+    const kinds = schemeNames.map(key => ({ key, kind: kindOf(key) }));
     let picked = null;
-    for (const key of schemeNames) {
-      const s = schemesRaw[key];
-      if (s.type === 'http' && s.scheme === 'bearer') { picked = { type: 'bearer', tokenEnv: `${envPrefix}_TOKEN` }; break; }
-      if (s.type === 'http' && s.scheme === 'basic') { picked = { type: 'basic', userEnv: `${envPrefix}_USER`, passEnv: `${envPrefix}_PASS` }; break; }
-      if (isSwagger2 && s.type === 'basic') { picked = { type: 'basic', userEnv: `${envPrefix}_USER`, passEnv: `${envPrefix}_PASS` }; break; }
-      if (s.type === 'apiKey' && s.in === 'header') { picked = { type: 'apiKey', headerName: s.name, tokenEnv: `${envPrefix}_TOKEN` }; break; }
+    for (const want of ['bearer', 'apiKey', 'basic']) {
+      const hit = kinds.find(k => k.kind === want);
+      if (!hit) continue;
+      if (want === 'bearer') picked = { type: 'bearer', tokenEnv: `${envPrefix}_TOKEN` };
+      else if (want === 'apiKey') picked = { type: 'apiKey', headerName: schemesRaw[hit.key].name.trim(), tokenEnv: `${envPrefix}_TOKEN` };
+      else picked = { type: 'basic', userEnv: `${envPrefix}_USER`, passEnv: `${envPrefix}_PASS` };
+      break;
     }
     if (picked) {
       auth = picked;
@@ -209,27 +227,54 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   const requests = [];
   const cases = [];
   const methods = ['get', 'post', 'put', 'patch', 'delete'];
+  const usedNames = new Set();
+  const WRITE_SKIP = 'review: write operation — remove this line to enable';
+  let writeOps = 0;
   for (const [urlPath, pathItem] of Object.entries(doc.paths || {})) {
     const pathLevelParams = pathItem.parameters || [];
     for (const method of methods) {
       const op = pathItem[method];
       if (!op) continue;
+      const isWrite = !['get', 'head'].includes(method);
+      if (isWrite) writeOps++;
+      const opTag = `${method.toUpperCase()} ${urlPath}`;
+      // Per-item review notes are written INTO the generated request/case objects (a "review"
+      // array) and also echoed to the command's stdout "review" list.
+      const reqReview = [], happyReview = [], errReview = [];
+      const note = (arr, msg) => { arr.push(msg); review.push(`${opTag}: ${msg}`); };
       const opParams = [...pathLevelParams, ...(op.parameters || [])];
       const byName = new Map();
       for (const p of opParams) byName.set(p.name, p); // operation-level overrides path-level
       const usableParams = [...byName.values()].filter(p => p.in === 'path' || p.in === 'query');
       const skippedParams = [...byName.values()].filter(p => p.in !== 'path' && p.in !== 'query' && p.in !== 'body');
-      if (skippedParams.length) review.push(`${method.toUpperCase()} ${urlPath}: skipped ${skippedParams.map(p => `${p.name} (in: ${p.in})`).join(', ')} — only path/query params are supported`);
+      if (skippedParams.length) note(reqReview, `skipped ${skippedParams.map(p => `${p.name} (in: ${p.in})`).join(', ')} — only path/query params are supported`);
 
-      const reqName = slug(op.operationId) !== 'imported-api' ? slug(op.operationId) : slug(`${method}-${urlPath}`);
+      const baseReqName = slug(op.operationId) !== 'imported-api' ? slug(op.operationId) : slug(`${method}-${urlPath}`);
+      // Request names must be unique within the catalog (entries are <catalog>.<request>).
+      let reqName = baseReqName;
+      for (let n = 2; usedNames.has(reqName); n++) reqName = `${baseReqName}-${n}`;
+      usedNames.add(reqName);
+      if (reqName !== baseReqName) note(reqReview, `duplicate request name "${baseReqName}" (another operation already produced it) — renamed to "${reqName}"; rename it to something meaningful`);
       const declaredParams = usableParams.map(p => p.name);
+      const queryParams = usableParams.filter(p => p.in === 'query').map(p => p.name);
 
       // request body (POST/PUT/PATCH)
       let bodySchema, body;
       if (['post', 'put', 'patch'].includes(method)) {
-        if (isOpenApi3 && op.requestBody) bodySchema = op.requestBody.content && op.requestBody.content['application/json'] && op.requestBody.content['application/json'].schema;
-        else { const bodyParam = opParams.find(p => p.in === 'body'); if (bodyParam) bodySchema = bodyParam.schema; }
-        if (bodySchema) { body = bodyExampleFor(bodySchema); review.push(`${method.toUpperCase()} ${urlPath}: request body generated from schema — verify/adjust values`); }
+        const isJson = t => /^application\/(.+\+)?json\b/i.test(t);
+        if (isOpenApi3 && op.requestBody) {
+          const content = op.requestBody.content || {};
+          const jsonType = Object.keys(content).find(isJson);
+          if (jsonType) bodySchema = content[jsonType].schema;
+          else if (Object.keys(content).length) note(reqReview, `request body dropped — only JSON bodies are supported, the spec declares ${Object.keys(content).join(', ')}; add the body manually if this call needs one`);
+        } else {
+          const bodyParam = opParams.find(p => p.in === 'body');
+          const consumes = op.consumes || doc.consumes;
+          if (bodyParam && Array.isArray(consumes) && consumes.length && !consumes.some(isJson)) {
+            note(reqReview, `request body dropped — only JSON bodies are supported, the spec consumes ${consumes.join(', ')}; add the body manually if this call needs one`);
+          } else if (bodyParam) bodySchema = bodyParam.schema;
+        }
+        if (bodySchema) { body = bodyExampleFor(bodySchema); note(reqReview, 'request body generated from schema — verify/adjust values'); }
       }
 
       requests.push({
@@ -238,8 +283,12 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
         method: method.toUpperCase(),
         path: urlPath,
         params: declaredParams,
+        ...(queryParams.length ? { query: queryParams } : {}),
         ...(body !== undefined ? { body } : {}),
+        ...(reqReview.length ? { review: reqReview } : {}),
       });
+      // Generated write-method cases are opt-in: written disabled until the user reviews them.
+      const skip = isWrite ? { skip: WRITE_SKIP } : {};
 
       // happy-path suite case
       const okCode = firstCode(op.responses, c => c >= 200 && c < 300);
@@ -248,9 +297,11 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
       for (const p of usableParams) {
         const ex = exampleFor(paramSchema(p));
         happyParams[p.name] = ex.value;
-        if (ex.isArray) review.push(`${method.toUpperCase()} ${urlPath}: param "${p.name}" is array-typed — using a single representative value, not full array serialization (style/explode) — verify it's accepted`);
+        if (ex.inferred) note(happyReview, `param "${p.name}" = ${JSON.stringify(ex.value)} is inferred (the spec gives no example/default) — replace it with a value that exists in your target`);
+        if (ex.isArray) note(happyReview, `param "${p.name}" is array-typed — using a single representative value, not full array serialization (style/explode) — verify it's accepted`);
       }
       const expectHappy = { status: okCode ? parseInt(okCode, 10) : 200 };
+      if (!okCode) note(happyReview, 'no 2xx response is documented — expect.status 200 is a guess; set the real success status');
       // Only assert schema-required properties, not every documented one — optional fields are
       // routinely omitted by a real server (null/absent), so asserting on all of them would
       // fail correct responses. If the schema declares no required[], no fields are asserted
@@ -259,19 +310,20 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
         const requiredDeclared = okSchema.required.filter(k => k in okSchema.properties);
         if (requiredDeclared.length) expectHappy.fields = requiredDeclared;
       }
-      cases.push({ name: `${reqName}-happy-path`, entry: `${name}.${reqName}`, params: happyParams, expect: expectHappy });
+      cases.push({ name: `${reqName}-happy-path`, entry: `${name}.${reqName}`, ...skip, params: happyParams, expect: expectHappy, ...(happyReview.length ? { review: happyReview } : {}) });
 
       // error-case suite case, if a 4xx is documented and there's a param to break
       const errCode = firstCode(op.responses, c => c >= 400 && c < 500);
       if (errCode && usableParams.length) {
         const errParams = {};
         for (const p of usableParams) errParams[p.name] = notFoundValueFor(paramSchema(p));
-        cases.push({ name: `${reqName}-error-case`, entry: `${name}.${reqName}`, params: errParams, expect: { status: parseInt(errCode, 10) } });
-        review.push(`${method.toUpperCase()} ${urlPath}: error case uses a placeholder param value — verify it actually produces ${errCode}`);
+        note(errReview, `error case uses a placeholder param value — verify it actually produces ${errCode}`);
+        cases.push({ name: `${reqName}-error-case`, entry: `${name}.${reqName}`, ...skip, params: errParams, expect: { status: parseInt(errCode, 10) }, review: errReview });
       }
     }
   }
   if (!requests.length) blocked('no operations found in "paths" — nothing to import');
+  if (writeOps) review.push(`${writeOps} write operation(s) (POST/PUT/PATCH/DELETE): their suite cases are written with "skip" and will not run until you review each one and remove its "skip" line`);
 
   // ---- write catalog + suite, co-located under <dir>/<name>/ (never overwrite) ----
   const serviceDir = path.join(baseDir, name);
@@ -287,9 +339,17 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   fs.writeFileSync(catalogPath, JSON.stringify(catalog, null, 2) + '\n');
   fs.writeFileSync(suitePath, JSON.stringify(suite, null, 2) + '\n');
 
+  const SECRET_HINT = "<secret — add to the project's .env>";
   out({
     result: 'OK', catalogPath, suitePath, operationsImported: requests.length, casesGenerated: cases.length,
-    envVarsToSet: { [baseUrlEnvVar]: baseUrlLiteral, ...(auth.tokenEnv ? { [auth.tokenEnv]: '<set in your shell, never in .env>' } : {}), ...(auth.userEnv ? { [auth.userEnv]: '<set in your shell>', [auth.passEnv]: '<set in your shell>' } : {}) },
+    // House rule (docs/configuration.md): secrets live in the project's .env; run_api.js resolves
+    // catalog ${VAR} names from the process environment first, then .env.
+    envVarsToSet: {
+      [baseUrlEnvVar]: baseUrlLiteral,
+      ...(auth.tokenEnv ? { [auth.tokenEnv]: SECRET_HINT } : {}),
+      ...(auth.userEnv ? { [auth.userEnv]: SECRET_HINT, [auth.passEnv]: SECRET_HINT } : {}),
+    },
+    envVarsNote: `add these to the project's .env (secrets stay there, never in the catalog/suite files); run_api.js resolves catalog \${VAR} names from the environment, then .env. ${baseUrlEnvVar} is not a secret: you may instead replace the catalog's baseUrl with the literal URL`,
     review,
   }, 0);
 })();

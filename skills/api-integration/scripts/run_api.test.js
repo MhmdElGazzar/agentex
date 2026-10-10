@@ -172,6 +172,116 @@ function serve(handler) {
     assert.strictEqual(url, '/pets/7?status=sold');
   });
 
+  await test('POST param used only in the body is NOT sent as a query param (pre-#25 behavior)', async () => {
+    let url = null, body = '';
+    const { srv, port } = await serve((req, res) => { url = req.url; req.on('data', d => (body += d)); req.on('end', () => res.end('{}')); });
+    const cat = { ...CATALOG, baseUrl: `http://127.0.0.1:${port}`,
+      requests: [{ name: 'create-todo', method: 'POST', path: '/todos', params: ['title'], body: { title: '{title}', completed: false } }] };
+    const dir = proj({ 'integration/sample_api.json': cat });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.create-todo', '--param', 'title=Buy milk & eggs', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(url, '/todos');
+    assert.strictEqual(JSON.parse(body).title, 'Buy milk & eggs');
+  });
+
+  await test('params listed in req.query go to the query string, even when also used in the body', async () => {
+    let url = null;
+    const { srv, port } = await serve((req, res) => { url = req.url; res.end('{}'); });
+    const cat = { ...CATALOG, baseUrl: `http://127.0.0.1:${port}`,
+      requests: [{ name: 'tag', method: 'POST', path: '/pets/{id}', params: ['id', 'dryRun', 'name'], query: ['dryRun'],
+        body: { name: '{name}', dry: '{dryRun}' } }] };
+    const dir = proj({ 'integration/sample_api.json': cat });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.tag', '--param', 'id=3', '--param', 'dryRun=true', '--param', 'name=rex', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(url, '/pets/3?dryRun=true');
+  });
+
+  await test('req.query naming an undeclared param -> BLOCKED', async () => {
+    const cat = { ...CATALOG, baseUrl: 'http://127.0.0.1:9',
+      requests: [{ name: 'list', method: 'GET', path: '/pets', params: [], query: ['status'] }] };
+    const dir = proj({ 'integration/sample_api.json': cat });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.list', '--log', path.join(dir, 'x.log')]);
+    assert.strictEqual(code, 2);
+    assert.match(out.reason, /status/);
+  });
+
+  await test('catalog with its own baseUrl ignores the environment api block and token', async () => {
+    let envHit = false, hit = null;
+    const envSrv = await serve((req, res) => { envHit = true; res.end('{}'); });
+    const own = await serve((req, res) => { hit = { url: req.url, auth: req.headers.authorization, key: req.headers['x-api-key'] }; res.end('{}'); });
+    const dir = proj({
+      'integration/api_test_suites/pets/pets_api.json': { name: 'petstore', baseUrl: '${PETSTORE_BASE_URL}',
+        auth: { type: 'apiKey', headerName: 'X-API-Key', tokenEnv: 'PETSTORE_TOKEN' },
+        requests: [{ name: 'inv', method: 'GET', path: '/inv', params: [] }] },
+      'config/project.json': { defaultEnvironment: 'qa' },
+      'environments/qa.json': { api: { baseUrl: `http://127.0.0.1:${envSrv.port}`, token: { envSecret: 'QA_TOKEN' } } },
+      '.env': `QA_TOKEN=app-secret\nPETSTORE_BASE_URL=http://127.0.0.1:${own.port}\nPETSTORE_TOKEN=pet-key\n`,
+    });
+    const { code, out } = await run(dir, ['--entry', 'petstore.inv', '--log', path.join(dir, 'x.log')]);
+    envSrv.srv.close(); own.srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(envHit, false, 'environment api host must not be called');
+    assert.strictEqual(hit.url, '/inv');
+    assert.strictEqual(hit.key, 'pet-key');
+    assert.strictEqual(hit.auth, undefined, 'environment bearer token must not be sent');
+  });
+
+  await test('catalog with no baseUrl uses the environment api block', async () => {
+    let auth = null;
+    const { srv, port } = await serve((req, res) => { auth = req.headers.authorization; res.end('{}'); });
+    const { baseUrl, ...noBase } = CATALOG;
+    const dir = proj({
+      'integration/sample_api.json': noBase,
+      'config/project.json': { defaultEnvironment: 'qa' },
+      'environments/qa.json': { api: { baseUrl: `http://127.0.0.1:${port}`, token: { envSecret: 'QA_TOKEN' } } },
+      '.env': 'QA_TOKEN=tok-9\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(auth, 'Bearer tok-9');
+  });
+
+  await test('catalog with its own baseUrl does not need the environment token to be set', async () => {
+    const own = await serve((req, res) => res.end('{}'));
+    const dir = proj({
+      'integration/other_api.json': { name: 'other', baseUrl: `http://127.0.0.1:${own.port}`, auth: { type: 'none' },
+        requests: [{ name: 'ping', method: 'GET', path: '/ping', params: [] }] },
+      'config/project.json': { defaultEnvironment: 'qa' },
+      'environments/qa.json': { api: { baseUrl: 'http://127.0.0.1:9', token: { envSecret: 'NOPE_TOKEN' } } },
+    });
+    const { code, out } = await run(dir, ['--entry', 'other.ping', '--log', path.join(dir, 'x.log')]);
+    own.srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+  });
+
+  await test('two catalogs with the same "name" -> BLOCKED listing both files', async () => {
+    const dir = proj({
+      'integration/sample_api.json': CATALOG,
+      'integration/api_test_suites/sample/sample_api.json': CATALOG,
+      '.env': 'API_BASE_URL=http://127.0.0.1:9\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.match(out.reason, /integration[\\/]sample_api\.json/);
+    assert.match(out.reason, /api_test_suites[\\/]sample[\\/]sample_api\.json/);
+  });
+
+  await test('catalog walk skips node_modules and dot-directories', async () => {
+    const { srv, port } = await serve((req, res) => res.end('{}'));
+    const dir = proj({
+      'integration/sample_api.json': CATALOG,
+      'integration/node_modules/pkg/sample_api.json': CATALOG,
+      'integration/.cache/sample_api.json': '{not json',
+      '.env': `API_BASE_URL=http://127.0.0.1:${port}\n`,
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

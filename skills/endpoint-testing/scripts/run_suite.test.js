@@ -105,13 +105,83 @@ const catalog = port => ({
     const { srv, port } = await serve();
     const dir = proj({
       'integration/api_test_suites/svc/svc_api.json': catalog(port),
-      'integration/api_test_suites/svc/svc_suite.json': { cases: [{ name: '../../escape', entry: 'svc.ok' }] },
+      'integration/api_test_suites/svc/svc_suite.json': { cases: [{ name: '../../escape', entry: 'svc.ok', expect: { status: 200 } }] },
     });
     const runDir = path.join(dir, 'run');
     await run(dir, ['--run-dir', runDir]);
     srv.close();
     assert.ok(!fs.existsSync(path.join(dir, 'escape.log')));
     assert.ok(fs.readdirSync(path.join(runDir, 'logs')).length === 1);
+  });
+
+  await test('a case with a skip string is BLOCKED quoting the reason and never executed', async () => {
+    let hits = 0;
+    const srv = http.createServer((req, res) => { hits++; res.end('{}'); });
+    await new Promise(r => srv.listen(0, '127.0.0.1', r));
+    const port = srv.address().port;
+    const dir = proj({
+      'integration/api_test_suites/svc/svc_api.json': catalog(port),
+      'integration/api_test_suites/svc/svc_suite.json': { cases: [
+        { name: 'del', entry: 'svc.ok', skip: 'review: write operation — remove this line to enable', expect: { status: 200 } },
+      ] },
+    });
+    const runDir = path.join(dir, 'run');
+    const { code, out } = await run(dir, ['--run-dir', runDir]);
+    srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.blocked, 1);
+    assert.strictEqual(out.cases[0].result, 'BLOCKED');
+    assert.match(out.cases[0].reason, /"review: write operation — remove this line to enable"/);
+    assert.strictEqual(hits, 0);
+  });
+
+  await test('a case with no expect (or an empty one) is BLOCKED, never PASS, and not executed', async () => {
+    let hits = 0;
+    const srv = http.createServer((req, res) => { hits++; res.end('{}'); });
+    await new Promise(r => srv.listen(0, '127.0.0.1', r));
+    const dir = proj({
+      'integration/api_test_suites/svc/svc_api.json': catalog(srv.address().port),
+      'integration/api_test_suites/svc/svc_suite.json': { cases: [
+        { name: 'no-expect', entry: 'svc.ok' }, { name: 'empty-expect', entry: 'svc.ok', expect: {} },
+      ] },
+    });
+    const { code, out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.blocked, 2);
+    for (const c of out.cases) assert.match(c.reason, /case has no expect/);
+    assert.strictEqual(hits, 0);
+  });
+
+  await test('cases with the same name get distinct log files', async () => {
+    const { srv, port } = await serve();
+    const dir = proj({
+      'integration/api_test_suites/svc/svc_api.json': catalog(port),
+      'integration/api_test_suites/svc/svc_suite.json': { cases: [
+        { name: 'dup', entry: 'svc.ok', expect: { status: 200 } }, { name: 'dup', entry: 'svc.missing', expect: { status: 404 } },
+      ] },
+      'integration/api_test_suites/other/svc_suite.json': { cases: [{ name: 'dup', entry: 'svc.ok', expect: { status: 200 } }] },
+    });
+    const runDir = path.join(dir, 'run');
+    const { code, out } = await run(dir, ['--run-dir', runDir]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    const logs = out.cases.map(c => c.log);
+    assert.strictEqual(new Set(logs).size, 3, logs.join(', '));
+    assert.strictEqual(fs.readdirSync(path.join(runDir, 'logs')).length, 3);
+    assert.ok(logs.every(l => /__\d+-dup\.log$/.test(l)), logs.join(', '));
+  });
+
+  await test('--env is passed through to run_api.js', async () => {
+    const { srv, port } = await serve();
+    const dir = proj({
+      'integration/sample_api.json': { name: 'app', baseUrl: '${API_BASE_URL}', auth: { type: 'none' }, requests: [{ name: 'ok', method: 'GET', path: '/ok', params: [] }] },
+      'integration/api_test_suites/app/app_suite.json': { cases: [{ name: 'ok', entry: 'app.ok', expect: { status: 200 } }] },
+      'environments/uat.json': { api: { baseUrl: `http://127.0.0.1:${port}` } },
+    });
+    const { code, out } = await run(dir, ['--run-dir', path.join(dir, 'run'), '--env', 'uat']);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

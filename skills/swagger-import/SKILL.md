@@ -58,13 +58,21 @@ here — from the script's point of view it's just another local file.
 
 ## After a successful import
 
-1. Report `envVarsToSet` to the user verbatim — the base URL literal to put in `.env`, and
-   any token/credential env var names to export in their shell (never in `.env` — same rule
-   as everywhere else in this project).
+1. Report `envVarsToSet` (and `envVarsNote`) to the user verbatim — every name listed goes in
+   the project's `.env`: secrets (tokens, user/pass) always live there, never in the
+   catalog/suite files; `run_api.js` resolves catalog `${VAR}` names from the environment,
+   then `.env` (see `docs/configuration.md`). The base URL is not a secret, so it may instead
+   be written as a literal `baseUrl` in the catalog.
 2. Report every entry in `review` — these are real gaps (skipped header params, generated
    request bodies, placeholder "not found" values, unsupported auth schemes) that need human
    verification before the generated suite means anything.
-3. Tell the user to open the generated files and adjust anything flagged, then try
+   The same notes are written into the generated files as a `review: [...]` array on each
+   request/case they concern.
+3. Tell the user that every generated write-method case (POST/PUT/PATCH/DELETE) is written
+   with `"skip": "review: write operation — remove this line to enable"` and will be
+   reported BLOCKED, not run, until they review it and delete that line. `review` notes do not
+   block anything, so a flagged GET case runs as generated.
+4. Tell the user to open the generated files and adjust anything flagged, then try
    `/test-endpoints`.
 
 ## What this does NOT do
