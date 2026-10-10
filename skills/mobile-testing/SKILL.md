@@ -41,7 +41,8 @@ environment name and the resolved `platformName`/`deviceName` in `report.md`.
 `templates/sample-android-caps.json` or `templates/sample-ios-caps.json` in this skill. Every
 caps file you write sets `"appium:noReset": true`. Appium's default (`noReset: false`) clears
 the app's data on session start, with no prompt. Never set `"appium:fullReset": true` or
-`"appium:noReset": false` without the user's explicit approval for that run. In parallel mode
+`"appium:noReset": false` without the user's explicit approval for that run; `appium_client.js`
+refuses such caps unless given `--allow-reset`, and adds `noReset: true` when it is missing. In parallel mode
 no one can approve, so a spec or `mobile` block that asks for a reset is BLOCKED.
 
 ## Tools
