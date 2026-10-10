@@ -60,7 +60,7 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   const name = nameArg ? slug(nameArg) : slug(doc.info && doc.info.title);
   // Env-var prefix = the service name in UPPER_SNAKE (e.g. PET_STORE_BASE_URL) — never the
   // bare "API" prefix, which collides with the project's own API_BASE_URL / API_TOKEN.
-  const envPrefix = upper(name);
+  const envPrefix = upper(name) === 'API' ? 'API_SERVICE' : upper(name);
   const review = [];
 
   // ---- base URL ----

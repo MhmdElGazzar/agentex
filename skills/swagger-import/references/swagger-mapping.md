@@ -80,7 +80,7 @@ than silently guessing something wrong.
 
 Generated env var names are prefixed with the service name in UPPER_SNAKE — the `--name`
 value, or the spec's `info.title` when `--name` is omitted (`Pet Store` →
-`PET_STORE_BASE_URL`, `PET_STORE_TOKEN`, …). The bare `API_` prefix is never used: it would
+`PET_STORE_BASE_URL`, `PET_STORE_TOKEN`, …). The bare `API_` prefix is never used (a service named `api` gets `API_SERVICE_`): it would
 collide with the project's own `API_BASE_URL` / `API_TOKEN`, and a catalog whose `baseUrl` is
 exactly `${API_BASE_URL}` is treated as the project's own API (the active environment's `api`
 block overrides it — see `api-integration`'s `api-requests.md`). Where the values go — the house rule from `docs/configuration.md`: **secrets (tokens,

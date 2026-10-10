@@ -161,6 +161,15 @@ test('env-var prefix defaults to the service name, not API', () => {
   assert.ok('PET_STORE_BASE_URL' in out.envVarsToSet);
 });
 
+test('a service named "api" never gets the project\'s own API_ prefix', () => {
+  const dir = tmp(); const f = write(dir, 'spec.json', spec3({ paths: { '/a': getOp('a') } }));
+  const { code, out } = run(dir, [f, '--name', 'api']);
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  const cat = JSON.parse(fs.readFileSync(path.join(dir, 'integration/api_test_suites/api/api_api.json'), 'utf8'));
+  assert.strictEqual(cat.baseUrl, '${API_SERVICE_BASE_URL}');
+  assert.ok(!('API_BASE_URL' in out.envVarsToSet) && !('API_TOKEN' in out.envVarsToSet), JSON.stringify(out.envVarsToSet));
+});
+
 test('auth preference is bearer > apiKey(header) > basic regardless of declaration order', () => {
   const schemes = (o) => importOne(spec3({ components: { securitySchemes: o }, paths: { '/a': getOp('a') } })).cat.auth.type;
   assert.strictEqual(schemes({ b: { type: 'http', scheme: 'basic' }, k: { type: 'apiKey', in: 'header', name: 'X-K' }, t: { type: 'http', scheme: 'bearer' } }), 'bearer');
