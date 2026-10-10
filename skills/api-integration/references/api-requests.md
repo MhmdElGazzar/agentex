@@ -11,13 +11,21 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js" \
   --log "$SESSION_DIR/logs/s1-get-todo.log"
 ```
 
-- Only needs Node (already required by the plugin). Reads `./integration/*_api.json`, enforces
+- Only needs Node (already required by the plugin). Recursively reads every `*_api.json` under
+  `./integration/` (flat or nested, e.g. `integration/api_test_suites/<service>/`), enforces
   catalog-only execution, validates params, resolves env vars, writes the evidence log, checks
   expectations, and prints one JSON line (`PASS`/`FAIL`/`BLOCKED`; exit 0/1/2).
 - Assertion flags: `--expect-status <code>`, `--expect-field <dot.path>` (exists),
   `--expect-equals <dot.path>=<value>`. Non-default catalog dir: `--catalog <dir>`.
 - A `BLOCKED` result tells you exactly what's missing (entry, param, or env var) — surface it
   to the user; do not work around it.
+- **Params**: a declared param whose name matches a `{name}` placeholder in `path` is
+  substituted into the path; any other declared param is sent as a URL query string param
+  instead (e.g. `params: ["userId"]` with a path of `/todos` and no `{userId}` placeholder
+  becomes `?userId=<value>`).
+- **`auth.type`**: `bearer`, `basic`, `apiKey` (custom header — e.g.
+  `{"type":"apiKey","headerName":"X-Api-Key","tokenEnv":"API_TOKEN"}`), or `none`. Same
+  missing-env-var → BLOCKED behavior for all three.
 
 ## Fallback: manual curl (only if node/the runner fails)
 
@@ -65,7 +73,8 @@ Rules:
   `baseUrl`/`token` override the catalog's env refs; `--env <name>` selects the
   environment.
 - URL-encode parameter values that go into the path/query (`--data-urlencode` for query params).
-- `auth.type` values: `bearer` (header shown above), `basic` (`-u "$USER:$PASS"`), `none`.
+- `auth.type` values: `bearer` (header shown above), `basic` (`-u "$USER:$PASS"`), `apiKey`
+  (`-H "<headerName>: $<tokenEnv>"`), `none`.
 - Timeout every call: `--max-time 30`.
 - Transient failure (timeout, 5xx on a read): retry once, then report.
 

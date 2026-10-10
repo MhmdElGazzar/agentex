@@ -1,10 +1,15 @@
 // AgenTeX API runner — executes ONE cataloged API request deterministically.
-// The catalog is the authorization: only entries defined in <catalog>/*_api.json can run.
+// The catalog is the authorization: only entries defined in <catalog>/**/*_api.json can run
+// (searched recursively, so both flat and integration/api_test_suites/<name>/-nested catalogs work).
 //
 // Usage:
 //   node run_api.js --entry <file-name>.<request-name> [--param k=v ...]
 //     [--expect-status 200] [--expect-field dot.path] [--expect-equals dot.path=value]
 //     [--env <environment-name>] [--catalog ./integration] --log <path>
+//
+// A declared param whose name appears as a `{name}` path placeholder is substituted into the
+// path; any other declared param is sent as a URL query string param instead.
+// auth.type: "bearer" | "basic" | "apiKey" (custom header, e.g. X-API-Key) | "none".
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL|BLOCKED", ...}. Exit: 0 PASS, 1 FAIL, 2 BLOCKED.
 // Secrets: env values (tokens) are used for the request but never printed or logged.
@@ -38,16 +43,27 @@ if (dot < 1) blocked('entry must be <file-name>.<request-name>');
 const fileName = entry.slice(0, dot), reqName = entry.slice(dot + 1);
 
 // ---- catalog resolution (allowlist: only defined entries can run) ----
+// Recursive: catalogs may sit flat in <catalog>/ (hand-written, api-integration convention) or
+// nested under <catalog>/api_test_suites/<name>/ (swagger-import output, co-located with its suite).
 if (!fs.existsSync(catalog)) blocked(`catalog folder not found: ${catalog} — scaffold it and define your requests first`);
-const files = fs.readdirSync(catalog).filter(f => f.endsWith('_api.json'));
+function findApiFiles(dir) {
+  let found = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) found = found.concat(findApiFiles(full));
+    else if (entry.isFile() && entry.name.endsWith('_api.json')) found.push(full);
+  }
+  return found;
+}
+const files = findApiFiles(catalog);
 let def = null;
 for (const f of files) {
   try {
-    const j = JSON.parse(fs.readFileSync(path.join(catalog, f), 'utf8'));
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
     if (j.name === fileName) { def = j; break; }
   } catch (e) { blocked(`invalid JSON in ${f}: ${e.message}`); }
 }
-if (!def) blocked(`no *_api.json in ${catalog} has "name": "${fileName}" — define it before this step can run`);
+if (!def) blocked(`no *_api.json under ${catalog} has "name": "${fileName}" — define it before this step can run`);
 const req = (def.requests || []).find(r => r.name === reqName);
 if (!req) blocked(`request "${reqName}" is not defined in catalog "${fileName}" — add it to run this step`);
 
@@ -73,10 +89,17 @@ catch (e) { blocked(e.message); }
 if (target && target.hasToken && !target.token) blocked(`${target.tokenHint} (api token) is not set`);
 const baseUrl = target ? target.baseUrl : resolveEnvRefs(def.baseUrl || '');
 let urlPath = req.path || '';
-for (const [k, v] of Object.entries(params)) urlPath = urlPath.split(`{${k}}`).join(encodeURIComponent(v));
+const queryParams = [];
+for (const [k, v] of Object.entries(params)) {
+  const placeholder = `{${k}}`;
+  if (urlPath.includes(placeholder)) urlPath = urlPath.split(placeholder).join(encodeURIComponent(v));
+  else queryParams.push([k, v]);
+}
 const unresolved = urlPath.match(/\{[a-zA-Z0-9_]+\}/);
 if (unresolved) blocked(`unresolved placeholder ${unresolved[0]} in path`);
-const url = baseUrl.replace(/\/$/, '') + urlPath;
+// declared params not consumed by a path placeholder are sent as query string params
+const query = queryParams.length ? '?' + queryParams.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&') : '';
+const url = baseUrl.replace(/\/$/, '') + urlPath + query;
 
 const headers = { 'Accept': 'application/json' };
 const auth = def.auth || { type: 'none' };
@@ -90,6 +113,10 @@ if (target && target.token) {
   const u = envVar(auth.userEnv), p = envVar(auth.passEnv);
   if (!u || !p) blocked(`env vars ${auth.userEnv}/${auth.passEnv} (basic auth) are not set in .env or the environment`);
   headers['Authorization'] = 'Basic ' + Buffer.from(`${u}:${p}`).toString('base64');
+} else if (auth.type === 'apiKey') {
+  const tok = envVar(auth.tokenEnv);
+  if (!tok) blocked(`env var ${auth.tokenEnv} (apiKey) is not set in .env or the environment`);
+  headers[auth.headerName] = tok;
 }
 
 let body;

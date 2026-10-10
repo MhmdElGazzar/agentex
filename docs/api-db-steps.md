@@ -39,6 +39,8 @@ own service's requests/queries.
 **API steps** — `api:` (or "verify via API", "call the endpoint")
 - Catalog: `integration/*_api.json` files
 - Runner: `skills/api-integration/scripts/run_api.js`
+- Catalog: found recursively under `integration/` (flat, or nested under `integration/api_test_suites/<service>/` for a `swagger-import`ed service)
+- Standalone runs: `/test-endpoints` runs every `*_suite.json` case without a browser spec; `/import-swagger` generates the catalog + suite from a Swagger/OpenAPI file
 - Catalog sample: `skills/api-integration/templates/sample_api.json`
 - Config: the active environment's `api` block (`baseUrl`, `token`); legacy
   `API_BASE_URL`/`API_TOKEN` in `.env` as fallback
