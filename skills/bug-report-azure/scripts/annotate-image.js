@@ -16,8 +16,8 @@
 // Usage: node annotate-image.js --spec <file>.json
 //   { "image": "<png|jpg>", "banner": "<the bug's one-line summary>",
 //     "boxes": [{ "x", "y", "width", "height", "label", "ok"?: true }] }
-//   Box values are % of the image (the model sees large screenshots downscaled) and are
-//   clamped into it. ok:true = green (correct), default red (the defect); the script
+//   Box values are % of the image (the model sees large screenshots downscaled); a box
+//   overhanging an edge is clipped to its visible part, one entirely outside is bad-spec. ok:true = green (correct), default red (the defect); the script
 //   appends the mark.
 // Writes <specDir>/<specStem>.annotated.png: never the source, and a re-render replaces it.
 //
@@ -51,6 +51,7 @@ function specProblems(spec) {
   else spec.boxes.forEach((b, i) => {
     const nums = b && ['x', 'y', 'width', 'height'].every((k) => Number.isFinite(b[k]));
     if (!nums || b.width <= 0 || b.height <= 0) problems.push(`boxes[${i}]: x, y, width, height must be numbers (% of the image), width/height > 0`);
+    else if (b.x >= 100 || b.y >= 100 || b.x + b.width <= 0 || b.y + b.height <= 0) problems.push(`boxes[${i}] lies entirely outside the image`);
     if (!b || typeof b.label !== 'string' || !b.label.trim()) problems.push(`boxes[${i}]: label must be a non-empty string`);
   });
   return problems;
@@ -59,9 +60,10 @@ function specProblems(spec) {
 // The overlay page. The viewport is set to the image width, so 1vw = 1% of the image.
 function overlayHtml(spec) {
   const boxes = spec.boxes.map((raw) => {
-    const x = Math.min(Math.max(raw.x, 0), 99);
-    const y = Math.min(Math.max(raw.y, 0), 99);
-    const b = { ...raw, x, y, width: Math.min(raw.width, 100 - x), height: Math.min(raw.height, 100 - y) };
+    // Clip to the visible part: an overhanging box keeps its on-image edges, never moves.
+    const x0 = Math.max(raw.x, 0), y0 = Math.max(raw.y, 0);
+    const x1 = Math.min(raw.x + raw.width, 100), y1 = Math.min(raw.y + raw.height, 100);
+    const b = { ...raw, x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
     const color = b.ok ? GREEN : RED;
     const right = b.x + b.width / 2 > 50; // right half: hang the label off the box's right edge
     const place = [
