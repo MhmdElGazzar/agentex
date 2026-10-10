@@ -33,16 +33,9 @@ function loadKbConfig(cwd) {
 }
 
 // Resolve an env var from process.env, falling back to a KEY=value line in the
-// project's .env (the harness does not always load .env into process.env).
-function resolveEnv(cwd, name) {
-  if (process.env[name]) return process.env[name].trim();
-  try {
-    const re = new RegExp('^' + name + '\\s*=\\s*(.+)$', 'm');
-    const m = fs.readFileSync(path.join(cwd, '.env'), 'utf8').match(re);
-    if (m) return m[1].trim().replace(/^["']|["']$/g, '');
-  } catch {}
-  return null;
-}
+// project's .env (the harness does not always load .env into process.env) —
+// the shared plugin-root parser, so an empty key is null, never the next line.
+const { readEnvVar: resolveEnv } = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 
 async function askKb({ baseUrl, project, question, org, model, apiKey, timeoutMs, retries }) {
   const body = JSON.stringify({ project, question, org, model });
