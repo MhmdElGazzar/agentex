@@ -77,6 +77,14 @@ test('duplicate labels are de-duplicated, never merged into one folder', () => {
   assert.strictEqual(Object.keys(json.sessions).length, 3);
 });
 
+test('a renamed duplicate never collides with a label that already has that name', () => {
+  const { code, json } = runIn(tmp(), ['--sessions', 'a,a,a-2']);
+  assert.strictEqual(code, 0);
+  const dirs = Object.values(json.sessions).map(x => x.dir);
+  assert.strictEqual(dirs.length, 3);
+  assert.strictEqual(new Set(dirs).size, 3, dirs.join(', '));
+});
+
 test('the "default" label is refused, however it is spelled', () => {
   for (const label of ['default', 'DEFAULT', '-default-']) {
     const { code, json } = runIn(tmp(), ['--sessions', label]);
