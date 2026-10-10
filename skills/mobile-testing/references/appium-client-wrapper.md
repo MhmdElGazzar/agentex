@@ -28,7 +28,7 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/mobile-testing/scripts/appium_client.js <subco
 
 | Subcommand | Flags | Result payload (on PASS) |
 |---|---|---|
-| `create-session` | `--caps-file <path.json>` `[--server <url>]` | `{"sessionId":"..."}` |
+| `create-session` | `--caps-file <path.json>` `[--allow-reset]` `[--server <url>]` | `{"sessionId":"..."}` |
 | `find` | `--session <id>` `--using <strategy>` `--value <selector>` `[--server <url>]` | `{"element":"<elementId>"}` |
 | `click` | `--session <id>` `--element <elementId>` | `{}` |
 | `send-keys` | `--session <id>` `--element <elementId>` `--text <text>` **or** `--text-env <NAME>` | `{}` |
@@ -53,6 +53,9 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/mobile-testing/scripts/appium_client.js <subco
   `templates/sample-android-caps.json` / `templates/sample-ios-caps.json` in this skill, or
   build one from the `mobile` block in `environments/<env>.json` per
   `appium-server-cli.md`'s capability table.
+- `create-session` adds `"appium:noReset": true` when the caps leave it out, and refuses caps
+  that ask for a reset (`appium:fullReset: true` or `appium:noReset: false`) with BLOCKED —
+  pass `--allow-reset` only after the user approved that reset for this run.
 
 ## Result shapes
 - `PASS` (exit 0) — `{"result":"PASS", ...subcommand-specific fields above}`.

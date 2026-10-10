@@ -4,7 +4,7 @@
 // missing dependency/secret, or infrastructure: the Appium server or session never answered).
 //
 // Usage:
-//   node appium_client.js create-session --caps-file <path.json> [--server <url>]
+//   node appium_client.js create-session --caps-file <path.json> [--allow-reset] [--server <url>]
 //   node appium_client.js find --session <id> --using <strategy> --value <selector> [--server <url>]
 //   node appium_client.js click --session <id> --element <elementId> [--server <url>]
 //   node appium_client.js send-keys --session <id> --element <elementId> (--text <text> | --text-env <NAME>) [--server <url>]
@@ -69,8 +69,12 @@ function loadWebdriverio() {
 // ---- args ----
 const [, , subcommand, ...rest] = process.argv;
 const flags = {};
+const BOOLEAN_FLAGS = ['allow-reset'];
 for (let i = 0; i < rest.length; i++) {
-  if (rest[i].startsWith('--')) { flags[rest[i].slice(2)] = rest[i + 1]; i++; }
+  if (!rest[i].startsWith('--')) continue;
+  const k = rest[i].slice(2);
+  if (BOOLEAN_FLAGS.includes(k)) { flags[k] = true; continue; }
+  flags[k] = rest[i + 1]; i++;
 }
 if (flags.text) secretText = flags.text;
 const KNOWN = ['create-session', 'find', 'click', 'send-keys', 'get-text', 'screenshot', 'swipe', 'back', 'source', 'close-session'];
@@ -117,12 +121,20 @@ async function attachSession(sessionId, server) {
 (async () => {
   try {
     if (subcommand === 'create-session') {
-      if (!flags['caps-file']) blocked('usage: create-session --caps-file <path.json> [--server <url>]');
+      if (!flags['caps-file']) blocked('usage: create-session --caps-file <path.json> [--allow-reset] [--server <url>]');
       if (!fs.existsSync(flags['caps-file'])) blocked(`caps file not found: ${flags['caps-file']}`);
       let capsDoc;
       try { capsDoc = JSON.parse(fs.readFileSync(flags['caps-file'], 'utf8')); }
       catch (e) { blocked(`invalid JSON in ${flags['caps-file']}: ${e.message}`); }
       const capabilities = (capsDoc.capabilities && capsDoc.capabilities.alwaysMatch) || capsDoc.capabilities || capsDoc;
+      // Appium's default (noReset false) wipes the app's data on session start. Here the
+      // default is the opposite, and a reset runs only with --allow-reset, which the agent
+      // passes after the user approved that reset for this run.
+      const wantsReset = capabilities['appium:fullReset'] === true || capabilities['appium:noReset'] === false;
+      if (wantsReset && !flags['allow-reset']) {
+        blocked('caps request an app-data reset (appium:fullReset true or appium:noReset false) — get the user\'s approval, then rerun with --allow-reset');
+      }
+      if (!wantsReset && capabilities['appium:noReset'] === undefined) capabilities['appium:noReset'] = true;
       const browser = await remote({ capabilities, logLevel: 'silent', ...parseServer(flags.server) });
       out({ result: 'PASS', sessionId: browser.sessionId }, 0);
       process.exit(0); // don't wait on any lingering handles; the Appium session itself persists server-side

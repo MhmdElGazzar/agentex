@@ -85,7 +85,7 @@ const optsLog = path.join(bareCwd, 'wdio-opts.jsonl');
 fs.writeFileSync(path.join(fakeModulesDir, 'index.js'), `
 const fs = require('fs');
 const mode = () => process.env.FAKE_WDIO_MODE || 'ok';
-function record(kind, o) { fs.appendFileSync(${JSON.stringify(optsLog)}, JSON.stringify({ kind, logLevel: o.logLevel }) + '\\n'); }
+function record(kind, o) { fs.appendFileSync(${JSON.stringify(optsLog)}, JSON.stringify({ kind, logLevel: o.logLevel, capabilities: o.capabilities }) + '\\n'); }
 function chatter(o, line) { if (o.logLevel !== 'silent') console.log(line); }
 function infra() {
   if (mode() === 'econnrefused') { const e = new Error('Request failed with error code ECONNREFUSED'); e.code = 'ECONNREFUSED'; throw e; }
@@ -134,6 +134,37 @@ test('every remote()/attach() call passes logLevel "silent"', () => {
   const calls = fs.readFileSync(optsLog, 'utf8').trim().split('\n').map(JSON.parse);
   assert.deepStrictEqual(calls.map(c => c.kind).sort(), ['attach', 'remote']);
   for (const c of calls) assert.strictEqual(c.logLevel, 'silent', `${c.kind} must be silent`);
+});
+
+const remoteCaps = (capsObj, extra = []) => {
+  fs.rmSync(optsLog, { force: true });
+  const f = path.join(bareCwd, 'caps-reset.json');
+  fs.writeFileSync(f, JSON.stringify({ capabilities: { alwaysMatch: capsObj } }));
+  const r = runRaw(['create-session', '--caps-file', f, ...extra], {});
+  const calls = fs.existsSync(optsLog) ? fs.readFileSync(optsLog, 'utf8').trim().split('\n').map(JSON.parse) : [];
+  return { r, calls };
+};
+
+test('create-session adds appium:noReset true when the caps leave it out', () => {
+  const { r, calls } = remoteCaps({ platformName: 'Android' });
+  assert.strictEqual(r.code, 0, r.stdout);
+  assert.strictEqual(calls[0].capabilities['appium:noReset'], true);
+});
+
+test('create-session refuses a reset (fullReset true / noReset false) without --allow-reset', () => {
+  for (const c of [{ 'appium:fullReset': true }, { 'appium:noReset': false }]) {
+    const { r, calls } = remoteCaps({ platformName: 'Android', ...c });
+    assert.strictEqual(r.code, 2, JSON.stringify(c));
+    assert.strictEqual(oneJsonLine(r.stdout).result, 'BLOCKED');
+    assert.match(r.stdout, /--allow-reset/);
+    assert.strictEqual(calls.length, 0, 'no session may be created');
+  }
+});
+
+test('create-session --allow-reset passes an approved reset through unchanged', () => {
+  const { r, calls } = remoteCaps({ platformName: 'Android', 'appium:noReset': false }, ['--allow-reset']);
+  assert.strictEqual(r.code, 0, r.stdout);
+  assert.strictEqual(calls[0].capabilities['appium:noReset'], false);
 });
 
 test('send-keys --text: stdout is one JSON line and never contains the typed text', () => {

@@ -46,7 +46,18 @@ labels = labels.map((l, i) => {
 if (labels.some(l => l === 'default')) {
   fail('the "default" session label is prohibited — name each session (e.g. after its spec or device)');
 }
-labels = labels.map((l, i) => (labels.indexOf(l) === i ? l : `${l}-${i + 1}`));
+// A renamed duplicate takes the first free -N suffix, so it can never land on a label
+// that was given with that name already (a,a,a-2 -> a, a-3, a-2).
+const taken = new Set(labels);
+const seen = new Set();
+labels = labels.map(l => {
+  if (!seen.has(l)) { seen.add(l); return l; }
+  let n = 2;
+  while (taken.has(`${l}-${n}`)) n++;
+  const renamed = `${l}-${n}`;
+  taken.add(renamed); seen.add(renamed);
+  return renamed;
+});
 
 const d = new Date();
 const p = n => String(n).padStart(2, '0');
