@@ -4,7 +4,11 @@ description: Run the standalone API test pass ("api-tests") over every cataloged
 
 Use the **endpoint-testing** skill to run the standalone API tests.
 
-Arguments (unused — this command takes none): $ARGUMENTS
+Arguments: $ARGUMENTS
+
+**Parse the arguments:** optional environment — `--env <name>`, `env: <name>` or "on <name>"
+selects `environments/<name>.json` (same as `/execute-test`); omitted = the project's
+`defaultEnvironment`. Anything else is ignored.
 
 **Before running:**
 - If `./integration/` (the endpoint catalog) doesn't exist, stop and point the user at
@@ -19,6 +23,8 @@ Arguments (unused — this command takes none): $ARGUMENTS
 
 **Run:**
 - Dispatch the bundled **`api-executor`** agent, injecting `CATALOG_DIR` (`./integration`),
-  `SUITE_DIR` (`./integration/api_test_suites`), and `RUN_DIR` (the folder just created).
-  Every case in every suite file runs — there's no scope to resolve.
+  `SUITE_DIR` (`./integration/api_test_suites`), `RUN_DIR` (the folder just created), and
+  `ENV_NAME` (the parsed environment, or empty). Every case in every suite file runs —
+  there's no scope to resolve — except cases carrying `skip` or no `expect`, which the runner
+  reports BLOCKED without executing.
 - Present its returned summary and defect list to the user when it completes.

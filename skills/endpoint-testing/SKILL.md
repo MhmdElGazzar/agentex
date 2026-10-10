@@ -50,8 +50,13 @@ same reasoning as dispatching `qa-executor` for browser sessions). It makes one 
 
 ```
 node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
-  --catalog ./integration --suites ./integration/api_test_suites --run-dir <RUN_DIR>
+  --catalog ./integration --suites ./integration/api_test_suites --run-dir <RUN_DIR> \
+  [--env <environment-name>]
 ```
+
+`--env` is passed through to every `run_api.js` call (omitted = the project's
+`defaultEnvironment`). A case with no `expect` is BLOCKED ("case has no expect") — a case that
+asserts nothing never PASSes.
 
 Every case in every suite file runs every time — there's no scope/tag selection — except a
 case carrying `"skip": "<reason>"`, which is never executed and is reported BLOCKED with that
@@ -68,6 +73,7 @@ reason quoted. `swagger-import` writes `skip` on every generated write-method ca
 
 ## Evidence
 
-One log per case under `<RUN_DIR>/logs/<case-name>.log`, plus a final `result.md` written by
+One log per case under `<RUN_DIR>/logs/<suiteBase>__<index>-<case-name>.log` (unique even when
+case names repeat), plus a final `result.md` written by
 `api-executor` summarizing PASS/FAIL/BLOCKED counts and any failures in the project's
 standard defect format.

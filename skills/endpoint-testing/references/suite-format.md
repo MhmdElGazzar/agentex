@@ -45,7 +45,9 @@ have multiple cases (happy path, not-found, validation error, …).
 - **`expect.status`** — expected HTTP status code.
 - **`expect.fields`** — array of dot-paths that must exist in the JSON response.
 - **`expect.equals`** — object of `{dot.path: expectedValue}`.
-  All three are optional; omit what you don't need to assert.
+  Each is optional, but a case must assert **at least one** — a case with no `expect` (or an
+  empty one) is reported BLOCKED ("case has no expect") and never executed, so it can never
+  PASS on an arbitrary status.
 - **`skip`** (optional) — a reason string. A case carrying `skip` is **never executed**: it is
   reported **BLOCKED** with the reason quoted (`case skipped: "<reason>"`), counted like any
   other BLOCKED case in the roll-up. `swagger-import` writes
@@ -64,14 +66,20 @@ are simply how you organize cases into files (e.g. one per service); which cases
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
-  --catalog ./integration --suites ./integration/api_test_suites --run-dir "$RUN_DIR"
+  --catalog ./integration --suites ./integration/api_test_suites --run-dir "$RUN_DIR" \
+  [--env <environment-name>]
 ```
 
 - Recursively finds every `*_suite.json` under `integration/api_test_suites/`, flattens their
   `cases`, and for each one shells out to **api-integration**'s `run_api.js` (never duplicates
   its catalog/auth/assertion logic — that script stays the single source of truth for one
   call).
-- Writes one evidence log per case to `<run-dir>/logs/<case-name>.log`.
+- `--env <name>` is passed through to every `run_api.js` call (selects
+  `environments/<name>.json`; omitted = the project's `defaultEnvironment`).
+- Writes one evidence log per case to `<run-dir>/logs/<suiteBase>__<index>-<case-name>.log`
+  (`suiteBase` = the suite file's path under `--suites`, minus `_suite.json`; `index` = the
+  case's 1-based position in that file), so two cases with the same name never overwrite each
+  other's evidence. Each case's `log` field in the summary gives the exact path.
 - Prints ONE final JSON summary:
   `{"result":"PASS|FAIL|BLOCKED","total":N,"passed":N,"failed":N,"blocked":N,"cases":[...]}`.
   Exit: `0` all PASS, `1` any FAIL, `2` zero FAIL but any BLOCKED.
@@ -96,7 +104,7 @@ node skills/endpoint-testing/scripts/run_suite.js \
 ```
 
 Prints the final JSON summary line to stdout; per-case evidence lands in
-`executions/execu_<TS>/api-tests/logs/<case-name>.log`. `env` vars must be present in the
+`executions/execu_<TS>/api-tests/logs/<suiteBase>__<index>-<case-name>.log`. `env` vars must be present in the
 *same* shell invocation that runs the script — they don't persist across separate shell
 sessions, so `source .env` and any `export` need to happen right before this command, not in
 an earlier one.
