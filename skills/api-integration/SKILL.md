@@ -57,8 +57,12 @@ Example: `api: sample-api.get-todo(id=1) → expect HTTP 200 and title present`
    (`--env <name>`, omitted = the project's `defaultEnvironment`):
    `{ "baseUrl": "https://…", "token": { "envSecret": "API_TOKEN" } }`.
    The token reference is resolved from `.env` — never a value in JSON.
-2. **Legacy fallback** — the catalog's `${API_BASE_URL}` refs and `auth` block,
-   exactly as before. Old projects keep working untouched.
+   Applies **only** to catalogs whose `baseUrl` is absent/empty or exactly
+   `"${API_BASE_URL}"` (the project default).
+2. **The catalog's own `baseUrl` and `auth`** — always for a catalog declaring any other
+   `baseUrl` (e.g. an imported `"${PETSTORE_BASE_URL}"`; the environment token is never sent
+   to it), and as the legacy fallback when the environment has no `api` block. Old projects
+   keep working untouched.
 
 ## Safety rules (also enforced by the runner)
 

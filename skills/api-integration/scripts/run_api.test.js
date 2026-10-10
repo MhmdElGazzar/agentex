@@ -207,6 +207,56 @@ function serve(handler) {
     assert.match(out.reason, /status/);
   });
 
+  await test('catalog with its own baseUrl ignores the environment api block and token', async () => {
+    let envHit = false, hit = null;
+    const envSrv = await serve((req, res) => { envHit = true; res.end('{}'); });
+    const own = await serve((req, res) => { hit = { url: req.url, auth: req.headers.authorization, key: req.headers['x-api-key'] }; res.end('{}'); });
+    const dir = proj({
+      'integration/api_test_suites/pets/pets_api.json': { name: 'petstore', baseUrl: '${PETSTORE_BASE_URL}',
+        auth: { type: 'apiKey', headerName: 'X-API-Key', tokenEnv: 'PETSTORE_TOKEN' },
+        requests: [{ name: 'inv', method: 'GET', path: '/inv', params: [] }] },
+      'config/project.json': { defaultEnvironment: 'qa' },
+      'environments/qa.json': { api: { baseUrl: `http://127.0.0.1:${envSrv.port}`, token: { envSecret: 'QA_TOKEN' } } },
+      '.env': `QA_TOKEN=app-secret\nPETSTORE_BASE_URL=http://127.0.0.1:${own.port}\nPETSTORE_TOKEN=pet-key\n`,
+    });
+    const { code, out } = await run(dir, ['--entry', 'petstore.inv', '--log', path.join(dir, 'x.log')]);
+    envSrv.srv.close(); own.srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(envHit, false, 'environment api host must not be called');
+    assert.strictEqual(hit.url, '/inv');
+    assert.strictEqual(hit.key, 'pet-key');
+    assert.strictEqual(hit.auth, undefined, 'environment bearer token must not be sent');
+  });
+
+  await test('catalog with no baseUrl uses the environment api block', async () => {
+    let auth = null;
+    const { srv, port } = await serve((req, res) => { auth = req.headers.authorization; res.end('{}'); });
+    const { baseUrl, ...noBase } = CATALOG;
+    const dir = proj({
+      'integration/sample_api.json': noBase,
+      'config/project.json': { defaultEnvironment: 'qa' },
+      'environments/qa.json': { api: { baseUrl: `http://127.0.0.1:${port}`, token: { envSecret: 'QA_TOKEN' } } },
+      '.env': 'QA_TOKEN=tok-9\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(auth, 'Bearer tok-9');
+  });
+
+  await test('catalog with its own baseUrl does not need the environment token to be set', async () => {
+    const own = await serve((req, res) => res.end('{}'));
+    const dir = proj({
+      'integration/other_api.json': { name: 'other', baseUrl: `http://127.0.0.1:${own.port}`, auth: { type: 'none' },
+        requests: [{ name: 'ping', method: 'GET', path: '/ping', params: [] }] },
+      'config/project.json': { defaultEnvironment: 'qa' },
+      'environments/qa.json': { api: { baseUrl: 'http://127.0.0.1:9', token: { envSecret: 'NOPE_TOKEN' } } },
+    });
+    const { code, out } = await run(dir, ['--entry', 'other.ping', '--log', path.join(dir, 'x.log')]);
+    own.srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

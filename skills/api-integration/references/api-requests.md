@@ -73,9 +73,12 @@ Rules:
   (`set -a; . ./.env; set +a; curl …`) and pass them as shell variables; **never echo their values** and never write the
   Authorization header value into the report (the raw log keeps headers you *send* out of it —
   log response status/headers/body only; if you must log the command, redact the token).
-- When the project defines `environments/<env>.json` with an `api` block, its
-  `baseUrl`/`token` override the catalog's env refs; `--env <name>` selects the
-  environment.
+- **Which target a catalog uses.** The active environment's `api` block
+  (`environments/<env>.json`; `--env <name>` selects the environment) is the project's own
+  API. Its `baseUrl` and `token` apply **only** to a catalog whose `baseUrl` is absent/empty
+  or exactly `"${API_BASE_URL}"` (the project default). A catalog declaring any other
+  `baseUrl` — e.g. an imported service's `"${PETSTORE_BASE_URL}"` or a literal URL — always
+  uses its own `baseUrl` and its own `auth` block; the environment token is never sent to it.
 - URL-encode parameter values that go into the path/query (`--data-urlencode` for query params).
 - `auth.type` values: `bearer` (header shown above), `basic` (`-u "$USER:$PASS"`), `apiKey`
   (`-H "<headerName>: $<tokenEnv>"`), `none`.

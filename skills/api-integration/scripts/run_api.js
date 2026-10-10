@@ -85,9 +85,18 @@ function resolveEnvRefs(s) {
     return v;
   });
 }
+// The environment's api block (baseUrl + token) targets the PROJECT's own API. It applies only
+// to catalogs that defer to it: no/empty baseUrl, or exactly the project default
+// "${API_BASE_URL}". A catalog declaring any other baseUrl (e.g. an imported third-party
+// service, "${PETSTORE_BASE_URL}") keeps its own baseUrl AND its own auth — the app's token
+// must never be sent to another host.
+const PROJECT_DEFAULT_BASE_URL = '${API_BASE_URL}';
+const catalogBase = typeof def.baseUrl === 'string' ? def.baseUrl.trim() : '';
+const defersToEnvironment = catalogBase === '' || catalogBase === PROJECT_DEFAULT_BASE_URL;
 let target = null;
-try { target = pc.resolveApiTarget(process.cwd(), envName); }
+try { target = pc.resolveApiTarget(process.cwd(), envName); } // also validates --env exists
 catch (e) { blocked(e.message); }
+if (!defersToEnvironment) target = null;
 if (target && target.hasToken && !target.token) blocked(`${target.tokenHint} (api token) is not set`);
 const baseUrl = target ? target.baseUrl : resolveEnvRefs(def.baseUrl || '');
 // Param placement (order matters):
