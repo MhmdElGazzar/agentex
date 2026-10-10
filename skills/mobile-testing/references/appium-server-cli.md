@@ -10,13 +10,14 @@ session, or when a call behaves unexpectedly. See
 - Install the platform driver(s) you need:
   - Android: `npx appium driver install uiautomator2`
   - iOS (macOS + Xcode only): `npx appium driver install xcuitest`
-- Preflight: `npx appium --version`, `npx appium driver list --installed`.
+- Preflight: `npx --no-install appium --version` (plain `npx appium` silently downloads
+  appium when the project lacks it), `npx appium driver list --installed`.
 - Android also needs `adb` on PATH (from the Android SDK platform-tools) and either a running
   emulator (`emulator -avd <name>`) or a connected device with USB debugging enabled — check
   with `adb devices`.
 - iOS also needs a booted Simulator (`xcrun simctl list devices booted`) or a provisioned real
   device; iOS automation only runs on macOS.
-- Start the server: `npx appium server` (defaults to `http://127.0.0.1:4723`). Appium 2.x
+- Start the server: `npx appium server` (defaults to `http://127.0.0.1:4723`). Appium 2.x+
   serves the WebDriver protocol at the base path `/` (no `/wd/hub` prefix, unlike Appium 1.x).
   Run it in the background before driving any session; check it's up with
   `curl -s http://127.0.0.1:4723/status`.

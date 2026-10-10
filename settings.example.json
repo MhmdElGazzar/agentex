@@ -31,6 +31,7 @@
       "Bash(az keyvault secret list:*)",
       "Bash(az aks list:*)",
       "Bash(npx appium --version)",
+      "Bash(npx --no-install appium --version)",
       "Bash(npx appium server:*)",
       "Bash(npx appium driver list:*)",
       "Bash(adb devices:*)",
