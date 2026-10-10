@@ -36,6 +36,10 @@
 //   preflight-plugin-version  plugin manifest + project stamp reported; gates ONLY
 //                             on an unreadable plugin manifest — version drift is
 //                             report-only (drift: true), never gate-closing
+//   preflight-driver          the run needs a driver test-execution does not run:
+//                             `mobile` (Drivers: mobile) — those specs run via
+//                             /execute-mobile-test, never in a browser. Deterministic:
+//                             ci_gate.js never retries it.
 //
 // Secrets discipline: names only, never values. Diagnostics go to stderr; stdout
 // carries exactly one JSON line. exitCode + event-loop drain — never process.exit
@@ -46,6 +50,7 @@ const { probe, probePlaywrightCli } = require(path.join(__dirname, 'preflight.js
 const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 
 const TARGET_TIMEOUT_MS = 10_000;
+const MOBILE_BLOCK_DETAIL = 'the scope includes mobile specs (Drivers: mobile) — mobile specs run via /execute-mobile-test, never in a browser; narrow the CI scope to browser/api/db specs (e.g. --suite test/suite1/)';
 
 function parseArgs(argv) {
   const out = {};
@@ -210,6 +215,8 @@ async function main() {
   if (!secrets.ok) blockedReasons.push({ code: 'preflight-secrets', detail: `missing secret values for: ${secrets.missing.join(', ')} — provide them by NAME via the CI secret store or .env` });
   if (!browser.ok) blockedReasons.push({ code: 'preflight-browser', detail: browser.error });
   if (!pluginVersion.ok) blockedReasons.push({ code: 'preflight-plugin-version', detail: pluginVersion.error });
+  // A mobile spec is not a test-execution spec: it must never run in a browser.
+  if (needs.has('mobile')) blockedReasons.push({ code: 'preflight-driver', detail: MOBILE_BLOCK_DETAIL });
 
   const view = (c) => ({ ok: c.ok, ...(c.url ? { url: c.url } : {}), ...(c.status !== undefined ? { status: c.status } : {}), ...(c.error ? { error: c.error } : {}), ...(c.skipped ? { skipped: c.skipped } : {}) });
   const out = {

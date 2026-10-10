@@ -60,7 +60,7 @@ Run a parallel regression against https://example.com from the specs in test/sui
 # Slash commands:
 /execute-test https://example.com
 /define-flow https://example.com     # build a spec step by step, executing each step live
-/execute-mobile-test suite1
+/execute-mobile-test suite1          # runs ./test/mobile-suite1/ (not ./test/suite1/)
 /test-endpoints
 /import-swagger ./openapi.json --name acme-api
 /estimate-story 12345 12346

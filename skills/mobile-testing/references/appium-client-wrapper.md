@@ -31,7 +31,7 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/mobile-testing/scripts/appium_client.js <subco
 | `create-session` | `--caps-file <path.json>` `[--server <url>]` | `{"sessionId":"..."}` |
 | `find` | `--session <id>` `--using <strategy>` `--value <selector>` `[--server <url>]` | `{"element":"<elementId>"}` |
 | `click` | `--session <id>` `--element <elementId>` | `{}` |
-| `send-keys` | `--session <id>` `--element <elementId>` `--text <text>` | `{}` |
+| `send-keys` | `--session <id>` `--element <elementId>` `--text <text>` **or** `--text-env <NAME>` | `{}` |
 | `get-text` | `--session <id>` `--element <elementId>` | `{"text":"..."}` |
 | `screenshot` | `--session <id>` `--out <path.png>` | `{"path":"<path.png>"}` |
 | `swipe` | `--session <id>` `--from <x>,<y>` `--to <x>,<y>` | `{}` |
@@ -42,6 +42,13 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/mobile-testing/scripts/appium_client.js <subco
 - `--using` strategies: `accessibility id` (preferred), `id`, `-android uiautomator`,
   `-ios predicate string`, `-ios class chain`, `xpath`.
 - `--server` defaults to `http://127.0.0.1:4723`; only needed if the server runs elsewhere.
+- **Secrets: always `--text-env`.** `send-keys --text-env NAME` types the value of the
+  environment variable `NAME`, or of `NAME` in the project's `.env` — the same lookup every
+  other runner uses for an `{ "envSecret": "NAME" }` value. Use it for every password, OTP,
+  or token, so the value never appears on the command line. `--text` is for non-secret input
+  only. An unset or invalid `NAME` is `BLOCKED` (the reason names the variable, never a value).
+  The typed text is never printed: webdriverio runs silent, and any output that would contain
+  it is redacted to `***`. Don't `get-text` a secret field back — that returns its value.
 - `create-session`'s `--caps-file` takes a W3C capabilities JSON file — see
   `templates/sample-android-caps.json` / `templates/sample-ios-caps.json` in this skill, or
   build one from the `mobile` block in `environments/<env>.json` per
@@ -49,10 +56,15 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/mobile-testing/scripts/appium_client.js <subco
 
 ## Result shapes
 - `PASS` (exit 0) — `{"result":"PASS", ...subcommand-specific fields above}`.
-- `FAIL` (exit 1) — the Appium/WebDriver call itself failed (element not found, session
-  invalid, request error): `{"result":"FAIL","reason":"..."}`.
-- `BLOCKED` (exit 2) — a required flag is missing, `webdriverio` isn't resolvable, or the
-  caps file doesn't exist/parse: `{"result":"BLOCKED","reason":"..."}`.
+- `FAIL` (exit 1) — the app answered and the answer was wrong (element not found, a
+  WebDriver error from the app's state): `{"result":"FAIL","reason":"..."}`.
+- `BLOCKED` (exit 2) — a required flag is missing, `webdriverio` isn't resolvable, the caps
+  file doesn't exist/parse, or a `--text-env` variable is unset:
+  `{"result":"BLOCKED","reason":"..."}`.
+- `BLOCKED` + `"infrastructure": true` (exit 2) — the Appium server or session never answered
+  (connection refused/reset, DNS, timeout, `invalid session id`, session not created). This is
+  the driver contract's infrastructure class, not an app defect: retry the scenario once from
+  a fresh session; the same symptom twice is BLOCKED with the reason verbatim.
 
 ## Session handling
 Same as the raw REST approach: `create-session` returns a `sessionId` — capture it and pass it
@@ -66,6 +78,7 @@ node appium_client.js create-session --caps-file caps.json
 node appium_client.js find --session abc123 --using "accessibility id" --value login-button
 # -> {"result":"PASS","element":"elem-1"}
 node appium_client.js click --session abc123 --element elem-1
+node appium_client.js send-keys --session abc123 --element elem-2 --text-env QA_TESTER_PASSWORD
 node appium_client.js screenshot --session abc123 --out s1-login.png
 node appium_client.js close-session --session abc123
 ```
