@@ -228,6 +228,32 @@ test('no @playwright/cli in the project: exit 1, one JSON line, and no install o
   assert.doesNotMatch(r.out.error.message, /npm|install/i, 'filing never turns into an install');
 });
 
+test('finds @playwright/cli in a PARENT folder\'s node_modules (hoisted install, run from a subfolder)', () => {
+  const proj = path.join(TMP, 'proj');
+  const sub = path.join(proj, 'executions', 'run-1');
+  const pkg = path.join(proj, 'node_modules', '@playwright', 'cli');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.mkdirSync(pkg, { recursive: true });
+  const tall = path.join(TMP, 'tall-fixture.png');
+  fs.writeFileSync(tall, makePng(W, H + 40));
+  const log = path.join(TMP, 'fake-cli.log');
+  fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@playwright/cli', bin: { 'playwright-cli': 'cli.js' } }));
+  // A fake CLI: logs each subcommand; run-code "renders" by copying a taller PNG to the
+  // output path named in the run-code source.
+  const fake = (log, tall) => {
+    const fs = require('node:fs');
+    const [, , , sub, code] = process.argv;
+    fs.appendFileSync(log, `${sub}\n`);
+    if (sub === 'run-code') fs.copyFileSync(tall, JSON.parse(/path: ("[^"]*\.annotated\.png")/.exec(code)[1]));
+  };
+  fs.writeFileSync(path.join(pkg, 'cli.js'), `(${fake})(${JSON.stringify(log)}, ${JSON.stringify(tall)});`);
+  fs.writeFileSync(path.join(sub, 'bug-8-shot.json'), JSON.stringify(GOOD));
+  const r = spawnRun(['--spec', 'bug-8-shot.json'], sub);
+  assert.strictEqual(r.status, 0, JSON.stringify(r.out));
+  assert.deepStrictEqual([r.out.width, r.out.height], [W, H + 40]);
+  assert.deepStrictEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['open', 'run-code', 'close']);
+});
+
 test('never force-exits (Windows/Node 24 libuv crash): no process.exit( in the source', () => {
   assert.ok(!fs.readFileSync(SCRIPT, 'utf8').includes('process.exit('));
 });

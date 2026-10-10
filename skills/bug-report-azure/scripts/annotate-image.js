@@ -4,7 +4,8 @@
 // correct for comparison, and a dark-red one-line summary banner above the image. The
 // agent supplies only boxes + text (SKILL.md Phase A step 3); this script owns the look.
 //
-// Renders through the project's own playwright-cli (<cwd>/node_modules/@playwright/cli,
+// Renders through the project's own playwright-cli (node_modules/@playwright/cli in the cwd
+// or the nearest parent folder that has it,
 // run as `node <bin>`: no npx — which would fetch the deprecated `playwright-cli` package
 // when it is missing — and no shell, so no cmd quoting) in its own -s= session:
 // open -> run-code -> close. run-code serves the screenshot through page.route and loads
@@ -84,15 +85,25 @@ function overlayHtml(spec) {
     + `<div id="i"><img src="http://agentex.invalid/i">${boxes}</div></div>`;
 }
 
-// The project's own @playwright/cli, or null when it is not installed there.
+// The project's own @playwright/cli bin: <cwd>/node_modules first, then each parent folder's
+// (a hoisted install, or a run from a subfolder), the same walk as test-execution's
+// preflight.js probePlaywrightPackage. null when none is installed.
+function findCliBin(cwd) {
+  for (let d = path.resolve(cwd); ; d = path.dirname(d)) {
+    const dir = path.join(d, 'node_modules', '@playwright', 'cli');
+    let bin;
+    try { bin = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).bin; } catch { bin = null; }
+    const rel = typeof bin === 'string' ? bin : bin && bin['playwright-cli'];
+    if (rel && fs.existsSync(path.join(dir, rel))) return path.join(dir, rel);
+    if (path.dirname(d) === d) return null;
+  }
+}
+
 function projectCli(cwd) {
-  const dir = path.join(cwd, 'node_modules', '@playwright', 'cli');
-  let bin;
-  try { bin = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).bin; } catch { return null; }
-  const rel = typeof bin === 'string' ? bin : bin && bin['playwright-cli'];
-  if (!rel || !fs.existsSync(path.join(dir, rel))) return null;
+  const bin = findCliBin(cwd);
+  if (!bin) return null;
   return (args, { timeoutMs }) => {
-    const r = spawnSync(process.execPath, [path.join(dir, rel), ...args], {
+    const r = spawnSync(process.execPath, [bin, ...args], {
       cwd, encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     });
     return { status: r.status, output: [r.stdout, r.stderr, r.error && r.error.message].filter(Boolean).join('\n') };
@@ -123,7 +134,7 @@ function run(argv, { cwd = process.cwd(), runCli } = {}) {
 
   const cli = runCli || projectCli(cwd);
   if (!cli) {
-    return fail(1, 'playwright-cli-unavailable', `@playwright/cli is not in ${path.join(cwd, 'node_modules')}: not rendered, attach the raw screenshot`);
+    return fail(1, 'playwright-cli-unavailable', `@playwright/cli is not in node_modules of ${path.resolve(cwd)} or any parent folder: not rendered, attach the raw screenshot`);
   }
 
   fs.rmSync(out, { force: true }); // a stale render can never pass for this one
