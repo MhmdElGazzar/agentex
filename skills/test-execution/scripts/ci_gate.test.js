@@ -317,6 +317,17 @@ function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false,
     assert.match(r.stderr, /drivers for this scope: api/);
   });
 
+  await test('a scope with a mobile spec (Drivers: mobile) is BLOCKED, never run in a browser, never retried', async () => {
+    const dir = proj(base);
+    fs.mkdirSync(path.join(dir, 'test', 'mobile-suite1'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'test', 'mobile-suite1', 'login.md'), '# Spec: App login\nDrivers: mobile\n## Scenarios\n1. Tap login\n');
+    const r = await runGate(dir, ['--suite', 'test/mobile-suite1/', '--retries', '2'], { plan: 'pass' });
+    assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+    assert.strictEqual(r.calls, 0, 'no session is spent on a mobile spec');
+    assert.strictEqual(r.json.attemptHistory.length, 1, 'a deterministic driver block is not retried');
+    assert.match(JSON.stringify(r.json.blockedReasons), /mobile specs run via \/execute-mobile-test/);
+  });
+
   await test('1-vs-2: missing secret NAME → exit 2, name listed, never 1', async () => {
     const dir = proj(base, { envSecretName: 'QA_CI_GATE_MISSING_SECRET' });
     const r = await runGate(dir, ['--suite', 'test/suite1/', '--retries', '0'], { plan: 'pass' });

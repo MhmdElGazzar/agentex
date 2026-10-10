@@ -3,6 +3,7 @@
 App under test: (fill in — `.apk`/`.ipa` path or installed `appPackage`/`bundleId`, via the
 `mobile` block in `environments/<env>.json`)
 Type: login / validation — no real account is created (validation-only)
+Drivers: mobile
 
 ## Acceptance criteria
 - A valid disposable test user reaches a visible logged-in / home state.

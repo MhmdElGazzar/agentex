@@ -16,7 +16,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const KNOWN = ['browser', 'api', 'db', 'kb', 'ui-check'];
+// `mobile` is known so it is never reported as unknown — but test-execution does not run it:
+// a mobile spec runs via /execute-mobile-test, and ci_preflight.js blocks it (preflight-driver).
+const KNOWN = ['browser', 'api', 'db', 'kb', 'ui-check', 'mobile'];
 const STEP_PREFIX = /^\s*(?:[-*+]\s+|\d+[.)]\s+|step\s*\d+\s*[:.)-]\s*)?(api|db|kb|ui-check)\s*:/gim;
 
 function listSpecs(target) {

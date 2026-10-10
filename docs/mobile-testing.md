@@ -56,6 +56,7 @@ selectors):
 
 App under test: (path to .apk/.ipa, or installed appPackage/bundleId — see environments/<env>.json)
 Type: login / validation — no real account is created
+Drivers: mobile
 
 ## Acceptance criteria
 - A valid disposable test user reaches a visible logged-in state.
@@ -71,6 +72,10 @@ Type: login / validation — no real account is created
 - Screenshot every scenario (pass and fail).
 - Treat any app crash or unexpected device-log error as a defect even if the UI looks fine.
 ```
+
+Keep the `Drivers: mobile` line in every mobile spec. It tells `/execute-test` and the CI gate
+that this is not a browser spec: they report it BLOCKED ("mobile specs run via
+/execute-mobile-test") instead of opening it in a browser. Run it with `/execute-mobile-test`.
 
 Start from the samples in [`test/mobile-suite1/`](../test/mobile-suite1/) — `/execute-mobile-test`
 copies them into your project automatically on first run. To add more coverage, drop another
