@@ -18,8 +18,14 @@
 //   { "image": "<png|jpg>", "banner": "<the bug's one-line summary>",
 //     "boxes": [{ "x", "y", "width", "height", "label", "ok"?: true }] }
 //   Box values are % of the image (the model sees large screenshots downscaled); a box
-//   overhanging an edge is clipped to its visible part, one entirely outside is bad-spec. ok:true = green (correct), default red (the defect); the script
-//   appends the mark.
+//   overhanging an edge is clipped to its visible part, one entirely outside is bad-spec.
+//   ok:true = green (correct), default red (the defect); the script appends the mark.
+// Limits:
+//   - `image` resolves against the cwd (the project root), NOT the spec's folder; a path
+//     that does not resolve is image-invalid (exit 2).
+//   - PNG and JPEG only (check-image.js decides; content wins over the extension).
+//   - Chromium caps one capture at ~16,384 px tall (banner included): a taller screenshot
+//     fails as render-failed (exit 1), and the raw file is attached alone.
 // Writes <specDir>/<specStem>.annotated.png: never the source, and a re-render replaces it.
 //
 // Output: ONE JSON line. Exit codes:
