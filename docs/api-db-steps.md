@@ -37,9 +37,10 @@ own service's requests/queries.
   throwaway shared test credentials); real values live in `.env` or your shell.
 
 **API steps** — `api:` (or "verify via API", "call the endpoint")
-- Catalog: `integration/*_api.json` files
+- Catalog: `integration/*_api.json` files, found recursively under `integration/` (flat, or
+  nested under `integration/api_test_suites/<service>/` for a `swagger-import`ed service);
+  each catalog `"name"` must be unique (a duplicate is BLOCKED)
 - Runner: `skills/api-integration/scripts/run_api.js`
-- Catalog: found recursively under `integration/` (flat, or nested under `integration/api_test_suites/<service>/` for a `swagger-import`ed service)
 - Standalone runs: `/test-endpoints` runs every `*_suite.json` case without a browser spec; `/import-swagger` generates the catalog + suite from a Swagger/OpenAPI file
 - Catalog sample: `skills/api-integration/templates/sample_api.json`
 - Config: the active environment's `api` block (`baseUrl`, `token`); legacy
