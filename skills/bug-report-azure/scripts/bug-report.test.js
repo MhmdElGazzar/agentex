@@ -1478,6 +1478,21 @@ function projectBugRoutes(board, { wiqlStatus } = {}) {
     assert.strictEqual(actualWrites(fetch.calls).length, 0);
   });
 
+  await test('a project-required picklist left empty blocks prepare with its real options', async () => {
+    const dir = project({ bugTemplateId: undefined, environment: undefined });
+    const fields = { value: BUG_FIELDS.value.map((f) => (
+      f.referenceName === 'Custom.BugCategory' || f.referenceName === 'Custom.Environment'
+        ? { ...f, alwaysRequired: true } : f)) };
+    const fetch = fakeFetch([{ match: '/workitemtypes/Bug/fields', json: fields }]);
+    const result = await prepare(dir, fetch, { action: 'skip' });
+    assert.strictEqual(result.code, 2, JSON.stringify(result.out));
+    const byField = Object.fromEntries(result.out.blocked.map((b) => [b.field, b]));
+    assert.deepStrictEqual(byField.bugCategory.options, ['Functional', 'UI', 'Data']);
+    assert.deepStrictEqual(byField.environment.options, ['QA', 'UAT', 'Prod']);
+    assert.strictEqual(fetch.calls.some((call) => call.url.includes('validateOnly=true')), false);
+    assert.strictEqual(actualWrites(fetch.calls).length, 0);
+  });
+
   await test('a Jira-configured project is refused before any request', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-br-'));
     fs.mkdirSync(path.join(dir, 'config'), { recursive: true });

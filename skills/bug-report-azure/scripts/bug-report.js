@@ -853,6 +853,18 @@ function normalizeIntent(intent, runtime) {
   const environment = nonEmpty(intent[fields.environment]) ? intent[fields.environment] : (cfg.environment || defaults.environment || null);
   const bugCategory = nonEmpty(intent[fields.bugCategory]) ? intent[fields.bugCategory] : (cfg.bugCategory || defaults.bugCategory || null);
   const valueArea = nonEmpty(intent[fields.valueArea]) ? intent[fields.valueArea] : (cfg.valueArea || defaults.valueArea || null);
+  // A picklist this project's Bug requires, left empty by intent, config and template, is
+  // asked for here with its real options, not discovered later as Azure's TF401320.
+  for (const [key, ref, value] of [
+    [fields.environment, FIELD_REFS.environment, environment],
+    [fields.bugCategory, FIELD_REFS.bugCategory, bugCategory],
+  ]) {
+    const meta = runtime.fieldMap[ref];
+    if (meta && meta.required && !nonEmpty(value)) {
+      missing(blocked, key, `${key} is required on this project's Bug; choose one of the returned options`,
+        Array.isArray(meta.allowedValues) ? { options: [...meta.allowedValues] } : {});
+    }
+  }
   const areaPath = cfg.areaPath || runtime.parentFields[FIELD_REFS.areaPath] || null;
   const iterationPath = cfg.iterationPath || runtime.parentFields[FIELD_REFS.iterationPath] || null;
   const duplicateContract = RAW_INTENT_CONTRACT.duplicate;
