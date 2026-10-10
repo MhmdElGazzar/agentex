@@ -80,6 +80,8 @@ All examples assume `$BASE=http://127.0.0.1:4723` and `$SID` holds the active se
   depending on server version — read whichever key is present).
 - **Click / tap** — `POST $BASE/session/$SID/element/<elementId>/click`.
 - **Type text** — `POST $BASE/session/$SID/element/<elementId>/value` `{"text":"hello"}`.
+  Non-secret text only: a `curl` body is a command line. Type a password, OTP, or token with
+  `appium_client.js send-keys --text-env <NAME>` instead (see `appium-client-wrapper.md`).
 - **Get text** — `GET $BASE/session/$SID/element/<elementId>/text`.
 - **Screenshot** — `GET $BASE/session/$SID/screenshot` → `{"value":"<base64 PNG>"}`. Decode and
   save, e.g.: `curl -s $BASE/session/$SID/screenshot | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8"));require("fs").writeFileSync(process.argv[1],Buffer.from(d.value,"base64"))' <out.png>`.

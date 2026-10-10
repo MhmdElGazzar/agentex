@@ -35,6 +35,11 @@ APPIUM SESSION
     (requires `webdriverio` installed in WORKING_DIR) — mechanics in
     `${CLAUDE_PLUGIN_ROOT}/skills/mobile-testing/references/appium-client-wrapper.md`.
   Pick whichever the project already uses; default to raw REST if neither is established.
+- SECRETS: type a password / OTP / token ONLY with the wrapper's
+  `send-keys --element <id> --text-env <NAME>` (NAME = the `envSecret` name from TEST_DATA,
+  read from the environment or `.env`). Never put a secret value on a command line — not in
+  `--text`, not in a `curl` body. If webdriverio is not installed, the secret step is
+  BLOCKED (report it); do not fall back to typing the value.
 - Re-fetch the page source / re-find elements after every navigation or app-state change —
   element ids are not stable across screens.
 

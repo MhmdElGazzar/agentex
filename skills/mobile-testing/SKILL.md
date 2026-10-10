@@ -52,6 +52,10 @@ project already uses (or the simpler one, raw REST, when neither is established)
   subcommands, one JSON line per call). Requires the project to have `webdriverio` installed
   (`npm install -D webdriverio`).
 
+Type every secret (password, OTP, token) with the wrapper's `send-keys --text-env <NAME>`,
+which reads `NAME` from the environment or `.env`. Never put a secret value on a command line:
+not in `--text`, and not in a `curl` body.
+
 Always-on rules (full details in the files above):
 - **Parallel runs MUST each target their own device/emulator** (own `udid`/AVD/simulator) —
   sessions on the same physical device collide. Unlike headless browser sessions, mobile
