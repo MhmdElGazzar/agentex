@@ -109,7 +109,8 @@ Ownership:
 - **Subagent (per session):** writes ONLY into its own
   `mobile-sessions/<session>/{logs,screenshots}` and returns the screenshot paths that prove
   each defect. Dispatch the bundled **`mobile-qa-executor`** agent for this.
-- Sequential mode uses a single session named `default` (`mobile-sessions/default/`).
+- Sequential mode uses one session: run `init_run.js` with no `--sessions` and it is named
+  `run` (`mobile-sessions/run/`). The label `default` is refused.
 
 ## Modes
 Pick the mode from how the user invokes the run. **Sequential is the default.** Switch to
@@ -128,8 +129,9 @@ Follow this loop and STOP for approval at each checkpoint. Do not skip ahead.
 3. **EXECUTE** — Run scenarios one at a time. After each scenario, report PASS/FAIL with
    evidence (screenshot + observed vs. expected).
    → Checkpoint: pause after each scenario before moving to the next.
-4. **REPORT** — Create `executions/execu_<timestamp>/` (single session `default`), save
-   screenshots/logs under `mobile-sessions/default/`, then write `report.md` + `bugs/` there.
+4. **REPORT** — Create `executions/execu_<timestamp>/` with `init_run.js` (single session
+   `run`), save screenshots/logs under `mobile-sessions/run/`, then write `report.md` +
+   `bugs/` there.
    Summarize results as a defect list (format below). Optionally generate an interactive
    `extent-report.html` next to `report.md` via the **extent-report** skill.
 
