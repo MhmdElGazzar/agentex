@@ -3,9 +3,11 @@
 // Bugs, so a filing ranks its defect against Bugs under OTHER stories too, without
 // reading every one of them on every filing.
 //
-// File: <project>/.agentex/cache/tracker-bugs-ado.json — gitignored with the rest of
-// .agentex/cache/ (it is a copy of the board, rewritten on every sync; committing it
-// would only spread stale copies). Azure stays the source of truth: every sync()
+// File: <project>/.agentex/cache/bugs/tracker-bugs-ado.json. Its folder carries its own
+// `.gitignore` (`*`), so the mirror stays out of git even for a team that opted in to
+// committing .agentex/cache/ (the field cache): it is a copy of the board — Bug titles and
+// repro text — rewritten on every sync, and committing it would only spread stale copies.
+// Azure stays the source of truth: every sync()
 // re-reads, in one WIQL query + one batch read, the Bugs changed since the last sync,
 // so a Bug someone filed a minute ago is in the candidate set. A sync that cannot
 // complete throws — the caller fails the duplicate check closed and never ranks
@@ -16,7 +18,10 @@
 // day-precise (WIQL's default), so it re-reads from the day before the last sync — a
 // superset, never a gap. A full rebuild runs when the file is missing, corrupt, or
 // belongs to another org/project/scope, or when the last full build is older than
-// FULL_REBUILD_DAYS (that is what drops Bugs deleted or moved out of scope).
+// FULL_REBUILD_DAYS (that is what drops Bugs deleted or moved out of scope), or on
+// demand (`refresh`, bug-report.js --refresh-bugs). A response that is not a complete
+// answer — a WIQL result without a work-item list, a batch hole, an item with no id or
+// type — throws rather than shrinking the mirror.
 const fs = require('node:fs');
 const path = require('node:path');
 const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
@@ -37,7 +42,7 @@ const FIELDS = Object.freeze({
 });
 
 function cacheFile(cwd) {
-  return path.join(cwd, '.agentex', 'cache', 'tracker-bugs-ado.json');
+  return path.join(cwd, '.agentex', 'cache', 'bugs', 'tracker-bugs-ado.json');
 }
 
 // azure.bugCacheDays: a non-negative integer; absent means DEFAULT_WINDOW_DAYS.
@@ -92,14 +97,21 @@ function readIfValid(cwd, scope, now) {
 
 function writeAtomic(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
+  const ignore = path.join(path.dirname(file), '.gitignore');
+  if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, '# AgenTeX bug mirror: a local copy of the board, never committed\n*\n');
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
   fs.renameSync(tmp, file);
 }
 
 function idsFrom(res) {
-  const rows = Array.isArray(res) ? res : (res && res.workItems) || [];
-  return rows.map((row) => Number(row && row.id)).filter((id) => Number.isInteger(id) && id > 0);
+  const rows = Array.isArray(res) ? res : res && res.workItems;
+  if (!Array.isArray(rows)) throw new Error('the Bug query returned no work-item list — refusing to treat it as "no changes"');
+  return rows.map((row) => {
+    const id = Number(row && row.id);
+    if (!Number.isInteger(id) || id <= 0) throw new Error('the Bug query returned a row without a valid work-item id');
+    return id;
+  });
 }
 
 // Bring the mirror up to date and return its Bugs. `toEntry(workItem)` turns a batch
@@ -114,8 +126,9 @@ async function sync(cwd, adapter, { now = new Date(), toEntry, refresh = false }
   const scope = scopeOf(adapter, days);
   const previous = refresh ? null : readIfValid(cwd, scope, now);
   const windowStart = new Date(now.getTime() - days * DAY_MS);
+  // A syncedAt from a clock that ran ahead must not push the delta into the future.
   const since = previous
-    ? new Date(Math.max(Date.parse(previous.syncedAt) - DAY_MS, windowStart.getTime()))
+    ? new Date(Math.max(Math.min(Date.parse(previous.syncedAt), now.getTime()) - DAY_MS, windowStart.getTime()))
     : windowStart;
 
   const ids = idsFrom(await adapter.query(scopeWiql(scope.project, scope.areaPath, day(since))));
@@ -126,9 +139,14 @@ async function sync(cwd, adapter, { now = new Date(), toEntry, refresh = false }
     if (missing.length) {
       throw new Error(`the Bug batch read omitted ${missing.map((id) => `#${id}`).join(', ')} — refusing a partial mirror`);
     }
-    for (const wi of (batch && batch.items) || []) {
+    const items = (batch && batch.items) || [];
+    const requested = new Set(ids);
+    if (items.length !== ids.length) throw new Error(`the Bug batch read returned ${items.length} of ${ids.length} work items — refusing a partial mirror`);
+    for (const wi of items) {
       const f = (wi && wi.fields) || {};
       const id = Number(wi && wi.id);
+      if (!requested.has(id)) throw new Error(`the Bug batch read returned an unrequested or invalid work item (${JSON.stringify(wi && wi.id)})`);
+      if (typeof f[FIELDS.type] !== 'string' || !f[FIELDS.type]) throw new Error(`the Bug batch read returned #${id} without its work item type — refusing a partial mirror`);
       if (f[FIELDS.type] !== 'Bug') { delete bugs[id]; continue; }
       bugs[id] = {
         ...(toEntry ? toEntry(wi) : { id, title: f[FIELDS.title] || null, state: f[FIELDS.state] || null }),

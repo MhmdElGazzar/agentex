@@ -1403,7 +1403,8 @@ function projectBugRoutes(board, { wiqlStatus } = {}) {
     assert.strictEqual(top.parentId, 555);
     assert.strictEqual(top.url, 'https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/9001');
     assert.strictEqual(reviewed.out.duplicateReview.projectWideCandidates, 2);
-    assert.ok(fs.existsSync(path.join(dir, '.agentex', 'cache', 'tracker-bugs-ado.json')));
+    assert.ok(fs.existsSync(path.join(dir, '.agentex', 'cache', 'bugs', 'tracker-bugs-ado.json')));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.agentex', 'cache', 'bugs', '.gitignore'), 'utf8').split('\n').includes('*'), true);
     assert.strictEqual(actualWrites(fetch.calls).length, 0);
   });
 

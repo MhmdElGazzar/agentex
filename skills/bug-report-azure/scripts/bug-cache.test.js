@@ -33,7 +33,7 @@ function bug(id, title, { state = 'Active', parent = 321, changed = '2026-10-01T
 }
 
 // A board of work items; query returns whatever `rows` says, getWorkItems reads the board.
-function adapter(board, { areaPath = null, rows, omit = [], queryError } = {}) {
+function adapter(board, { areaPath = null, rows, omit = [], queryError, rawQuery, rawItems } = {}) {
   const calls = { queries: [], batches: [] };
   return {
     calls,
@@ -42,11 +42,13 @@ function adapter(board, { areaPath = null, rows, omit = [], queryError } = {}) {
     async query(text) {
       calls.queries.push(text);
       if (queryError) throw queryError;
+      if (rawQuery !== undefined) return rawQuery;
       const ids = rows ? rows() : [...board.keys()];
       return { workItems: ids.map((id) => ({ id })) };
     },
     async getWorkItems(ids, { fields }) {
       calls.batches.push({ ids, fields });
+      if (rawItems) return { items: rawItems, missing: [] };
       return {
         items: ids.filter((id) => board.has(id) && !omit.includes(id)).map((id) => board.get(id)),
         missing: ids.filter((id) => !board.has(id) || omit.includes(id)),
@@ -169,6 +171,47 @@ function adapter(board, { areaPath = null, rows, omit = [], queryError } = {}) {
       now: NOW, toEntry: (wi) => ({ id: wi.id, title: wi.fields['System.Title'].toUpperCase(), extra: 1 }),
     });
     assert.deepStrictEqual(out.bugs[0], { id: 11, title: 'PAY BUTTON DEAD', extra: 1, parentId: 321, changedDate: '2026-10-01T09:00:00Z' });
+  });
+
+  await test('a WIQL response without a work-item list fails instead of meaning "no changes"', async () => {
+    const dir = project();
+    await assert.rejects(() => sync(dir, adapter(new Map(), { rawQuery: {} }), { now: NOW }), /no work-item list/);
+    assert.strictEqual(fs.existsSync(cacheFile(dir)), false);
+  });
+
+  await test('a batch item without its type, or one that was not requested, fails the sync', async () => {
+    const dir = project();
+    const board = new Map([[11, bug(11, 'Pay button dead')]]);
+    await assert.rejects(() => sync(dir, adapter(board, { rawItems: [{ id: 11, fields: {} }] }), { now: NOW }), /without its work item type/);
+    await assert.rejects(() => sync(dir, adapter(board, { rawItems: [bug(99, 'stray')] }), { now: NOW }), /unrequested/);
+    await assert.rejects(() => sync(dir, adapter(board, { rawItems: [] }), { now: NOW }), /0 of 1/);
+    assert.strictEqual(fs.existsSync(cacheFile(dir)), false);
+  });
+
+  await test('a syncedAt from a clock that ran ahead does not push the delta into the future', async () => {
+    const dir = project();
+    const board = new Map([[11, bug(11, 'Pay button dead')]]);
+    await sync(dir, adapter(board), { now: later(3) });
+    const a = adapter(board, { rows: () => [] });
+    await sync(dir, a, { now: NOW });
+    assert.ok(a.calls.queries[0].includes("[System.ChangedDate] >= '2026-10-08'"), a.calls.queries[0]);
+  });
+
+  await test('refresh forces a full rebuild of a valid mirror', async () => {
+    const dir = project();
+    const board = new Map([[11, bug(11, 'Pay button dead')], [12, bug(12, 'Wrong VAT')]]);
+    await sync(dir, adapter(board), { now: NOW });
+    board.delete(12);
+    const out = await sync(dir, adapter(board), { now: later(1), refresh: true });
+    assert.strictEqual(out.mode, 'full');
+    assert.deepStrictEqual(out.bugs.map((b) => b.id), [11]);
+  });
+
+  await test('the mirror folder ignores itself in git, even when .agentex/cache/ is committed', async () => {
+    const dir = project();
+    await sync(dir, adapter(new Map([[11, bug(11, 'x')]])), { now: NOW });
+    const ignore = fs.readFileSync(path.join(path.dirname(cacheFile(dir)), '.gitignore'), 'utf8');
+    assert.ok(ignore.split('\n').includes('*'), ignore);
   });
 
   await test('scopeWiql escapes quotes in the project name', async () => {

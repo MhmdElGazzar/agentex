@@ -41,7 +41,7 @@
     {
       "id": "recheck-20261008101500-a1b2",
       "kind": "pendingRechecks",
-      "file": "qa-watchlist/awaiting-retest.md",
+      "file": "qa/retest-queue.md",
       "ref": "321",
       "createdAt": "2026-10-08T10:15:00.000Z",
       "text": "Re-check Download Receipt on the Expired tab once the receipt-PDF fix for Bug 4840 is deployed to QA.",

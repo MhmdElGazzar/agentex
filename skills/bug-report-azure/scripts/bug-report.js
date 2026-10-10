@@ -8,8 +8,8 @@
 // field references, auth, and test-run plumbing stay behind their owners.
 //
 // Commands:
-//   context [--parent <story-id>] [--emit-intent] [--intent <intent.json>] [--duplicate-view all] [--refresh-fields]
-//   prepare --intent <intent.json> --duplicate-review <review-id> --plan <plan.json> [--refresh-fields]
+//   context [--parent <story-id>] [--emit-intent] [--intent <intent.json>] [--duplicate-view all] [--refresh-fields] [--refresh-bugs]
+//   prepare --intent <intent.json> --duplicate-review <review-id> --plan <plan.json> [--refresh-fields] [--refresh-bugs]
 //   execute --plan <plan.json>
 //
 // `prepare` performs reads and validation only, then writes a local integrity-
@@ -545,7 +545,7 @@ function compactDuplicateReview(review) {
   };
 }
 
-async function loadRuntime(cwd, fetch, { parentStoryId, refreshFields = false } = {}) {
+async function loadRuntime(cwd, fetch, { parentStoryId, refreshFields = false, refreshBugs = false } = {}) {
   const adapter = resolveTracker(cwd, { fetch });
   const cacheInfo = await fieldCache.ensure(cwd, adapter, { types: ['Bug'], refresh: refreshFields });
   const fieldMap = (cacheInfo.cache.types.Bug && cacheInfo.cache.types.Bug.fields) || {};
@@ -626,6 +626,7 @@ async function loadRuntime(cwd, fetch, { parentStoryId, refreshFields = false } 
   try {
     const synced = await bugCache.sync(cwd, adapter, {
       toEntry: (wi) => compactCandidate(wi, wi && wi.id),
+      refresh: refreshBugs,
     });
     const parentIds = new Set(parentCandidates.map((candidate) => positiveId(candidate.id)));
     projectCandidates = synced.bugs
@@ -634,7 +635,7 @@ async function loadRuntime(cwd, fetch, { parentStoryId, refreshFields = false } 
   } catch (e) {
     blocked.push({
       reason: 'dup-check-failed',
-      message: `project-wide duplicate check failed — refusing to file blind (fails closed): ${safeFailureMessage(e)}`,
+      message: `project-wide duplicate check failed — refusing to file blind (fails closed): ${safeFailureMessage(e)}. A project over WIQL's 20,000-result cap needs a narrower azure.areaPath or a smaller azure.bugCacheDays (0 turns the project-wide mirror off)`,
     });
   }
 
@@ -1320,6 +1321,7 @@ async function prepare(argv, opts) {
   const runtime = await loadRuntime(opts.cwd, opts.fetch, {
     parentStoryId,
     refreshFields: Boolean(args['refresh-fields']),
+    refreshBugs: Boolean(args['refresh-bugs']),
   });
   const context = publicContext(runtime);
   if (runtime.blocked.length) {
@@ -1814,6 +1816,7 @@ async function run(argv, {
       const runtime = await loadRuntime(cwd, fetch, {
         parentStoryId: intent ? intentParent : args.parent,
         refreshFields: Boolean(args['refresh-fields']),
+        refreshBugs: Boolean(args['refresh-bugs']),
       });
       const context = publicContext(runtime);
       if (runtime.blocked.length) {
