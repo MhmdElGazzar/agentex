@@ -50,7 +50,7 @@ Boundaries, both flagged in `review` rather than guessed:
 | Base URL | `servers[0].url` | `schemes[0]://host+basePath` | `baseUrl: "${<PREFIX>_BASE_URL}"` (placeholder, never the literal) |
 | Auth | `components.securitySchemes` | `securityDefinitions` | `auth` (one scheme per catalog file — see below) |
 | Path/method | `paths.<path>.<method>` | same | `requests[].path` / `.method` (path template syntax already matches — `{id}` copied as-is) |
-| Path/query params | `parameters[].in: path\|query` | same | `requests[].params` (names only) |
+| Path/query params | `parameters[].in: path\|query` | same | `requests[].params` (names only); `in: query` names also go in `requests[].query`, so the runner sends them in the query string |
 | Request body | `requestBody.content['application/json'].schema` | body parameter's `.schema` | `requests[].body` (generated example — flagged for review) |
 | 2xx response schema | `responses.<code>.content['application/json'].schema` | `responses.<code>.schema` | suite case `expect.fields` (schema's `required[]` properties only — see below) |
 | 4xx response | any documented 4xx code | same | a second suite case, `expect.status` = that code |

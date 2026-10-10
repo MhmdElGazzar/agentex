@@ -223,6 +223,7 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
 
       const reqName = slug(op.operationId) !== 'imported-api' ? slug(op.operationId) : slug(`${method}-${urlPath}`);
       const declaredParams = usableParams.map(p => p.name);
+      const queryParams = usableParams.filter(p => p.in === 'query').map(p => p.name);
 
       // request body (POST/PUT/PATCH)
       let bodySchema, body;
@@ -238,6 +239,7 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
         method: method.toUpperCase(),
         path: urlPath,
         params: declaredParams,
+        ...(queryParams.length ? { query: queryParams } : {}),
         ...(body !== undefined ? { body } : {}),
       });
 

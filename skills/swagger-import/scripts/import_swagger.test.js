@@ -34,6 +34,29 @@ const SWAGGER2 = {
   paths: { '/items': { get: { operationId: 'listItems', responses: { 200: { description: 'ok' } } } } },
 };
 const write = (dir, name, obj) => { const f = path.join(dir, name); fs.writeFileSync(f, typeof obj === 'string' ? obj : JSON.stringify(obj)); return f; };
+const importOne = (spec, name = 'svc') => {
+  const dir = tmp(); const f = write(dir, 'spec.json', spec);
+  const r = run(dir, [f, '--name', name]);
+  const base = path.join(dir, 'integration/api_test_suites', name);
+  const read = (suffix) => (fs.existsSync(path.join(base, `${name}_${suffix}.json`)) ? JSON.parse(fs.readFileSync(path.join(base, `${name}_${suffix}.json`), 'utf8')) : null);
+  return { ...r, dir, cat: read('api'), suite: read('suite') };
+};
+
+test('in: query params are written to the request "query" list; path params are not', () => {
+  const { code, out, cat } = importOne({
+    openapi: '3.0.0', info: { title: 'Q' }, servers: [{ url: 'https://q.example.com' }],
+    paths: { '/pets/{id}': { get: { operationId: 'getPet', parameters: [
+      { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+      { name: 'verbose', in: 'query', schema: { type: 'boolean' } },
+    ], responses: { 200: { description: 'ok' } } } },
+    '/pets': { post: { operationId: 'addPet', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' } } } } } }, responses: { 201: { description: 'ok' } } } } },
+  });
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  const get = cat.requests.find(r => r.name === 'getpet');
+  assert.deepStrictEqual(get.query, ['verbose']);
+  assert.deepStrictEqual(get.params, ['id', 'verbose']);
+  assert.strictEqual(cat.requests.find(r => r.name === 'addpet').query, undefined);
+});
 
 test('OpenAPI 3 -> catalog + suite written, apiKey header auth, $ref body resolved', () => {
   const dir = tmp(); const spec = write(dir, 'spec.json', OPENAPI3);
