@@ -192,6 +192,20 @@ const post = (route, body, headers = {}) =>
     assert.ok(!dotenv.includes('tok-test'), 'old value replaced, not duplicated');
   });
 
+  await test('.env upsert replaces an export-prefixed / indented key in place (the readers honour those forms)', async () => {
+    const envPath = path.join(projectDir, '.env');
+    const before = fs.readFileSync(envPath, 'utf8').split('\n').filter(l => !/API_TOKEN=/.test(l)).join('\n');
+    fs.writeFileSync(envPath, before + '\n  export API_TOKEN=tok-old-exported\n');
+    await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: { API_TOKEN: 'tok-new' },
+    });
+    const dotenv = fs.readFileSync(envPath, 'utf8');
+    assert.ok(!dotenv.includes('tok-old-exported'), 'old exported value replaced, not shadowing the new one');
+    assert.strictEqual(require('../lib/project_config.js').parseEnvValue(dotenv, 'API_TOKEN'), 'tok-new');
+  });
+
   await test('rejects secret env var names that are not valid identifiers', async () => {
     const r = await post('/api/save', {
       projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
