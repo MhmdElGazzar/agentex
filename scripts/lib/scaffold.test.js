@@ -92,6 +92,27 @@ test('isPristineSampleEnv: current template and the historical qa-era shape are 
   assert.strictEqual(scaffold.isPristineSampleEnv(QA_ERA_SAMPLE, PLUGIN_ROOT), true);
 });
 
+// The shape main shipped briefly after PR #24 (mobile testing): the sample qc.json carried a
+// placeholder `mobile` block. Projects scaffolded then still have it, untouched.
+const WITH_MOBILE_PLACEHOLDER_SAMPLE = {
+  ...QA_ERA_SAMPLE,
+  mobile: {
+    platformName: 'Android', automationName: 'UiAutomator2',
+    app: '/absolute/path/to/app.apk', deviceName: 'emulator-5554',
+  },
+};
+
+test('the sample environment has no mobile block: mobile is opt-in', () => {
+  assert.ok(!('mobile' in TEMPLATE_ENV), 'templates/environments/qc.json must not scaffold a mobile block');
+});
+
+test('isPristineSampleEnv: the with-mobile-placeholder sample shipped after PR #24 is still pristine', () => {
+  assert.strictEqual(scaffold.isPristineSampleEnv(WITH_MOBILE_PLACEHOLDER_SAMPLE, PLUGIN_ROOT), true);
+  const touched = JSON.parse(JSON.stringify(WITH_MOBILE_PLACEHOLDER_SAMPLE));
+  touched.mobile.app = '/Users/me/real.apk';
+  assert.strictEqual(scaffold.isPristineSampleEnv(touched, PLUGIN_ROOT), false);
+});
+
 test('isPristineSampleEnv: structural comparison — key order and whitespace do not matter', () => {
   const reordered = JSON.parse(JSON.stringify({
     api: TEMPLATE_ENV.api, db: TEMPLATE_ENV.db, users: TEMPLATE_ENV.users,

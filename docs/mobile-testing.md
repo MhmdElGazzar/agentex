@@ -85,7 +85,8 @@ copies them into your project automatically on first run. To add more coverage, 
 
 Mobile targets live in the `mobile` block of `environments/<env>.json` (alongside the existing
 `portalUrl`/`db`/`api` blocks used by browser testing) — see
-[Configuration](./configuration.md#environmentsenvjson):
+[Configuration](./configuration.md#environmentsenvjson). The block is **opt-in**: the sample
+`environments/qc.json` that `/init-test` scaffolds has none, so add it yourself:
 
 ```json
 "mobile": {

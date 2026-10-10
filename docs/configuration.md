@@ -59,7 +59,18 @@ Fill them in:
 | `users` | Test accounts keyed by a descriptive handle (`valid_user`, `expired_user`, …) that specs refer to ("login as expired_user"). Fields free-form: `phone`, `role`, `idNumber`, `password`, `notes`, … A user without `password` uses `defaults.password`. |
 | `db` | `server`, `port`, `name`, `user`, `password` — for cataloged `db:` steps. |
 | `api` | `baseUrl`, `token` — for cataloged `api:` steps. |
-| `mobile` | `platformName`, `automationName`, `app` (or `appPackage`+`appActivity` / `bundleId`), `deviceName`, `platformVersion`, optional `udid` — the Appium target for [mobile testing](./mobile-testing.md). Optional; browser-only projects can omit it entirely. |
+| `mobile` | `platformName`, `automationName`, `app` (or `appPackage`+`appActivity` / `bundleId`), `deviceName`, `platformVersion`, optional `udid` — the Appium target for [mobile testing](./mobile-testing.md). **Opt-in**: the scaffolded sample has no `mobile` block; add one only if you test a native app (example below). |
+
+An opt-in `mobile` block (Android emulator, local `.apk`):
+
+```json
+"mobile": {
+  "platformName": "Android",
+  "automationName": "UiAutomator2",
+  "app": "/absolute/path/to/app.apk",
+  "deviceName": "emulator-5554"
+}
+```
 
 Selecting the environment at run time: "run on uat" / `env: uat` in a spec →
 `environments/uat.json`; otherwise `defaultEnvironment`. Naming an environment
