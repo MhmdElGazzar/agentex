@@ -257,6 +257,31 @@ function serve(handler) {
     assert.strictEqual(code, 0, JSON.stringify(out));
   });
 
+  await test('two catalogs with the same "name" -> BLOCKED listing both files', async () => {
+    const dir = proj({
+      'integration/sample_api.json': CATALOG,
+      'integration/api_test_suites/sample/sample_api.json': CATALOG,
+      '.env': 'API_BASE_URL=http://127.0.0.1:9\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.match(out.reason, /integration[\\/]sample_api\.json/);
+    assert.match(out.reason, /api_test_suites[\\/]sample[\\/]sample_api\.json/);
+  });
+
+  await test('catalog walk skips node_modules and dot-directories', async () => {
+    const { srv, port } = await serve((req, res) => res.end('{}'));
+    const dir = proj({
+      'integration/sample_api.json': CATALOG,
+      'integration/node_modules/pkg/sample_api.json': CATALOG,
+      'integration/.cache/sample_api.json': '{not json',
+      '.env': `API_BASE_URL=http://127.0.0.1:${port}\n`,
+    });
+    const { code, out } = await run(dir, ['--entry', 'sample-api.get-thing', '--log', path.join(dir, 'x.log')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

@@ -131,5 +131,5 @@ If the target catalog or suite file already exists
 (`integration/api_test_suites/<name>/<name>_api.json` or
 `.../<name>/<name>_suite.json`), the importer refuses rather than overwriting or picking an
 alternate filename — a second file could otherwise declare the same internal catalog `name`,
-which `run_api.js`'s recursive search-and-match-by-name lookup resolves ambiguously (first
-match wins). Pick a different `--name`, or remove/rename the existing file first.
+which `run_api.js`'s recursive search-and-match-by-name lookup would then BLOCK as ambiguous
+(it refuses to pick one when two catalogs share a `name`). Pick a different `--name`, or remove/rename the existing file first.
