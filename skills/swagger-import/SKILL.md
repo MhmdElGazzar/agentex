@@ -64,7 +64,13 @@ here — from the script's point of view it's just another local file.
 2. Report every entry in `review` — these are real gaps (skipped header params, generated
    request bodies, placeholder "not found" values, unsupported auth schemes) that need human
    verification before the generated suite means anything.
-3. Tell the user to open the generated files and adjust anything flagged, then try
+   The same notes are written into the generated files as a `review: [...]` array on each
+   request/case they concern.
+3. Tell the user that every generated write-method case (POST/PUT/PATCH/DELETE) is written
+   with `"skip": "review: write operation — remove this line to enable"` and will be
+   reported BLOCKED, not run, until they review it and delete that line. `review` notes do not
+   block anything, so a flagged GET case runs as generated.
+4. Tell the user to open the generated files and adjust anything flagged, then try
    `/test-endpoints`.
 
 ## What this does NOT do

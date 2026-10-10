@@ -114,6 +114,27 @@ const catalog = port => ({
     assert.ok(fs.readdirSync(path.join(runDir, 'logs')).length === 1);
   });
 
+  await test('a case with a skip string is BLOCKED quoting the reason and never executed', async () => {
+    let hits = 0;
+    const srv = http.createServer((req, res) => { hits++; res.end('{}'); });
+    await new Promise(r => srv.listen(0, '127.0.0.1', r));
+    const port = srv.address().port;
+    const dir = proj({
+      'integration/api_test_suites/svc/svc_api.json': catalog(port),
+      'integration/api_test_suites/svc/svc_suite.json': { cases: [
+        { name: 'del', entry: 'svc.ok', skip: 'review: write operation — remove this line to enable', expect: { status: 200 } },
+      ] },
+    });
+    const runDir = path.join(dir, 'run');
+    const { code, out } = await run(dir, ['--run-dir', runDir]);
+    srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.blocked, 1);
+    assert.strictEqual(out.cases[0].result, 'BLOCKED');
+    assert.match(out.cases[0].reason, /"review: write operation — remove this line to enable"/);
+    assert.strictEqual(hits, 0);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

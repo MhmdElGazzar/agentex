@@ -64,6 +64,14 @@ for (const c of allCases) {
     results.push({ name: c.name || '(unnamed)', entry: c.entry, result: 'BLOCKED', reason: `case in ${c.__file} is missing "name" or "entry"` });
     continue;
   }
+  // A case carrying "skip" (swagger-import writes one on every generated write-method case) is
+  // never executed: it counts as BLOCKED — "not run", same roll-up as any other BLOCKED case —
+  // quoting the reason so the report says exactly why and how to enable it.
+  if (c.skip) {
+    const why = typeof c.skip === 'string' ? c.skip : 'skip: true';
+    results.push({ name: c.name, entry: c.entry, result: 'BLOCKED', skipped: true, reason: `case skipped: ${JSON.stringify(why)}` });
+    continue;
+  }
   const logPath = path.join(runDir, 'logs', `${String(c.name).replace(/[^A-Za-z0-9._-]+/g, '_')}.log`);
   const callArgs = ['--entry', c.entry, '--catalog', catalog, '--log', logPath];
   for (const [k, val] of Object.entries(c.params || {})) callArgs.push('--param', `${k}=${val}`);

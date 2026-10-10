@@ -209,17 +209,26 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   const requests = [];
   const cases = [];
   const methods = ['get', 'post', 'put', 'patch', 'delete'];
+  const WRITE_SKIP = 'review: write operation — remove this line to enable';
+  let writeOps = 0;
   for (const [urlPath, pathItem] of Object.entries(doc.paths || {})) {
     const pathLevelParams = pathItem.parameters || [];
     for (const method of methods) {
       const op = pathItem[method];
       if (!op) continue;
+      const isWrite = !['get', 'head'].includes(method);
+      if (isWrite) writeOps++;
+      const opTag = `${method.toUpperCase()} ${urlPath}`;
+      // Per-item review notes are written INTO the generated request/case objects (a "review"
+      // array) and also echoed to the command's stdout "review" list.
+      const reqReview = [], happyReview = [], errReview = [];
+      const note = (arr, msg) => { arr.push(msg); review.push(`${opTag}: ${msg}`); };
       const opParams = [...pathLevelParams, ...(op.parameters || [])];
       const byName = new Map();
       for (const p of opParams) byName.set(p.name, p); // operation-level overrides path-level
       const usableParams = [...byName.values()].filter(p => p.in === 'path' || p.in === 'query');
       const skippedParams = [...byName.values()].filter(p => p.in !== 'path' && p.in !== 'query' && p.in !== 'body');
-      if (skippedParams.length) review.push(`${method.toUpperCase()} ${urlPath}: skipped ${skippedParams.map(p => `${p.name} (in: ${p.in})`).join(', ')} — only path/query params are supported`);
+      if (skippedParams.length) note(reqReview, `skipped ${skippedParams.map(p => `${p.name} (in: ${p.in})`).join(', ')} — only path/query params are supported`);
 
       const reqName = slug(op.operationId) !== 'imported-api' ? slug(op.operationId) : slug(`${method}-${urlPath}`);
       const declaredParams = usableParams.map(p => p.name);
@@ -230,7 +239,7 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
       if (['post', 'put', 'patch'].includes(method)) {
         if (isOpenApi3 && op.requestBody) bodySchema = op.requestBody.content && op.requestBody.content['application/json'] && op.requestBody.content['application/json'].schema;
         else { const bodyParam = opParams.find(p => p.in === 'body'); if (bodyParam) bodySchema = bodyParam.schema; }
-        if (bodySchema) { body = bodyExampleFor(bodySchema); review.push(`${method.toUpperCase()} ${urlPath}: request body generated from schema — verify/adjust values`); }
+        if (bodySchema) { body = bodyExampleFor(bodySchema); note(reqReview, 'request body generated from schema — verify/adjust values'); }
       }
 
       requests.push({
@@ -241,7 +250,10 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
         params: declaredParams,
         ...(queryParams.length ? { query: queryParams } : {}),
         ...(body !== undefined ? { body } : {}),
+        ...(reqReview.length ? { review: reqReview } : {}),
       });
+      // Generated write-method cases are opt-in: written disabled until the user reviews them.
+      const skip = isWrite ? { skip: WRITE_SKIP } : {};
 
       // happy-path suite case
       const okCode = firstCode(op.responses, c => c >= 200 && c < 300);
@@ -250,7 +262,7 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
       for (const p of usableParams) {
         const ex = exampleFor(paramSchema(p));
         happyParams[p.name] = ex.value;
-        if (ex.isArray) review.push(`${method.toUpperCase()} ${urlPath}: param "${p.name}" is array-typed — using a single representative value, not full array serialization (style/explode) — verify it's accepted`);
+        if (ex.isArray) note(happyReview, `param "${p.name}" is array-typed — using a single representative value, not full array serialization (style/explode) — verify it's accepted`);
       }
       const expectHappy = { status: okCode ? parseInt(okCode, 10) : 200 };
       // Only assert schema-required properties, not every documented one — optional fields are
@@ -261,19 +273,20 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
         const requiredDeclared = okSchema.required.filter(k => k in okSchema.properties);
         if (requiredDeclared.length) expectHappy.fields = requiredDeclared;
       }
-      cases.push({ name: `${reqName}-happy-path`, entry: `${name}.${reqName}`, params: happyParams, expect: expectHappy });
+      cases.push({ name: `${reqName}-happy-path`, entry: `${name}.${reqName}`, ...skip, params: happyParams, expect: expectHappy, ...(happyReview.length ? { review: happyReview } : {}) });
 
       // error-case suite case, if a 4xx is documented and there's a param to break
       const errCode = firstCode(op.responses, c => c >= 400 && c < 500);
       if (errCode && usableParams.length) {
         const errParams = {};
         for (const p of usableParams) errParams[p.name] = notFoundValueFor(paramSchema(p));
-        cases.push({ name: `${reqName}-error-case`, entry: `${name}.${reqName}`, params: errParams, expect: { status: parseInt(errCode, 10) } });
-        review.push(`${method.toUpperCase()} ${urlPath}: error case uses a placeholder param value — verify it actually produces ${errCode}`);
+        note(errReview, `error case uses a placeholder param value — verify it actually produces ${errCode}`);
+        cases.push({ name: `${reqName}-error-case`, entry: `${name}.${reqName}`, ...skip, params: errParams, expect: { status: parseInt(errCode, 10) }, review: errReview });
       }
     }
   }
   if (!requests.length) blocked('no operations found in "paths" — nothing to import');
+  if (writeOps) review.push(`${writeOps} write operation(s) (POST/PUT/PATCH/DELETE): their suite cases are written with "skip" and will not run until you review each one and remove its "skip" line`);
 
   // ---- write catalog + suite, co-located under <dir>/<name>/ (never overwrite) ----
   const serviceDir = path.join(baseDir, name);

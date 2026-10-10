@@ -46,6 +46,15 @@ have multiple cases (happy path, not-found, validation error, …).
 - **`expect.fields`** — array of dot-paths that must exist in the JSON response.
 - **`expect.equals`** — object of `{dot.path: expectedValue}`.
   All three are optional; omit what you don't need to assert.
+- **`skip`** (optional) — a reason string. A case carrying `skip` is **never executed**: it is
+  reported **BLOCKED** with the reason quoted (`case skipped: "<reason>"`), counted like any
+  other BLOCKED case in the roll-up. `swagger-import` writes
+  `"skip": "review: write operation — remove this line to enable"` on every generated
+  POST/PUT/PATCH/DELETE case — delete that line once you've reviewed the case to enable it.
+- **`review`** (optional) — an array of notes from `swagger-import` (inferred param values,
+  invented statuses, placeholder error values, …). Informational only: the runner ignores it.
+  Since every generated write-method case also carries `skip`, a generated case with review
+  notes runs as-is only when it is a GET — read the notes, fix the values, then delete them.
 
 Every case in every suite file runs every time — there's no scope/tag filtering. Suite files
 are simply how you organize cases into files (e.g. one per service); which cases exist under
@@ -103,4 +112,5 @@ this is useful for a quick one-off check without going through the full command/
   env vars inside `run_api.js`, exactly as they do for `api:` steps.
 - Write-method cases (POST/PUT/DELETE) run if cataloged, same authorization model as
   `api-integration` — be deliberate about which write operations you add cases for, since
-  every case under `integration/api_test_suites/` runs on every invocation.
+  every case under `integration/api_test_suites/` without a `skip` runs on every invocation.
+  Generated write-method cases arrive with `skip` set, so they are opt-in.

@@ -23,8 +23,16 @@ first `/import-swagger` invocation in a session.
 ## Everything generated is a best-effort skeleton
 
 The importer never invents business-meaningful test data — param example values, generated
-request bodies, and "not found" placeholder values are all flagged in the command's `review`
-list. **Review the generated files before trusting suite results.**
+request bodies, and "not found" placeholder values are all flagged for review. Each flag is
+written **into the generated file** as a `review: [...]` array on the request (catalog) or case
+(suite) it concerns, and is also echoed in the command's `review` output. **Review the
+generated files before trusting suite results.**
+
+**Write operations are opt-in.** Every generated POST/PUT/PATCH/DELETE case is written with
+`"skip": "review: write operation — remove this line to enable"`. `run_suite.js` never
+executes a case carrying `skip` — it reports it BLOCKED with the reason quoted. Delete the line
+once you've reviewed the case. `review` notes themselves don't block anything, so a generated
+case with review notes runs as-is only if it is a GET.
 
 ## `$ref` resolution
 

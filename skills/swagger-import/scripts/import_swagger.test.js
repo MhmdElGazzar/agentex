@@ -105,5 +105,38 @@ test('non-JSON, unrecognised spec, missing file, no args -> BLOCKED', () => {
   assert.strictEqual(run(dir, []).code, 2);
 });
 
+const WRITE_SKIP = 'review: write operation — remove this line to enable';
+const CRUD = {
+  openapi: '3.0.0', info: { title: 'Crud' }, servers: [{ url: 'https://c.example.com' }],
+  paths: {
+    '/pets/{id}': {
+      get: { operationId: 'getPet', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { 200: { description: 'ok' }, 404: { description: 'nf' } } },
+      delete: { operationId: 'deletePet', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { 204: { description: 'ok' }, 404: { description: 'nf' } } },
+      put: { operationId: 'putPet', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' } } } } } }, responses: { 200: { description: 'ok' } } },
+    },
+    '/pets': { post: { operationId: 'addPet', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' } } } } } }, responses: { 201: { description: 'ok' } } },
+      patch: { operationId: 'patchPets', responses: { 200: { description: 'ok' } } } },
+  },
+};
+
+test('every generated write-method case is written disabled with the review skip line; GET cases are not', () => {
+  const { code, out, suite } = importOne(CRUD);
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  for (const c of suite.cases) {
+    const isGet = c.entry.endsWith('.getpet');
+    if (isGet) assert.strictEqual(c.skip, undefined, c.name);
+    else assert.strictEqual(c.skip, WRITE_SKIP, c.name);
+  }
+  assert.ok(suite.cases.some(c => /deletepet/.test(c.name)));
+});
+
+test('review notes are written into the generated request and case objects', () => {
+  const { cat, suite } = importOne(CRUD);
+  const put = cat.requests.find(r => r.name === 'putpet');
+  assert.ok(Array.isArray(put.review) && put.review.some(n => /request body generated/.test(n)), JSON.stringify(put));
+  const err = suite.cases.find(c => c.name === 'getpet-error-case');
+  assert.ok(Array.isArray(err.review) && err.review.some(n => /placeholder param value/.test(n)), JSON.stringify(err));
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;
