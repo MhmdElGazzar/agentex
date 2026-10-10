@@ -35,6 +35,12 @@ file structurally itself. The operation prints one JSON
 result: exit 0 is ready/success, exit 2 is blocked before a board write, and exit 1 is a
 failed or partial execution whose ledger is authoritative.
 
+## When to run
+
+At the end of any run or task that surfaced one or more issues. Offer it proactively: "N
+issues were found — want to file any as Bugs?" If the user declines, stop. Nothing touches
+the board.
+
 ## Non-negotiable policy
 
 - Perform all reads, evidence review, and `prepare` validation before asking for approval.
@@ -236,7 +242,10 @@ complete the corresponding fields already present in the skeleton.
 
 Leave `assignedTo`, `environment`, `bugCategory`, `valueArea`, and `testCase.planId` null
 when not overriding runtime configuration. `prepare` resolves those values from fresh
-runtime data; the context-time values are not frozen into the intent. A missing suite
+runtime data; the context-time values are not frozen into the intent. The exception is a
+picklist that `processRequirements.agentSupplied` lists while `defaults` has no value for
+it: `prepare` blocks it empty, so choose it from the returned `choices` (Bug Category per
+step 3, Environment from the run) or put it in the one bundled question. A missing suite
 returns real suite choices. Set duplicate permission, screenshot/evidence waivers, or new
 Test Case duplicate permission to true only after the required explicit user decision.
 

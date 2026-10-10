@@ -63,7 +63,6 @@ All notable changes to AgenTeX are documented here.
   work against real specs — `auth.type: "apiKey"` (custom header auth) and a query-string
   fallback for any declared param not consumed by a `{name}` path placeholder (previously
   silently dropped). Backward compatible; existing catalogs are unaffected.
-
 - **Mobile testing** — a new `mobile-testing` skill automates native Android/iOS apps through
   a real [Appium](https://appium.io/docs/en/latest/) session, mirroring the existing
   browser-testing flow: sequential (human-in-the-loop) or parallel (autonomous, one
@@ -89,7 +88,6 @@ All notable changes to AgenTeX are documented here.
   instead, matching the existing `az` destructive-action pattern. The same boundary is stated
   explicitly in `skills/mobile-testing/SKILL.md` and `agents/mobile-qa-executor.md` — a run's
   device footprint never goes beyond installing/launching/exercising/closing the app under test.
-
 - **Bug filing checks the whole project for duplicates, not only the selected story.**
   `bug-report-azure` keeps a local copy of the project's recent Bugs
   (`.agentex/cache/tracker-bugs-ado.json`, gitignored) and ranks the defect against it
@@ -124,7 +122,7 @@ All notable changes to AgenTeX are documented here.
   existing `discipline-bug-filing-*` cases.
 - **On Jira, bug filing keeps the 0.23.0 flow.** The rebuilt `bug-report.js` files Azure
   DevOps Bugs only and refuses a Jira config before any request (`unsupported-tracker`);
-  the Jira path (`create-bug.js`) is unchanged and documented in
+  the Jira path in `create-bug.js` keeps its behaviour and is documented in
   `skills/bug-report-azure/references/jira-filing.md`. Annotated screenshots (attach the
   annotated copy followed by the raw one) carry over to the rebuilt flow. Candidate
   discovery reads through the shared `getWorkItems` batch read, and every candidate now
@@ -150,7 +148,7 @@ All notable changes to AgenTeX are documented here.
   `skills/bug-report-azure/scripts/annotate-image.js` through the project's playwright-cli.
   The raw capture is still attached beside it, since the overlay can hide what is under it.
   Both files, and the text the copy adds, are what the one approval lists and uploads, on
-  Azure DevOps and Jira alike; `create-bug.js` is unchanged. Without playwright-cli, or when a box is still off after
+  Azure DevOps and Jira alike. Without playwright-cli, or when a box is still off after
   two fixes, the raw screenshot is attached and the consolidated screen says why —
   annotation never blocks a filing or adds a question. Covered by
   `skills/bug-report-azure/scripts/annotate-image.test.js`.
@@ -175,18 +173,6 @@ All notable changes to AgenTeX are documented here.
   The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
   three new cases in `run_api.test.js`. Thanks to @MarwahZain, whose PR #9 flagged the
   inconsistent `API_TOKEN` handling (closed with credit, not merged).
-### Credits
-- The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
-  and print styles were harvested from community **PR #6** by @YoussefAbdellah2023. Its
-  parallel v2/v3 generator files were not adopted: they forked the pre-`schemaVersion: 2`
-  renderer and lacked flaky / warning / view-mismatch statuses, timing, evidence and defects,
-  so the ideas were rebuilt inside `make_html_report.js` instead. Closed with credit, not
-  merged.
-- The rebuilt bug filing flow (`bug-report.js` context/prepare/execute, the
-  deterministic duplicate ranking in `duplicate-ranking.js`, and its tests and evals) is
-  community **PR #19** by @Hager-Helmy, carried in with her authorship. Its batch read was
-  folded into the shared `getWorkItems`, and the project-wide Bug mirror and QA watchlist
-  matches were added on top of her ranking.
 - `import_swagger.js`: found while testing against a live public OpenAPI spec — relative
   `servers[].url` values (e.g. `"/api/v3"`, common in real specs) were used literally instead
   of being resolved against the spec's own host; now resolved when the spec was fetched from
@@ -208,6 +194,19 @@ All notable changes to AgenTeX are documented here.
   Petstore demo: all 6 previously-400ing write endpoints now pass body validation (any
   remaining failures are the shared public demo server's own instability, confirmed
   independently on read-only endpoints too).
+
+### Credits
+- The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
+  and print styles were harvested from community **PR #6** by @YoussefAbdellah2023. Its
+  parallel v2/v3 generator files were not adopted: they forked the pre-`schemaVersion: 2`
+  renderer and lacked flaky / warning / view-mismatch statuses, timing, evidence and defects,
+  so the ideas were rebuilt inside `make_html_report.js` instead. Closed with credit, not
+  merged.
+- The rebuilt bug filing flow (`bug-report.js` context/prepare/execute, the
+  deterministic duplicate ranking in `duplicate-ranking.js`, and its tests and evals) is
+  community **PR #19** by @Hager-Helmy, carried in with her authorship. Its batch read was
+  folded into the shared `getWorkItems`, and the project-wide Bug mirror and QA watchlist
+  matches were added on top of her ranking.
 
 ## [0.23.0] — 2026-10-09
 ### Added

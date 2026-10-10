@@ -11,6 +11,9 @@ must use `scripts/bug-report.js` and does not need this file.
 | `scripts/duplicate-ranking.js` | Deterministic lexical/IDF ordering, explanatory match evidence, and shortlist projection. It performs no Azure reads, duplicate verdict, blocking decision, or write policy. |
 | `scripts/create-bug.js` | Bug-domain validation, field mapping, reproduction formatting, evidence upload, parent relationship, duplicate query, write order, and the low-level Bug ledger. |
 | `scripts/check-image.js` | Dependency-free structural image validation. It cannot decide whether an image is relevant to a defect. |
+| `scripts/annotate-image.js` | Draws the defect box, label and summary banner onto a copy of a screenshot (local; renders through the project's playwright-cli). The agent runs it before `prepare`. |
+| `scripts/bug-cache.js` | The project-wide Bug mirror (`.agentex/cache/bugs/tracker-bugs-ado.json`, self-ignored in git): one WIQL delta + one `getWorkItems` batch per call, fail-closed on any partial answer, scope `azure.bugCacheDays` / `azure.areaPath`. |
+| `scripts/qa-records.js` (plugin root) | The QA watchlist helper. `bug-report.js` only calls its `list`; paths come from the `qaRecords` config. |
 | `scripts/read-workitem.js` | Legacy/ad-hoc raw work-item read CLI. It is not part of normal filing. |
 | `scripts/lib/tracker/index.js` | Tracker selection and fail-closed project resolution. |
 | `scripts/lib/tracker/adapters/ado.js` | Azure configuration fallbacks, credential handling, transport, request construction, provider field dialect, complete/chunked work-item batch reads, attachments, individual work items, and test-plan/run API calls. |
@@ -19,7 +22,9 @@ must use `scripts/bug-report.js` and does not need this file.
 | `skills/test-design/scripts/testplan.js` | Test-suite/case reads, minimal Test Case creation, and recording an existing case as Failed. Bug filing calls this owner; it does not reproduce its logic. |
 
 Configuration is documented in `docs/configuration.md` and resolved by the tracker adapter.
-Do not add direct project JSON or `.env` parsing to a bug script. Azure resource-plane CLI
+Do not add direct project JSON or `.env` parsing to a bug script. The one exception is
+`bug-cache.js`, which reads `azure.bugCacheDays` through `scripts/lib/project_config.js`
+(never the raw file) because the adapter's resolved config does not carry it. Azure resource-plane CLI
 support in `skills/azure-integration` is unrelated to DevOps Boards and is not a fallback.
 
 ## High-level contract

@@ -2,8 +2,36 @@
 
 `bug-report.js` (the context/prepare/execute operation in SKILL.md) files Azure DevOps Bugs
 only and refuses a Jira config upfront (`unsupported-tracker`). On Jira, file through the
-lower-level scripts below — the same one-gate, fail-closed discipline, unchanged from
-0.23.0. Read this file only when the project's tracker is Jira.
+lower-level scripts below — the same one-gate, fail-closed discipline, unchanged from the
+pre-rebuild flow (0.23.0 plus annotated screenshots). Read this file only when the
+project's tracker is Jira.
+
+## Configuration and credentials
+
+This skill is **decoupled from any specific team or product**. Everything team-specific is a
+placeholder resolved at runtime from `config/project.json` — the `azure` block (or legacy
+`AZURE_*` keys in `.env`) on ADO projects, the `jira` block on Jira projects — never
+hardcoded in the skill:
+
+| Placeholder | Meaning | Resolved from |
+|---|---|---|
+| `{{ORG_URL}}` | Azure DevOps org (URL or bare org name) | `azure.org` (`config/project.json`) → `AZURE_URL` |
+| `{{PROJECT_NAME}}` | Project | `azure.project` (`config/project.json`) → `AZURE_PROJECT` |
+| `{{TEAM_NAME}}` | Team | `azure.team` (`config/project.json`) → `AZURE_TEAM` |
+| `{{AREA_PATH}}` | Area Path | `azure.areaPath` → `AZURE_AREA_PATH` or inherited from the parent story |
+| `{{ITERATION_PATH}}` | Iteration Path | `azure.iterationPath` → `AZURE_ITERATION_PATH` or inherited from the parent story |
+| `{{TEMPLATE_BUG_ID}}` | Reference bug the template mirrors | `azure.bugTemplateId` → `AZURE_BUG_TEMPLATE_ID` (optional) |
+| `{{ASSIGNEE_EMAIL}}` | Bug assignee options | `azure.assignee` → `AZURE_ASSIGNEE` · `jira.assignee` (comma-separated) |
+| `{{TEST_PLAN_ID}}` / `{{TEST_SUITE_ID}}` | Related test plan / suite (ADO only) | `azure.testPlanId` → `AZURE_TEST_PLAN_ID` |
+| `{{ENVIRONMENT}}` / `{{BUG_CATEGORY}}` | Custom picklist fields | `azure.environment` / `azure.bugCategory` or the run's environment |
+| `{{JIRA_SITE}}` / `{{JIRA_PROJECT}}` | Jira site (URL or bare name) / project KEY | `jira.site` / `jira.project` (`config/project.json`) |
+| `{{LINK_TYPE}}` | Bug→story issue link type (Jira) | `jira.bugLinkType` → the Phase-B bundle (live options, `Relates` recommended) |
+
+Credentials are read from `.env` by the bundled scripts themselves — ADO: the **PAT**
+(`AZURE_PAT`, legacy `AZURE_DEVOPS_EXT_PAT` / `AZURE_DEVOPS_PAT`); Jira: `JIRA_EMAIL` +
+`JIRA_API_TOKEN` — and sent only in the Authorization header — never printed, logged, or
+placed on a command line. No shell export, no `az login`, no CLI install is needed for bug
+filing.
 
 ## Tooling: bundled scripts over the tracker REST API
 
@@ -226,3 +254,7 @@ has exactly one interaction: the approval.
 - Flags: `--allow-duplicate` (after the user's explicit go-ahead), `--no-screenshots`
   (deliberate, user-confirmed evidence waiver), `--force` (attachment structural-check
   override), `--refresh-fields` (rebuild the field cache).
+
+## Notes
+
+- Keep spec files out of committed state (write them to a temp/execution folder).
