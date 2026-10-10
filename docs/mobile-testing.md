@@ -128,9 +128,10 @@ Optionally, for the bundled wrapper script instead of raw `curl`:
 npm install -D webdriverio
 ```
 Copy the `permissions` block from [`settings.example.json`](../settings.example.json) into your
-project's `.claude/settings.json` to pre-approve `appium` and the read-only `adb`/`xcrun`
-commands, and to prompt (rather than block) before destructive device actions like uninstall
-or reboot.
+project's `.claude/settings.json`. It pre-approves `npx appium --version` / `server` /
+`driver list` and the read-only `adb`/`xcrun` commands. It prompts (rather than blocks)
+before `npx appium driver|plugin install`, `xcrun simctl spawn`, clearing `adb logcat`, and
+destructive device actions like uninstall or reboot.
 
 **Driving a session — two options:**
 - Raw WebDriver REST via `curl` against the running Appium server — no extra dependency.

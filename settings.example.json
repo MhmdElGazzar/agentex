@@ -7,6 +7,8 @@
     "deny > Bash flag order defeats prefix matching: a rule matches the START of the command, so 'Bash(rm -rf:*)' alone never sees 'rm -fr' or 'rm -r -f'. Each spelling needs its own entry, and on Windows 'Remove-Item' is denied outright because its -Recurse/-Force flags can appear in any order after it.",
     "deny > Edit(./src/**) alone does not protect your application: Write and MultiEdit reach the same files by a different tool, so all three are listed. Point them at wherever your app's source actually lives — if it is not ./src, these rules protect nothing. The agent never needs to write to your application; it only writes under test/ and executions/.",
     "deny > secret files: the plugin's design is that config and catalog files name env vars and the values live in your shell or .env, which the bundled scripts read themselves. Nothing in a run needs the agent to READ a .env, a key or a certificate, so those reads are denied rather than trusted.",
+    "ask beats allow: rules are checked deny first, then ask, then allow, so an ask entry carves a prompt out of a broader allow entry (e.g. 'Bash(npx playwright-cli close-all:*)' inside 'Bash(npx playwright-cli:*)', 'Bash(adb logcat -c:*)' inside 'Bash(adb logcat:*)'). Prefix matching still cannot see a reordered flag ('adb logcat -b all -c'); to close that too, narrow the allow entry to 'Bash(adb logcat -d:*)' (dump and exit).",
+    "mobile > appium is allowed only for --version, server, and driver list. 'npx appium driver install' / 'plugin install' fetch and run code from npm, a git URL, or a local path, so they prompt. 'xcrun simctl spawn' runs an arbitrary command inside the simulator, so it prompts too.",
     "ask > curl and sqlcmd are one prompt each, on purpose. API and DB steps run through the api-integration / db-integration runners, which keep credentials in the environment and off the command line; a bare curl or sqlcmd is either an ad-hoc check worth confirming, or a way for data to leave the machine."
   ],
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
@@ -28,14 +30,15 @@
       "Bash(az keyvault list:*)",
       "Bash(az keyvault secret list:*)",
       "Bash(az aks list:*)",
-      "Bash(npx appium:*)",
+      "Bash(npx appium --version)",
+      "Bash(npx appium server:*)",
+      "Bash(npx appium driver list:*)",
       "Bash(adb devices:*)",
       "Bash(adb version:*)",
       "Bash(adb logcat:*)",
       "Bash(adb shell dumpsys:*)",
       "Bash(xcrun simctl list:*)",
-      "Bash(xcrun simctl boot:*)",
-      "Bash(xcrun simctl spawn:*)"
+      "Bash(xcrun simctl boot:*)"
     ],
     "ask": [
       "Bash(curl:*)",
@@ -53,7 +56,12 @@
       "Bash(adb root:*)",
       "Bash(adb emu kill:*)",
       "Bash(xcrun simctl erase:*)",
-      "Bash(xcrun simctl uninstall:*)"
+      "Bash(xcrun simctl uninstall:*)",
+      "Bash(xcrun simctl spawn:*)",
+      "Bash(adb logcat -c:*)",
+      "Bash(adb logcat --clear:*)",
+      "Bash(npx appium driver install:*)",
+      "Bash(npx appium plugin install:*)"
     ],
     "deny": [
       "Read(./secrets/**)",
