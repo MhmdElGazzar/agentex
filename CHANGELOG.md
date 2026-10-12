@@ -3,6 +3,10 @@
 All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
+### Fixed
+- Codex installation checks linked managed parent directories and metadata before scaffold, migration, or skill writes, while preserving user edits.
+- Codex UI-check reporting retains deferred questions and named view mismatches, validates resolutions, and keeps unresolved checks blocked.
+
 ### Added
 - **`endpoint-testing` skill** — standalone API test run over cataloged endpoints ("api-tests"),
   independent of any browser test spec (the "Standalone API tests" row flips from planned to

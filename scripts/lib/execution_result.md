@@ -1,6 +1,6 @@
 # Shared executor result contract (v1)
 
-This is a staged, host-neutral ingestion contract for future Codex and Copilot entrypoints.
+This host-neutral ingestion contract is used by the Codex host integration and is available to other host entrypoints.
 It does not alter the existing Claude executor, `run-summary.json`, `verdict.json`, or CI gate.
 
 ## Integration
@@ -28,8 +28,9 @@ and `assignmentDigest`, and freezes nested scope, source, policy, and required s
 The v1 assignment digest hashes JSON with object keys sorted recursively and array order
 preserved, excluding `assignmentDigest` itself. Ingestion requires and recomputes that
 digest. Assignments frozen by the earlier staged implementation used insertion-order
-JSON hashing; regenerate them before dispatch. No production host currently consumes
-the staged contract.
+JSON hashing; regenerate them before dispatch. The Codex host adapter in
+`scripts/codex/host.js` freezes assignments during `prepare` and validates results
+during `finalize` and `report`.
 
 The trusted host must persist and later supply the original assignment independently
 of the executor result. The unkeyed digest detects drift in that trusted copy; it
@@ -71,6 +72,6 @@ reported verdict and exit code must agree with the derived outcome and policy.
 
 The optional CLI accepts four positional arguments: assignment JSON, result JSON,
 source root, run root. It prints one JSON line and exits 0/1/2 for PASS/FAIL/BLOCKED.
-It is an integration fixture and future-host adapter, not a replacement for the
-legacy Claude verdict writer. Host adoption is required before this protects live
-Codex or Copilot runs.
+It is an integration fixture and host adapter, not a replacement for the
+legacy Claude verdict writer. Codex uses the validator through its host adapter;
+other hosts require their own integration.
