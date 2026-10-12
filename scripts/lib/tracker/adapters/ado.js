@@ -66,7 +66,29 @@ function pick(cwd, az, key, envName) {
 // No other guessing.
 function normalizeOrg(org) {
   const trimmed = String(org).trim().replace(/\/+$/, '');
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  const base = /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  let parsed;
+  try { parsed = new URL(base); }
+  catch { throw configError('azure.org must be a valid organization name or HTTP(S) URL'); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw configError('azure.org must not contain credentials, query, or fragment');
+  }
+  return base;
+}
+
+function concreteId(id) {
+  return typeof id === 'number' ? Number.isSafeInteger(id) && id > 0
+    : typeof id === 'string' && /^[1-9][0-9]*(?![\s\S])/.test(id) && Number.isSafeInteger(Number(id));
+}
+
+function requireId(id, op) {
+  if (!concreteId(id)) throw configError(`${op} needs a positive canonical decimal work-item ID`);
+}
+
+function requirePlannedId(id, op, execute) {
+  // Existing dry-run plans name IDs created by an earlier intended write.
+  if (!execute && typeof id === 'string' && /^\{[A-Za-z][A-Za-z0-9-]*\}$/.test(id)) return;
+  requireId(id, op);
 }
 
 // Resolve the consumer's non-secret ADO settings (invariant 7). Missing
@@ -138,7 +160,25 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
   const doFetch = fetchImpl || globalThis.fetch;
   const projSeg = encodeURIComponent(cfg.project);
 
-  let patState = null; // { header, resolvedName } — resolved lazily, once
+  let patState = null; // { header, resolvedName, pat } — resolved lazily, once
+  function redact(value) {
+    let out = typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
+    if (!patState) return out;
+    const encoded = Buffer.from(':' + patState.pat).toString('base64');
+    for (const secret of [patState.header, encoded, patState.pat, encodeURIComponent(patState.pat),
+      JSON.stringify(patState.pat).slice(1, -1)]) {
+      if (secret) out = out.replaceAll(secret, '<redacted>');
+    }
+    return out;
+  }
+  function redactData(value) {
+    if (typeof value === 'string') return redact(value);
+    if (Array.isArray(value)) return value.map(redactData);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([key, part]) => [redact(key), redactData(part)]));
+    }
+    return value;
+  }
   function auth(op, url) {
     if (!patState) {
       let resolvedName = null; let pat = null;
@@ -154,6 +194,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       patState = {
         header: 'Basic ' + Buffer.from(':' + pat).toString('base64'),
         resolvedName,
+        pat,
       };
     }
     return patState;
@@ -182,14 +223,22 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const msg = e && (e.name === 'TimeoutError' || e.name === 'AbortError')
         ? `request timed out after ${timeoutMs}ms`
         : (e && e.message) || String(e);
-      throw new TrackerError({ op, url: requestUrl, serverMessage: msg });
+      throw new TrackerError({ op, url: redact(requestUrl), serverMessage: redact(msg) });
     }
-    const text = await res.text();
+    let text;
+    try { text = await res.text(); }
+    catch (e) { throw new TrackerError({ op, url: redact(requestUrl), serverMessage: redact(e && e.message || e) }); }
     if (!res.ok) {
       let serverMessage = null;
-      try { serverMessage = JSON.parse(text).message || null; } catch { /* not json */ }
+      let safeBody;
+      try {
+        const parsed = redactData(JSON.parse(text));
+        serverMessage = parsed && parsed.message || null;
+        safeBody = JSON.stringify(parsed);
+      } catch { safeBody = redact(text); }
       const err = new TrackerError({
-        op, status: res.status, url: requestUrl, serverMessage, body: text.slice(0, 500),
+        op, status: res.status, url: redact(requestUrl), serverMessage: serverMessage === null ? null : redact(serverMessage),
+        body: safeBody.slice(0, 500),
         credentialHint: res.status === 401 || res.status === 403
           ? { tried: [...PAT_ENV_NAMES], resolved: resolvedName }
           : undefined,
@@ -210,12 +259,13 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
   }
 
   // Neutral {fields, relations|addRelations} -> ADO json-patch op array (the dialect seam).
-  function toPatchOps({ fields = {}, relations, addRelations } = {}) {
+  function toPatchOps({ fields = {}, relations, addRelations } = {}, { execute = false } = {}) {
     const ops = [];
     for (const [ref, value] of Object.entries(fields)) {
       ops.push({ op: 'add', path: `/fields/${ref}`, value });
     }
     for (const rel of relations || addRelations || []) {
+      if (!rel.url) requirePlannedId(rel.targetId, 'relation target', execute);
       ops.push({
         op: 'add', path: '/relations/-',
         value: {
@@ -250,6 +300,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
     // ── READS (free, no gating) ────────────────────────────────────────────────
     async getWorkItem(id, { expand } = {}) {
+      requireId(id, 'getWorkItem');
       const u = url(`wit/workitems/${id}`, expand ? { $expand: expand === true ? 'all' : expand } : {});
       return request('getWorkItem', 'GET', u);
     },
@@ -278,23 +329,27 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     },
 
     async listSuites(planId) {
+      requireId(planId, 'listSuites');
       const res = await request('listSuites', 'GET', url(`testplan/Plans/${planId}/suites`));
       return (res && res.value) || [];
     },
 
     async listSuiteCases(planId, suiteId) {
+      requireId(planId, 'listSuiteCases'); requireId(suiteId, 'listSuiteCases');
       const res = await request('listSuiteCases', 'GET', url(`testplan/Plans/${planId}/Suites/${suiteId}/TestCase`));
       return (res && res.value) || [];
     },
 
     // Per-suite point lookup on purpose — the global ?testCaseId shortcut 404s on many orgs.
     async getPoint(planId, suiteId, testCaseId) {
+      requireId(planId, 'getPoint'); requireId(suiteId, 'getPoint'); requireId(testCaseId, 'getPoint');
       const u = url(`testplan/Plans/${planId}/Suites/${suiteId}/TestPoint`, { testCaseId });
       const res = await request('getPoint', 'GET', u);
       return ((res && res.value) || [])[0] || null;
     },
 
     async listRunResults(runId) {
+      requireId(runId, 'listRunResults');
       const res = await request('listRunResults', 'GET', url(`test/Runs/${runId}/results`));
       return (res && res.value) || [];
     },
@@ -357,7 +412,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // ── WRITES (each takes {execute}; execute:false returns the descriptor) ──
     async createWorkItem(type, payload, { validateOnly = false, execute = false } = {}) {
       const u = url(`wit/workitems/$${encodeURIComponent(type)}`, validateOnly ? { validateOnly: 'true' } : {});
-      const ops = toPatchOps(payload);
+      const ops = toPatchOps(payload, { execute });
       if (!execute) return descriptor('createWorkItem', 'POST', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
       assertCiWritesAllowed('createWorkItem');
       const res = await request('createWorkItem', 'POST', u, {
@@ -368,8 +423,9 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     },
 
     async updateWorkItem(id, payload, { execute = false } = {}) {
+      requirePlannedId(id, 'updateWorkItem', execute);
       const u = url(`wit/workitems/${id}`);
-      const ops = toPatchOps(payload);
+      const ops = toPatchOps(payload, { execute });
       if (!execute) return descriptor('updateWorkItem', 'PATCH', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
       assertCiWritesAllowed('updateWorkItem');
       const res = await request('updateWorkItem', 'PATCH', u, {
@@ -379,10 +435,11 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     },
 
     async addRelation(id, relType, targetId, { execute = false, attributes } = {}) {
+      requirePlannedId(targetId, 'addRelation', execute);
       return this.updateWorkItem(id, { addRelations: [{ rel: relType, targetId, ...(attributes ? { attributes } : {}) }] }, { execute });
     },
 
-    async uploadAttachment(filePath, { fileName, execute = false } = {}) {
+    async uploadAttachment(filePath, { fileName, execute = false, bytes: approvedBytes } = {}) {
       const name = fileName || path.basename(filePath);
       const u = url('wit/attachments', { fileName: name });
       if (!execute) {
@@ -394,7 +451,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         });
       }
       assertCiWritesAllowed('uploadAttachment');
-      const bytes = fs.readFileSync(filePath);
+      const bytes = approvedBytes || fs.readFileSync(filePath);
       const res = await request('uploadAttachment', 'POST', u, { body: bytes, contentType: 'application/octet-stream' });
       return { name, id: res && res.id, url: res && res.url };
     },
@@ -406,6 +463,8 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // closed: after the POST the suite is re-read, and any requested id still missing throws.
     async addCaseToSuite(planId, suiteId, caseIds, { execute = false } = {}) {
       const ids = [].concat(caseIds).map(String);
+      requireId(planId, 'addCaseToSuite'); requireId(suiteId, 'addCaseToSuite');
+      for (const id of ids) requirePlannedId(id, 'addCaseToSuite', execute);
       const casesUrl = url(`test/Plans/${planId}/suites/${suiteId}/testcases`);
       const memberIds = async () => {
         const res = await request('addCaseToSuite', 'GET', casesUrl);
@@ -442,6 +501,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     },
 
     async updateRunResults(runId, results, { execute = false } = {}) {
+      requirePlannedId(runId, 'updateRunResults', execute);
       const u = url(`test/Runs/${runId}/results`);
       if (!execute) return descriptor('updateRunResults', 'PATCH', u, { body: results, contentType: 'application/json' });
       assertCiWritesAllowed('updateRunResults');
@@ -450,6 +510,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     },
 
     async updateRun(runId, body, { execute = false } = {}) {
+      requirePlannedId(runId, 'updateRun', execute);
       const u = url(`test/runs/${runId}`);
       if (!execute) return descriptor('updateRun', 'PATCH', u, { body, contentType: 'application/json' });
       assertCiWritesAllowed('updateRun');
@@ -464,10 +525,8 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // through it. Backs the capability flag deleteWorkItem: 'partial' (ADO has
     // no standard delete for test artifacts such as Test Cases).
     async deleteWorkItem(id, { execute = false } = {}) {
+      requireId(id, 'deleteWorkItem');
       const n = Number(id);
-      if (!Number.isInteger(n) || n <= 0) {
-        throw configError(`deleteWorkItem needs a positive integer work-item id (got ${JSON.stringify(id)})`);
-      }
       const u = url(`wit/workitems/${n}`);
       if (!execute) return descriptor('deleteWorkItem', 'DELETE', u);
       assertCiWritesAllowed('deleteWorkItem');

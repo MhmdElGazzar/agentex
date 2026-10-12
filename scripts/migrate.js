@@ -27,6 +27,7 @@ const { execFileSync } = require('child_process');
 const scaffold = require('./lib/scaffold.js');
 const { loadProjectConfig } = require('./lib/project_config.js');
 const { compareVersions } = require('./lib/version.js');
+const { acquireUpdateLock } = require('./lib/update_lock.js');
 const { DEFAULT_ENV_NAME } = require('./wizard/engine.js');
 
 const pluginRoot = path.resolve(__dirname, '..');
@@ -53,6 +54,42 @@ if (projectRoot === pluginRoot) {
   abort('refusing to run inside the AgenTeX plugin itself — run from your project root');
 }
 if (!fs.existsSync(projectRoot)) abort(`project directory not found: ${projectRoot}`);
+let migrationLock;
+try { migrationLock = acquireUpdateLock(projectRoot); }
+catch (error) { abort(error.message); }
+process.on('exit', () => migrationLock.release());
+process.once('SIGINT', () => { console.error('[abort] migration interrupted; releasing owned lock'); process.exit(130); });
+process.once('SIGTERM', () => { console.error('[abort] migration interrupted; releasing owned lock'); process.exit(143); });
+
+function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+function inspectJson(file, check) {
+  if (!fs.existsSync(file)) return;
+  let data;
+  try { data = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { abort(`${path.relative(projectRoot, file)} is malformed JSON; no project files were changed`); }
+  if (!object(data) || !check(data)) abort(`${path.relative(projectRoot, file)} has malformed required configuration; no project files were changed`);
+}
+function validBlock(data, key) { return data[key] === undefined || object(data[key]); }
+function preflightInputs() {
+  inspectJson(path.join(projectRoot, 'config', 'project.json'), data =>
+    (data.defaultEnvironment === undefined ||
+      (typeof data.defaultEnvironment === 'string' && data.defaultEnvironment.trim().length > 0 &&
+        !['.', '..'].includes(data.defaultEnvironment) && !/[\\/]/.test(data.defaultEnvironment))) &&
+    ['azure', 'jira', 'kb', 'login', 'figma'].every(key => validBlock(data, key)) &&
+    ['userFields', 'defaultsFields'].every(key => data[key] === undefined || Array.isArray(data[key])));
+  inspectJson(path.join(projectRoot, 'agentex.config.json'), data => validBlock(data, 'kb'));
+  // Migration 01 can rename integrations/ into integration/ before migration 04
+  // consumes its catalogs. Validate both names before the first mutation.
+  for (const dirname of ['environments', 'integration', 'integrations']) {
+    const dir = path.join(projectRoot, dirname);
+    if (!fs.existsSync(dir)) continue;
+    for (const name of fs.readdirSync(dir).filter(name => name.endsWith('.json'))) {
+      inspectJson(path.join(dir, name), data => dirname === 'environments'
+        ? ['db', 'api', 'defaults'].every(key => validBlock(data, key))
+        : validBlock(data, 'connection'));
+    }
+  }
+}
 
 // ── Guard 2: git present + inside a repository (the rollback mechanism) ──────
 let insideRepo = false;
@@ -65,7 +102,10 @@ if (!insideRepo) {
 // ── Version gate fast paths (they write nothing, so they need no clean tree;
 //    the clean-tree guard below protects only actual migration work) ──────────
 const installed = scaffold.readPluginVersion(pluginRoot);
-const stamped = scaffold.readVersionStamp(projectRoot);   // null = legacy, infer from files
+const stampInfo = scaffold.inspectVersionStamp(projectRoot);
+if (stampInfo.kind === 'malformed') abort('project version stamp is malformed; fix it before migration; no project files were changed');
+preflightInputs();
+const stamped = stampInfo.version;   // null = legacy, infer from files
 if (stamped !== null) {
   const cmp = compareVersions(stamped, installed);
   if (cmp === 0) {

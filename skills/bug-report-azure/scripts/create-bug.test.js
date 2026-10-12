@@ -19,7 +19,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { run } = require('./create-bug.js');
+const { run: rawRun } = require('./create-bug.js');
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -128,6 +128,18 @@ const isWrite = (c) =>
   c.method === 'PATCH';
 
 (async () => {
+  // Model the host's single human approval by saving the exact planned output.
+  // Each route remains fully local and all tracker calls are mocked.
+  async function run(argv, opts) {
+    if (!argv.includes('--execute') || process.env.AGENTEX_CI === '1') return rawRun(argv, opts);
+    const cfg = JSON.parse(fs.readFileSync(path.join(opts.cwd, 'config', 'project.json'), 'utf8'));
+    const planned = await rawRun(argv.filter(a => a !== '--execute'), {
+      ...opts, fetch: fakeFetch(cfg.jira ? jRoutes() : happyRoutes()),
+    });
+    const approvedFile = path.join(opts.cwd, `approved-${++specSeq}.json`);
+    if (planned.code === 0) fs.writeFileSync(approvedFile, JSON.stringify({ ...planned.out, approved: true }));
+    return rawRun([...argv, '--approved-plan', approvedFile], opts);
+  }
   await test('dry run: full plan JSON, exit 0 — and ZERO writes leave the machine', async () => {
     const dir = proj();
     const f = fakeFetch(happyRoutes());
@@ -400,6 +412,68 @@ const isWrite = (c) =>
     assert.strictEqual(out.created.bugId, 4711);
   });
 
+  await test('approved plan binds provider, target, fields and evidence bytes', async () => {
+    for (const mutation of ['provider', 'target', 'fields', 'plan', 'evidence']) {
+      const dir = proj();
+      const specFile = writeSpec(dir);
+      const planned = await rawRun(['--spec', specFile], { cwd: dir, fetch: fakeFetch(happyRoutes()) });
+      assert.strictEqual(planned.code, 0, JSON.stringify(planned.out));
+      const approved = { ...planned.out, approved: true };
+      if (mutation === 'provider') approved.target = { ...approved.target, provider: 'jira' };
+      if (mutation === 'target') approved.target = { ...approved.target, project: 'OTHER' };
+      if (mutation === 'plan') approved.plan[0].describe = 'changed write';
+      if (mutation === 'fields') {
+        const spec = JSON.parse(fs.readFileSync(specFile, 'utf8'));
+        spec.title = 'Changed after approval';
+        fs.writeFileSync(specFile, JSON.stringify(spec));
+      }
+      if (mutation === 'evidence') {
+        const file = path.join(dir, 'evidence.png');
+        const bytes = fs.readFileSync(file); bytes[bytes.length - 1] ^= 1; fs.writeFileSync(file, bytes);
+      }
+      const planFile = path.join(dir, 'approved.json');
+      fs.writeFileSync(planFile, JSON.stringify(approved));
+      const f = fakeFetch(happyRoutes());
+      const result = await rawRun(['--spec', specFile, '--execute', '--approved-plan', planFile], { cwd: dir, fetch: f });
+      assert.strictEqual(result.code, 2, mutation);
+      assert.match(JSON.stringify(result.out.blocked), /approval-plan-drift/);
+      assert.strictEqual(f.calls.filter(isWrite).length, 0);
+    }
+  });
+
+  await test('unsafe evidence paths and a symlink escape are blocked before tracker reads', async () => {
+    const dir = proj();
+    const traversal = await rawRun(['--spec', writeSpec(dir, { attachments: ['../escape.png'] })],
+      { cwd: dir, fetch: fakeFetch(happyRoutes()) });
+    assert.strictEqual(traversal.code, 2);
+    assert.match(JSON.stringify(traversal.out.blocked), /evidence-path-unsafe/);
+    const outside = path.join(os.tmpdir(), `agentex-outside-${Date.now()}.png`);
+    fs.writeFileSync(outside, fakePng());
+    const link = path.join(dir, 'link.png');
+    try {
+      fs.symlinkSync(outside, link, 'file');
+      const escaped = await rawRun(['--spec', writeSpec(dir, { attachments: [link] })],
+        { cwd: dir, fetch: fakeFetch(happyRoutes()) });
+      assert.strictEqual(escaped.code, 2);
+      assert.match(JSON.stringify(escaped.out.blocked), /evidence-path-unsafe/);
+    } catch (error) { if (error.code !== 'EPERM') throw error; }
+  });
+
+  await test('an approved plan can be attempted only once', async () => {
+    const dir = proj(); const specFile = writeSpec(dir);
+    const planned = await rawRun(['--spec', specFile], { cwd: dir, fetch: fakeFetch(happyRoutes()) });
+    const file = path.join(dir, 'approved.json');
+    fs.writeFileSync(file, JSON.stringify({ ...planned.out, approved: true }));
+    const args = ['--spec', specFile, '--execute', '--approved-plan', file];
+    const first = await rawRun(args, { cwd: dir, fetch: fakeFetch(happyRoutes()) });
+    assert.strictEqual(first.code, 0, JSON.stringify(first.out));
+    const f = fakeFetch(happyRoutes());
+    const replay = await rawRun(args, { cwd: dir, fetch: f });
+    assert.strictEqual(replay.code, 2);
+    assert.match(JSON.stringify(replay.out.blocked), /already-attempted/);
+    assert.strictEqual(f.calls.filter(isWrite).length, 0);
+  });
+
   // ════ Jira strategy (design §5.7) — the ADO suite above is untouched ═══════
   const SENTINEL_JT = 'SENTINEL-JIRA-TOKEN-cb-44556677';
   for (const n of ['JIRA_EMAIL', 'JIRA_API_TOKEN']) delete process.env[n];
@@ -553,6 +627,29 @@ const isWrite = (c) =>
     assert.match(out.ledger[2].reason, /no such link type/);
     assert.strictEqual(out.created.bugId, 'PROJ-88', 'the created key is ALWAYS surfaced');
     assert.strictEqual(out.created.attachments.length, 1, 'landed attachments are named');
+  });
+
+  await test('receipt persistence failure preserves a successful remote create separately', async () => {
+    const dir = jproj(); const specFile = jSpecFile(dir);
+    const planned = await rawRun(['--spec', specFile], { cwd: dir, fetch: fakeFetch(jRoutes()) });
+    assert.strictEqual(planned.code, 0);
+    const approved = path.join(dir, 'approved.json');
+    fs.writeFileSync(approved, JSON.stringify({ ...planned.out, approved: true }));
+    const originalWrite = fs.writeFileSync;
+    let receiptWrites = 0;
+    fs.writeFileSync = function(file, ...rest) {
+      if (String(file).includes('bug-write-ledger') && ++receiptWrites > 1) throw new Error('local receipt disk unavailable');
+      return originalWrite.call(this, file, ...rest);
+    };
+    try {
+      const result = await rawRun(['--spec', specFile, '--execute', '--approved-plan', approved],
+        { cwd: dir, fetch: fakeFetch(jRoutes()) });
+      assert.strictEqual(result.code, 1);
+      assert.strictEqual(result.out.ledger[0].status, 'done');
+      assert.strictEqual(result.out.created.bugId, 'PROJ-88');
+      assert.match(result.out.localPersistenceError, /local receipt disk unavailable/);
+      assert.strictEqual(result.out.ledger[1].status, 'not-attempted');
+    } finally { fs.writeFileSync = originalWrite; }
   });
 
   await test('jira: sentinel credentials in zero bytes of any mode\'s output', async () => {

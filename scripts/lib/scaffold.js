@@ -320,15 +320,28 @@ function stampPath(projectRoot) {
   return path.join(projectRoot, ...STAMP_REL.split('/'));
 }
 
-// Stamped version string, or null when missing/unreadable (a legacy project).
+// A missing stamp denotes a legacy project. A malformed stamp must be preserved
+// and reported instead of silently converting it to a missing stamp.
+function inspectVersionStamp(projectRoot) {
+  const file = stampPath(projectRoot);
+  if (!fs.existsSync(file)) return { kind: 'missing', version: null };
+  let data;
+  try { data = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { return { kind: 'malformed', version: null }; }
+  const { isReleaseVersion } = require('./version.js');
+  return data && !Array.isArray(data) && isReleaseVersion(data.version)
+    ? { kind: 'valid', version: data.version }
+    : { kind: 'malformed', version: null };
+}
+
 function readVersionStamp(projectRoot) {
-  try {
-    const v = JSON.parse(fs.readFileSync(stampPath(projectRoot), 'utf8')).version;
-    return typeof v === 'string' && v ? v : null;
-  } catch { return null; }
+  const stamp = inspectVersionStamp(projectRoot);
+  if (stamp.kind === 'malformed') throw new Error(`malformed AgenTeX version stamp: ${stampPath(projectRoot)}`);
+  return stamp.version;
 }
 
 function writeVersionStamp(projectRoot, version, { dryRun = false } = {}) {
+  if (!require('./version.js').isReleaseVersion(version)) throw new Error('invalid AgenTeX release version');
   const file = stampPath(projectRoot);
   if (!dryRun) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -339,7 +352,9 @@ function writeVersionStamp(projectRoot, version, { dryRun = false } = {}) {
 
 // Installed plugin version from the plugin's own manifest.
 function readPluginVersion(pluginRoot) {
-  return JSON.parse(fs.readFileSync(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  const version = JSON.parse(fs.readFileSync(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  if (!require('./version.js').isReleaseVersion(version)) throw new Error('installed plugin has a malformed release version');
+  return version;
 }
 
 module.exports = {
@@ -348,5 +363,5 @@ module.exports = {
   sampleEnvShapes, isPristineSampleEnv,
   gitignoreMissing, ensureGitignore,
   claudeMdHasBullet, ensureClaudeMdBullet,
-  stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,
+  stampPath, inspectVersionStamp, readVersionStamp, writeVersionStamp, readPluginVersion,
 };

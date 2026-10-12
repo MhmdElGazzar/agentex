@@ -353,20 +353,18 @@ test('0.8 era: agentex.config.json kb.* absorbed into config/project.json, file 
   assert.strictEqual(project.kb.project, 'kb8');
 });
 
-test('m02: unparseable agentex.config.json → [manual], stamp WITHHELD, re-run absorbs after fix', () => {
+test('m02: unparseable agentex.config.json aborts before any project mutation; re-run absorbs after fix', () => {
   const dir = repo({
     'agentex.config.json': '{ broken',   // invalid JSON — m02 must not delete it
     'test/suite1/a.md': SPEC_02,
   });
   const r1 = run(dir);
-  assert.strictEqual(r1.code, 0, r1.out);
-  assert.match(r1.out, /\[manual\].*agentex\.config\.json/);
+  assert.strictEqual(r1.code, 2, r1.out);
+  assert.match(r1.out, /agentex\.config\.json is malformed JSON/);
   assert.ok(exists(dir, 'agentex.config.json'), 'unreadable legacy file left in place');
-  // The honest stamp: stamp == "project matches installed conventions". With an
-  // unabsorbed legacy config it does not — stamping here would dead-end the
-  // advertised re-run on the version-gate fast path.
+  assert.ok(!exists(dir, 'config/project.json'), 'preflight must not partially scaffold');
   assert.ok(!exists(dir, '.agentex/version.json'), 'stamp must be withheld while [manual] items remain');
-  // user fixes the file and commits (run-1 outputs included), then simply re-runs
+  // user fixes the file and commits, then simply re-runs
   addFiles(dir, { 'agentex.config.json': { kb: { baseUrl: 'https://kb.fix.test', project: 'fixed' } } });
   commitAll(dir);
   const r2 = run(dir);
@@ -376,6 +374,71 @@ test('m02: unparseable agentex.config.json → [manual], stamp WITHHELD, re-run 
   assert.strictEqual(readJson(dir, 'config/project.json').kb.baseUrl, 'https://kb.fix.test');
   assert.strictEqual(readJson(dir, 'config/project.json').kb.project, 'fixed');
   assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'stamp written once manual items are gone');
+});
+
+test('malformed stamp and consumed configuration abort without changing the project', () => {
+  for (const files of [
+    { '.agentex/version.json': { version: '0.23.0\n' }, 'test/suite1/a.md': SPEC_02 },
+    { 'config/project.json': { defaultEnvironment: '../escape' }, 'test/suite1/a.md': SPEC_02 },
+    { 'config/project.json': '{ broken', 'test/suite1/a.md': SPEC_02 },
+    { 'environments/qa.json': { db: [] }, 'test/suite1/a.md': SPEC_02 },
+  ]) {
+    const dir = repo(files);
+    const before = git(dir, 'status', '--porcelain');
+    const stamp = fs.existsSync(path.join(dir, '.agentex', 'version.json'))
+      ? fs.readFileSync(path.join(dir, '.agentex', 'version.json'), 'utf8') : null;
+    const result = run(dir);
+    assert.strictEqual(result.code, 2, result.out);
+    assert.strictEqual(git(dir, 'status', '--porcelain'), before);
+    assert.strictEqual(fs.existsSync(path.join(dir, '.agentex', 'version.json'))
+      ? fs.readFileSync(path.join(dir, '.agentex', 'version.json'), 'utf8') : null, stamp);
+  }
+});
+
+test('legacy and current malformed catalogs abort before migration mutates the project', () => {
+  for (const dirname of ['integrations', 'integration']) {
+    const dir = repo({ [`${dirname}/broken.json`]: '{ malformed', 'test/suite1/a.md': SPEC_02 });
+    const before = snapshot(dir);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = run(dir);
+      assert.strictEqual(result.code, 2, result.out);
+      assert.deepStrictEqual(snapshot(dir), before, `tree changed for ${dirname} on attempt ${attempt + 1}`);
+    }
+  }
+});
+
+test('legacy catalog conflict is preflighted without moving either directory', () => {
+  const dir = repo({
+    'integrations/broken.json': '{ malformed',
+    'integration/current.json': { name: 'synthetic', queries: [] },
+    'test/suite1/a.md': SPEC_02,
+  });
+  const before = snapshot(dir);
+  const result = run(dir);
+  assert.strictEqual(result.code, 2, result.out);
+  assert.deepStrictEqual(snapshot(dir), before);
+});
+
+test('valid legacy catalog and absent optional catalog retain migration behavior', () => {
+  for (const files of [
+    { 'integrations/sample.json': { name: 'synthetic', queries: [] }, 'test/suite1/a.md': SPEC_02 },
+    { 'test/suite1/a.md': SPEC_02 },
+  ]) {
+    const dir = repo(files);
+    const result = run(dir);
+    assert.strictEqual(result.code, 0, result.out);
+  }
+});
+
+test('init preserves a malformed stamp and does not partially scaffold', () => {
+  const dir = repo({ '.agentex/version.json': { version: '0.23.0\n' } });
+  let failure;
+  try { execFileSync(process.execPath, [INIT, dir], { encoding: 'utf8' }); }
+  catch (error) { failure = error; }
+  assert.strictEqual(failure && failure.status, 1);
+  assert.ok(!exists(dir, 'config/project.json'));
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, '0.23.0\n');
+  assert.strictEqual(git(dir, 'status', '--porcelain'), '');
 });
 
 // ── m04: catalog connection block → environment db block ─────────────────────

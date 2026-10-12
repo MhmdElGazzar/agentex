@@ -18,7 +18,7 @@ const SENTINEL_PAT = 'SENTINEL-PAT-a1b2c3d4e5f60718293a4b5c6d7e8f90';
 const SENTINEL_B64 = Buffer.from(':' + SENTINEL_PAT).toString('base64');
 
 // The tests own the PAT environment — the machine's real values must not leak in.
-for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AGENTEX_CI']) delete process.env[n];
+for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AZURE_URL', 'AZURE_PROJECT', 'AGENTEX_CI']) delete process.env[n];
 
 // Throwaway consumer project with an azure block + a sentinel PAT in .env.
 function proj({ org = 'exampleorg', project = 'Sample Project', envLines, azureExtra = {} } = {}) {
@@ -631,6 +631,82 @@ const PROJ = 'Sample%20Project';
   await test('listSprintStories: storyType is a REQUIRED caller parameter (no adapter default)', async () => {
     const f = fakeFetch([]);
     await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listSprintStories({ team: 'T' }), /storyType/);
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('PAT, Basic header, encoded and nested provider diagnostics are redacted', async () => {
+    const values = [SENTINEL_PAT, SENTINEL_B64, `Basic ${SENTINEL_B64}`, encodeURIComponent(SENTINEL_PAT)];
+    for (const value of values) {
+      const a = createAdapter({ cwd: proj(), fetch: async () => ({ ok: false, status: 401,
+        text: async () => JSON.stringify({ message: { nested: `secret=${value}` } }) }) });
+      await assert.rejects(a.getWorkItem(1), e => {
+        const diagnostic = `${e.message} ${JSON.stringify(e)}`;
+        assert.ok(!diagnostic.includes(SENTINEL_PAT));
+        assert.ok(!diagnostic.includes(SENTINEL_B64));
+        assert.ok(!diagnostic.includes(encodeURIComponent(SENTINEL_PAT)));
+        return true;
+      });
+    }
+    const escaped = SENTINEL_PAT.split('').map(ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`).join('');
+    const nested = createAdapter({ cwd: proj(), fetch: async () => ({ ok: false, status: 400,
+      text: async () => `{"message":"${escaped}"}` }) });
+    await assert.rejects(nested.getWorkItem(1), e => !JSON.stringify(e).includes(SENTINEL_PAT) && !e.message.includes(SENTINEL_PAT));
+    const a = createAdapter({ cwd: proj(), fetch: async () => { throw new Error(`Authorization: Basic ${SENTINEL_B64}; ${SENTINEL_PAT}`); } });
+    await assert.rejects(a.getWorkItem(1), e => !JSON.stringify(e).includes(SENTINEL_PAT) && !e.message.includes(SENTINEL_B64));
+  });
+
+  await test('concrete work-item IDs are canonical positive safe decimal integers', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await a.getWorkItem('123');
+    await a.getWorkItem(123);
+    for (const id of ['123\n', ' 123', '123 ', '01', '1.0', '1e2', '0', '-1', '9007199254740992', 0, -1, 1.5, NaN]) {
+      await assert.rejects(a.getWorkItem(id), /canonical decimal work-item ID/);
+    }
+    assert.strictEqual(f.calls.length, 2);
+    const placeholder = await a.updateWorkItem('{new-bug-id}', { fields: {} }, { execute: false });
+    assert.ok(placeholder.url.includes('{new-bug-id}'));
+    await assert.rejects(a.updateWorkItem('{new-bug-id}', {}, { execute: true }), /canonical decimal work-item ID/);
+  });
+
+  await test('all concrete ADO ID routes reject numeric coercion without sending a request', async () => {
+    const invalid = ['1e2', '01', '1.0', ' 1', '1 ', '1\n', '0', '-1', '9007199254740993', 0, -1, 1.5, NaN];
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    for (const id of invalid) {
+      await assert.rejects(a.deleteWorkItem(id, { execute: false }), /canonical decimal/);
+      await assert.rejects(a.deleteWorkItem(id, { execute: true }), /canonical decimal/);
+      await assert.rejects(a.updateWorkItem(id, {}, { execute: true }), /canonical decimal/);
+      await assert.rejects(a.addRelation(id, 'Parent', 7, { execute: true }), /canonical decimal/);
+      await assert.rejects(a.addRelation(7, 'Parent', id, { execute: true }), /canonical decimal/);
+      await assert.rejects(a.addCaseToSuite(3, 4, id, { execute: true }), /canonical decimal/);
+      await assert.rejects(a.getPoint(3, 4, id), /canonical decimal/);
+      await assert.rejects(a.listSuites(id), /canonical decimal/);
+      await assert.rejects(a.listSuiteCases(3, id), /canonical decimal/);
+      await assert.rejects(a.listRunResults(id), /canonical decimal/);
+      await assert.rejects(a.updateRun(id, {}, { execute: true }), /canonical decimal/);
+      await assert.rejects(a.updateRunResults(id, [], { execute: true }), /canonical decimal/);
+      await assert.rejects(a.createWorkItem('Bug', { relations: [{ rel: 'Parent', targetId: id }] }, { execute: true }), /canonical decimal/);
+      await assert.rejects(a.updateWorkItem(7, { addRelations: [{ rel: 'Parent', targetId: id }] }, { execute: true }), /canonical decimal/);
+    }
+    assert.strictEqual(f.calls.length, 0);
+    assert.ok((await a.addCaseToSuite(3, 4, '{new-tc-id}', { execute: false })).url.includes('{new-tc-id}'));
+    assert.ok((await a.updateWorkItem('{new-bug-id}', {}, { execute: false })).url.includes('{new-bug-id}'));
+    assert.ok((await a.deleteWorkItem(123, { execute: false })).url.includes('/123?'));
+  });
+
+  await test('planning descriptors reject malformed concrete IDs while retaining symbolic placeholders', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    for (const id of ['1e2', '01', '123\n', '9007199254740993']) {
+      await assert.rejects(a.updateWorkItem(id, {}, { execute: false }), /canonical decimal/);
+      await assert.rejects(a.addRelation(7, 'Parent', id, { execute: false }), /canonical decimal/);
+      await assert.rejects(a.addCaseToSuite(3, 4, id, { execute: false }), /canonical decimal/);
+      await assert.rejects(a.updateRun(id, {}, { execute: false }), /canonical decimal/);
+    }
+    assert.ok((await a.updateWorkItem('{new-bug-id}', {}, { execute: false })).url.includes('{new-bug-id}'));
+    assert.ok((await a.addCaseToSuite(3, 4, '{new-tc-id}', { execute: false })).url.includes('{new-tc-id}'));
+    assert.ok((await a.updateRun('{run-id}', {}, { execute: false })).url.includes('{run-id}'));
     assert.strictEqual(f.calls.length, 0);
   });
 

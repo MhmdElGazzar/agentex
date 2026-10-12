@@ -577,7 +577,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // Multipart with ZERO npm deps: built-in FormData + Blob (undici, the same
     // Node ≥18 floor built-in fetch already imposes); fetch composes the
     // boundary itself — the adapter never sets Content-Type manually.
-    async uploadAttachment(filePath, { fileName, issueId, execute = false } = {}) {
+    async uploadAttachment(filePath, { fileName, issueId, execute = false, bytes: approvedBytes } = {}) {
       const name = fileName || path.basename(filePath);
       if (!issueId) {
         throw configError(
@@ -594,7 +594,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         });
       }
       assertCiWritesAllowed('uploadAttachment');
-      const bytes = fs.readFileSync(filePath);
+      const bytes = approvedBytes || fs.readFileSync(filePath);
       const fd = new FormData();
       fd.append('file', new Blob([bytes]), name);
       const res = await request('uploadAttachment', 'POST', u, {

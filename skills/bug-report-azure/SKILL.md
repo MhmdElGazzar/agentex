@@ -222,9 +222,13 @@ has exactly one interaction: the approval.
    with the one-line reasoning · assignee · test-case decision · the ATTACH/REJECT list
    with reasons · **the exact write plan** (every intended write, in order, with its
    target route) · the explicit note that **nothing has been written yet**.
-3. **One approval.** On the user's "yes":
+3. **One approval.** On the user's "yes", save the exact dry-run JSON to a local
+   `<approved-plan>.json` file with only `"approved": true` added. The host's
+   recorded approval is the authority; this marker only lets the script check
+   that the provider, fields, evidence bytes, and write plan still match. Keep
+   the file in the run's temporary/execution folder. Then run:
    ```
-   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json --execute
+   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json --approved-plan <approved-plan>.json --execute
    node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js create-case --plan <plan> --suite <suite> --title "<t>" --execute   # only if chosen
    node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js fail --plan <plan> --testcase <tc> --bug <bugId> --execute          # only if chosen
    ```
@@ -238,6 +242,9 @@ has exactly one interaction: the approval.
    link was not added: <server message>. Nothing was retried; remediation is your call on
    the board."* Never soften a partial write into a success. If the failure JSON carries
    `cacheStale: true`, show the real options it contains and offer `--refresh-fields`.
+   If `localPersistenceError` appears, report the successful provider writes from
+   the ledger separately from the local receipt failure. Never automatically
+   repeat an attempted plan; inspect the receipt and tracker state first.
 
 ## Spec JSON shape (for create-bug.js)
 

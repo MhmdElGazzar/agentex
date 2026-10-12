@@ -45,10 +45,10 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const LIB = path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'tracker');
 const { resolveTracker, TrackerError } = require(path.join(LIB, 'index.js'));
 const fieldCache = require(path.join(LIB, 'cache.js'));
-const { WritePlan } = require(path.join(LIB, 'ledger.js'));
 const adf = require(path.join(LIB, 'adf.js'));
 
 // ---- CLI arg parser: --key value / --key=value / --flag ----------------------
@@ -85,6 +85,113 @@ function structuralCheck(file) {
   }
   if (buf[0] === 0xff && buf[1] === 0xd8) return { ok: true, fmt: 'jpeg' };
   return { ok: false, reason: 'not-an-image (bad magic)' };
+}
+
+function inside(root, target) {
+  const rel = path.relative(root, target);
+  return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+}
+
+// Capture canonical identity and the exact bytes that the adapter will upload.
+// A symlink or junction outside the project is rejected before it is opened.
+function evidenceManifest(cwd, attachments) {
+  const blocked = [], evidence = [];
+  if (!Array.isArray(attachments)) return { blocked: [{ reason: 'evidence-path-unsafe', detail: 'attachments must be an array' }], evidence };
+  const root = fs.realpathSync(cwd);
+  for (const file of attachments) {
+    if (typeof file !== 'string' || !file || file.split(/[\\/]/).includes('..')) {
+      blocked.push({ reason: 'evidence-path-unsafe', file, detail: 'malformed or traversal path' });
+      continue;
+    }
+    let actual, handle;
+    try {
+      const requested = path.resolve(cwd, file);
+      actual = fs.realpathSync(requested);
+      if (!inside(root, actual)) throw new Error('outside project');
+      handle = fs.openSync(actual, 'r');
+      const before = fs.fstatSync(handle);
+      if (!before.isFile()) throw new Error('not a regular file');
+      const bytes = fs.readFileSync(handle);
+      const after = fs.fstatSync(handle);
+      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size ||
+          fs.realpathSync(requested) !== actual) throw new Error('evidence changed during read');
+      evidence.push({ file: actual, size: bytes.length, dev: before.dev, ino: before.ino,
+        sha256: crypto.createHash('sha256').update(bytes).digest('hex'), bytes });
+    } catch (error) {
+      blocked.push({ reason: 'evidence-path-unsafe', file, detail: error.message });
+    } finally { if (handle !== undefined) fs.closeSync(handle); }
+  }
+  return { blocked, evidence };
+}
+
+function evidenceIdentity(evidence) {
+  return evidence.map(({ file, size, dev, ino, sha256 }) => ({ file, size, dev, ino, sha256 }));
+}
+
+function approvalDigest(adapter, spec, args, fields, evidence, plan) {
+  const target = { provider: adapter.name, base: adapter.config.base,
+    project: adapter.config.project || adapter.config.projectKey || null };
+  const flags = { allowDuplicate: Boolean(args['allow-duplicate']), noScreenshots: Boolean(args['no-screenshots']),
+    force: Boolean(args.force), refreshFields: Boolean(args['refresh-fields']) };
+  const digest = crypto.createHash('sha256').update(JSON.stringify({ target, spec, fields,
+    evidence: evidenceIdentity(evidence), plan, flags })).digest('hex');
+  return { target, digest };
+}
+
+function receiptForApprovedPlan(cwd, args, target, digest, plan) {
+  let saved;
+  try { saved = JSON.parse(fs.readFileSync(args['approved-plan'], 'utf8')); }
+  catch { return { blocked: [{ reason: 'approval-plan-unreadable' }] }; }
+  // The host obtains human approval. This local marker binds the write intent;
+  // it does not authenticate the human or create a second approval interaction.
+  if (!saved || saved.ok !== true || saved.mode !== 'plan' || saved.approved !== true ||
+      saved.approvalDigest !== digest || JSON.stringify(saved.target) !== JSON.stringify(target) ||
+      JSON.stringify(saved.plan) !== JSON.stringify(plan)) {
+    return { blocked: [{ reason: 'approval-plan-drift', message: 'approved target, fields, evidence, or write plan changed' }] };
+  }
+  const root = fs.realpathSync(cwd);
+  const agentexDir = path.join(root, '.agentex');
+  const ledgerDir = path.join(agentexDir, 'bug-write-ledger');
+  for (const dir of [agentexDir, ledgerDir]) {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+    if (!inside(root, fs.realpathSync(dir))) return { blocked: [{ reason: 'approval-ledger-unsafe' }] };
+  }
+  const file = path.join(ledgerDir, `${digest}.json`);
+  const receipt = { approvalDigest: digest, target, state: 'in-flight', checkpoints: [] };
+  try { fs.writeFileSync(file, JSON.stringify(receipt), { flag: 'wx', mode: 0o600 }); }
+  catch (error) {
+    if (error.code === 'EEXIST') return { blocked: [{ reason: 'already-attempted', receipt: file }] };
+    throw error;
+  }
+  return { file, receipt };
+}
+
+async function executeApproved(intents, approval, cwd, attachments, expectedEvidence) {
+  const ledger = intents.map(({ step, describe }) => ({ step, describe, status: 'not-attempted' }));
+  let localPersistenceError = null;
+  for (let i = 0; i < intents.length; i++) {
+    const entry = ledger[i];
+    try {
+      // Check again before each external write. Uploads consume these exact
+      // buffers, so a later path swap cannot alter the bytes sent.
+      const current = evidenceManifest(cwd, attachments);
+      if (current.blocked.length || JSON.stringify(evidenceIdentity(current.evidence)) !== JSON.stringify(evidenceIdentity(expectedEvidence))) {
+        throw new Error('approved evidence changed or escaped the project');
+      }
+      const res = (await intents[i].run(current.evidence)) || {};
+      entry.status = 'done';
+      if (res.id !== undefined && res.id !== null) entry.id = res.id;
+      if (res.url !== undefined && res.url !== null) entry.url = res.url;
+      approval.receipt.checkpoints.push({ ...entry });
+      try { fs.writeFileSync(approval.file, JSON.stringify(approval.receipt)); }
+      catch (error) { localPersistenceError = error.message; break; }
+    } catch (error) { entry.status = 'failed'; entry.reason = error.message; break; }
+  }
+  approval.receipt.state = ledger.every(item => item.status === 'done') && !localPersistenceError ? 'complete' : 'needs-reconciliation';
+  approval.receipt.ledger = ledger;
+  try { fs.writeFileSync(approval.file, JSON.stringify(approval.receipt)); }
+  catch (error) { localPersistenceError ||= error.message; }
+  return { ledger, localPersistenceError };
 }
 
 // ReproSteps HTML mirroring the template (timestamp+summary / steps / expected /
@@ -336,7 +443,7 @@ async function runJiraBug(adapter, spec, args, cwd) {
     return { code: 2, out: { ok: false, mode, blocked, validation, ...(cacheOut ? { cache: cacheOut } : {}) } };
   }
 
-  if (!args.execute) {
+  {
     const plan = [];
     const dCreate = await adapter.createWorkItem('Bug', { fields }, { execute: false });
     plan.push({ step: 'create-bug', describe: `${dCreate.method} ${dCreate.url}`, request: dCreate });
@@ -346,52 +453,43 @@ async function runJiraBug(adapter, spec, args, cwd) {
     }
     const dLink = await adapter.addRelation('{new-bug-key}', linkType, storyKey, { execute: false });
     plan.push({ step: 'link-story', describe: `${dLink.method} ${dLink.url} (${linkType} -> ${storyKey}, the only link)`, request: dLink });
-    return { code: 0, out: { ok: true, mode: 'plan', validation, plan, cache: cacheOut } };
-  }
+    const evidence = evidenceManifest(cwd, atts).evidence;
+    const { target, digest } = approvalDigest(adapter, spec, args, fields, evidence, plan);
+    if (!args.execute) return { code: 0, out: { ok: true, mode: 'plan', target, approvalDigest: digest, validation, plan, cache: cacheOut } };
+    const approval = receiptForApprovedPlan(cwd, args, target, digest, plan);
+    if (approval.blocked) return { code: 2, out: { ok: false, mode, blocked: approval.blocked } };
 
-  // ---- WRITE PHASE: create → attach ×N → link (§5.7) ------------------------
-  const uploaded = [];
-  let bugKey = null; let bugUrl = null;
-  const intents = [
-    {
-      step: 'create-bug',
-      describe: 'create the Bug (POST /rest/api/3/issue)',
-      run: async () => {
+    // Jira creates the issue before attachments; preserve its ID on partial success.
+    const uploaded = [];
+    let bugKey = null; let bugUrl = null;
+    const intents = [
+      { step: 'create-bug', describe: 'create the Bug (POST /rest/api/3/issue)', run: async () => {
         const r = await adapter.createWorkItem('Bug', { fields }, { execute: true });
         bugKey = r.id; bugUrl = r.url;
         return { id: r.id, url: r.url };
-      },
-    },
-    ...atts.map((a) => ({
-      step: 'upload-attachment',
-      describe: `attach ${path.basename(a)} (POST /rest/api/3/issue/{key}/attachments, multipart)`,
-      run: async () => {
-        const u = await adapter.uploadAttachment(a, { issueId: bugKey, execute: true });
-        uploaded.push(u);
-        return { id: u.id, url: u.url };
-      },
-    })),
-    {
-      step: 'link-story',
-      describe: `link the Bug -> story ${storyKey} (${linkType}, POST /rest/api/3/issueLink — the only link)`,
-      run: async () => {
-        await adapter.addRelation(bugKey, linkType, storyKey, { execute: true });
-        return { id: bugKey, url: bugUrl };
-      },
-    },
-  ];
-  const ledger = await new WritePlan(intents).execute();
-  const allDone = ledger.every((l) => l.status === 'done');
-  return {
-    code: allDone ? 0 : 1,
-    out: {
-      ok: allDone,
-      mode: 'executed',
-      ledger,
+      } },
+      ...atts.map((a, index) => ({ step: 'upload-attachment',
+        describe: `attach ${path.basename(a)} (POST /rest/api/3/issue/{key}/attachments, multipart)`,
+        run: async (current) => {
+          const u = await adapter.uploadAttachment(a, { issueId: bugKey, execute: true, bytes: current[index].bytes });
+          uploaded.push(u);
+          return { id: u.id, url: u.url };
+        } })),
+      { step: 'link-story', describe: `link the Bug -> story ${storyKey} (${linkType}, POST /rest/api/3/issueLink)`,
+        run: async () => {
+          await adapter.addRelation(bugKey, linkType, storyKey, { execute: true });
+          return { id: bugKey, url: bugUrl };
+        } },
+    ];
+    const { ledger, localPersistenceError } = await executeApproved(intents, approval, cwd, atts, evidence);
+    const remoteOk = ledger.every(item => item.status === 'done');
+    return { code: remoteOk && !localPersistenceError ? 0 : 1, out: {
+      ok: remoteOk && !localPersistenceError, remoteOk, mode: 'executed', ledger,
       created: { ...(bugKey ? { bugId: bugKey, url: bugUrl } : {}), attachments: uploaded },
+      receipt: approval.file, ...(localPersistenceError ? { localPersistenceError } : {}),
       ...(cacheOut ? { cache: cacheOut } : {}),
-    },
-  };
+    } };
+  }
 }
 
 // ---- validation phase (shared by dry run and the pre-write guard) ------------
@@ -563,6 +661,9 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         out: { ok: false, mode, blocked: [{ reason: 'ci-mode', message: 'tracker writes are disabled in CI (AGENTEX_CI=1) — bug filing stays interactive; file this defect from an interactive session' }] },
       };
     }
+    if (args.execute && (typeof args['approved-plan'] !== 'string' || !args['approved-plan'])) {
+      return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'approval-required', message: 'an approved plan file is required before tracker writes' }] } };
+    }
     if (!args.spec) return { code: 2, out: { ok: false, mode, error: { message: '--spec <file.json> is required' } } };
     let spec;
     try { spec = JSON.parse(fs.readFileSync(args.spec, 'utf8')); }
@@ -578,6 +679,12 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       };
     }
 
+    const checkedEvidence = evidenceManifest(cwd, spec.attachments || []);
+    if (checkedEvidence.blocked.length) {
+      return { code: 2, out: { ok: false, mode, blocked: checkedEvidence.blocked } };
+    }
+    spec = { ...spec, attachments: checkedEvidence.evidence.map(item => item.file) };
+
     const adapter = resolveTracker(cwd, { fetch });
     if (adapter.name === 'jira') return await runJiraBug(adapter, spec, args, cwd);
     const { blocked, validation, fields, atts, cacheInfo, cacheStale } = await validate(adapter, spec, args, cwd);
@@ -589,7 +696,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       return { code: 2, out: { ok: false, mode, blocked, validation, ...(cacheOut ? { cache: cacheOut } : {}), ...(cacheStale ? { cacheStale: true } : {}) } };
     }
 
-    if (!args.execute) {
+    {
       // The PLAN: every intended write, in order, with its exact route — rendered
       // by the agent on the consolidated screen. Nothing has been written.
       const plannedUploads = atts.map((a) => ({ name: path.basename(a), url: '{attachment-url}' }));
@@ -607,18 +714,21 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         addRelations: plannedUploads.map((u) => ({ rel: 'AttachedFile', url: u.url, attributes: { comment: u.name } })),
       }, { execute: false });
       plan.push({ step: 'set-repro-and-evidence', describe: `${dPatch.method} ${dPatch.url}`, request: dPatch });
-      return { code: 0, out: { ok: true, mode: 'plan', validation, plan, cache: cacheOut } };
-    }
+      const evidence = checkedEvidence.evidence;
+      const { target, digest } = approvalDigest(adapter, spec, args, fields, evidence, plan);
+      if (!args.execute) return { code: 0, out: { ok: true, mode: 'plan', target, approvalDigest: digest, validation, plan, cache: cacheOut } };
+      const approval = receiptForApprovedPlan(cwd, args, target, digest, plan);
+      if (approval.blocked) return { code: 2, out: { ok: false, mode, blocked: approval.blocked } };
 
     // ---- WRITE PHASE (only past explicit --execute, i.e. past the user's one approval)
     const uploaded = [];
     let bugId = null; let bugUrl = null;
     const intents = [
-      ...atts.map((a) => ({
+      ...atts.map((a, index) => ({
         step: 'upload-attachment',
         describe: `upload ${path.basename(a)} (POST _apis/wit/attachments)`,
-        run: async () => {
-          const u = await adapter.uploadAttachment(a, { execute: true });
+        run: async (current) => {
+          const u = await adapter.uploadAttachment(a, { execute: true, bytes: current[index].bytes });
           uploaded.push(u);
           return { id: u.id, url: u.url };
         },
@@ -653,19 +763,23 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       },
     ];
 
-    const ledger = await new WritePlan(intents).execute();
+    const { ledger, localPersistenceError } = await executeApproved(intents, approval, cwd, atts, evidence);
     const allDone = ledger.every((l) => l.status === 'done');
     return {
-      code: allDone ? 0 : 1,
+      code: allDone && !localPersistenceError ? 0 : 1,
       out: {
-        ok: allDone,
+        ok: allDone && !localPersistenceError,
+        remoteOk: allDone,
         mode: 'executed',
         ledger,
         // Created IDs are ALWAYS surfaced, even when a later step threw.
         created: { ...(bugId ? { bugId, url: bugUrl } : {}), attachments: uploaded },
+        receipt: approval.file,
+        ...(localPersistenceError ? { localPersistenceError } : {}),
         ...(cacheOut ? { cache: cacheOut } : {}),
       },
     };
+    }
   } catch (e) {
     if (e instanceof TrackerError) {
       return { code: 1, out: { ok: false, mode, error: { message: e.message, op: e.op, status: e.status, serverMessage: e.serverMessage, ...(e.credentialHint ? { credentialHint: e.credentialHint } : {}) } } };

@@ -20,4 +20,11 @@ function compareVersions(a, b) {
   return 0;
 }
 
-module.exports = { compareVersions };
+// Release stamps are canonical three-component versions. Keep compareVersions'
+// historical permissive behavior for the separate update-availability display.
+function isReleaseVersion(value) {
+  return typeof value === 'string' && /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?![\s\S])/.test(value)
+    && value.split('.').every((part) => Number.isSafeInteger(Number(part)));
+}
+
+module.exports = { compareVersions, isReleaseVersion };

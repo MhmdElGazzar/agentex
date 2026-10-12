@@ -5,7 +5,7 @@
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { compareVersions } = require('./version.js');
+const { compareVersions, isReleaseVersion } = require('./version.js');
 
 let passed = 0; const failures = [];
 function test(name, fn) {
@@ -62,6 +62,12 @@ test('migrate.js requires the shared lib and has no private compareVersions', ()
     'migrate.js must require ./lib/version.js');
   assert.ok(!/function\s+compareVersions/.test(src),
     'migrate.js must not define its own compareVersions');
+});
+
+test('release stamps require an exact canonical three-part version', () => {
+  for (const value of ['0.23.0', '1.0.0', '10.200.300']) assert.strictEqual(isReleaseVersion(value), true);
+  for (const value of ['0.23.0\n', ' 0.23.0', '0.23.0 ', '0.23', '0.23.0-rc1', '01.2.3',
+    '0.23.9007199254740992', '', null]) assert.strictEqual(isReleaseVersion(value), false, String(value));
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

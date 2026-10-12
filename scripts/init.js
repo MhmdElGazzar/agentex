@@ -9,7 +9,7 @@
 // /update-agentex migration engine — one definition of "current conventions".
 const path = require('path');
 const {
-  scaffoldProject, hasLegacySignals, readVersionStamp, writeVersionStamp, readPluginVersion, STAMP_REL,
+  scaffoldProject, hasLegacySignals, inspectVersionStamp, writeVersionStamp, readPluginVersion, STAMP_REL,
 } = require('./lib/scaffold.js');
 
 const pluginRoot = path.resolve(__dirname, '..');
@@ -21,6 +21,12 @@ if (projectRoot === pluginRoot) {
 }
 
 let created = 0, skipped = 0;
+const stamp = inspectVersionStamp(projectRoot);
+if (stamp.kind === 'malformed') {
+  console.error('[error] malformed AgenTeX version stamp; fix it before scaffolding');
+  process.exit(1);
+}
+const pluginVersion = readPluginVersion(pluginRoot);
 const print = a => {
   if (a.kind === 'created') created++; else skipped++;
   console.log(`[${a.kind}] ${a.path}${a.note ? ` — ${a.note}` : ''}`);
@@ -36,12 +42,12 @@ for (const action of scaffoldProject(projectRoot, pluginRoot)) print(action);
 //     legacy keys in .env) stays stamp-less, or the migrator would fast-path it as
 //     up to date while legacy conventions remain; /update-agentex stamps it after
 //     migrating.
-if (readVersionStamp(projectRoot)) {
+if (stamp.kind === 'valid') {
   print({ kind: 'skipped', path: STAMP_REL, note: 'already stamped — run /update-agentex after plugin updates' });
 } else if (hasLegacySignals(projectRoot)) {
   print({ kind: 'skipped', path: STAMP_REL, note: 'legacy conventions detected — run /update-agentex to migrate this project and stamp it' });
 } else {
-  print(writeVersionStamp(projectRoot, readPluginVersion(pluginRoot)));
+  print(writeVersionStamp(projectRoot, pluginVersion));
 }
 
 console.log(`\nAgenTeX scaffold done: ${created} created, ${skipped} skipped (existing files are never overwritten).`);
