@@ -17,18 +17,24 @@ function prepare(input) {
   const projectRoot = path.resolve(input.projectRoot);
   if (!path.isAbsolute(input.projectRoot) || !fs.statSync(projectRoot).isDirectory()) throw Error('absolute projectRoot required');
   if (!Array.isArray(input.scenarios) || !input.scenarios.length) throw Error('scenarios required');
+  const mode = input.mode || 'sequential';
+  if (!['sequential', 'parallel'].includes(mode)) throw Error('invalid mode');
+  if (mode === 'parallel' && (!Number.isInteger(input.hostCapacity) || input.hostCapacity < 1))
+    throw Error('verified positive hostCapacity required');
+  const concurrency = mode === 'parallel' ? Math.min(6, input.hostCapacity) : 1;
   fs.mkdirSync(path.join(projectRoot, 'executions'), { recursive: true });
   const runRoot = fs.mkdtempSync(path.join(projectRoot, 'executions', 'codex-'));
   const sourceRoot = path.join(runRoot, 'sources');
-  for (const sub of ['sources', 'assignments', 'results', 'validation', 'browser-sessions']) fs.mkdirSync(path.join(runRoot, sub));
+  for (const sub of ['sources', 'assignments', 'results', 'validation', 'browser-sessions', 'worker-events']) fs.mkdirSync(path.join(runRoot, sub));
   const runId = path.basename(runRoot);
-  const sessionId = 'codex-' + id();
-  const sessionDir = path.join(runRoot, 'browser-sessions', sessionId);
-  fs.mkdirSync(path.join(sessionDir, 'screenshots'), { recursive: true });
-  fs.mkdirSync(path.join(sessionDir, 'logs'), { recursive: true });
+  const sessionId = mode === 'sequential' ? 'codex-' + id() : null;
   const assignments = [];
   for (const scenario of input.scenarios) {
     const assignmentId = id();
+    const ownedSessionId = sessionId || 'codex-' + id();
+    const sessionDir = path.join(runRoot, 'browser-sessions', ownedSessionId);
+    fs.mkdirSync(path.join(sessionDir, 'screenshots'), { recursive: true });
+    fs.mkdirSync(path.join(sessionDir, 'logs'), { recursive: true });
     let text, sourceKind, sourceIdentity;
     if (typeof scenario.spec === 'string') {
       const spec = path.resolve(projectRoot, scenario.spec);
@@ -45,7 +51,7 @@ function prepare(input) {
     const sourcePath = assignmentId + '.md';
     fs.writeFileSync(path.join(sourceRoot, sourcePath), text, { flag: 'wx' });
     const assignment = freezeAssignment({
-      runId, attemptId: id(), assignmentId, sessionId,
+      runId, attemptId: id(), assignmentId, sessionId: ownedSessionId,
       scope: { kind: sourceKind, value: sourceIdentity },
       source: { kind: sourceKind, path: sourcePath },
       requiredSteps: scenario.requiredSteps,
@@ -55,25 +61,37 @@ function prepare(input) {
     writeNew(path.join(runRoot, 'assignments', assignmentId + '.json'), assignment);
     assignments.push({ assignmentId, sourceIdentity, sourceDigest: assignment.source.digest,
       assignmentDigest: assignment.assignmentDigest, attemptId: assignment.attemptId,
+      sessionId: ownedSessionId, sessionDir,
       requiredSteps: assignment.requiredSteps, policy: assignment.policy, drivers: driversOfText(text),
       assignmentFile: path.join(runRoot, 'assignments', assignmentId + '.json'),
       resultFile: path.join(runRoot, 'results', assignmentId + '.json') });
   }
-  const custody = { runId, sessionId, sourceRoot, runRoot, assignments };
+  const custody = { runId, mode, concurrency, sessionId, sourceRoot, runRoot, assignments };
   writeNew(path.join(runRoot, 'custody.json'), custody);
-  return { ...custody, sessionDir };
+  return { ...custody, ...(mode === 'sequential' ? { sessionDir: assignments[0].sessionDir } : {}) };
+}
+function normalizeCustodyRecord(custody, record) {
+  const mode = custody.mode === undefined ? 'sequential' : custody.mode;
+  if (!['sequential', 'parallel'].includes(mode)) throw Error('invalid custody mode');
+  const sessionId = record.sessionId === undefined && mode === 'sequential'
+    ? custody.sessionId : record.sessionId;
+  if (typeof sessionId !== 'string' || !sessionId ||
+      (mode === 'sequential' && sessionId !== custody.sessionId) ||
+      (mode === 'parallel' && custody.sessionId !== null)) throw Error('custody session mismatch');
+  return { ...record, sessionId };
 }
 function inspect(runRootInput, assignmentId) {
   const runRoot = path.resolve(runRootInput);
   const custody = json(path.join(runRoot, 'custody.json'));
   if (custody.runRoot !== runRoot) throw Error('run root mismatch');
-  const record = custody.assignments.find(a => a.assignmentId === assignmentId);
-  if (!record) throw Error('unknown assignment');
+  const retained = custody.assignments.find(a => a.assignmentId === assignmentId);
+  if (!retained) throw Error('unknown assignment');
+  const record = normalizeCustodyRecord(custody, retained);
   const assignment = json(record.assignmentFile);
   if (assignment.assignmentDigest !== record.assignmentDigest ||
       assignment.source.digest !== record.sourceDigest ||
       assignment.scope.value !== record.sourceIdentity ||
-      assignment.sessionId !== custody.sessionId ||
+      assignment.sessionId !== record.sessionId ||
       assignment.runId !== custody.runId || assignment.attemptId !== record.attemptId ||
       !isDeepStrictEqual(assignment.requiredSteps, record.requiredSteps) ||
       !isDeepStrictEqual(assignment.policy, record.policy)) throw Error('custody mismatch');
@@ -86,9 +104,8 @@ function inspect(runRootInput, assignmentId) {
     const otherProductFailure = validation.verdict === 'FAIL' && Array.isArray(result?.steps) &&
       result.steps.some(step => step.outcome === 'FAIL' && !pending(step) && step.uiCheck?.status !== 'VIEW MISMATCH ERROR');
     validation = { ...validation, ok: false,
-    verdict: otherProductFailure ? 'FAIL' : 'BLOCKED',
-    exitCode: otherProductFailure ? 1 : 2,
-    errors: [...validation.errors, ...uiProblems.map(code => ({ code }))] };
+      verdict: otherProductFailure ? 'FAIL' : 'BLOCKED', exitCode: otherProductFailure ? 1 : 2,
+      errors: [...validation.errors, ...uiProblems.map(code => ({ code }))] };
   }
   let deferred = [];
   const resolutionFile = path.join(runRoot, 'resolutions', assignmentId + '.json');

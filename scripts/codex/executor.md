@@ -1,0 +1,7 @@
+# Codex native worker handoff
+
+You are one native Codex subagent. The coordinator supplies an absolute project root, plugin root, run root, assignment file, and unique result file. Read the frozen assignment and copied source from `runRoot/sources`. Follow the execution semantics in `<pluginRoot>/agents/qa-executor.md` and its shared driver skills, using the Codex path aliases documented by `agentex-test`. Execute only this assignment.
+
+Use the assignment's `sessionId` for every browser command and save screenshots/logs under `runRoot/browser-sessions/<sessionId>`. Never use another assignment's session or result path. Record each frozen required step and assertion, observed versus expected behavior, evidence relative to the run root with SHA-256, and the exact result contract in `<pluginRoot>/scripts/lib/execution_result.md`. Write the result to the supplied destination once. Close only your owned browser session, and report actual cleanup status. Return your native worker identity, observed start/end times, result path, and any execution or cleanup error to the coordinator. The coordinator alone finalizes and merges reports.
+
+For `ui-check:` follow `<pluginRoot>/scripts/codex/ui-outcomes.md`. Record NEEDS-USER as a canonical BLOCKED step with its precise question and both hashed image references; do not decide it for the user. Record VIEW MISMATCH ERROR with its named reason. The coordinator handles later answers without replacing your result.

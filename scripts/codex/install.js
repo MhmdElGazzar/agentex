@@ -5,7 +5,7 @@ const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const { validateProjectRoot, assertManagedPath } = require('../lib/install_paths');
 const pluginRoot = path.resolve(__dirname, '../..');
-const names = ['agentex-init', 'agentex-test', 'agentex-update'];
+const names = ['agentex-init', 'agentex-test', 'agentex-update', 'agentex-parallel'];
 const hash = s => crypto.createHash('sha256').update(s).digest('hex');
 const metadataParts = ['.agentex', 'codex.json'];
 const skillParts = name => ['.agents', 'skills', name, 'SKILL.md'];

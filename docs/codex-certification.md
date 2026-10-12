@@ -5,7 +5,8 @@ attempt, a fresh CLI session started a real host, but its stderr recorded policy
 rejection of reading the native init skill. The process exited 0 after reporting
 the limitation; this is not an AgenTeX PASS. The ignored local evidence from that
 attempt is historical and is not included in this source package. Native INIT,
-TEST, and UPDATE certification below remain unverified.
+TEST, and UPDATE certification below remain unverified. Native parallel
+certification also remains unverified.
 Use a normally configured Codex session that is permitted to read skills and execute
 local commands. Do not bypass organizational policy or disable sandbox protection.
 
@@ -50,8 +51,8 @@ No commits, publication, production services or subagents.
 Verify the transcript reads the consumer's installed init SKILL.md and executes its
 shipped `node <AGENTEX_PLUGIN_ROOT>/scripts/codex/install.js init
 <CONSUMER_PROJECT_ROOT>` command (with actual quoted absolute paths). Retain
-`.agentex/codex.json`, the **exactly three** installed skill hashes for
-`agentex-init`, `agentex-test`, and `agentex-update`, and configuration hashes.
+`.agentex/codex.json`, the **exactly four** installed skill hashes for
+`agentex-init`, `agentex-test`, `agentex-update`, and `agentex-parallel`, and configuration hashes.
 Verify all referenced files resolve.
 
 Prepare your own synthetic fixture in the consumer; no ignored local fixture or
@@ -115,6 +116,18 @@ expect one passed, one blocked, aggregate BLOCKED/2.
 For every run retain custody, source snapshots, assignments, results, validations,
 timing metadata, evidence hashes, `run-summary.json`, `report.md`, `extent-report.html`,
 `verdict.json`, and the final user-facing response. Inspect all three report formats.
+
+## Native parallel TEST
+
+In a separate fresh Codex session at the synthetic consumer root, invoke the
+installed `$agentex-parallel` skill with independent saved specs from the fixture.
+Use only a host that exposes native subagent delegation and lifecycle observation.
+Retain the worker identities, launch and terminal records, distinct session and
+evidence directories, actual worker time intervals, shared validation results,
+and the coordinator's standard reports. Confirm overlapping worker intervals before
+claiming concurrent execution. If the host cannot delegate or observe lifecycle,
+record BLOCKED instead of claiming certification. The parallel lifecycle and
+`launch-failed` behavior are described in [Codex integration](./codex.md#native-parallel-handoff).
 
 ## Native UPDATE
 

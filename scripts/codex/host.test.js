@@ -87,6 +87,39 @@ test('multiple sequential results in one session validate independently', () => 
   assert.equal(finalize(c.runRoot, y.info.assignmentId).verdict, 'PASS');
   assert.equal(JSON.parse(fs.readFileSync(x.info.resultFile)).sessionId, JSON.parse(fs.readFileSync(y.info.resultFile)).sessionId);
 });
+
+test('B-shaped sequential custody retains its shared session through finalization and report', () => {
+  const c = setup(), { info } = result(c);
+  const custodyFile = path.join(c.runRoot, 'custody.json');
+  const custody = JSON.parse(fs.readFileSync(custodyFile, 'utf8'));
+  delete custody.mode;
+  delete custody.concurrency;
+  delete custody.assignments[0].sessionId;
+  delete custody.assignments[0].sessionDir;
+  fs.writeFileSync(custodyFile, JSON.stringify(custody));
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'PASS');
+  const timing = { startedAt: '2026-10-12T00:00:00Z', endedAt: '2026-10-12T00:00:01Z', durationMs: 1000 };
+  const output = require('./report').report(c.runRoot, { run: timing, scenarios: { [info.assignmentId]: timing } });
+  assert.equal(output.verdict, 'PASS');
+  const summary = JSON.parse(fs.readFileSync(path.join(c.runRoot, 'run-summary.json')));
+  assert.equal(summary.testCases[0].session, c.sessionId);
+});
+
+test('conflicting or absent sequential custody session is rejected without rewriting inputs', () => {
+  const c = setup(), { info } = result(c);
+  const file = path.join(c.runRoot, 'custody.json');
+  const original = JSON.parse(fs.readFileSync(file));
+  const conflict = structuredClone(original);
+  conflict.assignments[0].sessionId = 'different-session';
+  fs.writeFileSync(file, JSON.stringify(conflict));
+  assert.throws(() => finalize(c.runRoot, info.assignmentId), /custody session mismatch/);
+  const missing = structuredClone(original);
+  delete missing.assignments[0].sessionId;
+  delete missing.sessionId;
+  fs.writeFileSync(file, JSON.stringify(missing));
+  assert.throws(() => finalize(c.runRoot, info.assignmentId), /custody session mismatch/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file)), missing);
+});
 for (const outcome of ['PASS', 'FAIL', 'BLOCKED']) test('authoritative ' + outcome, () => {
   const c = setup(), { info } = result(c, 0, outcome);
   const v = finalize(c.runRoot, info.assignmentId);

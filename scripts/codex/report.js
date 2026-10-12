@@ -40,6 +40,13 @@ function report(runRootInput, metadata, options = {}) {
       try { checked = inspect(runRoot, record.assignmentId); }
       catch { checked = { validation: blocked('ingestion-error') }; }
       let validation = checked.validation;
+      if (custody.mode === 'parallel') {
+        const problem = require('./parallel').audit(runRoot, record.assignmentId);
+        if (problem) validation = { ...validation, ok: false,
+          verdict: validation.verdict === 'FAIL' ? 'FAIL' : 'BLOCKED',
+          exitCode: validation.verdict === 'FAIL' ? 1 : 2,
+          errors: [...validation.errors, { code: problem }] };
+      }
       const validationFile = path.join(runRoot, 'validation', record.assignmentId + '.json');
       if (fs.existsSync(validationFile)) {
         try {
@@ -51,7 +58,7 @@ function report(runRootInput, metadata, options = {}) {
             errors: [...validation.errors, { code: 'persisted-validation-mismatch' }] };
         }
       } else write(validationFile, validation);
-      rows.push({ ...checked, record, validation, verdict: validation.verdict });
+      rows.push({ ...checked, record: checked.record || record, validation, verdict: validation.verdict });
     }
     if (!timing(metadata?.run)) throw Error('observed run timing required');
     const summary = { total: rows.length, ...Object.fromEntries(COUNT_KEYS.map(key => [key, 0])) };
@@ -66,11 +73,13 @@ function report(runRootInput, metadata, options = {}) {
       summary[status === 'warning' ? 'warnings' : status]++;
       return { name: record.sourceIdentity, spec: record.sourceIdentity, status,
         startedAt: capture.startedAt, endedAt: capture.endedAt, durationMs: capture.durationMs,
-        session: custody.sessionId,
+        session: record.sessionId,
         steps: validation.ok ? result.steps.map(step => ({ desc: step.stepId,
           status: mismatch(step) ? 'viewMismatch' : statuses[step.outcome],
           note: mismatch(step) ? `VIEW MISMATCH ERROR: ${step.uiCheck.reason}` : pending(step)
-            ? `needs-user: ${step.uiCheck.question}` : typeof step.note === 'string' ? step.note : '',
+            ? `needs-user: ${step.uiCheck.question}` : typeof step.note === 'string' ? step.note :
+            (typeof step.expected === 'string' && typeof step.observed === 'string'
+              ? `Expected: ${step.expected}; observed: ${step.observed}` : ''),
           ...(step.uiCheck ? { uiCheck: projectUiReport(step) } : {}),
           evidence: (step.evidence || []).map(ref => ({ path: ref.path, caption: step.stepId })) }))
           : [{ desc: 'Authoritative validation', status, note: validation.errors.map(e => e.code).join(', ') }],
@@ -85,9 +94,10 @@ function report(runRootInput, metadata, options = {}) {
     const output = { ok: rows.every(x => x.validation.ok), verdict, exitCode: { PASS: 0, FAIL: 1, BLOCKED: 2 }[verdict],
       counts: summary, coverage: rows.map(x => ({ assignmentId: x.record.assignmentId, ...x.validation.coverage })),
       ...(blockedReasons.length ? { blockedReasons } : {}) };
-    const data = { schemaVersion: 2, title: 'Codex sequential execution', date: metadata.run.startedAt.slice(0, 10),
+    const mode = custody.mode || 'sequential';
+    const data = { schemaVersion: 2, title: `Codex ${mode} execution`, date: metadata.run.startedAt.slice(0, 10),
       run: { startedAt: metadata.run.startedAt, endedAt: metadata.run.endedAt, durationMs: metadata.run.durationMs,
-        mode: 'sequential', sessions: rows.map(x => ({ session: custody.sessionId, spec: x.record.sourceIdentity,
+        mode, sessions: rows.map(x => ({ session: x.record.sessionId, spec: x.record.sourceIdentity,
           label: x.record.assignmentId })) }, summary, testCases, validation: output };
     for (const key of ['environment', 'targetUrl', 'loginMode', 'tools']) {
       if (metadata.run[key] !== undefined) data.run[key] = metadata.run[key];
@@ -96,7 +106,7 @@ function report(runRootInput, metadata, options = {}) {
     // Clear an earlier success before attempting any output. A crash cannot leave a current PASS verdict.
     write(verdictFile, { ...blocked('report-incomplete'), counts: summary });
     write(summaryFile, data);
-    const md = ['# Codex sequential execution', '', `Verdict: **${verdict}** (exit ${output.exitCode})`, '',
+    const md = [`# Codex ${mode} execution`, '', `Verdict: **${verdict}** (exit ${output.exitCode})`, '',
       `Environment: ${data.run.environment || 'not specified'}`, '',
       `Scenarios: ${summary.total}; passed: ${summary.passed}; failed: ${summary.failed}; blocked: ${summary.blocked}; view mismatch: ${summary.viewMismatch}; warnings: ${summary.warnings}; flaky: ${summary.flaky}.`, '',
       '[Run summary (JSON)](./run-summary.json) | [HTML report](./extent-report.html)', '',
