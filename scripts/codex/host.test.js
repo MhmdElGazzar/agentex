@@ -5,13 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { prepare, finalize, resolve } = require('./host');
-const { sha256 } = require('../lib/execution_result');
+const { sha256, freezeAssignment } = require('../lib/execution_result');
 const { run, syncSkills } = require('./install');
 const { spawnSync } = require('node:child_process');
+const { completeBrowser } = require('./browser_test_helper');
 const pluginRoot = path.resolve(__dirname, '../..');
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-codex-test-'));
 const step = (id = 'step-1') => ({ id, assertionIds: ['assert-' + id], evidenceRequired: true });
-function setup(scenarios = [{ adHoc: 'Open the page and verify the title.', requiredSteps: [step()] }]) {
+function setup(scenarios = [{ adHoc: 'Drivers: api\napi: Verify the response.', requiredSteps: [step()] }]) {
   const projectRoot = temp();
   fs.mkdirSync(path.join(projectRoot, 'executions'));
   return prepare({ projectRoot, scenarios });
@@ -81,12 +82,125 @@ test('saved and ad hoc specs retain source identity and freeze obligations', () 
   assert.equal(JSON.parse(fs.readFileSync(c.assignments[0].assignmentFile)).requiredSteps[0].id, 'saved');
 });
 test('multiple sequential results in one session validate independently', () => {
-  const c = setup([{ adHoc: 'one', requiredSteps: [step('one')] }, { adHoc: 'two', requiredSteps: [step('two')] }]);
+  const c = setup([{ adHoc: 'Drivers: api\napi: one', requiredSteps: [step('one')] },
+    { adHoc: 'Drivers: api\napi: two', requiredSteps: [step('two')] }]);
   const x = result(c, 0), y = result(c, 1);
   assert.equal(finalize(c.runRoot, x.info.assignmentId).verdict, 'PASS');
   assert.equal(finalize(c.runRoot, y.info.assignmentId).verdict, 'PASS');
   assert.equal(JSON.parse(fs.readFileSync(x.info.resultFile)).sessionId, JSON.parse(fs.readFileSync(y.info.resultFile)).sessionId);
 });
+test('headed scenario cannot validate before matching mode verification', () => {
+  const projectRoot = temp();
+  const c = prepare({ projectRoot, browserMode: 'HEADED', scenarios: [
+    { adHoc: 'Open a page and verify it.', requiredSteps: [step()] },
+  ] });
+  const { info } = result(c);
+  assert.equal(JSON.parse(fs.readFileSync(info.assignmentFile)).browserMode, 'HEADED');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(c.runRoot, 'custody.json'))).assignments[0].browserMode, 'HEADED');
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'BLOCKED');
+});
+test('headed verification permits validation and rejects foreign metadata', () => {
+  const projectRoot = temp();
+  const c = prepare({ projectRoot, browserMode: 'HEADED', scenarios: [
+    { adHoc: 'Open a page and verify it.', requiredSteps: [step()] },
+  ] });
+  const { info } = result(c);
+  const file = path.join(info.sessionDir, 'logs', 'browser-mode.json');
+  completeBrowser(c, { mode: 'HEADED' });
+  assert.equal(require('./host').inspect(c.runRoot, info.assignmentId).validation.verdict, 'PASS');
+  const altered = JSON.parse(fs.readFileSync(file));
+  altered.observedSessions[0].name = 'foreign';
+  fs.writeFileSync(file, JSON.stringify(altered));
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'BLOCKED');
+});
+test('new default HEADLESS browser assignment cannot pass without preflight', () => {
+  const c = prepare({ projectRoot: temp(), scenarios: [
+    { adHoc: 'Open a page and verify it.', requiredSteps: [step()] }] });
+  const { info } = result(c);
+  assert.equal(JSON.parse(fs.readFileSync(info.assignmentFile)).browserMode, 'HEADLESS');
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'BLOCKED');
+});
+for (const [label, damage] of [
+  ['actual mode mismatch', (c, info) => {
+    const file = path.join(info.sessionDir, 'logs', 'browser-mode.json');
+    const record = JSON.parse(fs.readFileSync(file));
+    record.observedSessions[0].headed = true;
+    fs.writeFileSync(file, JSON.stringify(record));
+  }],
+  ['missing guarded action', (c, info) => fs.unlinkSync(path.join(info.sessionDir, 'logs', 'browser-actions.jsonl'))],
+  ['missing cleanup proof', (c, info) => fs.unlinkSync(path.join(info.sessionDir, 'logs', 'browser-close.jsonl'))],
+]) test('default HEADLESS blocks on ' + label, () => {
+  const c = prepare({ projectRoot: temp(), scenarios: [
+    { adHoc: 'Open a page and verify it.', requiredSteps: [step()] }] });
+  const { info } = result(c);
+  completeBrowser(c);
+  damage(c, info);
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'BLOCKED');
+});
+test('executor cleanup claim cannot pass without host close evidence', () => {
+  const c = prepare({ projectRoot: temp(), browserMode: 'HEADED', scenarios: [
+    { adHoc: 'Open a page and verify it.', requiredSteps: [step()] }] });
+  const { info, r } = result(c);
+  assert.equal(r.cleanup.status, 'completed');
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'BLOCKED');
+});
+test('HEADED preflight and action cannot pass without host close proof', () => {
+  const c = prepare({ projectRoot: temp(), browserMode: 'HEADED', scenarios: [
+    { adHoc: 'Open a page and verify it.', requiredSteps: [step()] }] });
+  const { info } = result(c);
+  completeBrowser(c, { mode: 'HEADED' });
+  fs.unlinkSync(path.join(info.sessionDir, 'logs', 'browser-close.jsonl'));
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'BLOCKED');
+});
+test('explicit HEADLESS browser assignment passes with host-controlled evidence', () => {
+  const c = prepare({ projectRoot: temp(), browserMode: 'HEADLESS', scenarios: [
+    { adHoc: 'Open a page and verify it.', requiredSteps: [step()] }] });
+  const { info } = result(c);
+  completeBrowser(c);
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'PASS');
+});
+test('executor PASS after a failed guarded action remains BLOCKED through report', () => {
+  const c = prepare({ projectRoot: temp(), scenarios: [
+    { adHoc: 'Open a page and verify it.', requiredSteps: [step()] }] });
+  const { info } = result(c);
+  completeBrowser(c, { failAfterSuccess: true });
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'BLOCKED');
+  const timing = { startedAt: '2026-10-12T00:00:00Z', endedAt: '2026-10-12T00:00:01Z', durationMs: 1000 };
+  const output = require('./report').report(c.runRoot, { run: timing,
+    scenarios: { [info.assignmentId]: timing } });
+  assert.equal(output.verdict, 'BLOCKED');
+});
+test('one verified close covers a sequential shared session after all assignment actions', () => {
+  const c = prepare({ projectRoot: temp(), scenarios: [
+    { adHoc: 'Open view one.', requiredSteps: [step('one')] },
+    { adHoc: 'Open view two.', requiredSteps: [step('two')] }] });
+  const first = result(c, 0), second = result(c, 1);
+  completeBrowser(c);
+  assert.equal(finalize(c.runRoot, first.info.assignmentId).verdict, 'PASS');
+  assert.equal(finalize(c.runRoot, second.info.assignmentId).verdict, 'PASS');
+  const closes = fs.readFileSync(path.join(first.info.sessionDir, 'logs', 'browser-close.jsonl'), 'utf8').trim().split(/\r?\n/);
+  assert.equal(closes.length, 2); // one attempted and one completed close
+});
+test('legacy browser assignment remains readable without rewriting historical evidence', () => {
+  const c = prepare({ projectRoot: temp(), scenarios: [
+    { adHoc: 'Open a page and verify it.', requiredSteps: [step()] }] });
+  const { info, r } = result(c);
+  const current = JSON.parse(fs.readFileSync(info.assignmentFile));
+  const { assignmentDigest, schemaVersion, browserMode, browserEvidenceVersion, ...base } = current;
+  const legacy = freezeAssignment(base, { sourceRoot: path.join(c.runRoot, 'sources') });
+  fs.writeFileSync(info.assignmentFile, JSON.stringify(legacy));
+  const custodyFile = path.join(c.runRoot, 'custody.json');
+  const custody = JSON.parse(fs.readFileSync(custodyFile));
+  custody.assignments[0].assignmentDigest = legacy.assignmentDigest;
+  delete custody.assignments[0].browserMode;
+  delete custody.assignments[0].browserEvidenceVersion;
+  fs.writeFileSync(custodyFile, JSON.stringify(custody));
+  r.assignmentDigest = legacy.assignmentDigest;
+  fs.writeFileSync(info.resultFile, JSON.stringify(r));
+  assert.equal(finalize(c.runRoot, info.assignmentId).verdict, 'PASS');
+  assert.equal(fs.existsSync(path.join(info.sessionDir, 'logs', 'browser-mode.json')), false);
+});
+
 for (const outcome of ['PASS', 'FAIL', 'BLOCKED']) test('authoritative ' + outcome, () => {
   const c = setup(), { info } = result(c, 0, outcome);
   const v = finalize(c.runRoot, info.assignmentId);

@@ -25,9 +25,15 @@ TEST SPECIFICATION:
 BROWSER STEPS (only when DRIVERS includes browser; unprefixed steps are browser steps)
 - Read `${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/SKILL.md` before the first browser step. It
   covers commands, evidence, login modes, and the failure signatures.
-- Use `npx playwright-cli` for all browser actions, run from WORKING_DIR. Run HEADLESS
-  (do NOT pass --headed) unless told otherwise.
-- CRITICAL ISOLATION: prefix EVERY command with `-s={{SESSION}}` — a command with no `-s=`
+- For Claude assignments, use `npx playwright-cli` from WORKING_DIR. Run HEADLESS
+  (do NOT pass --headed) unless told otherwise. The raw examples below are Claude-only.
+- For Codex host assignments, the coordinator calls `host.js preflight` before browser scenario actions. The worker reuses that session, routes every browser command through `host.js browser`, and closes with `host.js browser-close`. The guarded command checks the live mode and original launch before and after each action. If verification fails, stop browser scenario work and report BLOCKED with the recorded reason.
+- In Codex `LOGIN_MODE=session`, load the saved state into the verified CLI session with guarded `state-load <state-file>`, then navigate and verify the login landmark there. Do not use `session.js resume` for a native assignment: it launches a separate browser and closes it after checking the state.
+- Native Codex example: `node <pluginRoot>/scripts/codex/host.js browser <runRoot> <assignmentId> goto <TARGET_URL>`;
+  use the same prefix with `snapshot`, `screenshot`, `console`, and every later browser command.
+  Finish the owned session with `node <pluginRoot>/scripts/codex/host.js browser-close <runRoot> <assignmentId>`;
+  in sequential runs, close once after all assignments sharing that session have finished.
+- Claude isolation: prefix EVERY raw CLI command with `-s={{SESSION}}` — a command with no `-s=`
   lands in the prohibited shared `default` session. Never touch the `default` session or any
   other agent's session, and NEVER run `close-all` / `kill-all` — they kill every agent's
   browser, other executions' included. Example:
@@ -36,16 +42,16 @@ BROWSER STEPS (only when DRIVERS includes browser; unprefixed steps are browser 
 - Console errors and failed network calls are defects even when the UI looks fine.
 - For any "success" UI, verify the element's computed display/visibility via `eval` — do not
   trust that the text merely exists in the DOM (it may be static markup).
-- Teardown: run `npx playwright-cli -s={{SESSION}} close` when finished (even on failure) —
+- Claude teardown: run `npx playwright-cli -s={{SESSION}} close` when finished (even on failure) —
   close ONLY {{SESSION}}, never `close-all` / `kill-all`.
 - When DRIVERS has no browser: open no browser, run no `playwright-cli` command, take no
   screenshots. Evidence is the runner logs.
 
 WHERE TO SAVE EVIDENCE (your session slice only)
-- Screenshots (browser scenarios) -> `SESSION_DIR/screenshots/<scenario>.png` (use --filename=, NOT a positional path):
+- Screenshots (browser scenarios) -> `SESSION_DIR/screenshots/<scenario>.png` (use --filename=, NOT a positional path); Claude raw CLI example:
     npx playwright-cli -s={{SESSION}} screenshot --filename={{SESSION_DIR}}/screenshots/s1-home.png
   Capture one on every browser scenario (pass AND fail). Use descriptive names (sX-<what>.png).
-- Logs -> `SESSION_DIR/logs/<scenario>.log` (redirect console output; runners write their own `--log`):
+- Logs -> `SESSION_DIR/logs/<scenario>.log` (redirect console output; runners write their own `--log`); Claude raw CLI example:
     npx playwright-cli -s={{SESSION}} console error > {{SESSION_DIR}}/logs/s1-console.log
   Save network / run-code captures the same way.
 
@@ -125,7 +131,7 @@ EXECUTION RULES
   payment or any other irreversible transaction, and using real personal data — use disposable
   values (e.g. qa.tester@example.com). An auth-gated step with no user defined for the active
   environment is **BLOCKED**: report the missing handle, never improvise credentials.
-- LOGIN_MODE says how a browser gets in. `fresh`: drive the login UI in this session. `session`:
+- LOGIN_MODE says how a browser gets in. `fresh`: drive the login UI in this session. For Claude `session`:
   reuse the saved login first — read `${CLAUDE_PLUGIN_ROOT}/skills/optimize-login/SKILL.md` and
   resume `test/.auth/<app>-<ENVIRONMENT>-state.json` via its bundled `session.js`; log in
   through the UI only if the resume reports RESUME_FAIL. Verify you are in by a landmark

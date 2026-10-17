@@ -6,6 +6,7 @@ const { freezeAssignment, validateExecutionResult } = require('../lib/execution_
 const { driversOfText } = require('../../skills/test-execution/scripts/spec_drivers');
 const { isDeepStrictEqual } = require('node:util');
 const { pending, validateUiDetails, validateResolution } = require('./ui_outcomes');
+const browserMode = require('./browser_mode');
 const id = () => crypto.randomUUID();
 const json = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const writeNew = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n', { flag: 'wx' });
@@ -17,6 +18,7 @@ function prepare(input) {
   const projectRoot = path.resolve(input.projectRoot);
   if (!path.isAbsolute(input.projectRoot) || !fs.statSync(projectRoot).isDirectory()) throw Error('absolute projectRoot required');
   if (!Array.isArray(input.scenarios) || !input.scenarios.length) throw Error('scenarios required');
+  if (input.browserMode !== undefined && !['HEADLESS', 'HEADED'].includes(input.browserMode)) throw Error('invalid browser mode');
   fs.mkdirSync(path.join(projectRoot, 'executions'), { recursive: true });
   const runRoot = fs.mkdtempSync(path.join(projectRoot, 'executions', 'codex-'));
   const sourceRoot = path.join(runRoot, 'sources');
@@ -44,6 +46,7 @@ function prepare(input) {
     } else throw Error('spec or adHoc required');
     const sourcePath = assignmentId + '.md';
     fs.writeFileSync(path.join(sourceRoot, sourcePath), text, { flag: 'wx' });
+    const drivers = driversOfText(text);
     const assignment = freezeAssignment({
       runId, attemptId: id(), assignmentId, sessionId,
       scope: { kind: sourceKind, value: sourceIdentity },
@@ -51,11 +54,15 @@ function prepare(input) {
       requiredSteps: scenario.requiredSteps,
       cleanupRequired: true,
       policy: input.policy || { warningsFailGate: true, flakyFailsGate: false },
+      ...(drivers.includes('browser') ? { browserMode: input.browserMode || 'HEADLESS', browserEvidenceVersion: 2 } : {}),
     }, { sourceRoot });
     writeNew(path.join(runRoot, 'assignments', assignmentId + '.json'), assignment);
     assignments.push({ assignmentId, sourceIdentity, sourceDigest: assignment.source.digest,
       assignmentDigest: assignment.assignmentDigest, attemptId: assignment.attemptId,
-      requiredSteps: assignment.requiredSteps, policy: assignment.policy, drivers: driversOfText(text),
+      sessionId, sessionDir,
+      requiredSteps: assignment.requiredSteps, policy: assignment.policy, drivers,
+      ...(assignment.browserMode !== undefined ? { browserMode: assignment.browserMode } : {}),
+      ...(assignment.browserEvidenceVersion !== undefined ? { browserEvidenceVersion: assignment.browserEvidenceVersion } : {}),
       assignmentFile: path.join(runRoot, 'assignments', assignmentId + '.json'),
       resultFile: path.join(runRoot, 'results', assignmentId + '.json') });
   }
@@ -76,7 +83,9 @@ function inspect(runRootInput, assignmentId) {
       assignment.sessionId !== custody.sessionId ||
       assignment.runId !== custody.runId || assignment.attemptId !== record.attemptId ||
       !isDeepStrictEqual(assignment.requiredSteps, record.requiredSteps) ||
-      !isDeepStrictEqual(assignment.policy, record.policy)) throw Error('custody mismatch');
+      !isDeepStrictEqual(assignment.policy, record.policy) ||
+      assignment.browserMode !== record.browserMode ||
+      assignment.browserEvidenceVersion !== record.browserEvidenceVersion) throw Error('custody mismatch');
   let rawResult;
   try { rawResult = json(record.resultFile); } catch { /* validator rejects missing/malformed results */ }
   let result = rawResult;
@@ -103,6 +112,15 @@ function inspect(runRootInput, assignmentId) {
     result = resolution.finalResult;
     validation = validateExecutionResult({ assignment, result, sourceRoot: custody.sourceRoot, runRoot });
     if (!validation.ok) throw Error('invalid resolved UI result');
+  }
+  if (record.drivers.includes('browser') && assignment.browserEvidenceVersion === 2) {
+    const owners = custody.assignments.filter(a => a.sessionId === record.sessionId).map(a => a.assignmentId);
+    const reason = browserMode.audit(record.sessionDir, record.sessionId, assignment.browserMode,
+      record.assignmentId, { runId: custody.runId, closeOwners: owners });
+    if (reason) {
+      validation = { ...validation, ok: false, verdict: 'BLOCKED', exitCode: 2,
+        errors: [...validation.errors, { code: 'browser-mode-unverified', reason }] };
+    }
   }
   return { assignment, result, validation, record, custody, deferred };
 }
@@ -131,9 +149,32 @@ function finalize(runRootInput, assignmentId) {
   writeNew(path.join(runRoot, 'validation', assignmentId + '.json'), validation);
   return validation;
 }
+function browserContext(runRootInput, assignmentId, forAction = false) {
+  const runRoot = path.resolve(runRootInput);
+  const custody = json(path.join(runRoot, 'custody.json'));
+  if (custody.runRoot !== runRoot) throw Error('run root mismatch');
+  const retained = custody.assignments.find(a => a.assignmentId === assignmentId);
+  if (!retained || !retained.drivers.includes('browser')) throw Error('browser assignment required');
+  const record = retained;
+  if (record.sessionDir !== path.join(runRoot, 'browser-sessions', record.sessionId))
+    throw Error('custody session directory mismatch');
+  const assignment = json(record.assignmentFile);
+  if (assignment.assignmentDigest !== record.assignmentDigest || assignment.sessionId !== record.sessionId ||
+      assignment.browserMode !== record.browserMode ||
+      assignment.browserEvidenceVersion !== record.browserEvidenceVersion) throw Error('custody mismatch');
+  return { projectRoot: path.dirname(path.dirname(runRoot)), runId: custody.runId,
+    assignmentId: record.assignmentId, sessionDir: record.sessionDir,
+    sessionId: record.sessionId, requestedMode: assignment.browserMode || 'HEADLESS' };
+}
 function main(args) {
   try {
     if (args[0] === 'prepare' && args.length === 2) return { output: prepare(json(args[1])), exitCode: 0 };
+    if (args[0] === 'preflight' && args.length === 3) {
+      const output = browserMode.preflight(browserContext(args[1], args[2]));
+      return { output, exitCode: output.verified ? 0 : 2 };
+    }
+    if (args[0] === 'browser' && args.length >= 4) return { output: browserMode.command(browserContext(args[1], args[2], true), args.slice(3)), exitCode: 0 };
+    if (args[0] === 'browser-close' && args.length === 3) return { output: browserMode.close(browserContext(args[1], args[2], true)), exitCode: 0 };
     if (args[0] === 'finalize' && args.length === 3) {
       const output = finalize(args[1], args[2]); return { output, exitCode: output.exitCode };
     }
@@ -145,7 +186,7 @@ function main(args) {
       const output = require('./report').report(args[1], json(args[2]));
       return { output, exitCode: output.exitCode };
     }
-    return { output: { error: 'usage: prepare <input.json> | resolve <runRoot> <assignmentId> <input.json> | finalize <runRoot> <assignmentId> | report <runRoot> <metadata.json>' }, exitCode: 2 };
+    return { output: { error: 'usage: prepare <input.json> | preflight <runRoot> <assignmentId> | browser <runRoot> <assignmentId> <command> [args...] | browser-close <runRoot> <assignmentId> | resolve <runRoot> <assignmentId> <input.json> | finalize <runRoot> <assignmentId> | report <runRoot> <metadata.json>' }, exitCode: 2 };
   } catch (e) { return { output: { verdict: 'BLOCKED', error: e.message }, exitCode: 2 }; }
 }
 module.exports = { prepare, inspect, resolve, finalize, main };
