@@ -6,7 +6,8 @@ The browser driver for all browser actions in a test-execution run.
 - The CLI is the npm package **`@playwright/cli`**. Invoke it as `npx playwright-cli <command>` (a local devDependency, not global).
 - Trust the `preflight.js` verdict for it: the probe judges by output, not exit code alone (see `../experience/gotchas.md`). If it reports `ok: false`: `npm install -D @playwright/cli`, then `npx playwright-cli install-browser chromium`.
 - `preflight.js` also reports **`playwright`**: the npm library, a different thing from this CLI. Only `/optimize-login` needs it, to resume a saved session (only the library can load a `storageState`). `ok: false` there does not block a normal run. To install it: `npm i -D playwright`, then `npx playwright install chromium`.
-- Headed (demos, watching): add `--headed`, e.g. `npx playwright-cli open <url> --headed`. Parallel and regression runs are headless.
+- Claude direct CLI workflow: for an explicitly requested headed run, use `npx playwright-cli -s=<session> open <url> --headed` with the assigned session name. Claude runs headless by default.
+- For explicitly requested headed mode, the Codex host preflight adds `--headed` to `open about:blank`, then verifies the owned session with `list --json`. Subsequent Codex actions use `host.js browser`, which checks live metadata and the original launch PID before and after each action. Otherwise runs default to headless.
 
 ## Commands
 | Command | Use |

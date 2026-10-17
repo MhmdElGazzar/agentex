@@ -12,13 +12,13 @@ the run's own session. You never modify application code. The run itself (modes,
 reports) belongs to the **test-execution** skill.
 
 ## Principles
-- Every command carries `-s=<session>`, with the name `init_run.js` generated for this run. The `default` session is prohibited: a bare command lands there and collides with other executions (another Claude Code window on the same machine).
+- Every command targets the owned session. The Claude driver uses `-s=<session>` from `init_run.js`; Codex use `host.js browser`, which supplies that selector and verifies the current launch. The `default` session is prohibited.
 - Never invent a bare session name like `test`, and never reuse another execution's name.
 - Close only the session this run created: `-s=<session> close`, even on failure. Never run `close-all` / `kill-all`: they kill every session on the machine. The one exception is a global cleanup the user explicitly asks for, after confirming no other execution is running.
 - Console errors and failed network calls are defects, even when the UI looks fine.
 - Screenshot every scenario, pass and fail, with `--filename=` (never a positional path).
 - A "success" check reads the element's computed display/visibility. Text existing in the DOM is not proof.
-- Run headless unless told otherwise. `--headed` is for demos only.
+- Run headless unless headed mode is explicitly requested. In Codex host assignments, complete `host.js preflight` before any browser scenario action, then use `host.js browser` for every action and `host.js browser-close` for cleanup.
 
 ## Executing a browser step
 1. Before the first command in a session, read `references/tools/playwright-cli.md`.
@@ -32,7 +32,7 @@ The orchestrator resolves `LOGIN_MODE`. For a browser it means:
 | Mode | Do |
 |---|---|
 | `fresh` | Drive the login UI in this session. |
-| `session` | Reuse the saved login first: read `${CLAUDE_PLUGIN_ROOT}/skills/optimize-login/SKILL.md` and resume `test/.auth/<app>-<ENVIRONMENT>-state.json` via its `session.js`. Log in through the UI only if the resume reports RESUME_FAIL. |
+| `session` | Claude runs the saved-login check through `session.js`. Codex load `test/.auth/<app>-<ENVIRONMENT>-state.json` through guarded `host.js browser ... state-load <file>` into the verified browser, then navigate and verify the login landmark there. If the state cannot restore login, use the login UI in the same owned browser. |
 
 Either way, verify you are in by a landmark element, never by the URL.
 

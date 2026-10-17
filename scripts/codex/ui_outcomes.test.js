@@ -7,6 +7,7 @@ const path = require('node:path');
 const { prepare, inspect, resolve, finalize, main } = require('./host');
 const { report } = require('./report');
 const { sha256 } = require('../lib/execution_result');
+const { completeBrowser } = require('./browser_test_helper');
 
 function fixture(status = 'NEEDS-USER', second = false) {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ui-outcome-'));
@@ -30,6 +31,7 @@ function fixture(status = 'NEEDS-USER', second = false) {
     cleanup: { ...ids, status: 'completed' }, scenarioOutcome: 'BLOCKED',
     summary: { total: 1, passed: 0, failed: 0, blocked: 1, warnings: 0, flaky: 0 }, verdict: 'BLOCKED', exitCode: 2 };
   fs.writeFileSync(record.resultFile, JSON.stringify(raw));
+  completeBrowser(c);
   return { c, record, raw, images };
 }
 

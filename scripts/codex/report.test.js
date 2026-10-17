@@ -15,7 +15,7 @@ const save = (file, value) => fs.writeFileSync(file, JSON.stringify(value));
 const timing = { startedAt: '2026-10-11T10:00:00Z', endedAt: '2026-10-11T10:00:01Z', durationMs: 1000 };
 function fixture(outcomes, policy = { warningsFailGate: true, flakyFailsGate: false }) {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-codex-report-'));
-  const c = prepare({ projectRoot, policy, scenarios: outcomes.map((o, i) => ({ adHoc: 'Synthetic scenario ' + i,
+  const c = prepare({ projectRoot, policy, scenarios: outcomes.map((o, i) => ({ adHoc: 'Drivers: api\napi: Synthetic scenario ' + i,
     requiredSteps: [{ id: 'observe', assertionIds: ['expected'], evidenceRequired: true }] })) });
   const metadata = { run: timing, scenarios: {} };
   outcomes.forEach((outcome, i) => {
