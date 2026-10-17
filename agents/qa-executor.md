@@ -27,9 +27,9 @@ BROWSER STEPS (only when DRIVERS includes browser; unprefixed steps are browser 
   covers commands, evidence, login modes, and the failure signatures.
 - For Claude assignments, use `npx playwright-cli` from WORKING_DIR. Run HEADLESS
   (do NOT pass --headed) unless told otherwise. The raw examples below are Claude-only.
-- For Codex host assignments, the coordinator calls `host.js preflight` before browser scenario actions. The worker reuses that session, routes every browser command through `host.js browser`, and closes with `host.js browser-close`. The guarded command checks the live mode and original launch before and after each action. If verification fails, stop browser scenario work and report BLOCKED with the recorded reason.
-- In Codex `LOGIN_MODE=session`, load the saved state into the verified CLI session with guarded `state-load <state-file>`, then navigate and verify the login landmark there. Do not use `session.js resume` for a native assignment: it launches a separate browser and closes it after checking the state.
-- Native Codex example: `node <pluginRoot>/scripts/codex/host.js browser <runRoot> <assignmentId> goto <TARGET_URL>`;
+- For Codex and Copilot host assignments, the coordinator calls `host.js preflight` before browser scenario actions (and `parallel.js gate` before native parallel delegation). The worker reuses that session, routes every browser command through `host.js browser`, and closes with `host.js browser-close`. The guarded command checks the live mode and original launch before and after each action. If verification fails, stop browser scenario work and report BLOCKED with the recorded reason.
+- In Codex and Copilot `LOGIN_MODE=session`, load the saved state into the verified CLI session with guarded `state-load <state-file>`, then navigate and verify the login landmark there. Do not use `session.js resume` for a native assignment: it launches a separate browser and closes it after checking the state.
+- Native Codex/Copilot example: `node <pluginRoot>/scripts/codex/host.js browser <runRoot> <assignmentId> goto <TARGET_URL>`;
   use the same prefix with `snapshot`, `screenshot`, `console`, and every later browser command.
   Finish the owned session with `node <pluginRoot>/scripts/codex/host.js browser-close <runRoot> <assignmentId>`;
   in sequential runs, close once after all assignments sharing that session have finished.

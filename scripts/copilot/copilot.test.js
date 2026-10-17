@@ -15,7 +15,7 @@ const timing = { startedAt: '2026-10-12T00:00:00Z', endedAt: '2026-10-12T00:00:0
 function fixture(capacity = 2) {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-copilot-'));
   const custody = prepare({ projectRoot, mode: 'parallel', hostCapacity: capacity,
-    scenarios: ['Observe the welcome message', 'Observe a controlled error'].map((adHoc, i) => ({ adHoc,
+    scenarios: ['Observe the welcome message', 'Observe a controlled error'].map((adHoc, i) => ({ adHoc: 'Drivers: api\napi: ' + adHoc,
       requiredSteps: [{ id: `observe-${i}`, assertionIds: [`assert-${i}`], evidenceRequired: true }] })) });
   return custody;
 }

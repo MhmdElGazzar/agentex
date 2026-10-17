@@ -5,14 +5,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { prepare, finalize } = require('./host');
-const { launch, finish, audit } = require('./parallel');
+const { gate, launch, finish, audit } = require('./parallel');
 const { report } = require('./report');
 const { sha256 } = require('../lib/execution_result');
 const step = { id: 'check', assertionIds: ['visible'], evidenceRequired: true };
 function setup(count = 2, hostCapacity = 2) {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-parallel-'));
   return prepare({ projectRoot, mode: 'parallel', hostCapacity,
-    scenarios: Array.from({ length: count }, (_, i) => ({ adHoc: `Inspect independent view ${i}`, requiredSteps: [step] })) });
+    scenarios: Array.from({ length: count }, (_, i) => ({ adHoc: `Drivers: api\napi: Inspect independent response ${i}`, requiredSteps: [step] })) });
 }
 function submit(c, i, outcome = 'PASS', mutate = () => {}) {
   const record = c.assignments[i], a = JSON.parse(fs.readFileSync(record.assignmentFile));
@@ -60,6 +60,49 @@ test('native dispatch boundary has independent assignments, sessions and destina
   assert.throws(() => prepare({ projectRoot: path.dirname(c.runRoot), mode: 'parallel',
     scenarios: [{ adHoc: 'x', requiredSteps: [step] }] }), /hostCapacity/);
   assert.ok(!fs.readFileSync(path.join(__dirname, 'parallel.js'), 'utf8').includes('spawnSync'));
+});
+test('headed worker launch is blocked before preflight and after failed preflight', () => {
+  const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-parallel-headed-'));
+  const c = prepare({ projectRoot, mode: 'parallel', hostCapacity: 1, browserMode: 'HEADED',
+    scenarios: [{ adHoc: 'Open the browser and verify its title.', requiredSteps: [step] }] });
+  const a = c.assignments[0];
+  assert.throws(() => gate(c.runRoot, a.assignmentId), /preflight missing/);
+  assert.throws(() => launch(c.runRoot, a.assignmentId, '/root/worker'), /dispatch gate missing/);
+  assert.equal(fs.existsSync(path.join(c.runRoot, 'worker-events', a.assignmentId + '.launch.json')), false);
+  fs.writeFileSync(path.join(a.sessionDir, 'logs', 'browser-mode.json'), JSON.stringify({
+    sessionId: a.sessionId, requestedMode: 'HEADED', verified: false, reason: 'browser-mode-mismatch' }));
+  assert.throws(() => gate(c.runRoot, a.assignmentId), /preflight failed/);
+  assert.equal(fs.existsSync(path.join(c.runRoot, 'worker-events', a.assignmentId + '.launch.json')), false);
+});
+test('parallel browser action and worker launch require pre-dispatch gate', () => {
+  const c = prepare({ projectRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-gate-')),
+    mode: 'parallel', hostCapacity: 1, scenarios: [
+      { adHoc: 'Open the browser and verify its title.', requiredSteps: [step] }] });
+  const a = c.assignments[0];
+  const denied = require('./host').main(['browser', c.runRoot, a.assignmentId, 'goto', 'about:blank']);
+  assert.equal(denied.exitCode, 2);
+  assert.match(denied.output.error, /dispatch gate missing/);
+  assert.throws(() => launch(c.runRoot, a.assignmentId, '/root/worker'), /dispatch gate missing/);
+  const event = gate(c.runRoot, a.assignmentId, () => {});
+  assert.equal(event.browserMode, 'HEADLESS');
+  assert.equal(launch(c.runRoot, a.assignmentId, '/root/worker', undefined, () => {}).workerId, '/root/worker');
+  assert.equal(audit(c.runRoot, a.assignmentId), 'worker-incomplete');
+  const gateFile = path.join(c.runRoot, 'worker-events', a.assignmentId + '.gate.json');
+  fs.unlinkSync(gateFile);
+  assert.equal(audit(c.runRoot, a.assignmentId), 'browser-dispatch-gate-missing-or-stale');
+});
+test('parallel audit rejects a gate retained after the recorded worker launch', () => {
+  const c = prepare({ projectRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-gate-order-')),
+    mode: 'parallel', hostCapacity: 1, scenarios: [
+      { adHoc: 'Open the browser and verify its title.', requiredSteps: [step] }] });
+  const a = c.assignments[0];
+  gate(c.runRoot, a.assignmentId, () => {});
+  const start = launch(c.runRoot, a.assignmentId, '/root/worker', undefined, () => {});
+  const file = path.join(c.runRoot, 'worker-events', a.assignmentId + '.gate.json');
+  const event = JSON.parse(fs.readFileSync(file));
+  event.verifiedAt = new Date(Date.parse(start.at) + 1000).toISOString();
+  fs.writeFileSync(file, JSON.stringify(event));
+  assert.equal(audit(c.runRoot, a.assignmentId), 'browser-dispatch-gate-after-launch');
 });
 test('six worker ceiling and verified host capacity are enforced', () => {
   const c = setup(8, 9);

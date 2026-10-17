@@ -178,6 +178,8 @@ function browserContext(runRootInput, assignmentId, forAction = false) {
   if (assignment.assignmentDigest !== record.assignmentDigest || assignment.sessionId !== record.sessionId ||
       assignment.browserMode !== record.browserMode ||
       assignment.browserEvidenceVersion !== record.browserEvidenceVersion) throw Error('custody mismatch');
+  if (forAction && custody.mode === 'parallel' && record.browserEvidenceVersion === 2)
+    require('./parallel').assertGate(runRoot, assignmentId);
   return { projectRoot: path.dirname(path.dirname(runRoot)), runId: custody.runId,
     assignmentId: record.assignmentId, sessionDir: record.sessionDir,
     sessionId: record.sessionId, requestedMode: assignment.browserMode || 'HEADLESS' };

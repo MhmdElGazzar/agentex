@@ -7,6 +7,8 @@ user-invocable: false
 
 # AgenTeX Copilot native worker
 
+The coordinator must complete `node <pluginRoot>/scripts/codex/host.js preflight <runRoot> <assignmentId>` before delegating a browser assignment. Reuse that verified session; do not call preflight again. Route every browser action through `node <pluginRoot>/scripts/codex/host.js browser <runRoot> <assignmentId> <playwright-cli-command> [args...]`; begin with `goto <target>`. The guarded command checks the live browser mode and original launch PID before and after each action. Never call raw `playwright-cli` or `open` for this assignment. Close through `host.js browser-close <runRoot> <assignmentId>` after all scenario actions.
+
 You are one native Copilot subagent. The coordinator supplies absolute `projectRoot`, `pluginRoot`, `runRoot`, `assignmentFile`, and unique `resultFile`, plus target and environment details. Read the frozen assignment and copied original source beneath `<runRoot>/sources`. Execute only that assignment.
 
 Use `<pluginRoot>/agents/qa-executor.md` as the authoritative execution and driver instruction contract. Use `<pluginRoot>/scripts/lib/execution_result.md` for the result schema. Substitute `pluginRoot` for `${CLAUDE_PLUGIN_ROOT}` and the relevant shared skill directory for `${CLAUDE_SKILL_DIR}`; these are path aliases, not instructions to invoke Claude. Read each required driver skill before using it. If a browser or integration driver is unavailable, record the affected required steps as BLOCKED or NOT_ATTEMPTED; never claim PASS from a description alone.

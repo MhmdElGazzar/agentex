@@ -1,6 +1,6 @@
 # Techniques: verifying browser steps
 
-The raw `npx playwright-cli -s=<session>` examples below apply to Claude runs. Native Codex assignments use `host.js browser <runRoot> <assignmentId> <command> [args...]` for the same operations and `host.js browser-close` for owned cleanup.
+The raw `npx playwright-cli -s=<session>` examples below apply to Claude runs. Native Codex and Copilot assignments use `host.js browser <runRoot> <assignmentId> <command> [args...]` for the same operations and `host.js browser-close` for owned cleanup.
 
 - **Refs:** `snapshot` before interacting. Refs change after every navigation, so re-snapshot after each page load.
 - **Evidence:** `screenshot` on every PASSED and FAILED scenario, e.g. `npx playwright-cli -s=<session> screenshot --filename=<SESSION_DIR>/screenshots/s1-home.png`. Use descriptive names (`sX-<what>.png`).
