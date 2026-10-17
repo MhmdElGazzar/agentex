@@ -16,7 +16,7 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 const same = (a, b) => isDeepStrictEqual(a, b);
 const error = code => ({ code }); // Never echo untrusted content or file data.
 const ASSIGNMENT_KEYS = ['schemaVersion', 'runId', 'attemptId', 'assignmentId', 'sessionId',
-  'scope', 'source', 'requiredSteps', 'cleanupRequired', 'policy'];
+  'scope', 'source', 'requiredSteps', 'cleanupRequired', 'policy', 'browserMode', 'browserEvidenceVersion'];
 
 // Canonical v1 digest: sorted JSON object keys at every depth, array order kept.
 // This is drift detection, not authentication; the host must retain the original
@@ -79,6 +79,8 @@ function validateAssignment(a, sourceRoot, { requireDigest = true } = {}) {
   if (!a || a.schemaVersion !== SCHEMA_VERSION) problems.push(error('schema-version'));
   if (!a || !['runId', 'attemptId', 'assignmentId', 'sessionId'].every(k => nameOk(a[k]))) problems.push(error('assignment-identity'));
   if (a && !segmentOk(a.sessionId)) problems.push(error('session-identity'));
+  if (a && a.browserMode !== undefined && !['HEADLESS', 'HEADED'].includes(a.browserMode)) problems.push(error('browser-mode'));
+  if (a && a.browserEvidenceVersion !== undefined && a.browserEvidenceVersion !== 2) problems.push(error('browser-evidence-version'));
   if (!a || !object(a.scope) || !nameOk(a.scope.kind) || !nameOk(a.scope.value)) problems.push(error('execution-scope'));
   if (!a || !object(a.source) || !digestOk(a.source.digest) || !nameOk(a.source.path)) problems.push(error('source-identity'));
   else if (readSourceDigest(sourceRoot, a.source) !== a.source.digest) problems.push(error('source-digest'));
