@@ -136,11 +136,13 @@ All notable changes to AgenTeX are documented here.
   because every hand-written catalog declares `baseUrl: "${API_BASE_URL}"` and relies on the
   environment for qc/uat switching — that rule would have silently moved them. `run_suite.js`
   also called `run_api.js` without `--env`, so a suite could never pick a named environment;
-  `/test-endpoints --env <name>` now reaches every case. And `swagger-import` told users to
-  export tokens "in your shell, never in `.env`", the opposite of the project's rule — its
-  `SKILL.md`, `/import-swagger` and the `envVarsToSet` placeholders (`<set in .env>`) now keep
-  every value in `.env`. Covered by seven new cases in `run_api.test.js`, two in
-  `import_swagger.test.js` and three in `run_suite.test.js`.
+  `/test-endpoints --env <name>` now reaches every case through `api-executor`'s new optional
+  `ENV_NAME` input (empty → no flag, the default environment as before). And `swagger-import`
+  told users to export tokens "in your shell, never in `.env`", the opposite of the project's
+  rule and of the root `.env.example` — its `SKILL.md`, `swagger-mapping.md`,
+  `/import-swagger`, endpoint-testing's `suite-format.md` and the `envVarsToSet` placeholders
+  (`<set in .env>`) now keep every value in `.env`. Covered by seven new cases in
+  `run_api.test.js`, two in `import_swagger.test.js` and three in `run_suite.test.js`.
 ### Credits
 - The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
   and print styles were harvested from community **PR #6** by @YoussefAbdellah2023. Its
