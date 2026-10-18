@@ -33,3 +33,10 @@ common reason a PR needs a revision.
 The maintainer commits releases straight to `main` and bumps the version in
 `.claude-plugin/plugin.json` + `CHANGELOG.md`; the `elgazzar-plugins` marketplace listing is
 re-synced on each release. You don't need to do either of these in your PR.
+
+Every push to `main` also rebuilds the `store` branch, the branch the Claude plugin directory
+follows (`.github/workflows/store-branch.yml`). It is `main` minus development-only paths
+(`evals/`, `*.test.js`, `.github/`, `.gitattributes`, `scripts/store/`), which keeps the
+directory's validation under its 512-file limit. Never commit to `store` by hand: the sync
+only fast-forwards it, so a hand edit makes the next sync fail. The exclusion list lives in
+`scripts/store/sync_store_branch.js`.
