@@ -50,6 +50,32 @@ Fill them in:
 | `login.mode` | How a run gets in: `"session"` = reuse the login `/optimize-login` saved (`test/.auth/<app>-<env>-state.json`); `"fresh"` = drive the login UI every run. Absent or unreadable → `fresh` (nothing to reuse, and a run never creates a saved session you did not ask for). Projects scaffolded by an older wizard say `"per-test"` — the same as `"fresh"`, and nothing rewrites it. |
 | `ci` | Optional CI gate policy (see [ci-quality-gate.md](./ci-quality-gate.md)), read if present — no scaffold needed: `{ "warningsFailGate": true, "retries": 3, "timeoutMinutes": 60, "flakyFailsGate": false }` (the built-in defaults). `warningsFailGate` — warnings fail the gate (exit 1); `retries` — automatic retries for BLOCKED outcomes only; `timeoutMinutes` — per-attempt wall-clock budget; `flakyFailsGate` — FLAKY concludes BLOCKED (exit 2, never auto-retried). `ci_gate.js` CLI flags override per pipeline (flags > config > defaults). |
 
+## `config/estimation.json`
+
+Your team's estimation method for `/estimate-sprint` and `/estimate-story`: which `[Testing]`
+tasks every story gets and the range of hours each one takes. It belongs to you and is
+**committed** with the project (it holds no secret). It does not exist until the first
+estimation run proposes it — from the Original Estimates of your team's last closed sprints,
+or as labelled starter defaults — and you approve that run.
+
+| Key | Purpose |
+|---|---|
+| `schemaVersion` | Always `1`. |
+| `tasks[]` | `{ "name", "enabled", "minHours", "maxHours" }` per task, in creation order. Titles become `[Testing] <name>`; only enabled tasks are created; each task's hours fall within its min and max. |
+| `factors` | `{ "<factor>": <weight> }` — what each story is rated on (0–4). A weight of 0 keeps a factor on the screen without moving the hours; at least one weight must be positive. |
+| `source` | Where the numbers came from: `kind` (`history` or `starter-defaults`), `sprints` (how many past sprints the proposal asked for), the sprint names, tasks counted/skipped, the date. A record — editing it changes nothing. |
+
+**Validation.** An invalid file stops the run before anything is read or estimated, naming the
+file, each problem and its entry — for example JSON that can't be parsed, `minHours` greater
+than `maxHours`, a missing / non-numeric / non-positive min or max, no enabled task, two tasks
+with the same name (case and spaces ignored), no factor with a positive weight, a
+`source.sprints` that isn't a positive whole number, an unknown key, or an unknown
+`schemaVersion`. AgenTeX never repairs, reformats or replaces the file — not on a run, not
+on `/init-test`, not on `/update-agentex`.
+
+**Rebuilding.** Once the file exists, past sprints are never read again. To re-propose it from
+your board, delete or move it; the next estimation run proposes a new one.
+
 ## `environments/<env>.json`
 
 | Key | Purpose |

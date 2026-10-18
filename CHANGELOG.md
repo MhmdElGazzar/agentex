@@ -62,6 +62,18 @@ All notable changes to AgenTeX are documented here.
   explicitly in `skills/mobile-testing/SKILL.md` and `agents/mobile-qa-executor.md` — a run's
   device footprint never goes beyond installing/launching/exercising/closing the app under test.
 
+- **Configurable task estimation.** `config/estimation.json` (committed, user-owned) defines the
+  `[Testing]` tasks (names, count, order, min/max hours, enabled) and the rating factors. The
+  first estimation run proposes it from the Original Estimates of the team's last 2 closed
+  sprints (ADO and Jira), asks about abnormal values on the same approval screen, and writes it
+  only on approval and never over an existing file. With no usable history, labelled starter
+  defaults (about 3–5 h per story). Hours = a 0–4 factor rating score placed within each task's
+  range. An invalid file stops the run naming the problem. Covered by
+  `scripts/lib/estimation_config.test.js`, `skills/task-estimation/scripts/estimation/*.test.js`,
+  `create-tasks.estimation.test.js`, adapter, conformance and upgrade-path tests, and four new
+  `discipline-estimation-*` evals.
+- `/estimate-sprint` command.
+
 ### Changed
 - `docs/getting-started.md` and `docs/contributing/architecture.md` updated to reflect the new
   mobile-testing capability (no longer describe `qa-executor` as the only subagent).
@@ -87,6 +99,8 @@ All notable changes to AgenTeX are documented here.
   cards, and print styles switch to a light palette with every card expanded. The legacy
   (no `schemaVersion`) output is byte-identical, and the release-gate name→pill window is
   untouched. Covered by six new cases in `make_html_report.test.js`.
+- `/estimate-story` and the task-estimation skill use the file; the fixed five-task template and
+  the Simple/Medium/Heavy hours table are gone.
 ### Fixed
 - **`api:` steps read catalog secrets from `.env`.** `run_api.js` resolved a catalog's own
   env-var names (`${API_BASE_URL}` in `baseUrl`, `auth.tokenEnv`, `auth.userEnv` /
