@@ -67,7 +67,7 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
   environment whose `api` block targets catalogs without `"target": "catalog"` (a
   `swagger-import`ed catalog keeps its own base URL and auth either way). Omitted = the
   project's `defaultEnvironment`; an unknown name is BLOCKED per case, listing the environments
-  that exist. `/test-endpoints --env <name>` reaches it through `api-executor`'s `ENV_NAME`.
+  that exist. `/test-endpoints --env <name>` reaches it through `api-executor`'s `ENVIRONMENT`.
 - Writes one evidence log per case to `<run-dir>/logs/<case-name>.log`.
 - Prints ONE final JSON summary:
   `{"result":"PASS|FAIL|BLOCKED","total":N,"passed":N,"failed":N,"blocked":N,"cases":[...]}`.

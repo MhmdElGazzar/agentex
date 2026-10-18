@@ -60,7 +60,7 @@ Every case in every suite file runs every time — there's no scope/tag selectio
   `run_api.js` call (omitted = the project's `defaultEnvironment`; an unknown name comes back
   BLOCKED per case, listing the environments that exist). It selects the `api` block used by
   catalogs without `"target": "catalog"`; a `swagger-import`ed catalog keeps its own base URL
-  and auth either way. Dispatch `api-executor` with `ENV_NAME` set to the user's environment
+  and auth either way. Dispatch `api-executor` with `ENVIRONMENT` set to the user's environment
   (`""` when none was named); it adds `--env` to its `run_suite.js` call only when non-empty.
 
 ## Safety rules (also enforced by the runner)

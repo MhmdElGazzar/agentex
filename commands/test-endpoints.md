@@ -26,9 +26,9 @@ Arguments: $ARGUMENTS
 **Run:**
 - Dispatch the bundled **`api-executor`** agent, injecting `CATALOG_DIR` (`./integration`),
   `SUITE_DIR` (`./integration/api_test_suites`), `RUN_DIR` (the folder just created), and
-  `ENV_NAME` (the `--env` value; `""` when not given). Every case in every suite file runs —
+  `ENVIRONMENT` (the `--env` value; `""` when not given). Every case in every suite file runs —
   there's no scope to resolve.
-- The agent passes a non-empty `ENV_NAME` to `run_suite.js` as `--env`, which reaches every
+- The agent passes a non-empty `ENVIRONMENT` to `run_suite.js` as `--env`, which reaches every
   case's `run_api.js` call. An unknown name comes back BLOCKED per case, listing the
   environments that exist — report it, never retry with another environment.
 - Present its returned summary and defect list to the user when it completes.

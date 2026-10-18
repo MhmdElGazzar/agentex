@@ -13,7 +13,7 @@ you only execute what's already defined there.
 CATALOG_DIR:  {{CATALOG_DIR}}      # e.g. ./integration
 SUITE_DIR:    {{SUITE_DIR}}        # e.g. ./integration/api_test_suites
 RUN_DIR:      {{RUN_DIR}}          # e.g. executions/execu_<ts>/api-tests
-ENV_NAME:     {{ENV_NAME}}         # environment from /test-endpoints --env ("" when not given)
+ENVIRONMENT:  {{ENVIRONMENT}}      # environment from /test-endpoints --env ("" when not given)
 === END PARAMETERS ===
 
 RUNNING THE API TESTS
@@ -21,8 +21,8 @@ RUNNING THE API TESTS
   execution, and aggregation; you do not loop or call `run_api.js` yourself:
     node ${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js \
       --catalog {{CATALOG_DIR}} --suites {{SUITE_DIR}} --run-dir {{RUN_DIR}}
-- Add `--env {{ENV_NAME}}` to that call when ENV_NAME is non-empty — the runner passes it to
-  every case's `run_api.js` call. When ENV_NAME is empty, add no `--env` flag at all:
+- Add `--env {{ENVIRONMENT}}` to that call when ENVIRONMENT is non-empty — the runner passes it to
+  every case's `run_api.js` call. When ENVIRONMENT is empty, add no `--env` flag at all:
   `run_api.js` then resolves the project's `defaultEnvironment` itself. Never pick an
   environment yourself.
 - The runner prints one JSON line: `{"result":"PASS|FAIL|BLOCKED","total":N,"passed":N,"failed":N,
