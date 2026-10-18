@@ -10,6 +10,9 @@
 // A declared param whose name appears as a `{name}` path placeholder is substituted into the
 // path; any other declared param is sent as a URL query string param instead.
 // auth.type: "bearer" | "basic" | "apiKey" (custom header, e.g. X-API-Key) | "none".
+// Catalog "target" (optional, top level): "environment" (default) → the active environment's
+// api block wins over the catalog's baseUrl/auth; "catalog" → the catalog's own baseUrl refs
+// and auth are used and the environment's api block is ignored (swagger-import writes it).
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL|BLOCKED", ...}. Exit: 0 PASS, 1 FAIL, 2 BLOCKED.
 // Secrets: env values (tokens) are used for the request but never printed or logged.
@@ -56,14 +59,18 @@ function findApiFiles(dir) {
   return found;
 }
 const files = findApiFiles(catalog);
-let def = null;
+let def = null, defFile = null;
 for (const f of files) {
   try {
     const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-    if (j.name === fileName) { def = j; break; }
+    if (j.name === fileName) { def = j; defFile = f; break; }
   } catch (e) { blocked(`invalid JSON in ${f}: ${e.message}`); }
 }
 if (!def) blocked(`no *_api.json under ${catalog} has "name": "${fileName}" — define it before this step can run`);
+const TARGETS = ['environment', 'catalog'];
+if (def.target !== undefined && !TARGETS.includes(def.target)) {
+  blocked(`catalog "${fileName}" (${defFile}) has "target": ${JSON.stringify(def.target)} — allowed values: "environment" (default: the active environment's api block wins) or "catalog" (the catalog's own baseUrl and auth)`);
+}
 const req = (def.requests || []).find(r => r.name === reqName);
 if (!req) blocked(`request "${reqName}" is not defined in catalog "${fileName}" — add it to run this step`);
 
@@ -73,6 +80,7 @@ for (const k of Object.keys(params)) if (!declared.includes(k)) blocked(`param "
 for (const k of declared) if (!(k in params)) blocked(`missing value for declared param "${k}"`);
 
 // ---- target: active environment's api block first, catalog ${ENV_VAR} refs second ----
+// ...unless the catalog declares "target": "catalog" — then only the catalog's own baseUrl/auth.
 const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 // Catalog-named vars resolve like every other secret: process env, then the project's .env.
 const envVar = (name) => pc.readEnvVar(process.cwd(), name);
@@ -86,6 +94,9 @@ function resolveEnvRefs(s) {
 let target = null;
 try { target = pc.resolveApiTarget(process.cwd(), envName); }
 catch (e) { blocked(e.message); }
+// The environment is still resolved above, so an unknown --env stays an error; only its api
+// block (base URL and token both) is dropped for a catalog that owns its target.
+if (def.target === 'catalog') target = null;
 if (target && target.hasToken && !target.token) blocked(`${target.tokenHint} (api token) is not set`);
 const baseUrl = target ? target.baseUrl : resolveEnvRefs(def.baseUrl || '');
 let urlPath = req.path || '';
