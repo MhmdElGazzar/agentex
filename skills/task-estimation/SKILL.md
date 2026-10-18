@@ -103,11 +103,16 @@ What to look at for the default factors (rate a user-added factor from its name)
 
 ### Phase A — collect & read (no user interaction, no writes)
 
+Scratch files (the proposal, the spec) go in the OS temp dir. Get its absolute path once with
+`node -p "require('os').tmpdir()"` and write that path in full wherever `<os-temp>` appears
+below. Never use a shell variable such as `$TMP` for it: it is unset on some systems.
+
 1. **The estimation file, first:**
    ```bash
-   node ${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/scripts/create-tasks.js estimation --out "$TMP/estimation-proposal.json" [--sprints N]
+   node ${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/scripts/create-tasks.js estimation --out "<os-temp>/estimation-proposal.json" [--sprints N]
    ```
-   `--out` is an OS-temp scratch file (like the spec), never a project path. Pass
+   `--out` is an OS-temp scratch file (like the spec), never a project path; the script
+   refuses a path that holds anything but a previous proposal. Pass
    `--sprints N` only when the user's ask names how many past sprints to read (default 2).
    Branch on `source`:
    - `file` → use its `content`: the enabled tasks and the factors.
@@ -162,7 +167,7 @@ approval.
      "stories": [ { "id": 2101, "ratings": { "Scenarios / ACs": 1, "UI elements": 2, "…": 0 } } ] }
    ```
    ```bash
-   node …/create-tasks.js --spec "$TMP/tasks.json" [--allow-existing]
+   node …/create-tasks.js --spec "<os-temp>/tasks.json" [--allow-existing]
    ```
    `estimation.proposalFile` is for a first run only. Never send `tasks` or hours — the script
    derives them (`tasks-not-from-file` otherwise). Add these only on the user's words:
@@ -181,8 +186,8 @@ approval.
    - **The file.** With a file: one line, *"Using config/estimation.json — N enabled tasks,
      M factors."* On a first run, the proposal. Show where it came from (`provenance`): the
      sprints read (and that fewer exist, when fewer were read), stories read, tasks counted,
-     tasks skipped for having no estimate, names found without any estimate, and a truncated
-     read. Show each proposed task with the stories it was found on and its min/max
+     tasks skipped (no Original Estimate, or no task name after the `[Testing]` marker), names
+     found without any estimate, and a truncated read. Show each proposed task with the stories it was found on and its min/max
      (`groups`), and the factors. Starter defaults instead say: *"No usable history — <reasonMessage>. Proposed
      starter defaults (not your team's history): …; deleting the file later re-proposes from
      your board."*
@@ -243,7 +248,7 @@ approval.
 User: estimate the sprint
 Bot: [estimation → no file; stories read; each story rated silently, then ONE screen:]
      Estimation file: none yet — proposed from your last 2 closed sprints (Sprint 41, Sprint 42):
-       12 stories · 47 [Testing] tasks counted · 3 skipped (no Original Estimate)
+       12 stories · 47 [Testing] tasks counted · 3 skipped (no Original Estimate or no task name)
        Task                  found on     min   max
        Requirement Review    12 stories   0.5   2
        Test Execution        12 stories   1     3     (1 abnormal value below)
@@ -252,8 +257,8 @@ Bot: [estimation → no file; stories read; each story rated silently, then ONE 
        1. Test Execution — 12 h on #4512 "Checkout address form" (task #4520); usual range 1–3 h
           → count it · use the suggested 3 h · type a number
      #2101 Contact preferences (3 SP) — Scenarios 1 · UI 2 · Validations 0 · … → score 19%
-          Requirement Review 0.5 · Test Creation 1.5 · Test Execution 1.5 · Bug Review 0.5 · Automation 1.5 = 5.5 h
-     …  Sprint total 23 h · Assignee qa.engineer@example.com
+          Requirement Review 1 · Test Creation 1.5 · Test Execution 1.5 · Bug Review 1 · Automation 1.5 = 6.5 h
+     …  Sprint total 24.5 h · Assignee qa.engineer@example.com
      Write plan: 1. create config/estimation.json (new file) · 2–16. 15 task creates (routes …)
      Nothing has been written yet. Approve?
 User: تمام

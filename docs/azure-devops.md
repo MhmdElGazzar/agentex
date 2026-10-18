@@ -42,7 +42,8 @@ stops the run with every problem named (see [configuration.md](./configuration.m
 iterations** (the `azure.team` setting, like the current sprint), groups them by task name,
 and proposes one task per name with min = the lowest and max = the highest estimate. The
 proposal sits on the same consolidated screen as the run's estimates: which sprints were
-read, how many tasks were counted, and how many were skipped for having no estimate.
+read, how many tasks were counted, and how many were skipped (no Original Estimate, or no
+task name after the `[Testing]` marker).
 Completed and remaining work are never read. Values far from the rest — by default more than
 3× or under a third of a task's usual estimate (a tunable default, not a guarantee) — are
 listed with the story and the usual range, each with three choices: **count it · use the
