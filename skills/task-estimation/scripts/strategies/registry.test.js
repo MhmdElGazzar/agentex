@@ -154,6 +154,27 @@ const refusal = (fn) => { try { fn(); } catch (e) { return e; } throw new Error(
     }
   });
 
+  await test('FAIL-CLOSED: estimation --out (first run, no file) on a mismatched registry → exit 2, ZERO requests, nothing written', async () => {
+    for (const [dir, registry, provider] of [
+      [jiraProject(), createRegistry({ ado: defaultRegistry.get('ado') }), 'jira'],
+      [adoProject(), createRegistry({ jira: defaultRegistry.get('jira') }), 'ado'],
+    ]) {
+      const out = path.join(dir, 'proposal.json');
+      const r = await runWith(dir, ['estimation', '--out', out], registry);
+      assert.strictEqual(r.code, 2, JSON.stringify(r.out));
+      assert.match(r.out.error.message, new RegExp(`provider '${provider}'`));
+      assert.strictEqual(r.calls.length, 0);
+      assert.ok(!fs.existsSync(out), 'no proposal written');
+      assert.ok(!fs.existsSync(path.join(dir, 'config', 'estimation.json')));
+    }
+    const dir = adoProject();
+    const r = await runWith(dir, ['estimation', '--out', path.join(dir, 'p.json')],
+      createRegistry({ ado: { ...defaultRegistry.get('ado'), pastTestingTasks: undefined } }));
+    assert.strictEqual(r.code, 2);
+    assert.match(r.out.error.message, /missing required member\(s\): pastTestingTasks/);
+    assert.strictEqual(r.calls.length, 0);
+  });
+
   await test('FAIL-CLOSED: an incomplete or mis-keyed strategy is refused by run (exit 2, zero requests)', async () => {
     const dir = adoProject();
     const r1 = await runWith(dir, ['--spec', '{SPEC}'], createRegistry({ ado: { ...defaultRegistry.get('ado'), validate: undefined } }));

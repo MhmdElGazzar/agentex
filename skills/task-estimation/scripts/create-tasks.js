@@ -66,6 +66,8 @@ const tracker = require(path.join(LIB, 'index.js'));
 const { TrackerError } = tracker;
 const { WritePlan } = require(path.join(LIB, 'ledger.js'));
 const { defaultRegistry, compat } = require('./strategies/index.js');
+const ec = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'estimation_config.js'));
+const proposals = require('./estimation/history.js');
 
 // ---- CLI arg parser: --key value / --key=value / --flag ----------------------
 function parseArgs(argv) {
@@ -88,6 +90,78 @@ function parseArgs(argv) {
 const USAGE =
   'usage: create-tasks.js stories --current-sprint [--team <name>] [--full] | stories --ids <id,id> [--full]' +
   ' | create-tasks.js --spec <file.json> [--allow-existing] [--refresh-fields] [--execute]';
+
+// The estimation subcommand's own usage (USAGE above is pinned by the goldens).
+const ESTIMATION_USAGE =
+  'usage: create-tasks.js estimation --out <file> [--sprints <n>] [--team <name>] [--board <id|name>]';
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const localDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// ---- estimation (Phase A, read-only on the board; never writes the file) ----
+//   file present, valid   → source 'file' — ZERO requests, the tracker is not
+//                           even resolved (history is read only when there is no file)
+//   file present, invalid → exit 2, every problem — nothing read or written,
+//                           the file is never repaired
+//   no file               → the configured strategy's history read (the last N
+//                           closed sprints' [Testing] tasks, Original Estimate
+//                           only) → the proposal, written to the --out scratch
+//                           file the agent chose (OS temp) and summarized here
+async function estimationCmd(args, { cwd, fetch, registry, resolveTracker, now }) {
+  const file = ec.ESTIMATION_FILE_REL;
+  const loaded = ec.loadEstimationConfig(cwd);
+  if (loaded.state === 'valid') {
+    return {
+      code: 0,
+      out: {
+        ok: true, mode: 'estimation', source: 'file', file, content: loaded.content, enabledTasks: loaded.enabledTasks,
+        ...(args.sprints !== undefined ? {
+          note: `--sprints has no effect: history is read only when there is no file, and ${file} exists. ` +
+            'To rebuild it from your board, delete or move the file — the next run proposes a new one.',
+        } : {}),
+      },
+    };
+  }
+  if (loaded.state === 'invalid') {
+    return {
+      code: 2,
+      out: {
+        ok: false, mode: 'estimation', source: 'invalid', file, problems: loaded.problems,
+        message: `${file} is invalid — nothing was read or written. The plugin never repairs, reformats or replaces it: ` +
+          'fix every problem listed by hand (or delete or move the file so the next run proposes a new one), then re-run.',
+      },
+    };
+  }
+  const usage = (why) => ({ code: 2, out: { ok: false, mode: 'estimation', error: { message: `${why} ${ESTIMATION_USAGE}` } } });
+  if (typeof args.out !== 'string' || !args.out.trim()) return usage('--out <file> is required: a scratch file in the OS temp dir for the proposal.');
+  let count = ec.DEFAULT_SPRINTS;
+  if (args.sprints !== undefined) {
+    if (typeof args.sprints !== 'string' || !/^[1-9]\d*$/.test(args.sprints.trim())) {
+      return usage(`--sprints must be a positive whole number (got ${JSON.stringify(args.sprints)}).`);
+    }
+    count = Number(args.sprints.trim());
+  }
+  const outPath = path.resolve(cwd, args.out);
+  if (outPath.toLowerCase() === path.resolve(cwd, ...file.split('/')).toLowerCase()) {
+    return usage(`--out must be a scratch file, never ${file} — that file is written only on the user's approval.`);
+  }
+  const adapter = resolveTracker(cwd, { fetch });
+  const strategy = registry.get(adapter.name);
+  const r = await strategy.pastTestingTasks(adapter, args, { count });
+  if (r.stop) return r.stop;
+  const proposal = proposals.propose(r.history, { createdOn: localDate(now()) });
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, JSON.stringify(proposal, null, 2) + '\n');
+  const view = proposals.recompute(proposal, {});
+  return {
+    code: 0,
+    out: {
+      ok: true, mode: 'estimation', source: 'proposal', kind: proposal.kind, proposalFile: outPath, file,
+      content: proposal.content, provenance: proposal.provenance, groups: view.groups, outliers: view.outliers,
+      threshold: proposal.threshold,
+    },
+  };
+}
 
 // ---- stories (read-only; there is no --execute path here) --------------------
 async function storiesCmd(args, adapter, strategy) {
@@ -161,12 +235,15 @@ function specShapeErrors(spec) {
 // ---- main ---------------------------------------------------------------------
 // Returns { code, out }; prints nothing. opts.fetch is the offline-test seam;
 // opts.registry / opts.resolveTracker are the same kind of seam for the
-// registry and the tracker resolution (tests inject them; the CLI never does).
-async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistry, resolveTracker = tracker.resolveTracker } = {}) {
+// registry and the tracker resolution, and opts.now the clock seam for a
+// proposal's createdOn (tests inject them; the CLI never does).
+async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistry, resolveTracker = tracker.resolveTracker, now = () => new Date() } = {}) {
   const args = parseArgs(argv);
   const cmd = args._[0];
-  const mode = args.execute ? 'executed' : 'plan';
+  const mode = cmd === 'estimation' ? 'estimation' : args.execute ? 'executed' : 'plan';
   try {
+    if (cmd === 'estimation') return await estimationCmd(args, { cwd, fetch, registry, resolveTracker, now });
+
     if (cmd === 'stories') {
       const adapter = resolveTracker(cwd, { fetch });
       return await storiesCmd(args, adapter, registry.get(adapter.name));
