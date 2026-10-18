@@ -13,6 +13,7 @@ you only execute what's already defined there.
 CATALOG_DIR:  {{CATALOG_DIR}}      # e.g. ./integration
 SUITE_DIR:    {{SUITE_DIR}}        # e.g. ./integration/api_test_suites
 RUN_DIR:      {{RUN_DIR}}          # e.g. executions/execu_<ts>/api-tests
+ENV_NAME:     {{ENV_NAME}}         # environment from /test-endpoints --env ("" when not given)
 === END PARAMETERS ===
 
 RUNNING THE API TESTS
@@ -20,13 +21,18 @@ RUNNING THE API TESTS
   execution, and aggregation; you do not loop or call `run_api.js` yourself:
     node ${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js \
       --catalog {{CATALOG_DIR}} --suites {{SUITE_DIR}} --run-dir {{RUN_DIR}}
-- It prints one JSON line: `{"result":"PASS|FAIL|BLOCKED","total":N,"passed":N,"failed":N,
+- Add `--env {{ENV_NAME}}` to that call when ENV_NAME is non-empty — the runner passes it to
+  every case's `run_api.js` call. When ENV_NAME is empty, add no `--env` flag at all:
+  `run_api.js` then resolves the project's `defaultEnvironment` itself. Never pick an
+  environment yourself.
+- The runner prints one JSON line: `{"result":"PASS|FAIL|BLOCKED","total":N,"passed":N,"failed":N,
   "blocked":N,"cases":[{"name":...,"entry":...,"result":...,"log":...,"failures":[...]?,
   "reason":...?}]}`. Exit 0 all PASS, 1 any FAIL, 2 zero FAIL but any BLOCKED.
 - A top-level BLOCKED result (no suite files or no cases at all) means the run never executed
   anything — report the reason verbatim, do not treat it as a pass.
-- A per-case BLOCKED (undefined entry, missing param/env var) is reported as-is — never work
-  around it by improvising a request or param value.
+- A per-case BLOCKED (undefined entry, missing param/env var, unknown environment) is reported
+  as-is — never work around it by improvising a request or param value, or by retrying with
+  another environment.
 - Never print secret values (tokens, credentials) — they resolve from env vars inside
   `run_api.js` and never appear in the runner's output.
 
