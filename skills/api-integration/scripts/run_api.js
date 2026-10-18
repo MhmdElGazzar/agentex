@@ -12,9 +12,10 @@
 // string; a param used only as a `{name}` placeholder in the body stays in the body; a param
 // referenced nowhere in the request template falls back to the query string.
 // auth.type: "bearer" | "basic" | "apiKey" (custom header, e.g. X-API-Key) | "none".
-// Catalog "target" (optional, top level): "environment" (default) → the active environment's
-// api block wins over the catalog's baseUrl/auth; "catalog" → the catalog's own baseUrl refs
-// and auth are used and the environment's api block is ignored (swagger-import writes it).
+// Catalog "target" (optional, top level) decides who owns the base URL and auth: "catalog" →
+// the catalog's own baseUrl refs and auth, the environment's api block ignored (swagger-import
+// writes it); "environment" → the active environment's api block; absent → the environment's
+// api block only when the catalog's baseUrl is absent/empty or exactly "${API_BASE_URL}".
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL|BLOCKED", ...}. Exit: 0 PASS, 1 FAIL, 2 BLOCKED.
 // Secrets: env values (tokens) are used for the request but never printed or logged.
@@ -79,7 +80,7 @@ const defFile = matches.length ? matches[0].file : null;
 if (!def) blocked(`no *_api.json under ${catalog} has "name": "${fileName}" — define it before this step can run`);
 const TARGETS = ['environment', 'catalog'];
 if (def.target !== undefined && !TARGETS.includes(def.target)) {
-  blocked(`catalog "${fileName}" (${defFile}) has "target": ${JSON.stringify(def.target)} — allowed values: "environment" (default: the active environment's api block wins) or "catalog" (the catalog's own baseUrl and auth)`);
+  blocked(`catalog "${fileName}" (${defFile}) has "target": ${JSON.stringify(def.target)} — allowed values: "catalog" (the catalog's own baseUrl and auth) or "environment" (the active environment's api block); leave it out and a catalog whose baseUrl is absent or exactly "\${API_BASE_URL}" follows the environment, any other keeps its own`);
 }
 const req = (def.requests || []).find(r => r.name === reqName);
 if (!req) blocked(`request "${reqName}" is not defined in catalog "${fileName}" — add it to run this step`);
@@ -89,8 +90,7 @@ const declared = req.params || [];
 for (const k of Object.keys(params)) if (!declared.includes(k)) blocked(`param "${k}" is not declared for ${entry} (declared: ${declared.join(', ') || 'none'})`);
 for (const k of declared) if (!(k in params)) blocked(`missing value for declared param "${k}"`);
 
-// ---- target: active environment's api block first, catalog ${ENV_VAR} refs second ----
-// ...unless the catalog declares "target": "catalog" — then only the catalog's own baseUrl/auth.
+// ---- target: the environment's api block or the catalog's own baseUrl/auth (one rule below) ----
 const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 // Catalog-named vars resolve like every other secret: process env, then the project's .env.
 const envVar = (name) => pc.readEnvVar(process.cwd(), name);
@@ -101,21 +101,30 @@ function resolveEnvRefs(s) {
     return v;
   });
 }
-// The environment's api block (baseUrl + token) targets the PROJECT's own API. It applies only
-// to catalogs that defer to it: no/empty baseUrl, or exactly the project default
-// "${API_BASE_URL}". A catalog declaring any other baseUrl (e.g. an imported third-party
-// service, "${PETSTORE_BASE_URL}") keeps its own baseUrl AND its own auth — the app's token
-// must never be sent to another host.
+// The environment's api block (baseUrl + token) targets the PROJECT's own API. Does it apply
+// to this catalog? An explicit "target" wins; without one, the catalog's baseUrl decides:
+//   1. "target": "catalog"     → no: the catalog's own baseUrl refs and auth (swagger-import).
+//   2. "target": "environment" → yes, whatever the baseUrl — the escape hatch for a hand-written
+//                                catalog whose baseUrl uses another variable but should still
+//                                follow --env.
+//   3. no "target"             → yes only for an absent/empty baseUrl or exactly the project
+//                                default "${API_BASE_URL}"; any other baseUrl (e.g. an imported
+//                                "${PETSTORE_BASE_URL}") keeps its own baseUrl AND auth — the
+//                                app's token is never sent to another host.
+// (Any other "target" value was BLOCKED above.)
 const PROJECT_DEFAULT_BASE_URL = '${API_BASE_URL}';
-const catalogBase = typeof def.baseUrl === 'string' ? def.baseUrl.trim() : '';
-const defersToEnvironment = catalogBase === '' || catalogBase === PROJECT_DEFAULT_BASE_URL;
+function environmentOwnsTarget(catalogDef) {
+  if (catalogDef.target === 'catalog') return false;
+  if (catalogDef.target === 'environment') return true;
+  const base = typeof catalogDef.baseUrl === 'string' ? catalogDef.baseUrl.trim() : '';
+  return base === '' || base === PROJECT_DEFAULT_BASE_URL;
+}
 let target = null;
-try { target = pc.resolveApiTarget(process.cwd(), envName); } // also validates --env exists
+// Resolved for every catalog, so an unknown --env is BLOCKED whatever the rule decides; an
+// environment without an api block leaves the catalog's own refs and auth (legacy fallback).
+try { target = pc.resolveApiTarget(process.cwd(), envName); }
 catch (e) { blocked(e.message); }
-// The environment is still resolved above, so an unknown --env stays an error; only its api
-// block (base URL and token both) is dropped for a catalog that owns its target.
-if (def.target === 'catalog') target = null;
-if (!defersToEnvironment) target = null;
+if (!environmentOwnsTarget(def)) target = null; // drops base URL and token both
 if (target && target.hasToken && !target.token) blocked(`${target.tokenHint} (api token) is not set`);
 const baseUrl = target ? target.baseUrl : resolveEnvRefs(def.baseUrl || '');
 // Param placement (order matters):

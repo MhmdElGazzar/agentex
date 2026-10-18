@@ -225,26 +225,71 @@ function serve(handler) {
     }
   });
 
-  await test('no target, or target "environment" -> unchanged: environment baseUrl + environment Bearer', async () => {
-    for (const target of [undefined, 'environment']) {
-      const env = { seen: { url: null, headers: null } };
-      Object.assign(env, await serve((req, res) => { env.seen.url = req.url; env.seen.headers = req.headers; res.end('{}'); }));
-      const cat = await envSide();
-      const catalog = { ...SVC, auth: { type: 'apiKey', headerName: 'X-API-Key', tokenEnv: 'SVC_KEY_T' } };
-      if (target === undefined) delete catalog.target; else catalog.target = target;
+  // ---- the combined target rule: an explicit "target" wins; no target -> the environment's api
+  // block only for a catalog whose baseUrl is absent/empty or exactly "${API_BASE_URL}" ----
+  const RULE = [
+    // [target, the catalog's baseUrl variable, who answers]
+    [undefined, 'API_BASE_URL', 'environment'],
+    [undefined, 'SVC_BASE_URL_T', 'catalog'],
+    ['environment', 'SVC_BASE_URL_T', 'environment'],
+    ['catalog', 'API_BASE_URL', 'catalog'],
+  ];
+  for (const [target, baseVar, side] of RULE) {
+    const label = `target ${target === undefined ? '(none)' : `"${target}"`} + \${${baseVar}} -> ${side} baseUrl and auth`;
+    await test(label, async () => {
+      const env = await catalogSide(), cat = await catalogSide();
+      const catalog = { name: 'svc', baseUrl: `\${${baseVar}}`, auth: { type: 'apiKey', headerName: 'X-API-Key', tokenEnv: 'SVC_KEY_T' },
+        requests: SVC.requests };
+      if (target !== undefined) catalog.target = target;
       const dir = proj({
         ...envFiles(env.port),
         'integration/svc_api.json': catalog,
-        '.env': `QA_TOKEN_T=env-tok\nSVC_BASE_URL_T=http://127.0.0.1:${cat.port}\nSVC_KEY_T=svc-key\n`,
+        '.env': `QA_TOKEN_T=env-tok\n${baseVar}=http://127.0.0.1:${cat.port}\nSVC_KEY_T=svc-key\n`,
       });
       const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--log', path.join(dir, 'x.log')]);
       env.srv.close(); cat.srv.close();
-      assert.strictEqual(code, 0, `${target}: ${JSON.stringify(out)}`);
-      assert.strictEqual(cat.seen.hits, 0, `${target}: the catalog host was called`);
-      assert.strictEqual(env.seen.url, '/thing');
-      assert.strictEqual(env.seen.headers.authorization, 'Bearer env-tok');
-      assert.strictEqual(env.seen.headers['x-api-key'], undefined);
+      assert.strictEqual(code, 0, JSON.stringify(out));
+      const [hit, missed] = side === 'environment' ? [env, cat] : [cat, env];
+      assert.strictEqual(missed.seen.url, null, `the ${side === 'environment' ? 'catalog' : 'environment'} host was called`);
+      assert.strictEqual(hit.seen.url, '/thing');
+      if (side === 'environment') {
+        assert.strictEqual(hit.seen.headers.authorization, 'Bearer env-tok');
+        assert.strictEqual(hit.seen.headers['x-api-key'], undefined);
+      } else {
+        assert.strictEqual(hit.seen.headers['x-api-key'], 'svc-key');
+        assert.strictEqual(hit.seen.headers.authorization, undefined, 'the environment token was sent to the catalog host');
+      }
+    });
+  }
+
+  await test('unknown --env -> BLOCKED listing the environments, whatever the target or baseUrl; zero requests', async () => {
+    for (const [target, baseVar] of RULE) {
+      const env = await envSide(), cat = await envSide();
+      const catalog = { name: 'svc', baseUrl: `\${${baseVar}}`, auth: { type: 'none' }, requests: SVC.requests };
+      if (target !== undefined) catalog.target = target;
+      const dir = proj({
+        ...envFiles(env.port),
+        'integration/svc_api.json': catalog,
+        '.env': `QA_TOKEN_T=env-tok\n${baseVar}=http://127.0.0.1:${cat.port}\n`,
+      });
+      const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--env', 'nope', '--log', path.join(dir, 'x.log')]);
+      env.srv.close(); cat.srv.close();
+      const label = `${target} + ${baseVar}`;
+      assert.strictEqual(code, 2, `${label}: ${JSON.stringify(out)}`);
+      assert.match(out.reason, /environment "nope" not found/, label);
+      assert.strictEqual(env.seen.hits + cat.seen.hits, 0, label);
     }
+  });
+
+  await test('no target + an unset non-default base-URL var -> BLOCKED naming the var, no fallback to the environment', async () => {
+    const env = await envSide();
+    const catalog = { name: 'svc', baseUrl: '${SVC_BASE_URL_T}', auth: { type: 'none' }, requests: SVC.requests };
+    const dir = proj({ ...envFiles(env.port), 'integration/svc_api.json': catalog, '.env': 'QA_TOKEN_T=env-tok\n' });
+    const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--log', path.join(dir, 'x.log')]);
+    env.srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.match(out.reason, /SVC_BASE_URL_T/);
+    assert.strictEqual(env.seen.hits, 0);
   });
 
   await test('unknown target value -> BLOCKED exit 2 naming the catalog, the field and the allowed values; zero requests', async () => {
