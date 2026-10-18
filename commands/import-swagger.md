@@ -29,8 +29,10 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/scripts/import_swagger.js" <so
 **On success:**
 - Tell the user exactly which files were written (`catalogPath`, `suitePath`) and how many
   operations/cases were generated.
-- Report `envVarsToSet` verbatim: the base URL value to put in `.env`, and any token/
-  credential env var names to export in their shell (never in `.env`).
+- Report `envVarsToSet` verbatim: the base URL value and any token/credential env var names —
+  every value goes in the project's `.env` (never in the catalog, never printed back).
+- The catalog carries `"target": "catalog"`, so it calls the imported service at its own base
+  URL with its own auth even when the active environment has an `api` block.
 - Report every `review` entry — these flag skipped params, generated request bodies,
   placeholder "not found" values, or unsupported auth schemes that need manual verification.
 - Tell them to review the generated files, then try `/test-endpoints` once the env

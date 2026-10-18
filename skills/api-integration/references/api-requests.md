@@ -27,6 +27,37 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js" \
   `{"type":"apiKey","headerName":"X-Api-Key","tokenEnv":"API_TOKEN"}`), or `none`. Same
   missing-env-var → BLOCKED behavior for all three.
 
+## Where the target comes from — the catalog's `target` field
+
+A catalog's optional top-level `"target"` decides who owns its base URL and auth:
+
+- **`"environment"` — the default, same as leaving the field out.** The active environment's
+  `api` block (`environments/<env>.json`; `--env <name>`, omitted = the project's
+  `defaultEnvironment`) supplies `baseUrl`, and its `token` is sent as `Authorization: Bearer`,
+  replacing the catalog's `${API_BASE_URL}` refs and `auth` block. With no `api` block, the
+  catalog's own refs and `auth` apply. Use it for **the project's own API**: one API, a
+  different host per environment, switched with `--env`.
+- **`"catalog"`** — the catalog's own `baseUrl` (`${ENV_VAR}` refs resolved from the process
+  environment, then `.env`) and its own `auth` are used; the environment's `api` block is
+  ignored for this catalog — base URL and token both. Use it for **a different service** than
+  the project's API: `swagger-import` writes it into every catalog it generates. An unset ref
+  is BLOCKED naming the variable — it never falls back to the environment's host. `--env` must
+  still name an environment that exists.
+
+```json
+{
+  "name": "petstore",
+  "target": "catalog",
+  "baseUrl": "${PETSTORE_BASE_URL}",
+  "auth": { "type": "apiKey", "headerName": "api_key", "tokenEnv": "PETSTORE_TOKEN" },
+  "requests": [ { "name": "getinventory", "method": "GET", "path": "/store/inventory", "params": [] } ]
+}
+```
+
+Any other `target` value is BLOCKED (exit 2) naming the catalog, the field and the allowed
+values, before any request is sent. Values for every `${…}` ref and `tokenEnv`/`userEnv`/
+`passEnv` name live in the project's `.env` — the catalog holds only the names.
+
 ## Fallback: manual curl (only if node/the runner fails)
 
 Preflight: `curl --version` (usually preinstalled; Windows: `winget install -e --id cURL.cURL`,
@@ -70,8 +101,9 @@ Rules:
   Authorization header value into the report (the raw log keeps headers you *send* out of it —
   log response status/headers/body only; if you must log the command, redact the token).
 - When the project defines `environments/<env>.json` with an `api` block, its
-  `baseUrl`/`token` override the catalog's env refs; `--env <name>` selects the
-  environment.
+  `baseUrl`/`token` override the catalog's env refs — unless the catalog declares
+  `"target": "catalog"`, which keeps its own `baseUrl` and `auth` (see above); `--env <name>`
+  selects the environment.
 - URL-encode parameter values that go into the path/query (`--data-urlencode` for query params).
 - `auth.type` values: `bearer` (header shown above), `basic` (`-u "$USER:$PASS"`), `apiKey`
   (`-H "<headerName>: $<tokenEnv>"`), `none`.

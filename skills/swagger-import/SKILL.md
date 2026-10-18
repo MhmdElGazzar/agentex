@@ -46,6 +46,10 @@ Writes both generated files **co-located** under `<dir>/<name>/`: the catalog
 e.g. `integration/api_test_suites/petstore/petstore_api.json` +
 `integration/api_test_suites/petstore/petstore_suite.json`.
 
+The catalog is written with **`"target": "catalog"`**: the imported service is called at its
+own `${<NAME>_BASE_URL}` with its own `auth`, and the active environment's `api` block — the
+project's own API — never redirects it (see api-integration's `references/api-requests.md`).
+
 Prints one JSON line: `{"result":"OK|BLOCKED", "catalogPath", "suitePath",
 "operationsImported", "casesGenerated", "envVarsToSet", "review": [...]}` (exit 0 OK, 2
 BLOCKED). **Never overwrites** an existing catalog/suite file — a BLOCKED result telling the
@@ -58,9 +62,9 @@ here — from the script's point of view it's just another local file.
 
 ## After a successful import
 
-1. Report `envVarsToSet` to the user verbatim — the base URL literal to put in `.env`, and
-   any token/credential env var names to export in their shell (never in `.env` — same rule
-   as everywhere else in this project).
+1. Report `envVarsToSet` to the user verbatim — the base URL literal and any token/credential
+   env var names (`<set in .env>`). Every value goes in the project's `.env` — never in the
+   catalog, never printed back — same rule as everywhere else in this project.
 2. Report every entry in `review` — these are real gaps (skipped header params, generated
    request bodies, placeholder "not found" values, unsupported auth schemes) that need human
    verification before the generated suite means anything.
