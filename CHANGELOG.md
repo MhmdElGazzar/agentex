@@ -4,6 +4,15 @@ All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
 ### Added
+- **`store` branch for the Claude plugin directory.** A GitHub Action
+  (`.github/workflows/store-branch.yml`) rebuilds it on every push to `main` as `main` minus
+  development-only paths (`evals/`, `*.test.js`, `.github/`, `.gitattributes`,
+  `scripts/store/`): 286 files against 542 on `main` when this landed, under the directory's
+  512-file review limit, and no root `.gitattributes`, whose eol rewriting stops directory
+  validation. `main` keeps
+  its LF pinning and evals. The sync only fast-forwards `store` and refuses to publish a tree
+  over 512 files. Covered by `scripts/store/sync_store_branch.test.js`. Thanks to @mabdel130,
+  whose PR #30 surfaced the `.gitattributes` validation failure.
 - **`endpoint-testing` skill** — standalone API test run over cataloged endpoints ("api-tests"),
   independent of any browser test spec (the "Standalone API tests" row flips from planned to
   available). New `integration/api_test_suites/**/*_suite.json` case files reference a sibling
