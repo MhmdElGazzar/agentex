@@ -690,6 +690,142 @@ const PROJ = 'Sample%20Project';
     await assert.rejects(createAdapter({ cwd: proj(), fetch: f0 }).getWorkItems(['x']), (e) => e.exitCode === 2);
   });
 
+  // ── neutral history reads (first-run estimation proposal) ────────────────
+  // The field guard: no history request ever carries a time-spent, remaining,
+  // worklog or description field — only the Original Estimate is read.
+  const FORBIDDEN = /CompletedWork|RemainingWork|timespent|timeestimate|timetracking|aggregatetimespent|worklog|description|renderedFields/i;
+  const assertFieldGuard = (calls) => {
+    assert.ok(calls.length > 0, 'requests were sent');
+    for (const c of calls) {
+      assert.ok(!FORBIDDEN.test(c.url), `forbidden field in URL ${c.url}`);
+      assert.ok(!FORBIDDEN.test(String(c.body || '')), `forbidden field in body ${c.body}`);
+    }
+  };
+  const ITER = (id, name, timeFrame, startDate, finishDate) => ({ id, name, path: `Sample Project\\${name}`, attributes: { timeFrame, startDate, finishDate } });
+
+  await test('listPastSprints: no team → team-required with ZERO requests (flow-free)', async () => {
+    const f = fakeFetch([]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listPastSprints({ team: null, count: 2 });
+    assert.deepStrictEqual(r, { ok: false, condition: 'team-required', data: {} });
+    assert.strictEqual(f.calls.length, 0);
+    assertFlowFree(r);
+  });
+
+  await test('listPastSprints: ONE iterations GET; keeps timeFrame past, newest finishDate first (ties: startDate, then name), takes count', async () => {
+    const f = fakeFetch([{ match: '/work/teamsettings/iterations', json: { value: [
+      ITER('a', 'Sprint 40', 'past', '2026-08-18', '2026-08-31'),
+      ITER('b', 'Sprint 43', 'current', '2026-10-13', '2026-10-26'),
+      ITER('c', 'Sprint 42', 'past', '2026-09-15', '2026-09-28'),
+      ITER('d', 'Sprint 41b', 'past', '2026-09-02', '2026-09-28'),
+      ITER('e', 'Sprint 44', 'future', '2026-10-27', '2026-11-09'),
+      ITER('f', 'Sprint 41a', 'past', '2026-09-02', '2026-09-28'),
+    ] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listPastSprints({ team: 'Sample Team', count: 3 });
+    assert.strictEqual(f.calls.length, 1);
+    assert.deepStrictEqual(r, { ok: true, found: 4, sprints: [
+      { id: 'c', name: 'Sprint 42', path: 'Sample Project\\Sprint 42', finishDate: '2026-09-28' },
+      { id: 'f', name: 'Sprint 41a', path: 'Sample Project\\Sprint 41a', finishDate: '2026-09-28' },
+      { id: 'd', name: 'Sprint 41b', path: 'Sample Project\\Sprint 41b', finishDate: '2026-09-28' },
+    ] });
+    assertFlowFree(r);
+  });
+
+  await test('listPastSprints: fewer past iterations than asked → the ones that exist; none → an empty list', async () => {
+    const f = fakeFetch([{ match: '/work/teamsettings/iterations', json: { value: [ITER('a', 'Sprint 1', 'past', '2026-01-01', '2026-01-14')] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listPastSprints({ team: 'T', count: 2 });
+    assert.deepStrictEqual(r.sprints.map((s) => s.name), ['Sprint 1']);
+    assert.strictEqual(r.found, 1);
+    const g = fakeFetch([{ match: '/work/teamsettings/iterations', json: { value: [ITER('b', 'Sprint 2', 'current')] } }]);
+    assert.deepStrictEqual(await createAdapter({ cwd: proj(), fetch: g }).listPastSprints({ team: 'T', count: 2 }), { ok: true, found: 0, sprints: [] });
+  });
+
+  // A history board: stories 2101/2102 in two past sprints, each with children.
+  const historyRoutes = (extra = []) => [
+    ...extra,
+    { method: 'POST', match: '/_apis/wit/wiql', json: (calls) => {
+      const q = JSON.parse(calls[calls.length - 1].body).query;
+      if (q.includes('[System.Parent]')) return { workItems: [{ id: 4511 }, { id: 4512 }, { id: 4520 }, { id: 4521 }] };
+      return { workItems: [{ id: 2101 }, { id: 2102 }] };
+    } },
+    { method: 'POST', match: '/_apis/wit/workitemsbatch', json: (calls) => {
+      const ids = JSON.parse(calls[calls.length - 1].body).ids;
+      const all = {
+        2101: { id: 2101, fields: { 'System.Id': 2101, 'System.Title': 'Contact preferences' } },
+        2102: { id: 2102, fields: { 'System.Id': 2102, 'System.Title': 'Checkout address form' } },
+        4511: { id: 4511, fields: { 'System.Id': 4511, 'System.Title': '[Testing] Test Execution', 'System.Parent': 2101, 'Microsoft.VSTS.Scheduling.OriginalEstimate': 2 } },
+        4512: { id: 4512, fields: { 'System.Id': 4512, 'System.Title': 'Build the form', 'System.Parent': 2102, 'Microsoft.VSTS.Scheduling.OriginalEstimate': 1.234 } },
+        4520: { id: 4520, fields: { 'System.Id': 4520, 'System.Title': '[Testing] Test Execution', 'System.Parent': 2102, 'Microsoft.VSTS.Scheduling.OriginalEstimate': 0 } },
+        4521: { id: 4521, fields: { 'System.Id': 4521, 'System.Title': '[Testing] Requirement Review', 'System.Parent': 2102 } },
+      };
+      return { value: ids.map((id) => all[id]).filter(Boolean) };
+    } },
+  ];
+  const PAST = [{ id: 'c', name: 'Sprint 42', path: "Sample Project\\Sprint 42" }, { id: 'a', name: "Sprint 41's", path: "Sample Project\\Sprint 41's" }];
+
+  await test('listChildEstimates: the exact request sequence and texts — story WIQL, story titles, child WIQL, child estimates', async () => {
+    const f = fakeFetch(historyRoutes());
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listChildEstimates({ sprints: PAST, storyType: 'User Story' });
+    assert.deepStrictEqual(f.calls.map((c) => `${c.method} ${c.url.replace(`${BASE}/${PROJ}/_apis/`, '')}`), [
+      'POST wit/wiql?api-version=7.1',
+      'POST wit/workitemsbatch?api-version=7.1',
+      'POST wit/wiql?api-version=7.1',
+      'POST wit/workitemsbatch?api-version=7.1',
+    ]);
+    assert.strictEqual(JSON.parse(f.calls[0].body).query,
+      "SELECT [System.Id] FROM workitems WHERE [System.TeamProject]='Sample Project' AND [System.WorkItemType]='User Story'" +
+      " AND [System.IterationPath] IN ('Sample Project\\Sprint 42', 'Sample Project\\Sprint 41''s') ORDER BY [System.Id]");
+    assert.deepStrictEqual(JSON.parse(f.calls[1].body), { ids: [2101, 2102], fields: ['System.Id', 'System.Title'], errorPolicy: 'omit' });
+    assert.strictEqual(JSON.parse(f.calls[2].body).query,
+      "SELECT [System.Id] FROM workitems WHERE [System.TeamProject]='Sample Project' AND [System.Parent] IN (2101, 2102) ORDER BY [System.Id]");
+    assert.deepStrictEqual(JSON.parse(f.calls[3].body), {
+      ids: [4511, 4512, 4520, 4521],
+      fields: ['System.Id', 'System.Title', 'System.Parent', 'Microsoft.VSTS.Scheduling.OriginalEstimate'], errorPolicy: 'omit',
+    });
+    assert.deepStrictEqual(r, {
+      stories: [
+        { id: 2101, seq: 2101, title: 'Contact preferences', url: `${BASE}/${PROJ}/_workitems/edit/2101` },
+        { id: 2102, seq: 2102, title: 'Checkout address form', url: `${BASE}/${PROJ}/_workitems/edit/2102` },
+      ],
+      children: [
+        { id: 4511, seq: 4511, title: '[Testing] Test Execution', parentId: 2101, hours: 2 },
+        { id: 4512, seq: 4512, title: 'Build the form', parentId: 2102, hours: 1.23 },
+        { id: 4520, seq: 4520, title: '[Testing] Test Execution', parentId: 2102, hours: null },
+        { id: 4521, seq: 4521, title: '[Testing] Requirement Review', parentId: 2102, hours: null },
+      ],
+      truncated: false,
+    });
+    assertFlowFree(r);
+    assertFieldGuard(f.calls);
+  });
+
+  await test('listChildEstimates: ZERO requests for no sprints; a sprint set with no stories stops after the story WIQL', async () => {
+    const f = fakeFetch([]);
+    assert.deepStrictEqual(await createAdapter({ cwd: proj(), fetch: f }).listChildEstimates({ sprints: [], storyType: 'User Story' }),
+      { stories: [], children: [], truncated: false });
+    assert.strictEqual(f.calls.length, 0);
+    const g = fakeFetch([{ method: 'POST', match: '/wiql', json: { workItems: [] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: g }).listChildEstimates({ sprints: PAST, storyType: 'User Story' });
+    assert.deepStrictEqual(r, { stories: [], children: [], truncated: false });
+    assert.strictEqual(g.calls.length, 1);
+  });
+
+  await test('listChildEstimates: the child WIQL runs per 200-story chunk (201 stories → 2 child queries)', async () => {
+    const storyIds = Array.from({ length: 201 }, (_, i) => 3000 + i);
+    const f = fakeFetch([
+      { method: 'POST', match: '/_apis/wit/wiql', json: (calls) => {
+        const q = JSON.parse(calls[calls.length - 1].body).query;
+        return q.includes('[System.Parent]') ? { workItems: [] } : { workItems: storyIds.map((id) => ({ id })) };
+      } },
+      { method: 'POST', match: '/workitemsbatch', json: (calls) => ({ value: JSON.parse(calls[calls.length - 1].body).ids.map((id) => ({ id, fields: { 'System.Title': `S${id}` } })) }) },
+    ]);
+    await createAdapter({ cwd: proj(), fetch: f }).listChildEstimates({ sprints: PAST, storyType: 'User Story' });
+    const childQueries = f.calls.filter((c) => c.url.includes('/wiql') && JSON.parse(c.body).query.includes('[System.Parent]'));
+    assert.strictEqual(childQueries.length, 2);
+    assert.ok(JSON.parse(childQueries[0].body).query.includes('IN (3000, 3001,'), 'chunk 1 starts at the first story');
+    assert.ok(JSON.parse(childQueries[1].body).query.includes('IN (3200)'), 'chunk 2 holds the 201st');
+    assertFieldGuard(f.calls);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
