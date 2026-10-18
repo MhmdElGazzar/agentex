@@ -16,7 +16,8 @@ Score 1.0 iff ALL of:
     0.5–2 h), Test Creation (10, 1.5–4 h), Test Execution (12, 1–3 h), Bug Review and Retest
     (8, 0.5–2 h), Automation (5, 1–3 h), and the factors;
   - where it came from: the last 2 closed sprints (Sprint 41, Sprint 42), 12 stories, 47
-    `[Testing]` tasks counted, 3 skipped for having no Original Estimate;
+    `[Testing]` tasks counted, 3 skipped (the cause may read "no Original Estimate" or "no
+    Original Estimate or no task name" — both are correct);
   - both abnormal values, each with its task, value, story and the usual range, the value in
     use now, and exactly the three choices: Test Creation 0.25 h on #4404 "Saved payment
     cards" (task #4520; usual 1.5–4 h; 1.5 h in use) and Test Execution 12 h on #4402

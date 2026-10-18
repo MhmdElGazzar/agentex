@@ -1,7 +1,7 @@
 {
   "assignee": "qa.engineer@example.com",
   "estimation": {
-    "proposalFile": "validation/estimation-proposal.json"
+    "proposalFile": "/tmp/estimation-proposal.json"
   },
   "stories": [
     {
