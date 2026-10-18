@@ -97,6 +97,32 @@ const USAGE =
 const ESTIMATION_USAGE =
   'usage: create-tasks.js estimation --out <file> [--sprints <n>] [--team <name>] [--board <id|name>]';
 
+// The --out scratch file is never anything but a proposal (invariant 11): a
+// new path is created exclusively ('wx'); an existing path is re-written only
+// when it already holds a previous proposal. Anything else — a project file, a
+// note, a folder — is refused untouched.
+//   isProposalFile(p) → true | false (never throws)
+//   writeProposalFile(p, text) → null | refusal message (nothing was written)
+function isProposalFile(p) {
+  try { return proposals.checkProposal(JSON.parse(fs.readFileSync(p, 'utf8'))) === null; }
+  catch { return false; }
+}
+const notAProposal = (p) => `--out ${p} already exists and is not a previous estimation proposal — ` +
+  'it is never replaced; pass a new scratch path in the OS temp dir. Nothing was written.';
+function writeProposalFile(p, text) {
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  let fd;
+  try { fd = fs.openSync(p, 'wx'); }
+  catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    if (!isProposalFile(p)) return notAProposal(p);
+    fs.writeFileSync(p, text); // a previous proposal: this run's replaces it
+    return null;
+  }
+  try { fs.writeSync(fd, text); } finally { fs.closeSync(fd); }
+  return null;
+}
+
 const pad2 = (n) => String(n).padStart(2, '0');
 const localDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
@@ -147,13 +173,17 @@ async function estimationCmd(args, { cwd, fetch, registry, resolveTracker, now }
   if (outPath.toLowerCase() === path.resolve(cwd, ...file.split('/')).toLowerCase()) {
     return usage(`--out must be a scratch file, never ${file} — that file is written only on the user's approval.`);
   }
+  // Checked before the history read, so a refusal costs no request.
+  if (fs.existsSync(outPath) && !isProposalFile(outPath)) {
+    return { code: 2, out: { ok: false, mode: 'estimation', error: { message: notAProposal(outPath) } } };
+  }
   const adapter = resolveTracker(cwd, { fetch });
   const strategy = registry.get(adapter.name);
   const r = await strategy.pastTestingTasks(adapter, args, { count });
   if (r.stop) return r.stop;
   const proposal = proposals.propose(r.history, { createdOn: localDate(now()) });
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, JSON.stringify(proposal, null, 2) + '\n');
+  const refused = writeProposalFile(outPath, JSON.stringify(proposal, null, 2) + '\n');
+  if (refused) return { code: 2, out: { ok: false, mode: 'estimation', error: { message: refused } } };
   const view = proposals.recompute(proposal, {});
   return {
     code: 0,

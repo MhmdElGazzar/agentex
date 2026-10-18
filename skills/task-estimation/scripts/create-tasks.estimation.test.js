@@ -332,6 +332,52 @@ async function firstRun(dir = adoProject(), routes = adoHistoryRoutes()) {
     assert.ok(!fs.existsSync(path.join(dir, FILE)));
   });
 
+  await test('estimation --out never overwrites a file that is not a previous proposal: exit 2 naming the path, ZERO requests, bytes unchanged', async () => {
+    const dir = adoProject();
+    const notes = path.join(dir, '..', `${path.basename(dir)}-notes.txt`);
+    fs.writeFileSync(notes, 'my notes\n');
+    const otherJson = path.join(dir, '..', `${path.basename(dir)}-other.json`);
+    fs.writeFileSync(otherJson, JSON.stringify({ proposalVersion: 1, kind: 'history' }) + '\n');
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-est-dir-'));
+    for (const target of [path.join(dir, 'config', 'project.json'), notes, otherJson, folder]) {
+      const before = fs.statSync(target).isDirectory() ? null : sha(fs.readFileSync(target));
+      const f = fakeFetch(adoHistoryRoutes());
+      const { code, out } = await run(['estimation', '--out', target], { cwd: dir, fetch: f, now: NOW });
+      assert.strictEqual(code, 2, `${target}: ${JSON.stringify(out)}`);
+      assert.strictEqual(out.ok, false);
+      assert.strictEqual(out.mode, 'estimation');
+      assert.ok(out.error.message.includes(target), `the message names the path: ${out.error.message}`);
+      assert.match(out.error.message, /not a previous estimation proposal/);
+      assert.strictEqual(f.calls.length, 0, 'refused before the history read');
+      if (before) assert.strictEqual(sha(fs.readFileSync(target)), before, `${target} changed`);
+    }
+    assert.ok(!fs.existsSync(path.join(dir, FILE)));
+  });
+
+  await test('estimation --out: a new path is created; a previous proposal at the same path is re-written', async () => {
+    const dir = adoProject();
+    const first = await estimation(dir, adoHistoryRoutes());
+    assert.strictEqual(first.code, 0, JSON.stringify(first.out));
+    const written = JSON.parse(fs.readFileSync(first.outPath, 'utf8'));
+    assert.deepStrictEqual(written.provenance.sprintsRead, ['Sprint 42', 'Sprint 41']);
+    const again = await estimation(dir, adoHistoryRoutes(), ['--sprints', '3']);
+    assert.strictEqual(again.code, 0, JSON.stringify(again.out));
+    assert.strictEqual(again.outPath, first.outPath);
+    const rewritten = JSON.parse(fs.readFileSync(again.outPath, 'utf8'));
+    assert.deepStrictEqual(rewritten.provenance.sprintsRead, ['Sprint 42', 'Sprint 41', 'Sprint 40']);
+  });
+
+  await test('estimation --out: a non-proposal file that appears during the history read is never replaced (exclusive create)', async () => {
+    const dir = adoProject();
+    const target = outFile(dir);
+    const theirs = '{"written": "by someone else"}\n';
+    const f = fakeFetch(adoHistoryRoutes(), { onCall: () => { if (!fs.existsSync(target)) fs.writeFileSync(target, theirs); } });
+    const { code, out } = await run(['estimation', '--out', target], { cwd: dir, fetch: f, now: NOW });
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.ok(out.error.message.includes(target));
+    assert.strictEqual(fs.readFileSync(target, 'utf8'), theirs);
+  });
+
   await test('estimation with a valid file: source file, the enabled tasks, ZERO requests — the tracker is not even resolved', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-est-')); // no tracker configured at all
     writeFile(dir, VALID_FILE());
