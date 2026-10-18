@@ -108,7 +108,7 @@ function sourceRecord(p, kind) {
 }
 
 // The proposal as it stands after the user's choices and edits.
-//   { problems: Blocked[], content, outliers: [...], groups: [{ name, stories, min, max }] }
+//   { problems: Blocked[], content, outliers: [...], groups: [{ name, stories, min, max }], threshold }
 // Blocked reasons: bad-outlier-choice · bad-task-edit · estimation-proposal-invalid.
 function recompute(p, { outlierChoices, taskEdits } = {}) {
   const problems = [];
@@ -190,7 +190,7 @@ function recompute(p, { outlierChoices, taskEdits } = {}) {
       });
     }
   }
-  return { problems, content, outliers, groups: summary };
+  return { problems, content, outliers, groups: summary, threshold: { ratio: OUTLIER_RATIO, minSample: OUTLIER_MIN_SAMPLE } };
 }
 
 // history: what strategy.pastTestingTasks returned ({ sprintsRequested,

@@ -59,6 +59,7 @@
 //                 | 2 = refused before any write
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const LIB = path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'tracker');
@@ -68,6 +69,7 @@ const { WritePlan } = require(path.join(LIB, 'ledger.js'));
 const { defaultRegistry, compat } = require('./strategies/index.js');
 const ec = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'estimation_config.js'));
 const proposals = require('./estimation/history.js');
+const placement = require('./estimation/placement.js');
 
 // ---- CLI arg parser: --key value / --key=value / --flag ----------------------
 function parseArgs(argv) {
@@ -232,6 +234,113 @@ function specShapeErrors(spec) {
   return blocked;
 }
 
+// ---- the ratings spec mode ------------------------------------------------------
+// A spec with an `estimation` key, or any story with `ratings`, is a ratings
+// spec: the agent sends 0–4 factor ratings, never tasks or hours. The task set
+// and the hours are DERIVED here — purely, before any tracker request — from
+// config/estimation.json (or, on a first run, from the Phase-A proposal plus
+// the user's outlier choices and gate edits), then handed to the UNCHANGED
+// validate → plan → WritePlan spine below as an ordinary tasks spec.
+const CREATE_FILE_DESCRIBE = `create ${ec.ESTIMATION_FILE_REL} — a new file, written only if none exists (never replaces one)`;
+const PROPOSAL_KEYS = ['proposalFile', 'outlierChoices', 'taskEdits'];
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+function isRatingsSpec(spec) {
+  if (!isPlainObject(spec)) return false;
+  if (Object.prototype.hasOwnProperty.call(spec, 'estimation')) return true;
+  return Array.isArray(spec.stories) && spec.stories.some((st) => isPlainObject(st) && st.ratings !== undefined);
+}
+
+function ratingsShapeErrors(spec) {
+  const blocked = [];
+  if (spec.estimation !== undefined && !isPlainObject(spec.estimation)) {
+    blocked.push({ reason: 'missing-required-field', field: 'estimation', message: 'spec.estimation must be an object { proposalFile?, outlierChoices?, taskEdits? }' });
+  }
+  if (!Array.isArray(spec.stories) || spec.stories.length === 0) {
+    blocked.push({ reason: 'missing-required-field', field: 'stories', message: 'spec.stories must be a non-empty array' });
+    return blocked;
+  }
+  spec.stories.forEach((st, i) => {
+    if (!isPlainObject(st) || st.id === undefined || st.id === null || st.id === '') {
+      blocked.push({ reason: 'missing-required-field', field: `stories[${i}].id`, message: `spec.stories[${i}].id is required` });
+    } else if (st.tasks !== undefined) {
+      blocked.push({
+        reason: 'tasks-not-from-file', story: st.id,
+        message: `spec.stories[${i}] carries tasks — this project's task set comes from ${ec.ESTIMATION_FILE_REL} — send ratings, not tasks`,
+      });
+    }
+  });
+  return blocked;
+}
+
+// → { blocked } | { estimation, expanded }
+function deriveEstimation(spec, cwd) {
+  const file = ec.ESTIMATION_FILE_REL;
+  const est = isPlainObject(spec.estimation) ? spec.estimation : {};
+  const loaded = ec.loadEstimationConfig(cwd);
+  let content; let source; let create; let proposalView = null;
+  if (loaded.state === 'invalid') {
+    return { blocked: [{
+      reason: 'estimation-file-invalid', file, problems: loaded.problems,
+      message: `${file} is invalid — nothing was read or written; the plugin never repairs it: fix every problem listed by hand, then re-run`,
+    }] };
+  }
+  if (loaded.state === 'valid') {
+    const stale = PROPOSAL_KEYS.filter((k) => est[k] !== undefined);
+    if (stale.length) {
+      return { blocked: [{
+        reason: 'estimation-file-exists', file,
+        message: `${file} exists, but the spec still carries a first-run proposal (${stale.join(', ')}) — ` +
+          'the proposal is stale: re-run Phase A (estimation) and build the spec from the file; nothing was read or written',
+      }] };
+    }
+    content = loaded.content; source = 'file'; create = false;
+  } else {
+    if (typeof est.proposalFile !== 'string' || !est.proposalFile.trim()) {
+      return { blocked: [{
+        reason: 'estimation-proposal-required', file,
+        message: `there is no ${file} yet — run "create-tasks.js estimation --out <file>" first (Phase A) and pass that file as spec.estimation.proposalFile`,
+      }] };
+    }
+    const proposalFile = path.resolve(cwd, est.proposalFile);
+    let proposal; let bad;
+    try { proposal = JSON.parse(fs.readFileSync(proposalFile, 'utf8')); bad = proposals.checkProposal(proposal); }
+    catch (e) { bad = e.message; }
+    if (bad) {
+      return { blocked: [{
+        reason: 'proposal-unreadable', proposalFile,
+        message: `the proposal ${proposalFile} could not be used (${bad}) — re-run Phase A (estimation --out <file>)`,
+      }] };
+    }
+    proposalView = proposals.recompute(proposal, { outlierChoices: est.outlierChoices, taskEdits: est.taskEdits });
+    if (proposalView.problems.length) return { blocked: proposalView.problems };
+    content = proposalView.content; source = proposal.kind; create = true;
+    proposalView.provenance = proposal.provenance;
+  }
+  const derived = placement.deriveStories(content, spec.stories);
+  if (derived.problems.length) return { blocked: derived.problems };
+  // What is written must equal what was shown: the basis covers the file
+  // content to write or use and every story's derived titles and hours.
+  const basis = crypto.createHash('sha256').update(JSON.stringify({
+    file: ec.serializeEstimationConfig(content),
+    stories: derived.perStory.map((st) => ({ id: st.id, tasks: st.tasks.map((t) => [t.title, t.hours]) })),
+  })).digest('hex');
+  return {
+    estimation: {
+      source, file, create, content,
+      ...(proposalView ? {
+        provenance: proposalView.provenance, groups: proposalView.groups,
+        outliers: proposalView.outliers, threshold: proposalView.threshold,
+      } : {}),
+      perStory: derived.perStory, total: derived.total, basis,
+    },
+    expanded: {
+      ...(spec.assignee !== undefined ? { assignee: spec.assignee } : {}),
+      stories: derived.perStory.map((st) => ({ id: st.id, tasks: st.tasks.map((t) => ({ title: t.title, estimate: t.hours })) })),
+    },
+  };
+}
+
 // ---- main ---------------------------------------------------------------------
 // Returns { code, out }; prints nothing. opts.fetch is the offline-test seam;
 // opts.registry / opts.resolveTracker are the same kind of seam for the
@@ -254,8 +363,32 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
     try { spec = JSON.parse(fs.readFileSync(args.spec, 'utf8')); }
     catch (e) { return { code: 2, out: { ok: false, mode, error: { message: `could not read spec: ${e.message}` } } }; }
 
-    const shapeErrors = specShapeErrors(spec);
-    if (shapeErrors.length) return { code: 2, out: { ok: false, mode, blocked: shapeErrors } };
+    // Ratings mode: derive the tasks and hours first — pure, zero requests.
+    let estimation = null;
+    if (isRatingsSpec(spec)) {
+      const shape = ratingsShapeErrors(spec);
+      if (shape.length) return { code: 2, out: { ok: false, mode, blocked: shape } };
+      const d = deriveEstimation(spec, cwd);
+      if (d.blocked) return { code: 2, out: { ok: false, mode, blocked: d.blocked } };
+      ({ estimation } = d);
+      spec = d.expanded;
+    } else {
+      // Legacy tasks specs keep the 0.23.0 path — but only on a project without
+      // the file: with it, the task set comes from the file, never the spec.
+      const loaded = ec.loadEstimationConfig(cwd);
+      if (loaded.state !== 'missing') {
+        return { code: 2, out: { ok: false, mode, blocked: [loaded.state === 'valid' ? {
+          reason: 'tasks-not-from-file',
+          message: `this project's task set comes from ${ec.ESTIMATION_FILE_REL} — send ratings, not tasks`,
+        } : {
+          reason: 'estimation-file-invalid', file: ec.ESTIMATION_FILE_REL, problems: loaded.problems,
+          message: `${ec.ESTIMATION_FILE_REL} is invalid — nothing was read or written; the plugin never repairs it: fix every problem listed by hand, then re-run`,
+        }] } };
+      }
+      const shapeErrors = specShapeErrors(spec);
+      if (shapeErrors.length) return { code: 2, out: { ok: false, mode, blocked: shapeErrors } };
+    }
+    const withEstimation = (out) => (estimation ? { ...out, estimation } : out);
 
     const adapter = resolveTracker(cwd, { fetch });
     const strategy = registry.get(adapter.name);
@@ -270,7 +403,7 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
       : null;
 
     if (blocked.length) {
-      return { code: 2, out: { ok: false, mode, blocked, validation, ...(cacheOut ? { cache: cacheOut } : {}), ...(cacheStale ? { cacheStale: true } : {}) } };
+      return { code: 2, out: withEstimation({ ok: false, mode, blocked, validation, ...(cacheOut ? { cache: cacheOut } : {}), ...(cacheStale ? { cacheStale: true } : {}) }) };
     }
 
     // The story-ordered flat task list — the same order plans and executes.
@@ -284,6 +417,9 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
       // The PLAN: every intended create, in order, with its exact route —
       // rendered by the agent on the consolidated screen. Nothing has been written.
       const plan = [];
+      if (estimation && estimation.create) {
+        plan.push({ step: 'create-file', path: ec.ESTIMATION_FILE_REL, describe: CREATE_FILE_DESCRIBE });
+      }
       for (const { storyId, entry, task } of flat) {
         const d = await adapter.createWorkItem(createType, {
           fields: fieldsFor(entry, task),
@@ -299,7 +435,7 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
           plan.push({ step: followUp.step, story: storyId, title: task.title, describe: `${u.method} ${u.url} — right after the create above`, request: u });
         }
       }
-      return { code: 0, out: { ok: true, mode: 'plan', validation, plan, cache: cacheOut } };
+      return { code: 0, out: withEstimation({ ok: true, mode: 'plan', validation, plan, cache: cacheOut }) };
     }
 
     // ---- WRITE PHASE (only past explicit --execute, i.e. past the user's one approval)

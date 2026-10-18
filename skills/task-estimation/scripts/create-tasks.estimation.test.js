@@ -177,6 +177,76 @@ const VALID_FILE = () => ({
   source: { kind: 'history', sprints: 2, note: 'hand-edited' },
 });
 
+// ── the validate / create path (stories 2201, 2202 / PROJ-201, PROJ-202) ────
+const ADO_STORY = (id) => ({ id, fields: {
+  'System.WorkItemType': 'User Story', 'System.Title': `Story ${id}`, 'System.State': 'Active',
+  'Microsoft.VSTS.Scheduling.StoryPoints': 3,
+  'System.IterationPath': 'Sample Project\\Sprint 43', 'System.AreaPath': 'Sample Project\\Team Area',
+} });
+const TASK_FIELDS = { value: [
+  { referenceName: 'System.Title', alwaysRequired: true },
+  { referenceName: 'Microsoft.VSTS.Common.Activity', allowedValues: ['Development', 'Testing'] },
+  { referenceName: 'Microsoft.VSTS.Scheduling.OriginalEstimate' },
+  { referenceName: 'Microsoft.VSTS.Scheduling.RemainingWork' },
+] };
+function adoCreateRoutes(extra = []) {
+  let created = 9000;
+  return [
+    ...extra,
+    { match: '/wit/workitems/2201?', json: ADO_STORY(2201) },
+    { match: '/wit/workitems/2202?', json: ADO_STORY(2202) },
+    { match: '/wit/workitemtypes/Task/fields', json: TASK_FIELDS },
+    { method: 'POST', match: 'validateOnly=true', json: {} },
+    { method: 'POST', match: '/workitems/$Task', respond: () => ({ json: { id: ++created } }) },
+  ];
+}
+const JIRA_STORY = (key) => ({ key, fields: {
+  issuetype: { name: 'Story' }, summary: `Story ${key}`, status: { name: 'In Progress' }, customfield_10016: 3,
+  customfield_10020: [{ id: 43, name: 'Sprint 43', state: 'active' }], subtasks: [],
+} });
+function jiraCreateRoutes(extra = []) {
+  let created = 700;
+  return [
+    ...extra,
+    { match: '/rest/api/3/field', json: [{ id: 'customfield_10016', name: 'Story Points' }, { id: 'customfield_10020', name: 'Sprint' }] },
+    { match: '/rest/api/3/issue/PROJ-201?', json: JIRA_STORY('PROJ-201') },
+    { match: '/rest/api/3/issue/PROJ-202?', json: JIRA_STORY('PROJ-202') },
+    { match: '/issue/createmeta/PROJ/issuetypes/10002', json: { total: 5, fields: ['summary', 'timetracking', 'labels', 'assignee', 'parent']
+      .map((fieldId) => ({ fieldId, name: fieldId, required: fieldId === 'summary' })) } },
+    { match: '/issue/createmeta/PROJ/issuetypes', json: { issueTypes: [
+      { id: '10001', name: 'Story', subtask: false }, { id: '10002', name: 'Sub-task', subtask: true }] } },
+    { match: '/rest/api/3/user/search', json: [{ accountId: 'acc-1', emailAddress: 'qa.engineer@example.com', displayName: 'QA Engineer' }] },
+    { method: 'POST', match: '/rest/api/3/issue', respond: () => ({ json: { key: `PROJ-${++created}` } }) },
+  ];
+}
+
+let specSeq = 0;
+function writeSpec(dir, spec) {
+  const file = path.join(dir, '..', `${path.basename(dir)}-spec-${++specSeq}.json`);
+  fs.writeFileSync(file, JSON.stringify(spec));
+  return file;
+}
+const ratingsFor = (factors, r) => Object.fromEntries(Object.keys(factors).map((f) => [f, r]));
+const RATINGS_SPEC = (factors, ids = [2201, 2202], extra = {}) => ({
+  assignee: 'qa.engineer@example.com',
+  stories: [
+    { id: ids[0], ratings: ratingsFor(factors, 0) },
+    { id: ids[1], ratings: { ...ratingsFor(factors, 2), [Object.keys(factors)[0]]: 4 } },
+  ],
+  ...extra,
+});
+async function dryRun(dir, spec, routes, args = []) {
+  const f = fakeFetch(routes);
+  const r = await run(['--spec', writeSpec(dir, spec), ...args], { cwd: dir, fetch: f, now: NOW });
+  return { ...r, calls: f.calls };
+}
+// A first run on ADO: Phase A writes the proposal; the spec points at it.
+async function firstRun(dir = adoProject(), routes = adoHistoryRoutes()) {
+  const est = await estimation(dir, routes);
+  assert.strictEqual(est.code, 0, JSON.stringify(est.out));
+  return { dir, proposalFile: est.outPath, est: est.out };
+}
+
 (async () => {
   // ════ the `estimation` subcommand ═════════════════════════════════════════
   await test('estimation, first run (ADO): proposal from the last 2 closed sprints — --out written, summary, nothing created, history reads only', async () => {
@@ -359,6 +429,202 @@ const VALID_FILE = () => ({
     assert.match(b.message, /jira\.board/);
     const ok = await estimation(dir, jiraHistoryRoutes({ boards }), ['--board', 'PROJ board']);
     assert.strictEqual(ok.code, 0, JSON.stringify(ok.out));
+  });
+
+  // ════ the ratings spec mode — dry run ═════════════════════════════════════
+  await test('ratings dry run with a file (ADO): exactly the file\'s enabled tasks, in file order, hours placed from the ratings; the estimation block last', async () => {
+    const file = VALID_FILE();
+    const dir = adoProject({ estimation: file });
+    const before = sha(fileBytes(dir));
+    const { code, out, calls } = await dryRun(dir, RATINGS_SPEC(file.factors), adoCreateRoutes());
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.mode, 'plan');
+    assert.deepStrictEqual(Object.keys(out), ['ok', 'mode', 'validation', 'plan', 'cache', 'estimation']);
+    assert.ok(out.plan.every((p) => p.step === 'create-task'), 'no create-file entry when the file exists');
+    assert.deepStrictEqual(out.plan.map((p) => [p.story, p.title]), [
+      [2201, '[Testing] Requirement Review'], [2201, '[Testing] Exploratory Pass'], [2201, '[Testing] Test Execution'],
+      [2202, '[Testing] Requirement Review'], [2202, '[Testing] Exploratory Pass'], [2202, '[Testing] Test Execution'],
+    ]);
+    const hoursOf = (p) => p.request.body.find((op) => op.path === '/fields/Microsoft.VSTS.Scheduling.OriginalEstimate').value;
+    assert.deepStrictEqual(out.plan.map(hoursOf), [0.5, 1, 1, 1.5, 2.5, 2.5], 'all-0 → every min; story 2 score 0.625');
+    const e = out.estimation;
+    assert.deepStrictEqual(Object.keys(e), ['source', 'file', 'create', 'content', 'perStory', 'total', 'basis']);
+    assert.strictEqual(e.source, 'file');
+    assert.strictEqual(e.create, false);
+    assert.deepStrictEqual(e.perStory.map((x) => [x.id, x.score, x.scorePct, x.total]), [[2201, 0, 0, 2.5], [2202, 0.625, 63, 6.5]]);
+    assert.deepStrictEqual(e.perStory[1].ratings, { 'Scenarios / ACs': 4, 'UI elements': 2, 'Data setup': 2 });
+    assert.strictEqual(e.total, 9);
+    assert.match(e.basis, /^[0-9a-f]{64}$/);
+    assert.strictEqual(sha(fileBytes(dir)), before, 'a dry run never touches the file');
+    assert.deepStrictEqual(calls.filter(isAdoWrite), []);
+  });
+
+  await test('the task count follows the file: 3 enabled tasks → 3 per story; 7 → 7 per story', async () => {
+    for (const n of [3, 7]) {
+      const file = { schemaVersion: 1, factors: { Scope: 1 },
+        tasks: Array.from({ length: n }, (_, i) => ({ name: `Step ${i + 1}`, enabled: true, minHours: 0.5, maxHours: 2 })).concat([{ name: 'Off', enabled: false, minHours: 1, maxHours: 1 }]) };
+      const dir = adoProject({ estimation: file });
+      const { code, out } = await dryRun(dir, RATINGS_SPEC(file.factors), adoCreateRoutes());
+      assert.strictEqual(code, 0, JSON.stringify(out));
+      assert.strictEqual(out.plan.filter((p) => p.story === 2201).length, n);
+      assert.deepStrictEqual(out.plan.filter((p) => p.story === 2201).map((p) => p.title), Array.from({ length: n }, (_, i) => `[Testing] Step ${i + 1}`));
+      assert.ok(!out.plan.some((p) => p.title === '[Testing] Off'), 'a disabled task is never proposed');
+    }
+  });
+
+  await test('first run: create-file is plan[0], then the task creates; the dry run never writes the file; the estimation block carries the proposal', async () => {
+    const { dir, proposalFile, est } = await firstRun();
+    const spec = RATINGS_SPEC(est.content.factors, [2201, 2202], { estimation: { proposalFile } });
+    const { code, out, calls } = await dryRun(dir, spec, adoCreateRoutes());
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.deepStrictEqual(out.plan[0], {
+      step: 'create-file', path: 'config/estimation.json',
+      describe: 'create config/estimation.json — a new file, written only if none exists (never replaces one)',
+    });
+    assert.deepStrictEqual(out.plan.slice(1).map((p) => p.title), [
+      '[Testing] Requirement Review', '[Testing] Test Creation', '[Testing] Test Execution', '[Testing] Smoke Pass',
+      '[Testing] Requirement Review', '[Testing] Test Creation', '[Testing] Test Execution', '[Testing] Smoke Pass',
+    ]);
+    const e = out.estimation;
+    assert.deepStrictEqual(Object.keys(e), ['source', 'file', 'create', 'content', 'provenance', 'groups', 'outliers', 'threshold', 'perStory', 'total', 'basis']);
+    assert.strictEqual(e.source, 'history');
+    assert.strictEqual(e.create, true);
+    assert.deepStrictEqual(e.content, est.content);
+    assert.deepStrictEqual(e.outliers.map((o) => [o.ref, o.choice, o.used]), [[4506, 'suggested', 3]]);
+    assert.deepStrictEqual(e.perStory[0].tasks.map((t) => t.hours), [0.5, 1.5, 1, 1], 'all-0 → each proposed min');
+    assert.ok(!fs.existsSync(path.join(dir, FILE)), 'the dry run never writes config/estimation.json');
+    assert.deepStrictEqual(calls.filter(isAdoWrite), []);
+  });
+
+  await test('first run with no usable history: the starter defaults are the proposal (create-file + the five starter tasks)', async () => {
+    const { dir, proposalFile, est } = await firstRun(adoProject(), adoHistoryRoutes({ noEstimates: true }));
+    const { code, out } = await dryRun(dir, RATINGS_SPEC(est.content.factors, [2201, 2202], { estimation: { proposalFile } }), adoCreateRoutes());
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.estimation.source, 'starter-defaults');
+    assert.strictEqual(out.estimation.provenance.reason, 'no-estimates');
+    assert.strictEqual(out.plan[0].step, 'create-file');
+    assert.strictEqual(out.plan.length, 1 + 10);
+    // story 2: score 18/32 = 0.5625 → 1 · 1 · 1.5 · 1 · 0.5 (Automation's range is 0.5–0.5)
+    assert.deepStrictEqual(out.estimation.perStory.map((x) => x.total), [3, 5]);
+  });
+
+  await test('outlier choices and gate edits recompute the proposal, the hours and the basis (still one dry run)', async () => {
+    const { dir, proposalFile, est } = await firstRun();
+    const base = await dryRun(dir, RATINGS_SPEC(est.content.factors, [2201, 2202], { estimation: { proposalFile } }), adoCreateRoutes());
+    const counted = await dryRun(dir, RATINGS_SPEC(est.content.factors, [2201, 2202], {
+      estimation: { proposalFile, outlierChoices: { 4506: 'count' }, taskEdits: { 'Smoke Pass': { enabled: false } } },
+    }), adoCreateRoutes());
+    assert.strictEqual(counted.code, 0, JSON.stringify(counted.out));
+    const te = (o) => o.estimation.content.tasks.find((t) => t.name === 'Test Execution');
+    assert.strictEqual(te(base.out).maxHours, 3);
+    assert.strictEqual(te(counted.out).maxHours, 12);
+    assert.strictEqual(counted.out.estimation.outliers[0].used, 12);
+    assert.ok(!counted.out.plan.some((p) => p.title === '[Testing] Smoke Pass'), 'the disabled task is gone from the plan');
+    assert.notStrictEqual(counted.out.estimation.basis, base.out.estimation.basis);
+    const typed = await dryRun(dir, RATINGS_SPEC(est.content.factors, [2201, 2202], { estimation: { proposalFile, outlierChoices: { 4506: 4 } } }), adoCreateRoutes());
+    assert.strictEqual(te(typed.out).maxHours, 4);
+  });
+
+  await test('a legacy tasks spec on a project WITH the file → tasks-not-from-file (exit 2, zero requests); an invalid file → estimation-file-invalid', async () => {
+    const legacy = { assignee: 'qa.engineer@example.com', stories: [{ id: 2201, tasks: [{ title: '[Testing] Requirement Review', estimate: 1 }] }] };
+    const dir = adoProject({ estimation: VALID_FILE() });
+    const r = await dryRun(dir, legacy, adoCreateRoutes());
+    assert.strictEqual(r.code, 2, JSON.stringify(r.out));
+    assert.deepStrictEqual(r.out.blocked.map((b) => b.reason), ['tasks-not-from-file']);
+    assert.match(r.out.blocked[0].message, /config\/estimation\.json/);
+    assert.match(r.out.blocked[0].message, /send ratings, not tasks/);
+    assert.strictEqual(r.calls.length, 0);
+    const bad = VALID_FILE(); bad.schemaVersion = 9;
+    const r2 = await dryRun(adoProject({ estimation: bad }), legacy, adoCreateRoutes());
+    assert.strictEqual(r2.code, 2);
+    assert.deepStrictEqual(r2.out.blocked.map((b) => b.reason), ['estimation-file-invalid']);
+    assert.deepStrictEqual(r2.out.blocked[0].problems.map((p) => p.code), ['schema-version']);
+    assert.strictEqual(r2.calls.length, 0);
+  });
+
+  await test('every derivation block exits 2 with ZERO requests', async () => {
+    const file = VALID_FILE();
+    const { dir: firstDir, proposalFile, est } = await firstRun();
+    const F = est.content.factors;
+    const badFile = VALID_FILE(); badFile.tasks[0].minHours = 9;
+    const garbage = path.join(firstDir, '..', `${path.basename(firstDir)}-garbage.json`);
+    fs.writeFileSync(garbage, '{ not json');
+    const malformed = path.join(firstDir, '..', `${path.basename(firstDir)}-malformed.json`);
+    fs.writeFileSync(malformed, JSON.stringify({ proposalVersion: 1, kind: 'history', groups: 'x' }));
+    const cases = [
+      ['estimation-file-invalid', adoProject({ estimation: badFile }), RATINGS_SPEC(file.factors)],
+      ['estimation-file-exists', adoProject({ estimation: file }), RATINGS_SPEC(file.factors, [2201, 2202], { estimation: { proposalFile } })],
+      ['estimation-file-exists', adoProject({ estimation: file }), RATINGS_SPEC(file.factors, [2201, 2202], { estimation: { outlierChoices: {} } })],
+      ['estimation-proposal-required', adoProject(), RATINGS_SPEC(F)],
+      ['proposal-unreadable', adoProject(), RATINGS_SPEC(F, [2201, 2202], { estimation: { proposalFile: path.join(firstDir, 'nope.json') } })],
+      ['proposal-unreadable', adoProject(), RATINGS_SPEC(F, [2201, 2202], { estimation: { proposalFile: garbage } })],
+      ['proposal-unreadable', adoProject(), RATINGS_SPEC(F, [2201, 2202], { estimation: { proposalFile: malformed } })],
+      ['bad-outlier-choice', adoProject(), RATINGS_SPEC(F, [2201, 2202], { estimation: { proposalFile, outlierChoices: { 4506: 'maybe' } } })],
+      ['bad-task-edit', adoProject(), RATINGS_SPEC(F, [2201, 2202], { estimation: { proposalFile, taskEdits: { Nope: { enabled: false } } } })],
+      ['estimation-proposal-invalid', adoProject(), RATINGS_SPEC(F, [2201, 2202], { estimation: { proposalFile, taskEdits: { 'Test Execution': { minHours: 9 } } } })],
+      ['missing-rating', adoProject({ estimation: file }), { stories: [{ id: 2201, ratings: { 'Scenarios / ACs': 1, 'UI elements': 1 } }] }],
+      ['unknown-factor', adoProject({ estimation: file }), { stories: [{ id: 2201, ratings: { ...ratingsFor(file.factors, 1), Extra: 1 } }] }],
+      ['bad-rating', adoProject({ estimation: file }), { stories: [{ id: 2201, ratings: { ...ratingsFor(file.factors, 1), 'UI elements': 7 } }] }],
+      ['bad-adjustment', adoProject({ estimation: file }), { stories: [{ id: 2201, ratings: ratingsFor(file.factors, 1), adjust: { 'Test Execution': 'later' } }] }],
+      ['no-tasks-left', adoProject({ estimation: file }), { stories: [{ id: 2201, ratings: ratingsFor(file.factors, 1),
+        adjust: { 'Requirement Review': 'skip', 'Exploratory Pass': 'skip', 'Test Execution': 'skip' } }] }],
+      ['tasks-not-from-file', adoProject({ estimation: file }), { stories: [{ id: 2201, ratings: ratingsFor(file.factors, 1), tasks: [{ title: '[Testing] X', estimate: 1 }] }] }],
+      ['missing-required-field', adoProject({ estimation: file }), { estimation: {}, stories: [] }],
+    ];
+    for (const [reason, dir, spec] of cases) {
+      for (const extra of [[], ['--execute', '--basis', 'x']]) {
+        const r = await dryRun(dir, spec, adoCreateRoutes(), extra);
+        assert.strictEqual(r.code, 2, `${reason}: ${JSON.stringify(r.out)}`);
+        assert.ok(r.out.blocked.some((b) => b.reason === reason), `${reason}: ${JSON.stringify(r.out.blocked)}`);
+        assert.strictEqual(r.calls.length, 0, `${reason}: zero requests`);
+      }
+    }
+  });
+
+  await test('adjust at the gate: a run-only override (labelled adjusted, even outside the range) and a skip — the file stays byte-identical', async () => {
+    const file = VALID_FILE();
+    const dir = adoProject({ estimation: file });
+    const before = sha(fileBytes(dir));
+    const spec = { assignee: 'qa.engineer@example.com', stories: [{ id: 2201, ratings: ratingsFor(file.factors, 0),
+      adjust: { 'Exploratory Pass': 6, 'Test Execution': 'skip' } }] };
+    const { code, out } = await dryRun(dir, spec, adoCreateRoutes());
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.deepStrictEqual(out.plan.map((p) => p.title), ['[Testing] Requirement Review', '[Testing] Exploratory Pass']);
+    assert.deepStrictEqual(out.estimation.perStory[0].tasks.map((t) => [t.name, t.hours, Boolean(t.adjusted)]),
+      [['Requirement Review', 0.5, false], ['Exploratory Pass', 6, true]]);
+    assert.strictEqual(sha(fileBytes(dir)), before);
+  });
+
+  await test('a hand edit of the file takes effect on the next run, with no prompt and no new proposal', async () => {
+    const file = VALID_FILE();
+    const dir = adoProject({ estimation: file });
+    const first = await dryRun(dir, RATINGS_SPEC(file.factors), adoCreateRoutes());
+    const edited = VALID_FILE();
+    edited.tasks = [edited.tasks[2], { name: 'Accessibility Check', enabled: true, minHours: 1, maxHours: 2 }, edited.tasks[0]];
+    edited.tasks[0].maxHours = 5;
+    edited.factors = { 'Scenarios / ACs': 3, 'Accessibility': 1 };
+    writeFile(dir, edited);
+    const blocked = await dryRun(dir, RATINGS_SPEC(file.factors), adoCreateRoutes());
+    assert.strictEqual(blocked.code, 2, 'the old ratings no longer match the edited factors');
+    assert.deepStrictEqual(blocked.out.blocked.map((b) => b.reason).sort(), ['missing-rating', 'missing-rating', 'unknown-factor', 'unknown-factor', 'unknown-factor', 'unknown-factor'].sort());
+    const r = await dryRun(dir, RATINGS_SPEC(edited.factors), adoCreateRoutes());
+    assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+    assert.deepStrictEqual(r.out.plan.filter((p) => p.story === 2201).map((p) => p.title),
+      ['[Testing] Test Execution', '[Testing] Accessibility Check', '[Testing] Requirement Review']);
+    // story 2: score 14/16 = 0.875 → Test Execution 1–5 → 4.5; Accessibility Check 1–2 → 2; Requirement Review 0.5–2 → 2
+    assert.deepStrictEqual(r.out.estimation.perStory[1].tasks.map((t) => t.hours), [4.5, 2, 2]);
+    assert.notStrictEqual(r.out.estimation.basis, first.out.estimation.basis);
+  });
+
+  await test('Jira ratings dry run: sub-task creates with exactly the hours ADO gets for the same file and ratings (Q9)', async () => {
+    const file = VALID_FILE();
+    const ado = await dryRun(adoProject({ estimation: file }), RATINGS_SPEC(file.factors), adoCreateRoutes());
+    const jira = await dryRun(jiraProject({ estimation: file }), RATINGS_SPEC(file.factors, ['PROJ-201', 'PROJ-202']), jiraCreateRoutes());
+    assert.strictEqual(jira.code, 0, JSON.stringify(jira.out));
+    assert.deepStrictEqual(jira.out.plan.map((p) => [p.title, p.request.body.fields.timetracking.originalEstimate]),
+      ado.out.plan.map((p) => [p.title, `${p.request.body.find((op) => op.path === '/fields/Microsoft.VSTS.Scheduling.OriginalEstimate').value}h`]));
+    assert.deepStrictEqual(jira.out.estimation.perStory.map((x) => x.tasks), ado.out.estimation.perStory.map((x) => x.tasks));
+    assert.deepStrictEqual(jira.calls.filter(isJiraWrite), []);
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
