@@ -1,0 +1,107 @@
+{
+  "label": "OpenAI Codex",
+  "description": "Branch `codex`, for Codex CLI / app plugins. Codex plugins carry skills only: commands become skills, agent definitions move to references/agents/ and are dispatched as native subagents, the plugin root becomes a placeholder (Codex expands it for hooks only), and the manifest moves to .codex-plugin/plugin.json. Codex has no structured ask tool outside Plan mode, and its sandbox blocks network by default; the preamble covers both.",
+  "target": {
+    "branch": "codex"
+  },
+  "tag": "codex-v{version}",
+  "exclude": [
+    "skills/browser-testing",
+    "docs/contributing"
+  ],
+  "transforms": [
+    [
+      "commandsToSkills"
+    ],
+    [
+      "moveAgents",
+      {
+        "to": "references/agents"
+      }
+    ],
+    [
+      "pluginRoot",
+      {
+        "mode": "placeholder"
+      }
+    ],
+    [
+      "askUser",
+      {
+        "replacement": "message (numbered questions with lettered options; then stop and wait for the reply)"
+      }
+    ],
+    [
+      "preamble",
+      {
+        "targets": [
+          "skills/*/SKILL.md",
+          "references/agents/*.md"
+        ],
+        "text": "> **AgenTeX on {host}.** `<agentex-root>` stands for this plugin's install folder: `{root}` from the folder this file is in. Resolve it to an absolute path before you run or read anything that uses it. When a step says to dispatch a bundled agent (`qa-executor`, `api-executor`, `mobile-qa-executor`), spawn a native subagent and give it the body of `<agentex-root>/references/agents/<name>.md` as its instructions, plus the values this file says to inject. Steps that reach the network (`curl`, `az`, `sqlcmd`, `playwright-cli` on a remote site, the tracker scripts) need network access: if the sandbox blocks one, ask the user to approve it; never skip the step or report it as passed."
+      }
+    ],
+    [
+      "manifest",
+      {
+        "target": ".codex-plugin/plugin.json",
+        "pick": [
+          "name",
+          "version",
+          "description",
+          "author",
+          "homepage",
+          "repository",
+          "license",
+          "keywords"
+        ],
+        "removeSource": true
+      }
+    ]
+  ],
+  "guards": {
+    "skills": {
+      "nameMatchesFolder": true,
+      "nameMax": 55,
+      "descriptionMax": 1024
+    },
+    "forbiddenText": [
+      {
+        "pattern": "\\$\\{CLAUDE_PLUGIN_ROOT\\}",
+        "why": "Codex expands it for hooks only"
+      },
+      {
+        "pattern": "AskUserQuestion",
+        "why": "Claude-only tool name"
+      },
+      {
+        "pattern": "\\$ARGUMENTS",
+        "why": "commands became skills",
+        "paths": [
+          "skills",
+          "agents",
+          "references/agents"
+        ]
+      }
+    ],
+    "forbiddenPaths": [
+      ".gitattributes",
+      "**/.DS_Store",
+      "commands",
+      "agents",
+      "hooks",
+      "**/.app.json",
+      ".claude-plugin"
+    ],
+    "maxFiles": 5000,
+    "manifest": {
+      "path": ".codex-plugin/plugin.json",
+      "required": [
+        "name",
+        "version",
+        "description",
+        "author"
+      ]
+    }
+  }
+}
