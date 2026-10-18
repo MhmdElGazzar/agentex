@@ -62,6 +62,31 @@ test('Swagger 2.0 -> base URL built from schemes + host + basePath, kept out of 
   assert.strictEqual(out.envVarsToSet.LEGACY_BASE_URL, 'https://legacy.example.com/api');
 });
 
+test('generated catalog carries "target": "catalog" (its own base URL + auth, never the environment api block)', () => {
+  for (const [spec, name] of [[OPENAPI3, 'petstore'], [SWAGGER2, 'legacy']]) {
+    const dir = tmp(); const f = write(dir, 'spec.json', spec);
+    const { code, out } = run(dir, [f, '--name', name]);
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    const cat = JSON.parse(fs.readFileSync(path.resolve(dir, out.catalogPath), 'utf8'));
+    assert.strictEqual(cat.target, 'catalog', name);
+  }
+});
+
+test('envVarsToSet: credential placeholders say "<set in .env>", never "shell"', () => {
+  const BASIC = { ...SWAGGER2, info: { title: 'Basic' }, securityDefinitions: { b: { type: 'basic' } } };
+  const seen = {};
+  for (const [spec, name] of [[OPENAPI3, 'petstore'], [BASIC, 'basicsvc']]) {
+    const dir = tmp(); const f = write(dir, 'spec.json', spec);
+    const { code, out } = run(dir, [f, '--name', name]);
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.doesNotMatch(JSON.stringify(out.envVarsToSet), /shell/i);
+    Object.assign(seen, out.envVarsToSet);
+  }
+  assert.strictEqual(seen.PETSTORE_TOKEN, '<set in .env>');
+  assert.strictEqual(seen.BASICSVC_USER, '<set in .env>');
+  assert.strictEqual(seen.BASICSVC_PASS, '<set in .env>');
+});
+
 test('never overwrites an existing import -> BLOCKED, file untouched', () => {
   const dir = tmp(); const spec = write(dir, 'spec.json', SWAGGER2);
   assert.strictEqual(run(dir, [spec, '--name', 'legacy']).code, 0);
