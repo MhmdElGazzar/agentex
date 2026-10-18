@@ -116,8 +116,9 @@ work around it (no guessed sprint, no hours dropped, no substitute issue type).
 
 | Flow needs | Discovered by | Blocked reason | Fix on Jira (admin) |
 |---|---|---|---|
-| An **open sprint** holding the stories (`/estimate-story` on the current sprint) | the `openSprints()` read comes back empty; a kanban/simple board also answers `400 The board does not support sprints` on the agile sprint route | `no-open-sprint` | Team-managed: **Project settings → Features → Sprints** on, then create and **start** a sprint holding the stories. Company-managed: use a **Scrum** board. Or skip sprints: `--ids <KEY,KEY>` estimates named stories |
+| An **open sprint** holding the stories (`/estimate-sprint`, or `/estimate-story` without IDs) | the `openSprints()` read comes back empty; a kanban/simple board also answers `400 The board does not support sprints` on the agile sprint route | `no-open-sprint` | Team-managed: **Project settings → Features → Sprints** on, then create and **start** a sprint holding the stories. Company-managed: use a **Scrum** board. Or skip sprints: `--ids <KEY,KEY>` estimates named stories |
 | **Time tracking** on the sub-task screen (hours → `timetracking`) | createmeta for the sub-task type; if absent, the editmeta of the newest existing sub-task of that type | not a block: `validation.hours.mode` = `create` / `edit-after-create` / `none`. With `none`, sub-tasks are created without hours and each description carries `Estimate: <n>h` | Jira's REST API writes `timetracking` only when the field is on the screen. Estimates visible in the UI may have been set by Automation for Jira, which bypasses screens. To get real hours: site-wide **Settings → Work items (Issues) → Time tracking** on, then team-managed: **Project settings → Work types → \<sub-task type\>** → add **Time tracking**; company-managed: add **Time tracking** to the sub-task's create (and edit) screen. Re-run with `--refresh-fields` |
+| Past **Original Estimates** for the first-run proposal of `config/estimation.json` | the first-run history read: `timeoriginalestimate` on the last closed sprints' `[Testing]` sub-tasks | not a block: the proposal is labelled starter defaults with reason `no-estimates`, naming the likely cause (hours mode `none` put the hours in descriptions, which are never read as estimates) | Put **Time tracking** on the sub-task screen (the row above) so new estimates are real Original Estimates. To rebuild the file from history later, delete or move `config/estimation.json` |
 | A **Bug** issue type (bug filing) | createmeta lists the project's real types | `no-bug-type`, listing the real types | Team-managed: **Project settings → Work types → Add work type → Bug**. Company-managed: add Bug to the project's issue type scheme |
 
 Menu names drift across Jira Cloud UI versions ("Issues" ↔ "Work items", "Issue types" ↔
@@ -133,11 +134,12 @@ Menu names drift across Jira Cloud UI versions ("Issues" ↔ "Work items", "Issu
 | `deleteWorkItem` | `false` — Jira Cloud's only issue delete is **permanent** | never offered; a delete ask gets the upfront "not supported on this tracker" answer (portal cleanup is the user's call) |
 | native Test Case type | none | `/design-test` informs the user and asks what to create (Q11) before writing anything |
 
-## Estimation flow (/estimate-story)
+## Estimation flow (/estimate-story, /estimate-sprint)
 
-The Jira side of the `task-estimation` skill. The template is **verbatim** — the same five
-`[Testing]` titles, the same estimation methodology, the same one-gate workflow. What differs
-is mechanical, and the script owns it; the rules below sit on top of the skill body.
+The Jira side of the `task-estimation` skill. The task set, each task's hour range and the
+rating factors come from the project's `config/estimation.json`, exactly as on Azure DevOps,
+with the same methodology and the same one-gate workflow. What differs is mechanical, and the
+script owns it; the rules below sit on top of the skill body.
 
 **Configuration.** Resolved from the `jira` block of `config/project.json` — no `.env`
 fallback for non-secrets (see "Configuration and credentials" above). Never bake a site,
@@ -187,4 +189,30 @@ A `--sprint` or corrected value is for the run only — never rewrite the user's
   a sprint. The fixes are in "Project prerequisites" above.
 - **Story Points** come from a site-specific custom field discovered by display name; when
   none/ambiguous the JSON says so with `storyPoints: null` (and a `storyPointsNote`) —
-  estimate from the factor counts and name the `jira.storyPointsField` override to the user.
+  rate the factors from the description and ACs as always (story points are context only)
+  and name the `jira.storyPointsField` override to the user.
+
+**First-run history read** — only while the project has no `config/estimation.json`
+(`create-tasks.js estimation --out <file> [--sprints N]`); once the file exists, no run reads
+past sprints:
+
+- **Board**: `--board`, then `jira.board` — matched by id first, then by name; no match →
+  `board-not-found` with the real boards. Without either: the project's boards that are not
+  kanban — exactly one is used; several block with `history-board-ambiguous` and the real
+  boards as `options` (the ONE bundled round; re-run with `--board "<id|name>"`, or set
+  `jira.board`); none → no closed sprints.
+- **Closed sprints**: the agile API's `state=closed` list, every page (it lists oldest
+  first), newest `completeDate` (else `endDate`) first, the last N (default 2). A `400` on a
+  board whose type is not scrum means "no sprints" there.
+- **Stories first**: sprint JQL misses team-managed sub-tasks, so the read takes the stories
+  (`project = … AND issuetype = "<storyType>" AND sprint in (<ids>)`) and then their
+  sub-tasks by `parent in (…)`, per 100 stories, asking for exactly `summary`, `parent` and
+  `timeoriginalestimate` (seconds ÷ 3600 = hours). `timetracking`, `timespent`,
+  `timeestimate`, `worklog` and `description` are never requested, and hours are never parsed
+  from any text. A story carried over sits in every sprint its Sprint field lists; its tasks
+  are still counted once. A capped search is reported as truncated on the screen.
+- Only `[Testing]` sub-tasks count. One without an Original Estimate is skipped and counted.
+- **No usable history** → labelled starter defaults, with the reason: `no-closed-sprints`,
+  `no-testing-tasks`, or `no-estimates`. On Jira, `no-estimates` names the likely cause: time
+  tracking is not on the sub-task screen, so hours mode `none` recorded the hours in each
+  description — and descriptions are never read as estimates (see "Project prerequisites").
