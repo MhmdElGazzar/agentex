@@ -72,4 +72,18 @@ function existingTasksBlock({ storyId, tasks, formatRef, taskNoun }) {
   };
 }
 
-module.exports = { TITLE_PREFIX, isTestingTitle, resolveAssignee, structuralBlocks, existingTasksBlock };
+// Why a first-run history read (the last N closed sprints' [Testing] tasks)
+// has no usable data — shared by every strategy; each words it in its own
+// provider's terms. null when there is something to propose from.
+//   sprintCount    closed sprints found
+//   testingCount   [Testing] child tasks found in them
+//   estimatedCount those carrying an Original Estimate
+const HISTORY_REASONS = ['no-closed-sprints', 'no-testing-tasks', 'no-estimates'];
+function historyReason({ sprintCount, testingCount, estimatedCount }) {
+  if (!sprintCount) return 'no-closed-sprints';
+  if (!testingCount) return 'no-testing-tasks';
+  if (!estimatedCount) return 'no-estimates';
+  return null;
+}
+
+module.exports = { TITLE_PREFIX, isTestingTitle, resolveAssignee, structuralBlocks, existingTasksBlock, HISTORY_REASONS, historyReason };

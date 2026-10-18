@@ -72,6 +72,14 @@ const FIVE = [{ title: '[Testing] Requirement Review', estimate: 1 }];
     assert.deepStrictEqual([jira], golden('jira/J39').blocked);
   });
 
+  await test('historyReason: why a first-run history read has no usable data (null when it has)', async () => {
+    assert.strictEqual(rules.historyReason({ sprintCount: 0, testingCount: 0, estimatedCount: 0 }), 'no-closed-sprints');
+    assert.strictEqual(rules.historyReason({ sprintCount: 2, testingCount: 0, estimatedCount: 0 }), 'no-testing-tasks');
+    assert.strictEqual(rules.historyReason({ sprintCount: 2, testingCount: 5, estimatedCount: 0 }), 'no-estimates');
+    assert.strictEqual(rules.historyReason({ sprintCount: 1, testingCount: 5, estimatedCount: 1 }), null);
+    assert.deepStrictEqual(rules.HISTORY_REASONS, ['no-closed-sprints', 'no-testing-tasks', 'no-estimates']);
+  });
+
   await test('rules.js is pure: no requires at all, no provider names', async () => {
     const src = fs.readFileSync(path.join(__dirname, 'rules.js'), 'utf8');
     assert.ok(!/require\(/.test(src), 'no dependencies');
