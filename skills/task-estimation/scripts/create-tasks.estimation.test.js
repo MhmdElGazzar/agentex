@@ -332,6 +332,27 @@ async function firstRun(dir = adoProject(), routes = adoHistoryRoutes()) {
     assert.ok(!fs.existsSync(path.join(dir, FILE)));
   });
 
+  await test('sentinel credentials are absent from every estimation output and from the proposal file (ADO and Jira)', async () => {
+    const secrets = [
+      'SENTINEL-est-pat', 'SENTINEL-est-token',
+      Buffer.from(':SENTINEL-est-pat').toString('base64'),
+      Buffer.from('qa.engineer@example.com:SENTINEL-est-token').toString('base64'),
+    ];
+    const runs = [
+      await estimation(adoProject(), adoHistoryRoutes()),
+      await estimation(jiraProject(), jiraHistoryRoutes()),
+      await estimation(adoProject(), adoHistoryRoutes({ noEstimates: true })),
+      await estimation(jiraProject(), jiraHistoryRoutes({ noEstimates: true })),
+      await estimation(adoProject({ azure: { team: undefined } }), adoHistoryRoutes()),
+      await estimation(jiraProject(), jiraHistoryRoutes({ boards: [{ id: 7, name: 'A', type: 'scrum' }, { id: 8, name: 'B', type: 'scrum' }] })),
+    ];
+    for (const r of runs) {
+      const text = JSON.stringify(r.out) + (fs.existsSync(r.outPath) ? fs.readFileSync(r.outPath, 'utf8') : '');
+      for (const s of secrets) assert.ok(!text.includes(s), `a credential leaked into the estimation output or proposal: ${s}`);
+    }
+    assert.ok(runs.filter((r) => fs.existsSync(r.outPath)).length >= 4, 'the proposal files were written and checked');
+  });
+
   await test('estimation --out never overwrites a file that is not a previous proposal: exit 2 naming the path, ZERO requests, bytes unchanged', async () => {
     const dir = adoProject();
     const notes = path.join(dir, '..', `${path.basename(dir)}-notes.txt`);
