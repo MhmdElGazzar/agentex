@@ -372,6 +372,24 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
       if (d.blocked) return { code: 2, out: { ok: false, mode, blocked: d.blocked } };
       ({ estimation } = d);
       spec = d.expanded;
+      if (args.execute) {
+        // What is written must equal what the user approved: --execute carries
+        // the dry run's basis, recomputed here — before any request.
+        const basis = typeof args.basis === 'string' ? args.basis.trim() : '';
+        if (!basis) {
+          return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'missing-basis',
+            message: '--execute in ratings mode needs --basis <estimation.basis from the approved dry run> — nothing was written' }] } };
+        }
+        if (basis !== estimation.basis) {
+          return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'basis-mismatch',
+            message: 'the file, the proposal or the ratings changed since the approved dry run (the basis differs) — ' +
+              're-run the dry run and show the new screen; nothing was written' }] } };
+        }
+        if (estimation.create && fs.existsSync(path.join(cwd, ...ec.ESTIMATION_FILE_REL.split('/')))) {
+          return { code: 2, out: { ok: false, mode, blocked: [{ reason: 'estimation-file-exists', file: ec.ESTIMATION_FILE_REL,
+            message: `${ec.ESTIMATION_FILE_REL} appeared after the approved dry run — it is never replaced; re-run Phase A; nothing was written` }] } };
+        }
+      }
     } else {
       // Legacy tasks specs keep the 0.23.0 path — but only on a project without
       // the file: with it, the task set comes from the file, never the spec.
@@ -464,6 +482,23 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
       }];
     });
 
+    // Ratings mode, first run: the file is intent 0 of the SAME plan — the
+    // cheapest write, the likeliest to fail (a race, local permissions), and
+    // the one with no board side effect, so a failed file write stops the run
+    // before any task exists. An exclusive create: it never replaces a file.
+    let fileCreated = false;
+    if (estimation && estimation.create) {
+      intents.unshift({
+        step: 'create-file',
+        describe: CREATE_FILE_DESCRIBE,
+        run: async () => {
+          ec.createEstimationFileExclusive(cwd, estimation.content);
+          fileCreated = true;
+          return {}; // no id: ids stay tracker ids, so a ledger never mistakes the file for a board item
+        },
+      });
+    }
+
     const ledger = await new WritePlan(intents).execute();
     const allDone = ledger.every((l) => l.status === 'done');
     return {
@@ -473,7 +508,7 @@ async function run(argv, { cwd = process.cwd(), fetch, registry = defaultRegistr
         mode: 'executed',
         ledger,
         // Created IDs are ALWAYS surfaced, even when a later step threw.
-        created: { tasks: createdTasks },
+        created: { tasks: createdTasks, ...(estimation ? { file: fileCreated ? ec.ESTIMATION_FILE_REL : null } : {}) },
         ...(cacheOut ? { cache: cacheOut } : {}),
       },
     };

@@ -627,6 +627,140 @@ async function firstRun(dir = adoProject(), routes = adoHistoryRoutes()) {
     assert.deepStrictEqual(jira.calls.filter(isJiraWrite), []);
   });
 
+  // ════ the ratings spec mode — --execute ═══════════════════════════════════
+  const isTaskCreate = (c) => c.method === 'POST' && c.url.includes('/workitems/$Task') && !c.url.includes('validateOnly=true');
+  async function execute(dir, specFile, routes, basis, { onCall } = {}) {
+    const f = fakeFetch(routes, { onCall });
+    const r = await run(['--spec', specFile, '--execute', ...(basis === undefined ? [] : ['--basis', basis])], { cwd: dir, fetch: f, now: NOW });
+    return { ...r, calls: f.calls };
+  }
+  async function planThenSpec(dir, spec, routes) {
+    const specFile = writeSpec(dir, spec);
+    const f = fakeFetch(routes);
+    const plan = await run(['--spec', specFile], { cwd: dir, fetch: f, now: NOW });
+    assert.strictEqual(plan.code, 0, JSON.stringify(plan.out));
+    return { specFile, plan: plan.out };
+  }
+
+  await test('--execute without --basis, or with a different one → exit 2, ZERO requests, nothing written', async () => {
+    const { dir, proposalFile, est } = await firstRun();
+    const { specFile, plan } = await planThenSpec(dir, RATINGS_SPEC(est.content.factors, [2201, 2202], { estimation: { proposalFile } }), adoCreateRoutes());
+    for (const [basis, reason] of [[undefined, 'missing-basis'], ['0'.repeat(64), 'basis-mismatch'], [plan.estimation.basis.slice(1), 'basis-mismatch']]) {
+      const r = await execute(dir, specFile, adoCreateRoutes(), basis);
+      assert.strictEqual(r.code, 2, JSON.stringify(r.out));
+      assert.deepStrictEqual(r.out.blocked.map((b) => b.reason), [reason]);
+      assert.strictEqual(r.calls.length, 0);
+      assert.ok(!fs.existsSync(path.join(dir, FILE)));
+    }
+  });
+
+  await test('first run, approved: ONE ledger — create-file first (no id), then every task create; the file is exactly the content shown', async () => {
+    const { dir, proposalFile, est } = await firstRun();
+    const { specFile, plan } = await planThenSpec(dir, RATINGS_SPEC(est.content.factors, [2201, 2202], { estimation: { proposalFile } }), adoCreateRoutes());
+    let fileExistedAtFirstCreate = null;
+    const r = await execute(dir, specFile, adoCreateRoutes(), plan.estimation.basis, {
+      onCall: (c) => { if (isTaskCreate(c) && fileExistedAtFirstCreate === null) fileExistedAtFirstCreate = fs.existsSync(path.join(dir, FILE)); },
+    });
+    assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+    assert.strictEqual(r.out.ok, true);
+    assert.strictEqual(r.out.ledger.length, plan.plan.length, 'one ledger entry per planned write');
+    assert.deepStrictEqual(r.out.ledger[0], { step: 'create-file', describe: plan.plan[0].describe, status: 'done' });
+    assert.ok(r.out.ledger.slice(1).every((l) => l.step === 'create-task' && l.status === 'done' && l.id));
+    assert.strictEqual(fileExistedAtFirstCreate, true, 'the file is written before any task');
+    assert.strictEqual(fs.readFileSync(path.join(dir, FILE), 'utf8'), JSON.stringify(plan.estimation.content, null, 2) + '\n');
+    assert.strictEqual(r.out.created.file, 'config/estimation.json');
+    assert.strictEqual(r.out.created.tasks.length, 8);
+    assert.strictEqual(r.calls.filter(isTaskCreate).length, 8);
+  });
+
+  await test('a hand edit between the dry run and --execute → basis-mismatch, exit 2, zero writes', async () => {
+    const file = VALID_FILE();
+    const dir = adoProject({ estimation: file });
+    const { specFile, plan } = await planThenSpec(dir, RATINGS_SPEC(file.factors), adoCreateRoutes());
+    const edited = VALID_FILE(); edited.tasks[1].maxHours = 4;
+    writeFile(dir, edited);
+    const r = await execute(dir, specFile, adoCreateRoutes(), plan.estimation.basis);
+    assert.strictEqual(r.code, 2, JSON.stringify(r.out));
+    assert.deepStrictEqual(r.out.blocked.map((b) => b.reason), ['basis-mismatch']);
+    assert.strictEqual(r.calls.length, 0);
+  });
+
+  await test('the file appeared after the dry run → estimation-file-exists, exit 2, zero writes, the file untouched', async () => {
+    const { dir, proposalFile, est } = await firstRun();
+    const { specFile, plan } = await planThenSpec(dir, RATINGS_SPEC(est.content.factors, [2201, 2202], { estimation: { proposalFile } }), adoCreateRoutes());
+    const theirs = JSON.stringify(VALID_FILE(), null, 2) + '\n';
+    writeFile(dir, theirs);
+    const r = await execute(dir, specFile, adoCreateRoutes(), plan.estimation.basis);
+    assert.strictEqual(r.code, 2, JSON.stringify(r.out));
+    assert.deepStrictEqual(r.out.blocked.map((b) => b.reason), ['estimation-file-exists']);
+    assert.strictEqual(r.calls.length, 0);
+    assert.strictEqual(fs.readFileSync(path.join(dir, FILE), 'utf8'), theirs);
+  });
+
+  await test('RACE: the file appears while the validation reads run → create-file fails (not replaced), every task not-attempted, zero task requests', async () => {
+    const { dir, proposalFile, est } = await firstRun();
+    const { specFile, plan } = await planThenSpec(dir, RATINGS_SPEC(est.content.factors, [2201, 2202], { estimation: { proposalFile } }), adoCreateRoutes());
+    const theirs = '{"written": "by someone else"}\n';
+    const r = await execute(dir, specFile, adoCreateRoutes(), plan.estimation.basis, {
+      onCall: (c) => { if (c.url.includes('/wit/workitems/2201?') && !fs.existsSync(path.join(dir, FILE))) writeFile(dir, theirs); },
+    });
+    assert.strictEqual(r.code, 1, JSON.stringify(r.out));
+    assert.strictEqual(r.out.ok, false);
+    assert.deepStrictEqual(r.out.ledger[0], { step: 'create-file', describe: plan.plan[0].describe, status: 'failed',
+      reason: "config/estimation.json appeared after this run's checks — not replaced" });
+    assert.ok(r.out.ledger.slice(1).every((l) => l.status === 'not-attempted'));
+    assert.strictEqual(r.calls.filter(isTaskCreate).length, 0, 'no task request is sent — the board is untouched');
+    assert.strictEqual(fs.readFileSync(path.join(dir, FILE), 'utf8'), theirs, 'the file that appeared is never replaced');
+    assert.deepStrictEqual(r.out.created, { tasks: [], file: null });
+  });
+
+  await test('a task create fails after the file was written: exact ledger, the file stays (it is what the user approved)', async () => {
+    const { dir, proposalFile, est } = await firstRun();
+    const { specFile, plan } = await planThenSpec(dir, RATINGS_SPEC(est.content.factors, [2201, 2202], { estimation: { proposalFile } }), adoCreateRoutes());
+    let creates = 0;
+    const failing = [{ method: 'POST', match: '/workitems/$Task', respond: () => (++creates === 2 ? { status: 500, text: JSON.stringify({ message: 'server exploded' }) } : { json: { id: 9100 + creates } }) }];
+    const r = await execute(dir, specFile, adoCreateRoutes(failing), plan.estimation.basis);
+    assert.strictEqual(r.code, 1, JSON.stringify(r.out));
+    assert.deepStrictEqual(r.out.ledger.map((l) => l.status), ['done', 'done', 'failed', ...Array(6).fill('not-attempted')]);
+    assert.strictEqual(r.out.ledger[0].id, undefined, 'the file line never carries a tracker id');
+    assert.match(r.out.ledger[2].reason, /server exploded/);
+    assert.deepStrictEqual(r.out.created, { tasks: [{ id: 9101, url: r.out.created.tasks[0].url, storyId: 2201, title: '[Testing] Requirement Review' }], file: 'config/estimation.json' });
+    assert.strictEqual(fs.readFileSync(path.join(dir, FILE), 'utf8'), JSON.stringify(plan.estimation.content, null, 2) + '\n');
+  });
+
+  await test('with the file present: no create-file intent, created.file null; a run-only adjust leaves the file byte-identical', async () => {
+    const file = VALID_FILE();
+    const dir = adoProject({ estimation: file });
+    const before = sha(fileBytes(dir));
+    const spec = { assignee: 'qa.engineer@example.com', stories: [{ id: 2201, ratings: ratingsFor(file.factors, 4), adjust: { 'Test Execution': 1.5 } }] };
+    const { specFile, plan } = await planThenSpec(dir, spec, adoCreateRoutes());
+    const r = await execute(dir, specFile, adoCreateRoutes(), plan.estimation.basis);
+    assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+    assert.ok(r.out.ledger.every((l) => l.step === 'create-task'));
+    assert.strictEqual(r.out.created.file, null);
+    const hours = r.calls.filter(isTaskCreate).map((c) => JSON.parse(c.body).find((op) => op.path === '/fields/Microsoft.VSTS.Scheduling.OriginalEstimate').value);
+    assert.deepStrictEqual(hours, [2, 3, 1.5], 'all-4 → each max; the adjusted task carries the run-only value');
+    assert.strictEqual(sha(fileBytes(dir)), before);
+  });
+
+  await test('the same file and ratings give identical hours on an ADO and a Jira project (--execute)', async () => {
+    const file = VALID_FILE();
+    const adoDir = adoProject({ estimation: file });
+    const a = await planThenSpec(adoDir, RATINGS_SPEC(file.factors), adoCreateRoutes());
+    const ado = await execute(adoDir, a.specFile, adoCreateRoutes(), a.plan.estimation.basis);
+    const jiraDir = jiraProject({ estimation: file });
+    const j = await planThenSpec(jiraDir, RATINGS_SPEC(file.factors, ['PROJ-201', 'PROJ-202']), jiraCreateRoutes());
+    const jira = await execute(jiraDir, j.specFile, jiraCreateRoutes(), j.plan.estimation.basis);
+    assert.strictEqual(ado.code, 0, JSON.stringify(ado.out));
+    assert.strictEqual(jira.code, 0, JSON.stringify(jira.out));
+    const adoHours = ado.calls.filter(isTaskCreate).map((c) => JSON.parse(c.body).find((op) => op.path === '/fields/Microsoft.VSTS.Scheduling.OriginalEstimate').value);
+    const jiraHours = jira.calls.filter((c) => c.method === 'POST' && /\/rest\/api\/3\/issue$/.test(c.url))
+      .map((c) => Number(JSON.parse(c.body).fields.timetracking.originalEstimate.replace('h', '')));
+    assert.deepStrictEqual(jiraHours, adoHours);
+    assert.deepStrictEqual(adoHours, [0.5, 1, 1, 1.5, 2.5, 2.5]);
+    assert.strictEqual(j.plan.estimation.basis.length, 64);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
