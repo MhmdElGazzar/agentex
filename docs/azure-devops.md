@@ -11,7 +11,8 @@ Jira Cloud — see [jira.md](./jira.md).
 ## One-time setup
 
 1. Fill the `azure` block in `config/project.json` — `org`, `project`, `team`, `assignee`
-   (legacy `AZURE_*` keys in `.env` still work). `org` accepts a full URL or a bare org name.
+   (legacy `AZURE_*` keys in `.env` still work). `org` accepts a full URL or a bare org name;
+   a URL carrying credentials, a query string or a fragment is refused.
 2. Put your PAT in `.env` as `AZURE_PAT=`. **That's the whole setup** — the bundled tracker
    scripts read it from `.env` themselves and send it only in the Authorization header; it
    is never printed, logged, or placed on a command line.
