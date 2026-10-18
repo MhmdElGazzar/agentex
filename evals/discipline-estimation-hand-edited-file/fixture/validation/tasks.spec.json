@@ -1,0 +1,47 @@
+{
+  "assignee": "qa.engineer@example.com",
+  "stories": [
+    {
+      "id": 2101,
+      "ratings": {
+        "Scenarios / ACs": 1,
+        "UI elements": 1,
+        "Validations": 0,
+        "Conditions / logic": 1,
+        "Error messages": 1,
+        "API integrations": 0,
+        "Translations": 0,
+        "Edge cases": 1,
+        "Data setup": 1
+      }
+    },
+    {
+      "id": 2102,
+      "ratings": {
+        "Scenarios / ACs": 4,
+        "UI elements": 4,
+        "Validations": 3,
+        "Conditions / logic": 3,
+        "Error messages": 3,
+        "API integrations": 4,
+        "Translations": 4,
+        "Edge cases": 4,
+        "Data setup": 3
+      }
+    },
+    {
+      "id": 2103,
+      "ratings": {
+        "Scenarios / ACs": 2,
+        "UI elements": 2,
+        "Validations": 2,
+        "Conditions / logic": 3,
+        "Error messages": 1,
+        "API integrations": 0,
+        "Translations": 0,
+        "Edge cases": 1,
+        "Data setup": 2
+      }
+    }
+  ]
+}

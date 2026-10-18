@@ -1,0 +1,10 @@
+{
+  "name": "demo-shop",
+  "defaultEnvironment": "qa",
+  "jira": {
+    "site": "example",
+    "project": "PROJ",
+    "storyType": "Story",
+    "assignee": "qa.engineer@example.com"
+  }
+}

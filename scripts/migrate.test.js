@@ -892,6 +892,50 @@ test('m05 + init: fresh scaffold gitignores sessions and scratch, not just .env'
   assert.match(gi, /^\.playwright-cli\/$/m);
 });
 
+// ── config/estimation.json — created only by an approved estimation run ──────
+// No migration and no scaffold step creates it; once it exists, /update-agentex
+// and an /init-test re-run leave it byte-identical (invariant 11).
+const ESTIMATION = 'config/estimation.json';
+const ESTIMATION_BYTES = '{\n  "schemaVersion": 1,\n  "tasks": [\n    { "name": "Requirement Review", "enabled": true, "minHours": 0.5, "maxHours": 2 }\n  ],\n' +
+  '  "factors": { "Scenarios / ACs": 1 },\n  "source": { "kind": "history", "sprints": 2, "note": "hand-edited" }\n}\n';
+
+test('estimation file: a legacy-era project migrates with no config/estimation.json created', () => {
+  const dir = fixture010();
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\]/);
+  assert.ok(!exists(dir, ESTIMATION), 'no migration creates the estimation file');
+});
+
+test('estimation file: a project on the previous release\'s conventions migrates with no config/estimation.json created', () => {
+  const dir = proj();
+  runInit(dir);
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.22.0' }, null, 2) + '\n');
+  gitInit(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!exists(dir, ESTIMATION), 'neither a fresh scaffold nor a migration creates it');
+});
+
+test('estimation file: an existing config/estimation.json is byte-identical across /update-agentex and an /init-test re-run', () => {
+  const dir = fixture010();
+  addFiles(dir, { [ESTIMATION]: ESTIMATION_BYTES });
+  commitAll(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.strictEqual(readText(dir, ESTIMATION), ESTIMATION_BYTES, 'migrate leaves it byte-identical');
+  commitAll(dir);
+  runInit(dir);
+  assert.strictEqual(readText(dir, ESTIMATION), ESTIMATION_BYTES, 'an /init-test re-run leaves it byte-identical');
+  const fresh = proj({ [ESTIMATION]: ESTIMATION_BYTES });
+  runInit(fresh);
+  gitInit(fresh);
+  fs.writeFileSync(path.join(fresh, '.agentex', 'version.json'), JSON.stringify({ version: '0.22.0' }, null, 2) + '\n');
+  commitAll(fresh);
+  assert.strictEqual(run(fresh).code, 0);
+  assert.strictEqual(readText(fresh, ESTIMATION), ESTIMATION_BYTES);
+});
+
 // ── secrecy ───────────────────────────────────────────────────────────────────
 test('no secret value ever appears in any migration output', () => {
   assert.ok(ALL_OUTPUT.length > 0, 'outputs were collected');

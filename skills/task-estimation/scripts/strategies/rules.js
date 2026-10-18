@@ -72,4 +72,34 @@ function existingTasksBlock({ storyId, tasks, formatRef, taskNoun }) {
   };
 }
 
-module.exports = { TITLE_PREFIX, isTestingTitle, resolveAssignee, structuralBlocks, existingTasksBlock };
+// Why a first-run history read (the last N closed sprints' [Testing] tasks)
+// has no usable data — shared by every strategy; each words it in its own
+// provider's terms. null when there is something to propose from.
+//   sprintCount    closed sprints found
+//   testingCount   [Testing] child tasks found in them
+//   estimatedCount those carrying an Original Estimate
+const HISTORY_REASONS = ['no-closed-sprints', 'no-testing-tasks', 'no-estimates'];
+function historyReason({ sprintCount, testingCount, estimatedCount }) {
+  if (!sprintCount) return 'no-closed-sprints';
+  if (!testingCount) return 'no-testing-tasks';
+  if (!estimatedCount) return 'no-estimates';
+  return null;
+}
+
+// A neutral child-estimate read ({ stories, children }) → the history's data
+// points: the [Testing] children only, each carrying its parent story. Children
+// whose parent is not among the stories read are dropped.
+function historyPoints(read) {
+  const parents = new Map((read.stories || []).map((s) => [String(s.id), s]));
+  return (read.children || [])
+    .filter((c) => isTestingTitle(c.title) && parents.has(String(c.parentId)))
+    .map((c) => {
+      const s = parents.get(String(c.parentId));
+      return { ref: c.id, title: c.title, hours: c.hours, seq: c.seq, parent: { ref: s.id, title: s.title, url: s.url, seq: s.seq } };
+    });
+}
+
+module.exports = {
+  TITLE_PREFIX, isTestingTitle, resolveAssignee, structuralBlocks, existingTasksBlock,
+  HISTORY_REASONS, historyReason, historyPoints,
+};

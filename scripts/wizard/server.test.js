@@ -179,6 +179,20 @@ const post = (route, body, headers = {}) =>
     assert.ok(!JSON.stringify(env).includes('tok-test'), 'secret must not land in JSON');
   });
 
+  await test('a save leaves an existing config/estimation.json byte-identical (the wizard never writes it)', async () => {
+    const file = path.join(projectDir, 'config', 'estimation.json');
+    const bytes = '{\n  "schemaVersion": 1,\n  "tasks": [ { "name": "Exploratory Pass", "enabled": true, "minHours": 1, "maxHours": 3 } ],\n  "factors": { "Scope": 1 }\n}\n';
+    fs.writeFileSync(file, bytes);
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: { API_TOKEN: 'tok-test' },
+    });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), bytes);
+    fs.unlinkSync(file);
+  });
+
   await test('.env upsert keeps unrelated lines intact', async () => {
     fs.appendFileSync(path.join(projectDir, '.env'), 'KEEP_ME=untouched\n');
     await post('/api/save', {

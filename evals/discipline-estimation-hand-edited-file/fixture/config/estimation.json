@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    {
+      "name": "Requirement Review",
+      "enabled": true,
+      "minHours": 0.5,
+      "maxHours": 1.5
+    },
+    {
+      "name": "Exploratory Pass",
+      "enabled": true,
+      "minHours": 1,
+      "maxHours": 3
+    },
+    {
+      "name": "Test Execution",
+      "enabled": true,
+      "minHours": 1,
+      "maxHours": 2.5
+    },
+    {
+      "name": "Automation",
+      "enabled": false,
+      "minHours": 1,
+      "maxHours": 3
+    }
+  ],
+  "factors": {
+    "Scenarios / ACs": 1,
+    "UI elements": 1,
+    "Validations": 1,
+    "Conditions / logic": 1,
+    "Error messages": 1,
+    "API integrations": 1,
+    "Translations": 1,
+    "Edge cases": 1,
+    "Data setup": 2
+  },
+  "source": {
+    "kind": "history",
+    "sprints": 2,
+    "sprintsRead": [
+      "Sprint 41",
+      "Sprint 42"
+    ],
+    "tasksCounted": 38,
+    "tasksSkipped": 1,
+    "createdOn": "2026-09-01",
+    "note": "Where these numbers came from. Editing this block changes nothing; delete or move this file and the next estimation run proposes a new one from your board."
+  }
+}

@@ -125,5 +125,42 @@ test('sampleEnvShapes covers the current template plus every shipped revision', 
     'current template included');
 });
 
+// ---- config/estimation.json: the user's file, committed, never scaffolded ----
+const ESTIMATION = 'config/estimation.json';
+const ESTIMATION_BYTES = '{\n  "schemaVersion": 1,\n  "tasks": [ { "name": "Exploratory Pass", "enabled": true, "minHours": 1, "maxHours": 3 } ],\n  "factors": { "Scope": 1 }\n}\n';
+
+test('a fresh scaffold creates no config/estimation.json (only an approved estimation run does)', () => {
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  assert.ok(fs.existsSync(path.join(dir, 'config', 'project.json')), 'the scaffold ran');
+  assert.ok(!fs.existsSync(path.join(dir, ESTIMATION)));
+});
+
+test('a scaffold re-run leaves an existing config/estimation.json byte-identical', () => {
+  const dir = proj({ [ESTIMATION]: ESTIMATION_BYTES });
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  scaffold.ensureGitignore(dir);
+  scaffold.ensureClaudeMdBullet(dir);
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  assert.strictEqual(fs.readFileSync(path.join(dir, ESTIMATION), 'utf8'), ESTIMATION_BYTES);
+});
+
+test('the scaffold\'s .gitignore does not ignore config/estimation.json or config/ (the file is committed)', () => {
+  const { execFileSync } = require('node:child_process');
+  const dir = proj({ [ESTIMATION]: ESTIMATION_BYTES });
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  scaffold.ensureGitignore(dir);
+  const lines = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8').split(/\r?\n/).map((l) => l.trim());
+  for (const pattern of ['config/', 'config', '/config/', '/config', 'config/estimation.json', '*.json', 'config/*']) {
+    assert.ok(!lines.includes(pattern), `.gitignore must not carry ${pattern}`);
+  }
+  execFileSync('git', ['-C', dir, 'init', '-q']);
+  for (const rel of [ESTIMATION, 'config/project.json']) {
+    let ignored = true;
+    try { execFileSync('git', ['-C', dir, 'check-ignore', '-q', rel]); } catch (e) { ignored = e.status !== 1; }
+    assert.strictEqual(ignored, false, `${rel} must not be ignored by git`);
+  }
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;
