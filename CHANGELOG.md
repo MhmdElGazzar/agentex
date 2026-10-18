@@ -105,6 +105,27 @@ All notable changes to AgenTeX are documented here.
   The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
   three new cases in `run_api.test.js`. Thanks to @MarwahZain, whose PR #9 flagged the
   inconsistent `API_TOKEN` handling (closed with credit, not merged).
+- **The Azure DevOps PAT is scrubbed from every tracker error.** A provider, proxy or network
+  layer that echoes request material back could carry the token into a `TrackerError`, and
+  from there into a script's JSON output. The ADO adapter now replaces it in every form it
+  travels in (the `Basic` header, its base64 payload, the raw value, URL-encoded and
+  JSON-escaped) in the error's URL, server message and body, nested values of a JSON error
+  body included. The fetch-failure, unreadable-body (now wrapped instead of surfacing a raw
+  stream error) and non-2xx paths are covered; successful responses are returned untouched.
+  Covered by six new cases in `ado.test.js`.
+- **ADO requests are sent only for canonical work-item IDs.** Every adapter call that sends a
+  request refuses, with exit 2 and before anything is sent, a work-item, plan, suite, run,
+  test-case or relation-target id that is not a plain positive decimal (no leading zero,
+  whitespace, `#`, sign, exponent or non-ASCII digits), so an id cannot carry a path or query
+  into a URL. Dry runs check no id: `testplan.js fail --bug NEW` (or `<bugId>`, `new-bug-id`),
+  which the bug flow plans before the Bug exists, works exactly as before. An `azure.org` /
+  `AZURE_URL` carrying credentials, a query string or a fragment is refused at config time,
+  without echoing the value. Covered in `ado.test.js` and `testplan.test.js`.
+- **Bug attachments upload exactly the bytes that passed the structural check.**
+  `create-bug.js` read each screenshot twice, once to check it and once to upload it, so a
+  file changed on disk in between reached the board unchecked. The check's buffer is now
+  handed to `uploadAttachment` (new `opts.bytes`, ADO and Jira) and sent verbatim. Covered in
+  `create-bug.test.js`, `ado.test.js` and `jira.test.js`.
 ### Credits
 - The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
   and print styles were harvested from community **PR #6** by @YoussefAbdellah2023. Its
@@ -112,6 +133,13 @@ All notable changes to AgenTeX are documented here.
   renderer and lacked flaky / warning / view-mismatch statuses, timing, evidence and defects,
   so the ideas were rebuilt inside `make_html_report.js` instead. Closed with credit, not
   merged.
+- The ADO error-path PAT scrub, the work-item ID and `azure.org` checks and the attachment
+  byte custody were harvested from community **PR #27** by @MohamedAbdella and rebuilt in
+  house style. The ID check was narrowed to requests actually sent, because the PR's version
+  also refused the dry-run stand-ins the bug flow plans with. Its bug-write receipts and
+  ledger, approved-plan digest, update lock and migrate preflight, strict version stamps,
+  `scaffold.js`/`init.js` changes and host-neutral execution-result contract were not
+  adopted (regressions found in review, or no caller yet). Closed with credit, not merged.
 - `import_swagger.js`: found while testing against a live public OpenAPI spec — relative
   `servers[].url` values (e.g. `"/api/v3"`, common in real specs) were used literally instead
   of being resolved against the spec's own host; now resolved when the spec was fetched from
