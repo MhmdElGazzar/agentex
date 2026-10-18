@@ -4,7 +4,11 @@
 // script only reads suite files and aggregates results.
 //
 // Usage:
-//   node run_suite.js [--catalog ./integration] [--suites ./integration/api_test_suites] --run-dir <dir>
+//   node run_suite.js [--catalog ./integration] [--suites ./integration/api_test_suites]
+//     [--env <environment-name>] --run-dir <dir>
+//
+// --env is passed through to every run_api.js call (absent → run_api.js's own default-
+// environment resolution; an unknown name is BLOCKED per case by run_api.js).
 //
 // --suites is searched recursively for *_suite.json (catalogs from the same swagger-import
 // output live alongside their suite as <name>_api.json in the same folder — must filter on
@@ -22,11 +26,12 @@ function blocked(reason, extra) { out({ result: 'BLOCKED', reason, ...extra }, 2
 
 // ---- args ----
 const args = process.argv.slice(2);
-let catalog = './integration', suites = './integration/api_test_suites', runDir;
+let catalog = './integration', suites = './integration/api_test_suites', runDir, envName;
 for (let i = 0; i < args.length; i++) {
   const a = args[i], v = () => args[++i];
   if (a === '--catalog') catalog = v();
   else if (a === '--suites') suites = v();
+  else if (a === '--env') envName = v();
   else if (a === '--run-dir') runDir = v();
 }
 if (!runDir) blocked('usage: --run-dir <dir> required');
@@ -66,6 +71,7 @@ for (const c of allCases) {
   }
   const logPath = path.join(runDir, 'logs', `${String(c.name).replace(/[^A-Za-z0-9._-]+/g, '_')}.log`);
   const callArgs = ['--entry', c.entry, '--catalog', catalog, '--log', logPath];
+  if (envName) callArgs.push('--env', envName);
   for (const [k, val] of Object.entries(c.params || {})) callArgs.push('--param', `${k}=${val}`);
   const expect = c.expect || {};
   if (expect.status !== undefined) callArgs.push('--expect-status', String(expect.status));
