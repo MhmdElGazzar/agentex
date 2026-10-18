@@ -53,12 +53,20 @@ Example: `api: sample-api.get-todo(id=1) → expect HTTP 200 and title present`
 
 ## Where the target comes from
 
-1. **`environments/<env>.json` `api` block** of the active environment
-   (`--env <name>`, omitted = the project's `defaultEnvironment`):
-   `{ "baseUrl": "https://…", "token": { "envSecret": "API_TOKEN" } }`.
-   The token reference is resolved from `.env` — never a value in JSON.
-2. **Legacy fallback** — the catalog's `${API_BASE_URL}` refs and `auth` block,
-   exactly as before. Old projects keep working untouched.
+A catalog's optional top-level `"target"` decides (full rules in the reference):
+
+- **`"environment"` — the default, same as no `target` field:**
+  1. **`environments/<env>.json` `api` block** of the active environment
+     (`--env <name>`, omitted = the project's `defaultEnvironment`):
+     `{ "baseUrl": "https://…", "token": { "envSecret": "API_TOKEN" } }`.
+     The token reference is resolved from `.env` — never a value in JSON.
+  2. **Legacy fallback** — the catalog's `${API_BASE_URL}` refs and `auth` block,
+     exactly as before. Old projects keep working untouched.
+- **`"catalog"`** — only the catalog's own `baseUrl` refs and `auth`; the environment's `api`
+  block is ignored for it, base URL and token both. For a service other than the project's
+  own API — every `swagger-import`ed catalog carries it. An unset ref is BLOCKED; it never
+  falls back to the environment's host.
+- Any other value → BLOCKED, naming the catalog and the allowed values.
 
 ## Safety rules (also enforced by the runner)
 
