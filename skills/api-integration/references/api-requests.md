@@ -33,20 +33,28 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js" \
 
 ## Where the target comes from — the catalog's `target` field
 
-A catalog's optional top-level `"target"` decides who owns its base URL and auth:
+A catalog's optional top-level `"target"` decides who owns its base URL and auth. The active
+environment's `api` block (`environments/<env>.json`; `--env <name>`, omitted = the project's
+`defaultEnvironment`) is **the project's own API**: when it applies, it supplies `baseUrl`, and
+its `token` is sent as `Authorization: Bearer`, replacing the catalog's refs and `auth` block.
 
-- **`"environment"` — the default, same as leaving the field out.** The active environment's
-  `api` block (`environments/<env>.json`; `--env <name>`, omitted = the project's
-  `defaultEnvironment`) supplies `baseUrl`, and its `token` is sent as `Authorization: Bearer`,
-  replacing the catalog's `${API_BASE_URL}` refs and `auth` block. With no `api` block, the
-  catalog's own refs and `auth` apply. Use it for **the project's own API**: one API, a
-  different host per environment, switched with `--env`.
 - **`"catalog"`** — the catalog's own `baseUrl` (`${ENV_VAR}` refs resolved from the process
   environment, then `.env`) and its own `auth` are used; the environment's `api` block is
   ignored for this catalog — base URL and token both. Use it for **a different service** than
-  the project's API: `swagger-import` writes it into every catalog it generates. An unset ref
-  is BLOCKED naming the variable — it never falls back to the environment's host. `--env` must
-  still name an environment that exists.
+  the project's API: `swagger-import` writes it into every catalog it generates.
+- **`"environment"`** — the environment's `api` block applies, whatever the catalog's `baseUrl`
+  says. Use it on a hand-written catalog whose `baseUrl` uses another variable (e.g.
+  `${ORDERS_BASE_URL}`) but should still switch host with `--env`.
+- **No `target`** — the environment's `api` block applies only when the catalog's `baseUrl` is
+  absent/empty or exactly `"${API_BASE_URL}"` (the project default — one API, a different host
+  per environment, switched with `--env`). A catalog declaring any other `baseUrl` — another
+  variable such as `"${PETSTORE_BASE_URL}"`, or a literal URL — keeps its own `baseUrl` and its
+  own `auth`, and the environment token is never sent to it.
+
+When the rule picks the environment but the environment has no `api` block, the catalog's own
+refs and `auth` are used (legacy fallback). In every case an unset `${…}` ref the catalog itself needs is BLOCKED naming
+the variable — it never falls back to the environment's host — and `--env` must name an
+environment that exists (an unknown name is BLOCKED, listing the ones that do).
 
 ```json
 {

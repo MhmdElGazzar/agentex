@@ -11,7 +11,7 @@ selects `environments/<name>.json` (same as `/execute-test`) for the whole run; 
 project's `defaultEnvironment`. Its `api` block targets the catalogs that follow the
 environment — `"target": "environment"`, or no `target` and a `baseUrl` that is absent or
 exactly `${API_BASE_URL}`; a catalog with `"target": "catalog"` (every `swagger-import`ed one)
-or no `target` and its own base-URL variable keeps its own base URL and auth either way.
+or no `target` and any other `baseUrl` keeps its own base URL and auth either way.
 Anything else is ignored.
 
 **Before running:**

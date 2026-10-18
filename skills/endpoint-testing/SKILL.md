@@ -64,8 +64,8 @@ reason quoted. `swagger-import` writes `skip` on every generated write-method ca
 - **`--env <name>`** picks the environment for the whole run: it is passed to every case's
   `run_api.js` call (omitted = the project's `defaultEnvironment`; an unknown name comes back
   BLOCKED per case, listing the environments that exist). It selects the `api` block used by
-  catalogs without `"target": "catalog"`; a `swagger-import`ed catalog keeps its own base URL
-  and auth either way. Dispatch `api-executor` with `ENVIRONMENT` set to the user's environment
+  the catalogs that follow the environment (api-integration's "Where the target comes from");
+  a `swagger-import`ed catalog keeps its own base URL and auth either way. Dispatch `api-executor` with `ENVIRONMENT` set to the user's environment
   (`""` when none was named); it adds `--env` to its `run_suite.js` call only when non-empty.
 
 ## Safety rules (also enforced by the runner)
