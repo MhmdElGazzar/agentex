@@ -219,6 +219,22 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(Buffer.compare(call.body, fs.readFileSync(png)), 0, 'raw bytes travel as the body');
   });
 
+  await test('uploadAttachment with opts.bytes sends that buffer verbatim — not a re-read of the file', async () => {
+    const dir = proj();
+    const png = path.join(dir, 'shot.png');
+    fs.writeFileSync(png, Buffer.from('what is on disk now'));
+    const checked = Buffer.from([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6]);
+    const f = fakeFetch([{ method: 'POST', match: '/_apis/wit/attachments', json: { id: 'att-2', url: 'https://x/att-2' } }]);
+    const a = createAdapter({ cwd: dir, fetch: f });
+    const d = await a.uploadAttachment(png, { execute: false, bytes: checked });
+    assert.match(d.body, /shot\.png, 8 bytes/, 'the dry-run size is the size that will be sent');
+    await a.uploadAttachment(png, { execute: true, bytes: checked });
+    assert.strictEqual(Buffer.compare(f.calls[0].body, checked), 0, 'the given bytes travel');
+    await assert.rejects(() => a.uploadAttachment(png, { execute: true, bytes: 'not a buffer' }),
+      (e) => e.exitCode === 2 && /opts\.bytes must be a Buffer/.test(e.message));
+    assert.strictEqual(f.calls.length, 1, 'a bad bytes option sends nothing');
+  });
+
   // Suite membership as the legacy GET returns it; flips once the add POST was sent.
   const suiteCases = (present, addedAfterPost = []) => (calls) => {
     const posted = calls.some((c) => c.method === 'POST' && c.url.includes('/testcases/'));

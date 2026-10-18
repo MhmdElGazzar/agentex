@@ -248,6 +248,32 @@ const isWrite = (c) =>
     assert.ok(!f.calls.some((c) => c.url.includes('validateOnly=true')));
   });
 
+  // Byte custody: what reaches the board is exactly what the structural check
+  // passed. The second file is swapped for junk while the first one uploads —
+  // after the check, before its own upload — and must still travel as checked.
+  await test('--execute uploads exactly the bytes the structural check passed, even if a file is swapped on disk mid-sequence', async () => {
+    const dir = proj({ withAttachment: false });
+    const first = path.join(dir, 'first.png'); const second = path.join(dir, 'second.png');
+    const checked = fakePng(); checked[200] ^= 0xff; // distinct from the first file
+    fs.writeFileSync(first, fakePng());
+    fs.writeFileSync(second, checked);
+    const inner = fakeFetch(happyRoutes());
+    const f = async (url, opts = {}) => {
+      if (opts.method === 'POST' && String(url).includes('/_apis/wit/attachments') && String(url).includes('first.png')) {
+        fs.writeFileSync(second, Buffer.from('swapped after the check: not an image'));
+      }
+      return inner(url, opts);
+    };
+    f.calls = inner.calls;
+    const { code, out } = await run(['--spec', writeSpec(dir, { attachments: [first, second] }), '--execute'], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    const uploads = f.calls.filter((c) => c.method === 'POST' && c.url.includes('/_apis/wit/attachments'));
+    assert.strictEqual(uploads.length, 2);
+    assert.ok(uploads[1].url.includes('second.png'), uploads[1].url);
+    assert.strictEqual(Buffer.compare(uploads[1].body, checked), 0, 'the checked bytes travel, not the swapped file');
+    assert.ok(!JSON.stringify(out).includes('"bytes"'), 'the buffers never reach the JSON output');
+  });
+
   await test('failure at the CREATE step: exit 1, exact ledger, nothing after it attempted', async () => {
     const dir = proj();
     const f = fakeFetch(happyRoutes([{ method: 'POST', match: '/workitems/$Bug', status: 500, text: 'boom' }]));
@@ -539,6 +565,26 @@ const isWrite = (c) =>
     assert.strictEqual(out.created.bugId, 'PROJ-88');
     assert.ok(out.created.url.includes('/browse/PROJ-88'));
     assert.strictEqual(out.created.attachments.length, 1);
+  });
+
+  await test('jira --execute: the attachment carries the bytes the structural check passed, even if the file is swapped after it', async () => {
+    // Jira creates the Bug before attaching, so the swap lands on the create POST.
+    const dir = jproj();
+    const evidence = path.join(dir, 'evidence.png');
+    const checked = fs.readFileSync(evidence);
+    const inner = fakeFetch(jRoutes());
+    const f = async (url, opts = {}) => {
+      if (opts.method === 'POST' && /\/rest\/api\/3\/issue(\?|$)/.test(String(url))) {
+        fs.writeFileSync(evidence, Buffer.from('swapped after the check: not an image'));
+      }
+      return inner(url, opts);
+    };
+    f.calls = inner.calls;
+    const { code, out } = await run(['--spec', jSpecFile(dir), '--execute'], { cwd: dir, fetch: f });
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    const upload = f.calls.find((c) => c.method === 'POST' && c.url.includes('/attachments'));
+    const file = upload.body.get('file');
+    assert.strictEqual(Buffer.compare(Buffer.from(await file.arrayBuffer()), checked), 0, 'the checked bytes travel, not the swapped file');
   });
 
   await test('jira --execute link failure: exit 1, ledger names the created bug + landed attachments, no retry', async () => {

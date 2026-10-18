@@ -482,20 +482,27 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return this.updateWorkItem(id, { addRelations: [{ rel: relType, targetId, ...(attributes ? { attributes } : {}) }] }, { execute });
     },
 
-    async uploadAttachment(filePath, { fileName, execute = false } = {}) {
+    // opts.bytes: the caller's already-checked buffer (create-bug.js passes
+    // what its structural check read), so the upload is exactly the validated
+    // bytes even if the file changes on disk in between. Without it the file
+    // is read here, as before.
+    async uploadAttachment(filePath, { fileName, execute = false, bytes } = {}) {
+      if (bytes !== undefined && bytes !== null && !(bytes instanceof Uint8Array)) {
+        throw configError('uploadAttachment opts.bytes must be a Buffer/Uint8Array when given');
+      }
       const name = fileName || path.basename(filePath);
       const u = url('wit/attachments', { fileName: name });
       if (!execute) {
-        let size = null;
-        try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ }
+        let size = bytes ? bytes.length : null;
+        if (size === null) { try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ } }
         return descriptor('uploadAttachment', 'POST', u, {
           body: `<raw bytes of ${name}${size !== null ? `, ${size} bytes` : ''}>`,
           contentType: 'application/octet-stream',
         });
       }
       assertCiWritesAllowed('uploadAttachment');
-      const bytes = fs.readFileSync(filePath);
-      const res = await request('uploadAttachment', 'POST', u, { body: bytes, contentType: 'application/octet-stream' });
+      const body = bytes || fs.readFileSync(filePath);
+      const res = await request('uploadAttachment', 'POST', u, { body, contentType: 'application/octet-stream' });
       return { name, id: res && res.id, url: res && res.url };
     },
 
