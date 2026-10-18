@@ -1,0 +1,33 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "stories",
+    "blocked": [
+      {
+        "reason": "multiple-open-sprints",
+        "options": [
+          "Sprint 7",
+          "Sprint 8"
+        ],
+        "message": "the open-sprint read spans 2 sprints (Sprint 7, Sprint 8) — ask the user which sprint (the ONE bundled round) and re-run with --sprint \"<name>\", or set jira.board in config/project.json to steer discovery"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/field",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND issuetype = \\\"Story\\\" AND sprint in openSprints() ORDER BY key\",\"fields\":[\"summary\",\"customfield_10020\"],\"maxResults\":100}"
+    }
+  ]
+}

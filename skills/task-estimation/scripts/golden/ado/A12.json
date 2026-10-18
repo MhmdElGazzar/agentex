@@ -1,0 +1,32 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint"
+  ],
+  "code": 1,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "query failed: HTTP 401 (https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1)",
+      "op": "query",
+      "status": 401,
+      "serverMessage": null,
+      "credentialHint": {
+        "tried": [
+          "AZURE_PAT",
+          "AZURE_DEVOPS_EXT_PAT",
+          "AZURE_DEVOPS_PAT"
+        ],
+        "resolved": "AZURE_PAT"
+      }
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1",
+      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='User Story' AND [System.TeamProject]='Sample Project' AND [System.IterationPath] = @CurrentIteration('[Sample Project]\\\\Sample Team') ORDER BY [System.Id]\"}"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "argv": [
+    "stories",
+    "--ids",
+    "101, 102",
+    "--full"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "stories",
+    "count": 2,
+    "stories": [
+      {
+        "id": 101,
+        "type": "User Story",
+        "title": "Story 101",
+        "state": "Active",
+        "storyPoints": 3,
+        "iterationPath": "Sample Project\\Sprint 9",
+        "areaPath": "Sample Project\\Team Area",
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/101",
+        "description": "<div>desc 101</div>",
+        "acceptanceCriteria": "<div>ACs 101</div>",
+        "existingTestingTasks": []
+      },
+      {
+        "id": 102,
+        "type": "User Story",
+        "title": "Story 102",
+        "state": "Active",
+        "storyPoints": 3,
+        "iterationPath": "Sample Project\\Sprint 9",
+        "areaPath": "Sample Project\\Team Area",
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/102",
+        "description": "<div>desc 102</div>",
+        "acceptanceCriteria": "<div>ACs 102</div>",
+        "existingTestingTasks": [
+          {
+            "id": 555,
+            "title": "[Testing] Test Execution",
+            "state": "Active"
+          }
+        ]
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/102?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/555?api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/556?api-version=7.1",
+      "body": null
+    }
+  ]
+}

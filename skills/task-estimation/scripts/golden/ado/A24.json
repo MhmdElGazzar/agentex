@@ -1,0 +1,89 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "field-not-on-type",
+        "field": "Microsoft.VSTS.Scheduling.OriginalEstimate",
+        "value": 1,
+        "message": "field Microsoft.VSTS.Scheduling.OriginalEstimate does not exist on this project's Task type — it cannot be emitted blind"
+      }
+    ],
+    "validation": {
+      "assignee": "qa.engineer@example.com",
+      "perStory": [
+        {
+          "id": 101,
+          "complexity": "Simple",
+          "tasks": 5,
+          "type": "User Story",
+          "title": "Story 101",
+          "state": "Active",
+          "iterationPath": "Sample Project\\Sprint 9",
+          "areaPath": "Sample Project\\Team Area",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/101",
+          "existingTestingTasks": []
+        },
+        {
+          "id": 103,
+          "complexity": "Medium",
+          "tasks": 5,
+          "type": "User Story",
+          "title": "Story 103",
+          "state": "Active",
+          "iterationPath": "Sample Project\\Sprint 9",
+          "areaPath": null,
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/103",
+          "existingTestingTasks": []
+        }
+      ],
+      "fields": [
+        {
+          "field": "Microsoft.VSTS.Common.Activity",
+          "value": "Testing",
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.OriginalEstimate",
+          "value": 1,
+          "ok": false,
+          "reason": "field-not-on-type"
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.RemainingWork",
+          "value": 1,
+          "ok": true
+        }
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/103?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Task/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    }
+  ]
+}

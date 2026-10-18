@@ -1,0 +1,663 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "validation": {
+      "assignee": "qa.engineer@example.com",
+      "perStory": [
+        {
+          "id": 101,
+          "complexity": "Simple",
+          "tasks": 5,
+          "type": "User Story",
+          "title": "Story 101",
+          "state": "Active",
+          "iterationPath": "Sample Project\\Sprint 9",
+          "areaPath": "Sample Project\\Team Area",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/101",
+          "existingTestingTasks": []
+        },
+        {
+          "id": 103,
+          "complexity": "Medium",
+          "tasks": 5,
+          "type": "User Story",
+          "title": "Story 103",
+          "state": "Active",
+          "iterationPath": "Sample Project\\Sprint 9",
+          "areaPath": null,
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/103",
+          "existingTestingTasks": []
+        }
+      ],
+      "fields": [
+        {
+          "field": "Microsoft.VSTS.Common.Activity",
+          "value": "Testing",
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.OriginalEstimate",
+          "value": 1,
+          "ok": true
+        },
+        {
+          "field": "Microsoft.VSTS.Scheduling.RemainingWork",
+          "value": 1,
+          "ok": true
+        }
+      ],
+      "validateOnly": "passed"
+    },
+    "plan": [
+      {
+        "step": "create-task",
+        "story": 101,
+        "title": "[Testing] Requirement Review",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #101 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Requirement Review"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AreaPath",
+              "value": "Sample Project\\Team Area"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 1
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 1
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/101"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "step": "create-task",
+        "story": 101,
+        "title": "[Testing] Test Creation",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #101 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Test Creation"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AreaPath",
+              "value": "Sample Project\\Team Area"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 2
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 2
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/101"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "step": "create-task",
+        "story": 101,
+        "title": "[Testing] Test Execution",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #101 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Test Execution"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AreaPath",
+              "value": "Sample Project\\Team Area"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 3
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 3
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/101"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "step": "create-task",
+        "story": 101,
+        "title": "[Testing] Bug Review and Retest",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #101 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Bug Review and Retest"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AreaPath",
+              "value": "Sample Project\\Team Area"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 1.5
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 1.5
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/101"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "step": "create-task",
+        "story": 101,
+        "title": "[Testing] Automation",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #101 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Automation"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AreaPath",
+              "value": "Sample Project\\Team Area"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 0.5
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 0.5
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/101"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "step": "create-task",
+        "story": 103,
+        "title": "[Testing] Requirement Review",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #103 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Requirement Review"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 1
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 1
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/103"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "step": "create-task",
+        "story": 103,
+        "title": "[Testing] Test Creation",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #103 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Test Creation"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 2
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 2
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/103"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "step": "create-task",
+        "story": 103,
+        "title": "[Testing] Test Execution",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #103 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Test Execution"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 3
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 3
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/103"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "step": "create-task",
+        "story": 103,
+        "title": "[Testing] Bug Review and Retest",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #103 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Bug Review and Retest"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 1.5
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 1.5
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/103"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "step": "create-task",
+        "story": 103,
+        "title": "[Testing] Automation",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1 (System.LinkTypes.Hierarchy-Reverse -> #103 inline — atomic)",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "[Testing] Automation"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.IterationPath",
+              "value": "Sample Project\\Sprint 9"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AssignedTo",
+              "value": "qa.engineer@example.com"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Common.Activity",
+              "value": "Testing"
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate",
+              "value": 0.5
+            },
+            {
+              "op": "add",
+              "path": "/fields/Microsoft.VSTS.Scheduling.RemainingWork",
+              "value": 0.5
+            },
+            {
+              "op": "add",
+              "path": "/relations/-",
+              "value": {
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/103"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "type-added"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/103?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Task/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?validateOnly=true&api-version=7.1",
+      "body": "[{\"op\":\"add\",\"path\":\"/fields/System.Title\",\"value\":\"[Testing] Requirement Review\"},{\"op\":\"add\",\"path\":\"/fields/System.IterationPath\",\"value\":\"Sample Project\\\\Sprint 9\"},{\"op\":\"add\",\"path\":\"/fields/System.AreaPath\",\"value\":\"Sample Project\\\\Team Area\"},{\"op\":\"add\",\"path\":\"/fields/System.AssignedTo\",\"value\":\"qa.engineer@example.com\"},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Common.Activity\",\"value\":\"Testing\"},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Scheduling.OriginalEstimate\",\"value\":1},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Scheduling.RemainingWork\",\"value\":1},{\"op\":\"add\",\"path\":\"/relations/-\",\"value\":{\"rel\":\"System.LinkTypes.Hierarchy-Reverse\",\"url\":\"https://dev.azure.com/exampleorg/_apis/wit/workItems/101\"}}]"
+    }
+  ]
+}

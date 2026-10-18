@@ -1,0 +1,76 @@
+---
+name: swagger-import
+description: >
+  Generate an API catalog + suite of test cases (integration/api_test_suites/<service>/) from
+  a Swagger 2.0 or OpenAPI 3.x JSON document. Use for /import-swagger, or requests like
+  "import this swagger doc", "generate endpoint tests from this OpenAPI spec". Output feeds
+  directly into the endpoint-testing and api-integration skills — this skill only generates
+  config, it never executes requests itself.
+---
+
+# Swagger Import — generate catalog + suite files from a spec
+
+Turns a Swagger/OpenAPI document into the same catalog/suite files a user would otherwise
+hand-write. Read
+**`${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/references/swagger-mapping.md`** before the
+first import in a session — it covers the exact field mapping, what's skipped, and how auth
+scheme selection works.
+
+## Scope
+
+- **JSON only** — no YAML parser. Point at a local file or an `http(s)://` URL serving JSON.
+  If the user only has YAML, tell them to convert it or use their spec host's JSON variant
+  (e.g. `/v3/api-docs`, `/swagger.json`) — never guess at parsing YAML by hand.
+- **SwaggerHub-hosted specs** — if the spec lives in SwaggerHub (a private org API, not a
+  public URL), use the **Swagger MCP connector** instead of asking for a file/URL:
+  `swagger_search_apis_and_domains` (or `swagger_list_organizations` first, if the owner is
+  ambiguous) to find the API, then `swagger_get_api_definition(owner, api, version, resolved:
+  true)` to fetch its JSON. Write the result to a temp file and pass that file's path to
+  `import_swagger.js` below — the script only understands local paths and `http(s)://` URLs,
+  so this is a fetch-side step, not a script change. The connector is a spec **source**, not a
+  generator — it doesn't produce catalog/suite files itself.
+- Both **Swagger 2.0** and **OpenAPI 3.x** are supported (detected from the doc itself).
+- Postman collections are **not** supported by this skill (separate, not-yet-built work) —
+  if asked, say so rather than attempting to reinterpret a Postman export as a Swagger doc.
+
+## Running an import
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/scripts/import_swagger.js" \
+  <path-or-url> [--name <service>] \
+  [--dir ./integration/api_test_suites]
+```
+
+Writes both generated files **co-located** under `<dir>/<name>/`: the catalog
+(`<name>_api.json`) and its suite (`<name>_suite.json`) live in the same per-service folder —
+e.g. `integration/api_test_suites/petstore/petstore_api.json` +
+`integration/api_test_suites/petstore/petstore_suite.json`.
+
+Prints one JSON line: `{"result":"OK|BLOCKED", "catalogPath", "suitePath",
+"operationsImported", "casesGenerated", "envVarsToSet", "review": [...]}` (exit 0 OK, 2
+BLOCKED). **Never overwrites** an existing catalog/suite file — a BLOCKED result telling the
+user to pick a different `--name` or remove/rename the existing file is expected behavior,
+not a bug.
+
+`<path-or-url>` is either a local file or an `http(s)://` URL. For SwaggerHub-hosted specs,
+resolve via the MCP connector first (see Scope above) and pass the staged temp file's path
+here — from the script's point of view it's just another local file.
+
+## After a successful import
+
+1. Report `envVarsToSet` to the user verbatim — the base URL literal to put in `.env`, and
+   any token/credential env var names to export in their shell (never in `.env` — same rule
+   as everywhere else in this project).
+2. Report every entry in `review` — these are real gaps (skipped header params, generated
+   request bodies, placeholder "not found" values, unsupported auth schemes) that need human
+   verification before the generated suite means anything.
+3. Tell the user to open the generated files and adjust anything flagged, then try
+   `/test-endpoints`.
+
+## What this does NOT do
+
+- Does not validate responses against the spec's schema (no contract/schema-conformance
+  checking — that was explicitly scoped out; suite cases only check `status`/`fields`/
+  `equals`, same as any hand-written case).
+- Does not execute anything itself — running the generated suite is `endpoint-testing`'s job
+  (dispatch `api-executor`, per that skill's own rules).

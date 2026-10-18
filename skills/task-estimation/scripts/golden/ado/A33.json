@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "--spec",
+    "{DIR}/nope.json"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "could not read spec: ENOENT: no such file or directory, open '<CWD>/nope.json'"
+    }
+  },
+  "requests": []
+}

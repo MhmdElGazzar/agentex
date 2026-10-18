@@ -1,0 +1,35 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "stories",
+    "blocked": [
+      {
+        "reason": "board-not-found",
+        "options": [],
+        "message": "jira.board \"Nope board\" matches no board of project PROJ — real boards: none"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/field",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND issuetype = \\\"Story\\\" AND sprint in openSprints() ORDER BY key\",\"fields\":[\"summary\",\"customfield_10020\"],\"maxResults\":100}"
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=PROJ",
+      "body": null
+    }
+  ]
+}

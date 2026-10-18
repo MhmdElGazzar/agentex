@@ -1,0 +1,361 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "ledger": [
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Requirement Review\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-101",
+        "url": "https://example.atlassian.net/browse/PROJ-101"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Requirement Review\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-101",
+        "url": "https://example.atlassian.net/browse/PROJ-101"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Creation\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-102",
+        "url": "https://example.atlassian.net/browse/PROJ-102"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Test Creation\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-102",
+        "url": "https://example.atlassian.net/browse/PROJ-102"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Execution\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-103",
+        "url": "https://example.atlassian.net/browse/PROJ-103"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Test Execution\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-103",
+        "url": "https://example.atlassian.net/browse/PROJ-103"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Bug Review and Retest\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-104",
+        "url": "https://example.atlassian.net/browse/PROJ-104"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Bug Review and Retest\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-104",
+        "url": "https://example.atlassian.net/browse/PROJ-104"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Automation\" under story PROJ-1 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-105",
+        "url": "https://example.atlassian.net/browse/PROJ-105"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Automation\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-105",
+        "url": "https://example.atlassian.net/browse/PROJ-105"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Requirement Review\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-106",
+        "url": "https://example.atlassian.net/browse/PROJ-106"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Requirement Review\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-106",
+        "url": "https://example.atlassian.net/browse/PROJ-106"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Creation\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-107",
+        "url": "https://example.atlassian.net/browse/PROJ-107"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Test Creation\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-107",
+        "url": "https://example.atlassian.net/browse/PROJ-107"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Execution\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-108",
+        "url": "https://example.atlassian.net/browse/PROJ-108"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Test Execution\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-108",
+        "url": "https://example.atlassian.net/browse/PROJ-108"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Bug Review and Retest\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-109",
+        "url": "https://example.atlassian.net/browse/PROJ-109"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Bug Review and Retest\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-109",
+        "url": "https://example.atlassian.net/browse/PROJ-109"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Automation\" under story PROJ-3 (POST /rest/api/3/issue — sub-task, fields.parent inline)",
+        "status": "done",
+        "id": "PROJ-110",
+        "url": "https://example.atlassian.net/browse/PROJ-110"
+      },
+      {
+        "step": "set-hours",
+        "describe": "set the hours on \"[Testing] Automation\" (PUT /rest/api/3/issue/<the key just created>)",
+        "status": "done",
+        "id": "PROJ-110",
+        "url": "https://example.atlassian.net/browse/PROJ-110"
+      }
+    ],
+    "created": {
+      "tasks": [
+        {
+          "id": "PROJ-101",
+          "url": "https://example.atlassian.net/browse/PROJ-101",
+          "storyId": "PROJ-1",
+          "title": "[Testing] Requirement Review"
+        },
+        {
+          "id": "PROJ-102",
+          "url": "https://example.atlassian.net/browse/PROJ-102",
+          "storyId": "PROJ-1",
+          "title": "[Testing] Test Creation"
+        },
+        {
+          "id": "PROJ-103",
+          "url": "https://example.atlassian.net/browse/PROJ-103",
+          "storyId": "PROJ-1",
+          "title": "[Testing] Test Execution"
+        },
+        {
+          "id": "PROJ-104",
+          "url": "https://example.atlassian.net/browse/PROJ-104",
+          "storyId": "PROJ-1",
+          "title": "[Testing] Bug Review and Retest"
+        },
+        {
+          "id": "PROJ-105",
+          "url": "https://example.atlassian.net/browse/PROJ-105",
+          "storyId": "PROJ-1",
+          "title": "[Testing] Automation"
+        },
+        {
+          "id": "PROJ-106",
+          "url": "https://example.atlassian.net/browse/PROJ-106",
+          "storyId": "PROJ-3",
+          "title": "[Testing] Requirement Review"
+        },
+        {
+          "id": "PROJ-107",
+          "url": "https://example.atlassian.net/browse/PROJ-107",
+          "storyId": "PROJ-3",
+          "title": "[Testing] Test Creation"
+        },
+        {
+          "id": "PROJ-108",
+          "url": "https://example.atlassian.net/browse/PROJ-108",
+          "storyId": "PROJ-3",
+          "title": "[Testing] Test Execution"
+        },
+        {
+          "id": "PROJ-109",
+          "url": "https://example.atlassian.net/browse/PROJ-109",
+          "storyId": "PROJ-3",
+          "title": "[Testing] Bug Review and Retest"
+        },
+        {
+          "id": "PROJ-110",
+          "url": "https://example.atlassian.net/browse/PROJ-110",
+          "storyId": "PROJ-3",
+          "title": "[Testing] Automation"
+        }
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-jira.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/user/search?query=qa.engineer%40example.com",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes?maxResults=100",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-3?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes/10002?startAt=0&maxResults=100",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND issuetype = \\\"Sub-task\\\" ORDER BY created DESC\",\"fields\":[\"summary\"],\"maxResults\":1}"
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-77/editmeta",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Requirement Review\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 1h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-101",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"1h\",\"remainingEstimate\":\"1h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Test Creation\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 2h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-102",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"2h\",\"remainingEstimate\":\"2h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Test Execution\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 3h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-103",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"3h\",\"remainingEstimate\":\"3h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Bug Review and Retest\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 1.5h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-104",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"1.5h\",\"remainingEstimate\":\"1.5h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Automation\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 0.5h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-1\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-105",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"0.5h\",\"remainingEstimate\":\"0.5h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Requirement Review\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 1h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-3\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-106",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"1h\",\"remainingEstimate\":\"1h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Test Creation\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 2h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-3\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-107",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"2h\",\"remainingEstimate\":\"2h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Test Execution\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 3h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-3\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-108",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"3h\",\"remainingEstimate\":\"3h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Bug Review and Retest\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 1.5h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-3\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-109",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"1.5h\",\"remainingEstimate\":\"1.5h\"}}}"
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue",
+      "body": "{\"fields\":{\"project\":{\"key\":\"PROJ\"},\"issuetype\":{\"name\":\"Sub-task\"},\"summary\":\"[Testing] Automation\",\"description\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Estimate: 0.5h\"}]}]},\"labels\":[\"testing\"],\"assignee\":{\"accountId\":\"acc-123\"},\"parent\":{\"key\":\"PROJ-3\"}}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-110",
+      "body": "{\"fields\":{\"timetracking\":{\"originalEstimate\":\"0.5h\",\"remainingEstimate\":\"0.5h\"}}}"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "argv": [
+    "stories",
+    "--ids",
+    "PROJ-2"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "stories",
+    "count": 1,
+    "stories": [
+      {
+        "id": "PROJ-2",
+        "type": "Story",
+        "title": "Story PROJ-2",
+        "state": "In Progress",
+        "storyPoints": 3,
+        "url": "https://example.atlassian.net/browse/PROJ-2",
+        "existingTestingTasks": [
+          {
+            "id": "PROJ-55",
+            "title": "[Testing] Test Execution",
+            "state": "To Do"
+          },
+          {
+            "id": "PROJ-57",
+            "title": "[Testing] Automation",
+            "state": null
+          }
+        ]
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/field",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-2?expand=renderedFields%2Cnames",
+      "body": null
+    }
+  ]
+}

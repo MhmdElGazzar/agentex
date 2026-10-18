@@ -1,0 +1,43 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "stories",
+    "blocked": [
+      {
+        "reason": "multiple-open-sprints",
+        "options": [
+          "Sprint 8",
+          "Sprint 7"
+        ],
+        "message": "board \"PROJ board\" has 2 active sprints — ask the user which one (the ONE bundled round) and re-run with --sprint \"<name>\""
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/field",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/search/jql",
+      "body": "{\"jql\":\"project = \\\"PROJ\\\" AND issuetype = \\\"Story\\\" AND sprint in openSprints() ORDER BY key\",\"fields\":[\"summary\",\"customfield_10020\"],\"maxResults\":100}"
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/agile/1.0/board?projectKeyOrId=PROJ",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/agile/1.0/board/42/sprint?state=active",
+      "body": null
+    }
+  ]
+}

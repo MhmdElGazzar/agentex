@@ -1,0 +1,42 @@
+{
+  "argv": [
+    "stories",
+    "--ids",
+    "101,103"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "stories",
+    "count": 2,
+    "stories": [
+      {
+        "id": 101,
+        "warning": "could not be read: getWorkItem failed: HTTP 404 — TF401232: Work item 101 does not exist (https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1)"
+      },
+      {
+        "id": 103,
+        "type": "User Story",
+        "title": "Story 103",
+        "state": "Active",
+        "storyPoints": null,
+        "iterationPath": "Sample Project\\Sprint 9",
+        "areaPath": null,
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/103",
+        "existingTestingTasks": []
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/103?$expand=all&api-version=7.1",
+      "body": null
+    }
+  ]
+}

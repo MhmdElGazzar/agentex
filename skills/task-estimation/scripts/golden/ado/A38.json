@@ -1,0 +1,123 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}",
+    "--execute"
+  ],
+  "code": 1,
+  "out": {
+    "ok": false,
+    "mode": "executed",
+    "ledger": [
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Requirement Review\" under story #101 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "done",
+        "id": 9001,
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/9001"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Creation\" under story #101 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "done",
+        "id": 9002,
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/9002"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Execution\" under story #101 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "failed",
+        "reason": "createWorkItem failed: HTTP 500 — server exploded (https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1)"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Bug Review and Retest\" under story #101 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Automation\" under story #101 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Requirement Review\" under story #103 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Creation\" under story #103 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Test Execution\" under story #103 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Bug Review and Retest\" under story #103 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "not-attempted"
+      },
+      {
+        "step": "create-task",
+        "describe": "create \"[Testing] Automation\" under story #103 (POST _apis/wit/workitems/$Task, parent link inline)",
+        "status": "not-attempted"
+      }
+    ],
+    "created": {
+      "tasks": [
+        {
+          "id": 9001,
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/9001",
+          "storyId": 101,
+          "title": "[Testing] Requirement Review"
+        },
+        {
+          "id": 9002,
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/9002",
+          "storyId": 101,
+          "title": "[Testing] Test Creation"
+        }
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/103?$expand=all&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Task/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+      "body": "[{\"op\":\"add\",\"path\":\"/fields/System.Title\",\"value\":\"[Testing] Requirement Review\"},{\"op\":\"add\",\"path\":\"/fields/System.IterationPath\",\"value\":\"Sample Project\\\\Sprint 9\"},{\"op\":\"add\",\"path\":\"/fields/System.AreaPath\",\"value\":\"Sample Project\\\\Team Area\"},{\"op\":\"add\",\"path\":\"/fields/System.AssignedTo\",\"value\":\"qa.engineer@example.com\"},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Common.Activity\",\"value\":\"Testing\"},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Scheduling.OriginalEstimate\",\"value\":1},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Scheduling.RemainingWork\",\"value\":1},{\"op\":\"add\",\"path\":\"/relations/-\",\"value\":{\"rel\":\"System.LinkTypes.Hierarchy-Reverse\",\"url\":\"https://dev.azure.com/exampleorg/_apis/wit/workItems/101\"}}]"
+    },
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+      "body": "[{\"op\":\"add\",\"path\":\"/fields/System.Title\",\"value\":\"[Testing] Test Creation\"},{\"op\":\"add\",\"path\":\"/fields/System.IterationPath\",\"value\":\"Sample Project\\\\Sprint 9\"},{\"op\":\"add\",\"path\":\"/fields/System.AreaPath\",\"value\":\"Sample Project\\\\Team Area\"},{\"op\":\"add\",\"path\":\"/fields/System.AssignedTo\",\"value\":\"qa.engineer@example.com\"},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Common.Activity\",\"value\":\"Testing\"},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Scheduling.OriginalEstimate\",\"value\":2},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Scheduling.RemainingWork\",\"value\":2},{\"op\":\"add\",\"path\":\"/relations/-\",\"value\":{\"rel\":\"System.LinkTypes.Hierarchy-Reverse\",\"url\":\"https://dev.azure.com/exampleorg/_apis/wit/workItems/101\"}}]"
+    },
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+      "body": "[{\"op\":\"add\",\"path\":\"/fields/System.Title\",\"value\":\"[Testing] Test Execution\"},{\"op\":\"add\",\"path\":\"/fields/System.IterationPath\",\"value\":\"Sample Project\\\\Sprint 9\"},{\"op\":\"add\",\"path\":\"/fields/System.AreaPath\",\"value\":\"Sample Project\\\\Team Area\"},{\"op\":\"add\",\"path\":\"/fields/System.AssignedTo\",\"value\":\"qa.engineer@example.com\"},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Common.Activity\",\"value\":\"Testing\"},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Scheduling.OriginalEstimate\",\"value\":3},{\"op\":\"add\",\"path\":\"/fields/Microsoft.VSTS.Scheduling.RemainingWork\",\"value\":3},{\"op\":\"add\",\"path\":\"/relations/-\",\"value\":{\"rel\":\"System.LinkTypes.Hierarchy-Reverse\",\"url\":\"https://dev.azure.com/exampleorg/_apis/wit/workItems/101\"}}]"
+    }
+  ]
+}

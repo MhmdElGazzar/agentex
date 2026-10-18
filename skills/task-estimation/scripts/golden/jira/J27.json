@@ -1,0 +1,98 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "assignee-not-found",
+        "message": "no Jira user matches \"qa.engineer@example.com\" — Jira assigns by accountId, so an unresolvable email blocks (fails closed)"
+      }
+    ],
+    "validation": {
+      "assignee": "qa.engineer@example.com",
+      "assigneeAccountId": null,
+      "subtaskType": "Sub-task",
+      "perStory": [
+        {
+          "id": "PROJ-1",
+          "complexity": "Simple",
+          "tasks": 5,
+          "type": "Story",
+          "title": "Story PROJ-1",
+          "state": "In Progress",
+          "url": "https://example.atlassian.net/browse/PROJ-1",
+          "existingTestingTasks": []
+        },
+        {
+          "id": "PROJ-3",
+          "complexity": "Medium",
+          "tasks": 5,
+          "type": "Story",
+          "title": "Story PROJ-3",
+          "state": "In Progress",
+          "url": "https://example.atlassian.net/browse/PROJ-3",
+          "existingTestingTasks": []
+        }
+      ],
+      "fields": [
+        {
+          "field": "labels",
+          "ok": true
+        },
+        {
+          "field": "assignee",
+          "ok": true
+        },
+        {
+          "field": "parent",
+          "ok": true
+        }
+      ],
+      "validateOnly": "unsupported-on-jira",
+      "notes": [
+        "iteration/area have no Jira analog — sub-tasks ride their parent story's sprint"
+      ],
+      "hours": {
+        "mode": "create"
+      }
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-jira.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>",
+      "reason": "missing"
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/user/search?query=qa.engineer%40example.com",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes?maxResults=100",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-3?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes/10002?startAt=0&maxResults=100",
+      "body": null
+    }
+  ]
+}

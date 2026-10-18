@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "stories",
+    "count": 0,
+    "stories": []
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1",
+      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='User Story' AND [System.TeamProject]='Sample Project' AND [System.IterationPath] = @CurrentIteration('[Sample Project]\\\\Sample Team') ORDER BY [System.Id]\"}"
+    }
+  ]
+}

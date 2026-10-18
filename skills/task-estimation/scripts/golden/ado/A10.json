@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "stories",
+    "--ids",
+    "101"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "stories",
+    "count": 1,
+    "stories": [
+      {
+        "id": 101,
+        "warning": "could not be read: Cannot read properties of null (reading 'id')"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    }
+  ]
+}

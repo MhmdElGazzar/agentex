@@ -1,0 +1,67 @@
+{
+  "argv": [
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "missing-assignee",
+        "message": "no assignee — set spec.assignee (ask the user) or jira.assignee in config/project.json"
+      },
+      {
+        "reason": "bad-task-title",
+        "story": "PROJ-1",
+        "title": "bad",
+        "message": "story PROJ-1: task title \"bad\" must start with \"[Testing] \""
+      },
+      {
+        "reason": "subtask-type-not-found",
+        "options": [
+          "Sub-task"
+        ],
+        "message": "jira.subtaskType \"Nope\" is not one of the project's sub-task types (Sub-task) — correct it for this run"
+      },
+      {
+        "reason": "children-check-failed",
+        "story": "PROJ-1",
+        "message": "the existing-children check on PROJ-1 could not complete (no subtasks list on the read) — refusing to create blind (fails closed)"
+      }
+    ],
+    "validation": {
+      "assignee": null,
+      "assigneeAccountId": null,
+      "subtaskType": null,
+      "perStory": [
+        {
+          "id": "PROJ-1",
+          "tasks": 1,
+          "type": "Story",
+          "title": "Story PROJ-1",
+          "state": "In Progress",
+          "url": "https://example.atlassian.net/browse/PROJ-1",
+          "existingTestingTasks": null
+        }
+      ],
+      "validateOnly": "unsupported-on-jira",
+      "notes": [
+        "iteration/area have no Jira analog — sub-tasks ride their parent story's sprint"
+      ]
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/createmeta/PROJ/issuetypes?maxResults=100",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames",
+      "body": null
+    }
+  ]
+}

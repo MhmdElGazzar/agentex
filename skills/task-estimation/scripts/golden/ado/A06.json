@@ -1,0 +1,34 @@
+{
+  "argv": [
+    "stories",
+    "--ids",
+    "101"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "stories",
+    "count": 1,
+    "stories": [
+      {
+        "id": 101,
+        "type": "Bug",
+        "title": "A bug",
+        "state": "New",
+        "storyPoints": null,
+        "iterationPath": null,
+        "areaPath": null,
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/101",
+        "warning": "#101 is a \"Bug\", not a User Story — the dry run will refuse to create tasks under it",
+        "existingTestingTasks": []
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/101?$expand=all&api-version=7.1",
+      "body": null
+    }
+  ]
+}

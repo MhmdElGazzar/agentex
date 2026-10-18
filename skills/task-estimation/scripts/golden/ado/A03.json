@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "stories",
+    "--current-sprint"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "error": {
+      "message": "No team resolved — the @CurrentIteration macro needs the TEAM name, not just the project. Pass --team \"<name>\" for this run, or set azure.team in config/project.json (legacy AZURE_TEAM in .env)."
+    }
+  },
+  "requests": []
+}
