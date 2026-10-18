@@ -115,7 +115,8 @@ const catalog = port => ({
   });
 
   // ---- --env: passed through to every run_api.js call; absent -> run_api's default resolution ----
-  // qc and uat each point their api block at their own server; the default is uat.
+  // qc and uat each point their api block at their own server; the default is uat. The catalog is
+  // the project's own API ("${API_BASE_URL}", no target), so the environment's api block targets it.
   function counting() {
     const seen = { hits: 0 };
     return new Promise(resolve => {
@@ -127,7 +128,7 @@ const catalog = port => ({
     'config/project.json': { defaultEnvironment: 'uat' },
     'environments/qc.json': { api: { baseUrl: `http://127.0.0.1:${qcPort}` } },
     'environments/uat.json': { api: { baseUrl: `http://127.0.0.1:${uatPort}` } },
-    'integration/api_test_suites/svc/svc_api.json': { name: 'svc', baseUrl: '${SVC_UNUSED_BASE_URL}', auth: { type: 'none' },
+    'integration/api_test_suites/svc/svc_api.json': { name: 'svc', baseUrl: '${API_BASE_URL}', auth: { type: 'none' },
       requests: [{ name: 'ok', method: 'GET', path: '/ok', params: [] }] },
     'integration/api_test_suites/svc/svc_suite.json': { cases: [
       { name: 'one', entry: 'svc.ok', expect: { status: 200 } },
