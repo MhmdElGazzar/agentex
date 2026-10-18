@@ -19,6 +19,23 @@
 // read from .env by the adapter and sent only in the Authorization header —
 // never printed, logged, or placed on a command line (invariant 5).
 //
+// THE ESTIMATION FILE — config/estimation.json (scripts/lib/estimation_config.js)
+// is the user's: the [Testing] tasks (names, count, order, min/max hours,
+// enabled) and the rating factors. This script creates it ONCE, only behind
+// --execute after the one approval, with an exclusive create; it never
+// rewrites it.
+//
+// ESTIMATION (Phase A, first — free, no board write, never writes the file):
+//   node create-tasks.js estimation --out <scratch file> [--sprints <n>] [--team "<name>"] [--board "<id|name>"]
+//     File present and valid → its content, ZERO requests (the tracker is not
+//     even resolved). Invalid → exit 2 naming every problem, nothing read or
+//     written. No file → the strategy's history read (the last N closed
+//     sprints' [Testing] tasks, Original Estimate only; default N = 2) → a
+//     proposal (estimation/history.js) written to --out — an OS-temp scratch
+//     file, created exclusively or replacing only a previous proposal — and
+//     summarized: tasks with min/max, provenance, abnormal values, or labelled
+//     starter defaults with the reason.
+//
 // READS (free, no gating — `stories` has no --execute surface at all):
 //   node create-tasks.js stories --current-sprint [--team "<name>"] [--sprint "<name>"] [--full]
 //   node create-tasks.js stories --ids <ID,ID> [--full]
@@ -32,6 +49,17 @@
 //
 // DRY RUN (default) — the validation gate behind the skill's ONE approval:
 //   node create-tasks.js --spec <file.json> [--allow-existing] [--refresh-fields]
+//     A RATINGS spec (the skill's: `estimation` key or stories[].ratings)
+//     carries 0–4 factor ratings, never tasks or hours. Before any request,
+//     the tasks and hours are derived (estimation/placement.js) from the file
+//     — or, on a first run, from estimation.proposalFile plus the user's
+//     outlierChoices / taskEdits — with run-only stories[].adjust; every
+//     derivation problem blocks (exit 2, zero requests). The derived tasks
+//     spec then takes the unchanged path below, and the output gains an
+//     `estimation` block (content, provenance, outliers, per-story ratings /
+//     score / hours, totals, `basis`); a first run's plan opens with the
+//     create-file entry. A LEGACY tasks spec keeps the 0.23.0 path, but only
+//     on a project without the file (tasks-not-from-file otherwise).
 //     The strategy validates (reads + local checks only): each story exists and
 //     IS a story (fails closed); placement is re-read from the story, never
 //     trusted from the spec; existing [Testing] children block without
@@ -47,11 +75,19 @@
 //   failure stops; the ledger reports every intended write as done (id + url)
 //   or not-done (reason); created IDs are in the JSON even when a later step
 //   throws. No auto-retry, no cleanup writes.
+//   Ratings mode: `--execute --basis <estimation.basis>` — everything is
+//   recomputed and must equal the approved dry run (missing-basis /
+//   basis-mismatch otherwise, zero writes). On a first run the file is
+//   intent 0 of the same plan (exclusive create: a file that appeared is
+//   never replaced, and no task is sent); created.file reports it.
 //
-// Spec JSON shape (written by the agent to the OS temp dir):
-//   { "assignee": "qa.engineer@example.com",
-//     "stories": [ { "id": <story id>, "complexity": "Simple",
-//                    "tasks": [ { "title": "[Testing] Requirement Review", "estimate": 1 }, … ] } ] }
+// Spec JSON shapes (written by the agent to the OS temp dir):
+//   ratings: { "assignee": "qa.engineer@example.com",
+//              "estimation": { "proposalFile": "<the --out file>", "outlierChoices": {…}, "taskEdits": {…} },
+//              "stories": [ { "id": <story id>, "ratings": { "<factor>": 0..4, … }, "adjust": { "<task>": <hours> | "skip" } } ] }
+//   legacy:  { "assignee": "qa.engineer@example.com",
+//              "stories": [ { "id": <story id>, "complexity": "Simple",
+//                             "tasks": [ { "title": "[Testing] Requirement Review", "estimate": 1 }, … ] } ] }
 //
 // Output: ONE JSON line (invariant 9). Exit codes:
 //   reads/dry run 0 = ok / plan ready | 2 = blocked/bad usage | 1 = unexpected

@@ -13,10 +13,14 @@
 //   - Story Points / Sprint fields are discovered by display name
 //     (listAllFields), jira.storyPointsField is the confirmed-once override —
 //     never guessed;
-//   - verbatim template parity with ADO: the same five [Testing] titles, one
-//     atomic sub-task create per task (fields.parent inline via the relations
-//     seam), Activity=Testing → the label 'testing', the assignee resolved
+//   - parity with ADO: the same [Testing] tasks (the spine derives them from
+//     config/estimation.json, never this strategy), one atomic sub-task
+//     create per task (fields.parent inline via the relations seam),
+//     Activity=Testing → the label 'testing', the assignee resolved
 //     email → accountId by ONE user-search read (O5), fail closed;
+//   - the first-run history read (pastTestingTasks): one board's last closed
+//     sprints, story-first, Original Estimate only (timeoriginalestimate) —
+//     never a description, so hours mode 'none' history yields no estimates;
 //   - the sub-task type: jira.subtaskType pins it, else exactly one subtask
 //     type is used and several join the bundle round;
 //   - hours follow what Jira's REST API allows (time tracking is only written
