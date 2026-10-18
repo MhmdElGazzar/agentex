@@ -50,6 +50,7 @@ const SEARCH_PAGE_SIZE = 100;
 const SEARCH_MAX_PAGES = 10;            // documented hard cap; result carries truncated: true
 const META_PAGE_SIZE = 100;
 const META_MAX_PAGES = 10;
+const SPRINT_MAX_PAGES = 20;            // runaway guard for sprint paging (refuses past it)
 // Rich-text fields whose plain-string values the dialect layer wraps via toAdf.
 const ADF_FIELDS = ['description', 'environment'];
 
@@ -432,10 +433,26 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return (res && res.values) || [];
     },
 
+    // Pages only while the response says isLast: false (additive: the first
+    // request URL is unchanged, and a response without isLast is one page).
+    // The agile API lists sprints oldest first, so "the last N closed sprints"
+    // needs every page; past SPRINT_MAX_PAGES it refuses rather than loop.
     async listSprints(boardId, { state } = {}) {
-      const u = agile(`board/${encodeURIComponent(boardId)}/sprint${state ? `?state=${encodeURIComponent(state)}` : ''}`);
-      const res = await request('listSprints', 'GET', u);
-      return (res && res.values) || [];
+      const out = [];
+      let startAt = 0;
+      for (let page = 0; page < SPRINT_MAX_PAGES; page++) {
+        const q = [state ? `state=${encodeURIComponent(state)}` : null, startAt ? `startAt=${startAt}` : null].filter(Boolean).join('&');
+        const u = agile(`board/${encodeURIComponent(boardId)}/sprint${q ? `?${q}` : ''}`);
+        const res = await request('listSprints', 'GET', u);
+        const values = (res && res.values) || [];
+        out.push(...values);
+        if (!res || res.isLast !== false || !values.length) return out;
+        startAt += values.length;
+      }
+      throw new TrackerError({
+        op: 'listSprints', url: agile(`board/${encodeURIComponent(boardId)}/sprint`),
+        serverMessage: `more than ${SPRINT_MAX_PAGES} pages of sprints — stopping rather than looping`,
+      });
     },
 
     // ── NEUTRAL READS (additive, flow-free) ───────────────────────────────────

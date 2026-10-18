@@ -902,6 +902,40 @@ const SUBTASK_FIELDS = {
     assert.strictEqual(f.calls.length, 0);
   });
 
+  // ── listSprints: additive paging (the first request is unchanged) ────────
+  await test('listSprints: a response without isLast is ONE page; the first URL is byte-identical to before', async () => {
+    const f = fakeFetch([{ match: '/rest/agile/1.0/board/42/sprint', json: { values: [{ id: 7, name: 'Sprint 7' }] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listSprints(42, { state: 'closed' });
+    assert.deepStrictEqual(r, [{ id: 7, name: 'Sprint 7' }]);
+    assert.deepStrictEqual(f.calls.map((c) => c.url), [`${BASE}/rest/agile/1.0/board/42/sprint?state=closed`]);
+    const g = fakeFetch([{ match: '/rest/agile/1.0/board/42/sprint', json: { isLast: true, values: [{ id: 7 }] } }]);
+    await createAdapter({ cwd: proj(), fetch: g }).listSprints(42);
+    assert.deepStrictEqual(g.calls.map((c) => c.url), [`${BASE}/rest/agile/1.0/board/42/sprint`]);
+  });
+
+  await test('listSprints: follows ONLY isLast:false, with startAt, until the last page', async () => {
+    const pages = [
+      { isLast: false, startAt: 0, values: [{ id: 1 }, { id: 2 }] },
+      { isLast: false, startAt: 2, values: [{ id: 3 }, { id: 4 }] },
+      { isLast: true, startAt: 4, values: [{ id: 5 }] },
+    ];
+    const f = fakeFetch([{ match: '/board/42/sprint', json: (call) => pages[(Number((/startAt=(\d+)/.exec(call.url) || [0, 0])[1])) / 2] }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listSprints(42, { state: 'closed' });
+    assert.deepStrictEqual(r.map((s) => s.id), [1, 2, 3, 4, 5]);
+    assert.deepStrictEqual(f.calls.map((c) => c.url.replace(BASE, '')), [
+      '/rest/agile/1.0/board/42/sprint?state=closed',
+      '/rest/agile/1.0/board/42/sprint?state=closed&startAt=2',
+      '/rest/agile/1.0/board/42/sprint?state=closed&startAt=4',
+    ]);
+  });
+
+  await test('listSprints: paging is capped at 20 pages — a 21st page refuses rather than looping', async () => {
+    const f = fakeFetch([{ match: '/board/42/sprint', json: { isLast: false, values: [{ id: 1 }] } }]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listSprints(42, { state: 'closed' }),
+      (e) => e instanceof TrackerError && e.op === 'listSprints' && /20 pages/.test(e.message));
+    assert.strictEqual(f.calls.length, 20);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

@@ -634,6 +634,62 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(f.calls.length, 0);
   });
 
+  // ── primitives shared with Phase 0 (listIterations, getWorkItems) ──────────
+  await test('listIterations({team}): ONE GET {project}/{team}/_apis/work/teamsettings/iterations, team URL-encoded; neutral shape, unfiltered', async () => {
+    const f = fakeFetch([{ match: '/_apis/work/teamsettings/iterations', json: { value: [
+      { id: 'g1', name: 'Sprint 41', path: 'Sample Project\\Sprint 41', attributes: { startDate: '2026-09-01T00:00:00Z', finishDate: '2026-09-14T00:00:00Z', timeFrame: 'past' } },
+      { id: 'g2', name: 'Sprint 43', path: 'Sample Project\\Sprint 43', attributes: { timeFrame: 'current' } },
+    ] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listIterations({ team: 'QA & Team A' });
+    assert.strictEqual(f.calls.length, 1);
+    assert.strictEqual(f.calls[0].method, 'GET');
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/QA%20%26%20Team%20A/_apis/work/teamsettings/iterations?api-version=7.1`);
+    assert.ok(!f.calls[0].url.includes('timeframe'), 'no $timeframe filter is relied on (only Current is supported server-side)');
+    assert.deepStrictEqual(r, [
+      { id: 'g1', name: 'Sprint 41', path: 'Sample Project\\Sprint 41', startDate: '2026-09-01T00:00:00Z', finishDate: '2026-09-14T00:00:00Z', timeFrame: 'past' },
+      { id: 'g2', name: 'Sprint 43', path: 'Sample Project\\Sprint 43', startDate: null, finishDate: null, timeFrame: 'current' },
+    ]);
+  });
+
+  await test('listIterations: no team refuses (exit 2) with ZERO requests', async () => {
+    const f = fakeFetch([]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listIterations({}), (e) => e.exitCode === 2 && /team/i.test(e.message));
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('getWorkItems(ids, {fields}): POST wit/workitemsbatch, chunks of 200 — 1/200/201/450 ids → 1/1/2/3 requests, input order kept', async () => {
+    for (const [n, requests] of [[1, 1], [200, 1], [201, 2], [450, 3]]) {
+      const ids = Array.from({ length: n }, (_, i) => 1000 + n - i); // descending input
+      const f = fakeFetch([{ method: 'POST', match: '/_apis/wit/workitemsbatch', json: (calls) => {
+        const body = JSON.parse(calls[calls.length - 1].body);
+        return { value: [...body.ids].sort((a, b) => a - b).map((id) => ({ id, fields: { 'System.Id': id } })) }; // service order differs
+      } }]);
+      const r = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems(ids, { fields: ['System.Id', 'System.Title'] });
+      assert.strictEqual(f.calls.length, requests, `${n} ids`);
+      assert.deepStrictEqual(r.items.map((w) => w.id), ids, 'input order restored');
+      assert.deepStrictEqual(r.missing, []);
+      for (const c of f.calls) {
+        assert.strictEqual(c.method, 'POST');
+        assert.strictEqual(c.url, `${BASE}/${PROJ}/_apis/wit/workitemsbatch?api-version=7.1`);
+        const body = JSON.parse(c.body);
+        assert.deepStrictEqual(body.fields, ['System.Id', 'System.Title']);
+        assert.strictEqual(body.errorPolicy, 'omit');
+        assert.ok(body.ids.length <= 200);
+      }
+    }
+  });
+
+  await test('getWorkItems: ids the service omits are listed in missing; zero ids send nothing; bad ids refuse', async () => {
+    const f = fakeFetch([{ method: 'POST', match: '/workitemsbatch', json: { value: [{ id: 7, fields: {} }] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems([7, 8], { fields: ['System.Id'] });
+    assert.deepStrictEqual(r.items.map((w) => w.id), [7]);
+    assert.deepStrictEqual(r.missing, [8]);
+    const f0 = fakeFetch([]);
+    assert.deepStrictEqual(await createAdapter({ cwd: proj(), fetch: f0 }).getWorkItems([], { fields: ['System.Id'] }), { items: [], missing: [] });
+    assert.strictEqual(f0.calls.length, 0);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f0 }).getWorkItems(['x']), (e) => e.exitCode === 2);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

@@ -32,6 +32,7 @@ const { TrackerError } = require('../errors.js');
 
 const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
+const BATCH_CHUNK = 200;             // wit/workitemsbatch accepts at most 200 ids per call
 const REDACTED_AUTH = '<Basic ***, not printed>';
 
 function configError(message) {
@@ -230,6 +231,15 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
   const webUrl = (id) => `${cfg.base}/${projSeg}/_workitems/edit/${id}`;
 
+  // Positive integer work-item ids, or an exit-2 refusal naming the op.
+  function intIds(ids, op) {
+    return [].concat(ids).map((id) => {
+      const n = Number(id);
+      if (!Number.isInteger(n) || n <= 0) throw configError(`${op} needs positive integer work-item ids (got ${JSON.stringify(id)})`);
+      return n;
+    });
+  }
+
   return {
     name: 'ado',
     cwd,
@@ -297,6 +307,38 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     async listRunResults(runId) {
       const res = await request('listRunResults', 'GET', url(`test/Runs/${runId}/results`));
       return (res && res.value) || [];
+    },
+
+    // Batch read: POST wit/workitemsbatch, chunks of BATCH_CHUNK, errorPolicy
+    // 'omit'. The service may answer in any order, so INPUT order is restored.
+    //   { items: [raw work item…], missing: [id…] }
+    async getWorkItems(ids, { fields } = {}) {
+      const wanted = intIds(ids, 'getWorkItems');
+      const byId = new Map();
+      for (let i = 0; i < wanted.length; i += BATCH_CHUNK) {
+        const chunk = wanted.slice(i, i + BATCH_CHUNK);
+        const body = { ids: chunk, ...(fields && fields.length ? { fields: [...fields] } : {}), errorPolicy: 'omit' };
+        const res = await request('getWorkItems', 'POST', url('wit/workitemsbatch'), { body: JSON.stringify(body), contentType: 'application/json' });
+        for (const wi of (res && res.value) || []) if (wi && wi.id !== undefined && wi.id !== null) byId.set(Number(wi.id), wi);
+      }
+      return {
+        items: wanted.filter((id) => byId.has(id)).map((id) => byId.get(id)),
+        missing: wanted.filter((id) => !byId.has(id)),
+      };
+    },
+
+    // The team's iterations: ONE GET {project}/{team}/_apis/work/teamsettings/iterations,
+    // unfiltered — the docs support only $timeframe=current server-side, so
+    // callers filter on the returned timeFrame. No team → exit 2, ZERO requests.
+    //   [{ id, name, path, startDate, finishDate, timeFrame }]
+    async listIterations({ team } = {}) {
+      if (!team) throw configError('No team resolved — iterations are team settings. Pass --team "<name>" or set azure.team in config/project.json.');
+      const u = `${cfg.base}/${projSeg}/${encodeURIComponent(team)}/_apis/work/teamsettings/iterations?api-version=${encodeURIComponent(cfg.apiVersion)}`;
+      const res = await request('listIterations', 'GET', u);
+      return ((res && res.value) || []).map((it) => {
+        const a = it.attributes || {};
+        return { id: it.id, name: it.name, path: it.path || null, startDate: a.startDate || null, finishDate: a.finishDate || null, timeFrame: a.timeFrame || null };
+      });
     },
 
     // ── NEUTRAL READS (additive, flow-free) ───────────────────────────────────
