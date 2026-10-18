@@ -27,6 +27,12 @@
 // NOTHING and returns the full request descriptor (method, url, redacted
 // headers, body summary) for the consolidated pre-approval screen. Nothing here
 // retries or cleans up — that discipline lives in ledger.js.
+//
+// IDS: every call that SENDS a request takes work-item, plan, suite, run and
+// test-case IDs in canonical decimal form only (requireId below), so an id can
+// never carry a path segment or query string into a request URL. Dry runs are
+// deliberately not checked: a plan names IDs that an earlier write in the same
+// plan will create, and the flows pass stand-ins for them.
 const fs = require('node:fs');
 const path = require('node:path');
 const pc = require(path.join(__dirname, '..', '..', 'project_config.js'));
@@ -58,6 +64,32 @@ function assertCiWritesAllowed(op) {
   }
 }
 
+// A canonical ID is a positive safe integer, or its plain decimal spelling: no
+// sign, no leading zero, no whitespace, no '#', no exponent or fraction.
+function isCanonicalId(id) {
+  if (typeof id === 'number') return Number.isSafeInteger(id) && id > 0;
+  return typeof id === 'string' && /^[1-9][0-9]*$/.test(id) && Number.isSafeInteger(Number(id));
+}
+
+// Called on every path that sends a request, before anything is sent: reads
+// and execute paths only — never on an execute:false descriptor, where
+// the bug flow's stand-ins ('{new-bug-id}', 'NEW', '<bugId>', ...) must keep
+// planning exactly as they always have. Exit 2: refused, nothing was sent.
+function requireId(op, label, id) {
+  if (isCanonicalId(id)) return;
+  const shown = typeof id === 'string' ? JSON.stringify(id)
+    : (id !== null && typeof id === 'object') ? 'an object' : String(id);
+  throw configError(`${op} needs a positive canonical decimal ${label} (got ${shown}) — refused before any request`);
+}
+
+// Relation targets ride inside the json-patch body as a composed URL; one given
+// by url (an attachment) is the server's own and is passed through.
+function requireRelationTargets(op, { relations, addRelations } = {}) {
+  for (const rel of relations || addRelations || []) {
+    if (!rel.url) requireId(op, 'relation target id', rel.targetId);
+  }
+}
+
 // azure block key first, legacy AZURE_* env second; empty/missing => null.
 function pick(cwd, az, key, envName) {
   const j = az[key];
@@ -68,10 +100,22 @@ function pick(cwd, az, key, envName) {
 
 // `azure.org` accepts both spellings, explicitly: a full URL is used as-is
 // (trailing slashes stripped); a bare org name becomes https://dev.azure.com/<org>.
-// No other guessing.
+// No other guessing. Every request URL and dry-run descriptor is composed by
+// appending to this base, so it must be a plain one: credentials, a query
+// string or a fragment are refused at config time. The refusal never echoes
+// the value — it may hold a credential.
 function normalizeOrg(org) {
   const trimmed = String(org).trim().replace(/\/+$/, '');
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  const base = /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  const hint = 'use the bare org name or its https://dev.azure.com/<org> (or on-prem collection) URL';
+  let parsed;
+  try { parsed = new URL(base); } catch {
+    throw configError(`azure.org is not a valid organization name or http(s) URL — ${hint}`);
+  }
+  if (parsed.username || parsed.password || /[?#]/.test(base)) {
+    throw configError(`azure.org must not carry credentials, a query string or a fragment — ${hint}`);
+  }
+  return base;
 }
 
 // Resolve the consumer's non-secret ADO settings (invariant 7). Missing
@@ -295,6 +339,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
     // ── READS (free, no gating) ────────────────────────────────────────────────
     async getWorkItem(id, { expand } = {}) {
+      requireId('getWorkItem', 'work-item id', id);
       const u = url(`wit/workitems/${id}`, expand ? { $expand: expand === true ? 'all' : expand } : {});
       return request('getWorkItem', 'GET', u);
     },
@@ -323,23 +368,30 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     },
 
     async listSuites(planId) {
+      requireId('listSuites', 'plan id', planId);
       const res = await request('listSuites', 'GET', url(`testplan/Plans/${planId}/suites`));
       return (res && res.value) || [];
     },
 
     async listSuiteCases(planId, suiteId) {
+      requireId('listSuiteCases', 'plan id', planId);
+      requireId('listSuiteCases', 'suite id', suiteId);
       const res = await request('listSuiteCases', 'GET', url(`testplan/Plans/${planId}/Suites/${suiteId}/TestCase`));
       return (res && res.value) || [];
     },
 
     // Per-suite point lookup on purpose — the global ?testCaseId shortcut 404s on many orgs.
     async getPoint(planId, suiteId, testCaseId) {
+      requireId('getPoint', 'plan id', planId);
+      requireId('getPoint', 'suite id', suiteId);
+      requireId('getPoint', 'test case id', testCaseId);
       const u = url(`testplan/Plans/${planId}/Suites/${suiteId}/TestPoint`, { testCaseId });
       const res = await request('getPoint', 'GET', u);
       return ((res && res.value) || [])[0] || null;
     },
 
     async listRunResults(runId) {
+      requireId('listRunResults', 'run id', runId);
       const res = await request('listRunResults', 'GET', url(`test/Runs/${runId}/results`));
       return (res && res.value) || [];
     },
@@ -405,6 +457,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const ops = toPatchOps(payload);
       if (!execute) return descriptor('createWorkItem', 'POST', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
       assertCiWritesAllowed('createWorkItem');
+      requireRelationTargets('createWorkItem', payload);
       const res = await request('createWorkItem', 'POST', u, {
         body: JSON.stringify(ops), contentType: 'application/json-patch+json',
       });
@@ -417,6 +470,8 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const ops = toPatchOps(payload);
       if (!execute) return descriptor('updateWorkItem', 'PATCH', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
       assertCiWritesAllowed('updateWorkItem');
+      requireId('updateWorkItem', 'work-item id', id);
+      requireRelationTargets('updateWorkItem', payload);
       const res = await request('updateWorkItem', 'PATCH', u, {
         body: JSON.stringify(ops), contentType: 'application/json-patch+json',
       });
@@ -460,6 +515,9 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         return descriptor('addCaseToSuite', 'POST', url(`test/Plans/${planId}/suites/${suiteId}/testcases/${ids.join(',')}`));
       }
       assertCiWritesAllowed('addCaseToSuite');
+      requireId('addCaseToSuite', 'plan id', planId);
+      requireId('addCaseToSuite', 'suite id', suiteId);
+      for (const id of ids) requireId('addCaseToSuite', 'test case id', id);
       const before = await memberIds();
       const toAdd = ids.filter((id) => !before.has(id));
       const alreadyPresent = ids.filter((id) => before.has(id));
@@ -490,6 +548,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`test/Runs/${runId}/results`);
       if (!execute) return descriptor('updateRunResults', 'PATCH', u, { body: results, contentType: 'application/json' });
       assertCiWritesAllowed('updateRunResults');
+      requireId('updateRunResults', 'run id', runId);
       await request('updateRunResults', 'PATCH', u, { body: JSON.stringify(results), contentType: 'application/json' });
       return { id: runId };
     },
@@ -498,6 +557,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`test/runs/${runId}`);
       if (!execute) return descriptor('updateRun', 'PATCH', u, { body, contentType: 'application/json' });
       assertCiWritesAllowed('updateRun');
+      requireId('updateRun', 'run id', runId);
       const res = await request('updateRun', 'PATCH', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: (res && res.id) ?? runId, state: res && res.state };
     },
@@ -506,8 +566,10 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // destroy is STRUCTURALLY impossible here: no destroy option exists in the
     // signature, none is ever emitted, and the id is validated to a positive
     // integer before the URL is composed — nothing can smuggle a query string
-    // through it. Backs the capability flag deleteWorkItem: 'partial' (ADO has
-    // no standard delete for test artifacts such as Test Cases).
+    // through it (the execute path additionally takes only the canonical
+    // spelling, like every other request). Backs the capability flag
+    // deleteWorkItem: 'partial' (ADO has no standard delete for test artifacts
+    // such as Test Cases).
     async deleteWorkItem(id, { execute = false } = {}) {
       const n = Number(id);
       if (!Number.isInteger(n) || n <= 0) {
@@ -516,6 +578,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`wit/workitems/${n}`);
       if (!execute) return descriptor('deleteWorkItem', 'DELETE', u);
       assertCiWritesAllowed('deleteWorkItem');
+      requireId('deleteWorkItem', 'work-item id', id);
       const res = await request('deleteWorkItem', 'DELETE', u);
       return { id: (res && res.id) ?? n };
     },

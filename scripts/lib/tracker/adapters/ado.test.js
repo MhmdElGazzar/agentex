@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createAdapter, TrackerError, PAT_ENV_NAMES } = require('./ado.js');
+const { createAdapter, normalizeOrg, TrackerError, PAT_ENV_NAMES } = require('./ado.js');
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -17,8 +17,8 @@ async function test(name, fn) {
 const SENTINEL_PAT = 'SENTINEL-PAT-a1b2c3d4e5f60718293a4b5c6d7e8f90';
 const SENTINEL_B64 = Buffer.from(':' + SENTINEL_PAT).toString('base64');
 
-// The tests own the PAT environment — the machine's real values must not leak in.
-for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AGENTEX_CI']) delete process.env[n];
+// The tests own the PAT and legacy config environment — the machine's real values must not leak in.
+for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AZURE_URL', 'AZURE_PROJECT', 'AGENTEX_CI']) delete process.env[n];
 
 // Throwaway consumer project with an azure block + a sentinel PAT in .env.
 function proj({ org = 'exampleorg', project = 'Sample Project', envLines, azureExtra = {} } = {}) {
@@ -337,6 +337,119 @@ const PROJ = 'Sample%20Project';
     }
     assert.match(descriptors[0].url, /\$Bug/);
     assert.match(JSON.stringify(descriptors[3].body), /shot\.png/);
+  });
+
+  // ── IDs: canonical decimal on every request, unchecked on dry runs ────────
+  // Malformed spellings a caller or an agent could hand over. None may reach the
+  // wire — no leading zero, sign, whitespace, '#', exponent, non-ASCII digits,
+  // unsafe magnitude, injected path/query, or a dry-run stand-in.
+  const BAD_IDS = ['0123', ' 123', '123 ', '123\n', '#123', '+5', '-1', '0', '1.0', '1e2', '0x1f', '١٢٣',
+    '9007199254740993', '77?destroy=true', '77/../78', '', 'NEW', '<bugId>', 'new-bug-id', '{new-bug-id}',
+    0, -1, 1.5, NaN, Infinity, 2 ** 53, null, undefined, true, {}];
+  const EXEC = { execute: true };
+
+  await test('every read and execute path refuses a malformed id (exit 2) and sends ZERO requests', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const routes = (id) => [
+      ['getWorkItem', () => a.getWorkItem(id)],
+      ['getStory', () => a.getStory(id)],
+      ['listSuites', () => a.listSuites(id)],
+      ['listSuiteCases plan', () => a.listSuiteCases(id, 4)],
+      ['listSuiteCases suite', () => a.listSuiteCases(3, id)],
+      ['getPoint plan', () => a.getPoint(id, 4, 77)],
+      ['getPoint suite', () => a.getPoint(3, id, 77)],
+      ['getPoint case', () => a.getPoint(3, 4, id)],
+      ['listRunResults', () => a.listRunResults(id)],
+      ['updateWorkItem', () => a.updateWorkItem(id, { fields: { x: 'y' } }, EXEC)],
+      ['updateWorkItem relation', () => a.updateWorkItem(42, { addRelations: [{ rel: 'r', targetId: id }] }, EXEC)],
+      ['addRelation source', () => a.addRelation(id, 'r', 9, EXEC)],
+      ['addRelation target', () => a.addRelation(42, 'r', id, EXEC)],
+      ['createWorkItem relation', () => a.createWorkItem('Bug', { relations: [{ rel: 'r', targetId: id }] }, EXEC)],
+      ['createWorkItem validateOnly relation', () => a.createWorkItem('Bug', { relations: [{ rel: 'r', targetId: id }] }, { validateOnly: true, execute: true })],
+      ['addCaseToSuite plan', () => a.addCaseToSuite(id, 4, 5, EXEC)],
+      ['addCaseToSuite suite', () => a.addCaseToSuite(3, id, 5, EXEC)],
+      ['addCaseToSuite case', () => a.addCaseToSuite(3, 4, [505, id], EXEC)],
+      ['updateRunResults', () => a.updateRunResults(id, [], EXEC)],
+      ['updateRun', () => a.updateRun(id, { state: 'Completed' }, EXEC)],
+      ['deleteWorkItem', () => a.deleteWorkItem(id, EXEC)],
+    ];
+    for (const id of BAD_IDS) {
+      for (const [name, call] of routes(id)) {
+        await assert.rejects(call, (e) => {
+          assert.strictEqual(e.exitCode, 2, `${name}(${String(id)}): ${e.message}`);
+          // deleteWorkItem's own positive-integer check (unchanged) may fire first.
+          assert.match(e.message, name === 'deleteWorkItem' ? /work-item id/ : /positive canonical decimal/, `${name}(${String(id)})`);
+          return true;
+        }, `${name}(${String(id)}) must be refused`);
+      }
+    }
+    assert.strictEqual(f.calls.length, 0, 'every refusal happened before a request left the machine');
+  });
+
+  await test('canonical IDs reach the wire unchanged — numbers and plain decimal strings alike', async () => {
+    const f = fakeFetch([{ match: '/suites/4/testcases', json: { value: [{ testCase: { id: '505' } }] } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await a.getWorkItem('123');
+    await a.getWorkItem(9007199254740991); // Number.MAX_SAFE_INTEGER is still an id
+    await a.getPoint('3', '4', '77');
+    await a.addCaseToSuite('3', '4', '505', EXEC);
+    await a.updateRun('88', { state: 'Completed' }, EXEC);
+    await a.deleteWorkItem('77', EXEC);
+    const paths = f.calls.map((c) => c.url.replace(/^.*\/_apis\//, '').replace(/\?.*$/, ''));
+    assert.deepStrictEqual(paths, ['wit/workitems/123', 'wit/workitems/9007199254740991',
+      'testplan/Plans/3/Suites/4/TestPoint', 'test/Plans/3/suites/4/testcases', 'test/runs/88', 'wit/workitems/77']);
+  });
+
+  await test('dry runs check NO id: the bug flow\'s stand-ins plan exactly as before, with no PAT and zero requests', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj({ envLines: '' }), fetch: f });
+    const DRY = { execute: false };
+    for (const id of ['NEW', '<bugId>', 'new-bug-id', '{new-bug-id}', '{run-id}', '{new-tc-id}', ' 77', '0123', '#5']) {
+      const link = await a.addRelation(77, 'Microsoft.VSTS.Common.TestedBy-Reverse', id, DRY); // testplan.js fail --bug <id>
+      assert.ok(link.url.includes('/wit/workitems/77?'), link.url);
+      assert.strictEqual(link.body[0].value.url, `${BASE}/_apis/wit/workItems/${id}`);
+      assert.ok((await a.addRelation(id, 'r', 321, DRY)).url.includes(`/wit/workitems/${id}?`));
+      assert.ok((await a.updateWorkItem(id, { fields: { x: 'y' } }, DRY)).url.includes(`/wit/workitems/${id}?`));
+      const create = await a.createWorkItem('Task', { relations: [{ rel: 'r', targetId: id }] }, DRY);
+      assert.strictEqual(create.body[0].value.url, `${BASE}/_apis/wit/workItems/${id}`);
+      assert.ok((await a.addCaseToSuite(id, id, id, DRY)).url.includes(`/test/Plans/${id}/suites/${id}/testcases/${id}?`));
+      assert.ok((await a.updateRunResults(id, [], DRY)).url.includes(`/test/Runs/${id}/results?`));
+      assert.ok((await a.updateRun(id, {}, DRY)).url.includes(`/test/runs/${id}?`));
+    }
+    // deleteWorkItem's dry run keeps its own long-standing positive-integer check;
+    // only the execute path is stricter.
+    assert.ok((await a.deleteWorkItem(' 77', DRY)).url.includes('/wit/workitems/77?'));
+    await assert.rejects(() => a.deleteWorkItem(' 77', EXEC), /positive canonical decimal work-item id/);
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  // ── azure.org must be a plain base URL ─────────────────────────────────────
+  await test('azure.org carrying credentials, a query string or a fragment is refused at config time — value never echoed', async () => {
+    const refused = [
+      ['https://qa.user:TOPSECRET@dev.azure.com/exampleorg', /credentials/],
+      ['https://TOPSECRET@dev.azure.com/exampleorg', /credentials/],
+      ['https://dev.azure.com/exampleorg?TOPSECRET=1', /query string/],
+      ['https://dev.azure.com/exampleorg?', /query string/],
+      ['https://dev.azure.com/exampleorg#TOPSECRET', /fragment/],
+      ['exampleorg?TOPSECRET', /query string/],
+      ['https://bad host/exampleorg', /not a valid/],
+    ];
+    for (const [org, why] of refused) {
+      assert.throws(() => createAdapter({ cwd: proj({ org }), fetch: fakeFetch([]) }), (e) => {
+        assert.strictEqual(e.exitCode, 2, org);
+        assert.match(e.message, why, org);
+        assert.ok(!e.message.includes('TOPSECRET'), `the org value is never echoed: ${e.message}`);
+        return true;
+      });
+    }
+    // The legacy AZURE_URL fallback goes through the same gate.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ado-'));
+    fs.writeFileSync(path.join(dir, '.env'), `AZURE_URL=https://u:TOPSECRET@dev.azure.com/legacyorg\nAZURE_PROJECT=P\nAZURE_PAT=${SENTINEL_PAT}\n`);
+    assert.throws(() => createAdapter({ cwd: dir, fetch: fakeFetch([]) }), /credentials/);
+    // Plain spellings are unchanged.
+    assert.strictEqual(normalizeOrg('exampleorg'), 'https://dev.azure.com/exampleorg');
+    assert.strictEqual(normalizeOrg(' https://tfs.example.com/Collection/ '), 'https://tfs.example.com/Collection');
   });
 
   // ── error contract ──────────────────────────────────────────────────────────
