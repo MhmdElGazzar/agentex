@@ -25,9 +25,9 @@ const refusal = (fn) => { try { fn(); } catch (e) { return e; } throw new Error(
 
 (async () => {
   // ── registry construction ───────────────────────────────────────────────────
-  await test('REQUIRED_MEMBERS is the interface: provider + seven operations', async () => {
+  await test('REQUIRED_MEMBERS is the interface: provider + eight operations', async () => {
     assert.deepStrictEqual(REQUIRED_MEMBERS, ['provider', 'parseIds', 'openStoriesRead', 'currentSprint',
-      'readStory', 'testingChildren', 'storyRow', 'validate']);
+      'readStory', 'testingChildren', 'storyRow', 'validate', 'pastTestingTasks']);
   });
 
   await test('defaultRegistry registers ado and jira, each a complete strategy under its own key', async () => {

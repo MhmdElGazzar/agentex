@@ -80,6 +80,23 @@ const FIVE = [{ title: '[Testing] Requirement Review', estimate: 1 }];
     assert.deepStrictEqual(rules.HISTORY_REASONS, ['no-closed-sprints', 'no-testing-tasks', 'no-estimates']);
   });
 
+  await test('historyPoints: a neutral child-estimate read → [Testing] children only, each with its parent story', async () => {
+    const read = {
+      stories: [{ id: 'S-1', seq: 11, title: 'One', url: 'u1' }, { id: 'S-2', seq: 12, title: 'Two', url: 'u2' }],
+      children: [
+        { id: 'T-1', seq: 21, title: '[Testing] Test Execution', parentId: 'S-1', hours: 2 },
+        { id: 'T-2', seq: 22, title: 'Build it', parentId: 'S-1', hours: 5 },
+        { id: 'T-3', seq: 23, title: '[Testing] Automation', parentId: 'S-2', hours: null },
+        { id: 'T-4', seq: 24, title: '[Testing] Orphan', parentId: 'S-9', hours: 1 },
+      ],
+      truncated: false,
+    };
+    assert.deepStrictEqual(rules.historyPoints(read), [
+      { ref: 'T-1', title: '[Testing] Test Execution', hours: 2, seq: 21, parent: { ref: 'S-1', title: 'One', url: 'u1', seq: 11 } },
+      { ref: 'T-3', title: '[Testing] Automation', hours: null, seq: 23, parent: { ref: 'S-2', title: 'Two', url: 'u2', seq: 12 } },
+    ]);
+  });
+
   await test('rules.js is pure: no requires at all, no provider names', async () => {
     const src = fs.readFileSync(path.join(__dirname, 'rules.js'), 'utf8');
     assert.ok(!/require\(/.test(src), 'no dependencies');

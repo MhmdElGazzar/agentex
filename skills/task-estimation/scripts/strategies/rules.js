@@ -86,4 +86,20 @@ function historyReason({ sprintCount, testingCount, estimatedCount }) {
   return null;
 }
 
-module.exports = { TITLE_PREFIX, isTestingTitle, resolveAssignee, structuralBlocks, existingTasksBlock, HISTORY_REASONS, historyReason };
+// A neutral child-estimate read ({ stories, children }) → the history's data
+// points: the [Testing] children only, each carrying its parent story. Children
+// whose parent is not among the stories read are dropped.
+function historyPoints(read) {
+  const parents = new Map((read.stories || []).map((s) => [String(s.id), s]));
+  return (read.children || [])
+    .filter((c) => isTestingTitle(c.title) && parents.has(String(c.parentId)))
+    .map((c) => {
+      const s = parents.get(String(c.parentId));
+      return { ref: c.id, title: c.title, hours: c.hours, seq: c.seq, parent: { ref: s.id, title: s.title, url: s.url, seq: s.seq } };
+    });
+}
+
+module.exports = {
+  TITLE_PREFIX, isTestingTitle, resolveAssignee, structuralBlocks, existingTasksBlock,
+  HISTORY_REASONS, historyReason, historyPoints,
+};

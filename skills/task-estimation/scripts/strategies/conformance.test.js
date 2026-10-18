@@ -20,6 +20,12 @@
 //   spec(refs[])   a valid spec over those story refs
 //   isWrite(call)  true for a board write request
 //   nonStoryReason the blocked reason this provider emits for a non-story item
+//   routes('history')   a history board: more closed sprints than asked for,
+//                  stories in them, and their children — at least one
+//                  [Testing] child with an estimate, one without, and one
+//                  non-[Testing] child (refs.historyNonTesting)
+//   historySprintNames  the names the history read must return for count 2,
+//                  newest first
 // Offline: every request goes to an injected fake fetch (or the in-memory acme
 // adapter). No network, ever.
 const assert = require('node:assert');
@@ -82,16 +88,24 @@ async function exec(fixture, registry, scenario, argv, spec) {
 }
 
 async function adapterFor(fixture, scenario) {
-  if (fixture.inMemory) return fixture.inMemory(scenario).adapter;
+  return (await adapterWithCalls(fixture, scenario)).adapter;
+}
+
+// The same, with the recorded requests (fake fetch) or calls (in-memory).
+async function adapterWithCalls(fixture, scenario) {
+  if (fixture.inMemory) return fixture.inMemory(scenario);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-conf-'));
   fixture.project(dir);
-  return resolveTracker(dir, { fetch: fakeFetch(fixture.routes(scenario)) });
+  const f = fakeFetch(fixture.routes(scenario));
+  return { adapter: resolveTracker(dir, { fetch: f }), calls: f.calls };
 }
 
 const NEUTRAL_KEYS = ['id', 'type', 'title', 'state', 'url', 'raw', 'isStory', 'storyPoints'];
 const strOrNull = (v) => v === null || typeof v === 'string';
 
-// Assertions 1–7, per strategy.
+const HISTORY_KEYS = ['sprintsRequested', 'sprints', 'storiesRead', 'points', 'truncated', 'reason', 'reasonMessage'];
+
+// Assertions 1–8, per strategy.
 async function conformance(key, strategy, fixture, registry) {
   const { refs } = fixture;
   const writes = (r) => r.calls.filter(fixture.isWrite);
@@ -184,6 +198,32 @@ async function conformance(key, strategy, fixture, registry) {
     assert.deepStrictEqual(r.out.created.tasks.map((t) => t.id), doneCreates, 'created.tasks = the done creates');
     assert.strictEqual(writes(r).length, failedAt + 1, 'no write request follows the failing one');
   });
+
+  await test(`[${key}] 8. the history read: the neutral history shape, [Testing] children only, newest sprints first, ZERO writes`, async () => {
+    const { adapter, calls } = await adapterWithCalls(fixture, 'history');
+    const r = await strategy.pastTestingTasks(adapter, {}, { count: 2 });
+    assert.ok(r && r.history, JSON.stringify(r));
+    const h = r.history;
+    assert.deepStrictEqual(Object.keys(h), HISTORY_KEYS);
+    assert.strictEqual(h.sprintsRequested, 2);
+    assert.deepStrictEqual(h.sprints.map((sp) => Object.keys(sp)), h.sprints.map(() => ['id', 'name']));
+    assert.deepStrictEqual(h.sprints.map((sp) => sp.name), fixture.historySprintNames);
+    assert.ok(Number.isInteger(h.storiesRead) && h.storiesRead > 0, `storiesRead ${h.storiesRead}`);
+    assert.ok(h.points.length >= 2, JSON.stringify(h.points));
+    for (const p of h.points) {
+      assert.deepStrictEqual(Object.keys(p), ['ref', 'title', 'hours', 'seq', 'parent']);
+      assert.ok(rules.isTestingTitle(p.title), `a non-[Testing] child leaked: ${p.title}`);
+      assert.ok(p.hours === null || (typeof p.hours === 'number' && p.hours > 0), `hours ${p.hours}`);
+      assert.strictEqual(typeof p.seq, 'number');
+      assert.deepStrictEqual(Object.keys(p.parent), ['ref', 'title', 'url', 'seq']);
+    }
+    assert.ok(h.points.some((p) => p.hours === null), 'a [Testing] child without an estimate stays a data point (hours null)');
+    assert.ok(!h.points.some((p) => String(p.ref) === String(refs.historyNonTesting)), 'the non-[Testing] child is filtered out');
+    assert.strictEqual(h.reason, null);
+    assert.strictEqual(h.reasonMessage, null);
+    assert.strictEqual(typeof h.truncated, 'boolean');
+    assert.deepStrictEqual(calls.filter(fixture.isWrite), [], 'the history read writes nothing');
+  });
 }
 
 // ════ the synthetic third provider: 'acme' ══════════════════════════════════
@@ -192,10 +232,12 @@ async function conformance(key, strategy, fixture, registry) {
 function acmeInMemory(scenario) {
   const failAt = scenario && typeof scenario === 'object' ? scenario.failWriteAt : null;
   const items = {
-    'ACME-1': { id: 'ACME-1', type: scenario === 'non-story' ? 'Bug' : 'Story', title: 'Checkout', points: 5, children: [] },
+    'ACME-1': { id: 'ACME-1', type: scenario === 'non-story' ? 'Bug' : 'Story', title: 'Checkout', points: 5,
+      children: scenario === 'history' ? [{ id: 'ACME-11', title: '[Testing] Test Execution', hours: 2 }, { id: 'ACME-12', title: 'Build it', hours: 3 }] : [] },
     'ACME-2': { id: 'ACME-2', type: 'Story', title: 'Login', points: null,
       children: scenario === 'children-unreadable' ? null : [{ id: 'ACME-21', title: '[Testing] Test Execution' }, { id: 'ACME-22', title: 'Build it' }] },
-    'ACME-3': { id: 'ACME-3', type: 'Story', title: 'Search', points: 2, children: [] },
+    'ACME-3': { id: 'ACME-3', type: 'Story', title: 'Search', points: 2,
+      children: scenario === 'history' ? [{ id: 'ACME-31', title: '[Testing] Requirement Review', hours: null }] : [] },
     'ACME-4': { id: 'ACME-4', type: 'Bug', title: 'Crash', points: null, children: [] },
   };
   const calls = []; let writes = 0; let created = 0;
@@ -226,6 +268,17 @@ function acmeInMemory(scenario) {
     async listSprintStories() {
       calls.push({ op: 'listSprintStories' });
       return { ok: true, sprint: { id: 1, name: 'Sprint 1' }, refs: ['ACME-1', 'ACME-3'] };
+    },
+    async listPastSprints({ count }) {
+      calls.push({ op: 'listPastSprints' });
+      const closed = [{ id: 3, name: 'Sprint 3' }, { id: 2, name: 'Sprint 2' }, { id: 1, name: 'Sprint 1' }];
+      return { ok: true, found: closed.length, sprints: closed.slice(0, count) };
+    },
+    async listChildEstimates() {
+      calls.push({ op: 'listChildEstimates' });
+      const stories = ['ACME-1', 'ACME-3'].map((id, i) => ({ id, seq: i + 1, title: items[id].title, url: webUrl(id) }));
+      const children = stories.flatMap((st) => items[st.id].children.map((c, j) => ({ id: c.id, seq: 100 + j, title: c.title, parentId: st.id, hours: c.hours ?? null })));
+      return { stories, children, truncated: false };
     },
     async createWorkItem(type, payload, { execute = false } = {}) {
       return write('createWorkItem', { method: 'POST', url: `https://tracker.example/acme/items?type=${type}`, body: payload }, execute,
@@ -295,10 +348,23 @@ const acme = {
       },
     };
   },
+  // The history read, built only from rules.js helpers and the two neutral reads.
+  async pastTestingTasks(adapter, args, { count }) {
+    const r = await adapter.listPastSprints({ count });
+    if (!r.ok) return { stop: { code: 2, out: { ok: false, mode: 'estimation', blocked: [{ reason: r.condition, message: `history read stopped: ${r.condition}` }] } } };
+    const read = await adapter.listChildEstimates({ sprints: r.sprints, storyType: 'Story' });
+    const points = rules.historyPoints(read);
+    const reason = rules.historyReason({ sprintCount: r.sprints.length, testingCount: points.length, estimatedCount: points.filter((p) => p.hours !== null).length });
+    return { history: {
+      sprintsRequested: count, sprints: r.sprints.map((sp) => ({ id: sp.id, name: sp.name })), storiesRead: read.stories.length,
+      points, truncated: false, reason, reasonMessage: reason ? `no usable history (${reason})` : null,
+    } };
+  },
 };
 
 const acmeFixture = {
-  refs: { story: 'ACME-1', story2: 'ACME-3', nonStory: 'ACME-4', withTestingChild: 'ACME-2' },
+  refs: { story: 'ACME-1', story2: 'ACME-3', nonStory: 'ACME-4', withTestingChild: 'ACME-2', historyNonTesting: 'ACME-12' },
+  historySprintNames: ['Sprint 3', 'Sprint 2'],
   nonStoryReason: 'not-a-story',
   project(dir) { fs.writeFileSync(path.join(dir, '.env'), ''); }, // no config: resolveTracker is injected
   inMemory: acmeInMemory,
