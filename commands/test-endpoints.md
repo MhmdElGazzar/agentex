@@ -6,11 +6,13 @@ Use the **endpoint-testing** skill to run the standalone API tests.
 
 Arguments: $ARGUMENTS
 
-**Parse the arguments:**
-- Optional `--env <name>` — the environment for the whole run: its `api` block targets every
-  catalog without `"target": "catalog"` (a `swagger-import`ed catalog keeps its own base URL
-  and auth either way). Omitted = the project's `defaultEnvironment`. The command takes no
-  other arguments.
+**Parse the arguments:** optional environment — `--env <name>`, `env: <name>` or "on <name>"
+selects `environments/<name>.json` (same as `/execute-test`) for the whole run; omitted = the
+project's `defaultEnvironment`. Its `api` block targets the catalogs that follow the
+environment — `"target": "environment"`, or no `target` and a `baseUrl` that is absent or
+exactly `${API_BASE_URL}`; a catalog with `"target": "catalog"` (every `swagger-import`ed one)
+or no `target` and its own base-URL variable keeps its own base URL and auth either way.
+Anything else is ignored.
 
 **Before running:**
 - If `./integration/` (the endpoint catalog) doesn't exist, stop and point the user at
@@ -26,8 +28,9 @@ Arguments: $ARGUMENTS
 **Run:**
 - Dispatch the bundled **`api-executor`** agent, injecting `CATALOG_DIR` (`./integration`),
   `SUITE_DIR` (`./integration/api_test_suites`), `RUN_DIR` (the folder just created), and
-  `ENVIRONMENT` (the `--env` value; `""` when not given). Every case in every suite file runs —
-  there's no scope to resolve.
+  `ENVIRONMENT` (the parsed environment; `""` when not given). Every case in every suite file
+  runs — there's no scope to resolve — except cases carrying `skip` or no `expect`, which the
+  runner reports BLOCKED without executing.
 - The agent passes a non-empty `ENVIRONMENT` to `run_suite.js` as `--env`, which reaches every
   case's `run_api.js` call. An unknown name comes back BLOCKED per case, listing the
   environments that exist — report it, never retry with another environment.

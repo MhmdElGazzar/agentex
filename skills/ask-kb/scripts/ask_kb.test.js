@@ -209,6 +209,40 @@ async function test(name, fn) {
     assert.strictEqual(hadKey, false, 'x-api-key must be absent when no key configured');
   });
 
+  // 9b. An EMPTY KB_ASK_API_KEY= line in .env must not read the next line's
+  // secret (the old /m regex let \s* cross the newline and sent it as x-api-key).
+  await test('empty KB_ASK_API_KEY= in .env sends no x-api-key, never the next line', async () => {
+    let hadKey = true; let seenKey = null;
+    const srv = await server((req, res) => {
+      hadKey = 'x-api-key' in req.headers; seenKey = req.headers['x-api-key'] || null;
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ success: true, answer: 'a', sources: [], hasContext: true, isNoAnswer: false }));
+    });
+    const port = srv.address().port;
+    const cwd = fixtureCwd({ project: 'acme-store' });
+    fs.writeFileSync(path.join(cwd, '.env'), 'KB_ASK_API_KEY=\r\nOTHER_SECRET=s3cr3t\r\n');
+    await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_ASK_API_KEY: '' }, ['--question', 'Q']);
+    srv.close();
+    assert.notStrictEqual(seenKey && seenKey.includes('s3cr3t'), true, 'neighbouring secret leaked as x-api-key');
+    assert.strictEqual(hadKey, false, 'x-api-key must be absent when the .env key is empty');
+  });
+
+  // 9c. .env values: `export` prefix + CRLF are read cleanly (no trailing \r).
+  await test('reads export KB_ASK_API_KEY=... from a CRLF .env', async () => {
+    let seenKey = null;
+    const srv = await server((req, res) => {
+      seenKey = req.headers['x-api-key'] || null;
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ success: true, answer: 'a', sources: [], hasContext: true, isNoAnswer: false }));
+    });
+    const port = srv.address().port;
+    const cwd = fixtureCwd({ project: 'acme-store' });
+    fs.writeFileSync(path.join(cwd, '.env'), 'export KB_ASK_API_KEY="kb-key-1"\r\n');
+    await run(cwd, { KB_ASK_BASE_URL: `http://127.0.0.1:${port}`, KB_ASK_API_KEY: '' }, ['--question', 'Q']);
+    srv.close();
+    assert.strictEqual(seenKey, 'kb-key-1');
+  });
+
   // 10. 401 -> BLOCKED, not retried, not transient
   await test('401 maps to BLOCKED exit 2, not retried', async () => {
     let calls = 0;

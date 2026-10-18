@@ -153,6 +153,33 @@ function editJson(file, fn) {
     assert.ok(r.findings.some((f) => f.includes('valid_user')), JSON.stringify(r.findings));
   });
 
+  await test('.env read per line: export prefix, leading spaces, CRLF and quotes all count as present', async () => {
+    const dir = goodProject();
+    fs.writeFileSync(path.join(dir, '.env'), [
+      'export FIGMA_TOKEN=dummy-figma-token-xyz',
+      '  KB_ASK_API_KEY="dummy-kb-key-123"',
+      "SQLCMDPASSWORD='dummy-db-pass-456'",
+      'API_TOKEN=dummy-api-token-789',
+    ].join('\r\n') + '\r\n');
+    const r = verifyWizard({ dir, answersFile: withAnswers(dir) });
+    assert.deepStrictEqual(r.findings, []);
+  });
+
+  await test('an empty secret key never borrows the next line → finding', async () => {
+    const dir = goodProject();
+    // API_TOKEN is empty; the stray next line holds the expected value. The old
+    // /m regex let \s* cross the newline and reported the secret as present.
+    fs.writeFileSync(path.join(dir, '.env'), [
+      'FIGMA_TOKEN=dummy-figma-token-xyz',
+      'KB_ASK_API_KEY=dummy-kb-key-123',
+      'SQLCMDPASSWORD=dummy-db-pass-456',
+      'API_TOKEN=',
+      'dummy-api-token-789',
+    ].join('\n') + '\n');
+    const r = verifyWizard({ dir, answersFile: withAnswers(dir) });
+    assert.ok(r.findings.some((f) => f.startsWith('api.token') && f.includes('API_TOKEN')), r.findings.join('; '));
+  });
+
   await test('CLI: exit 0 on clean, 1 on findings, one JSON line on stdout', async () => {
     const clean = goodProject();
     let r = spawnSync(process.execPath, [CLI, clean, '--answers', withAnswers(clean)], { encoding: 'utf8' });

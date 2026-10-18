@@ -7,12 +7,17 @@
 //   node run_suite.js [--catalog ./integration] [--suites ./integration/api_test_suites]
 //     [--env <environment-name>] --run-dir <dir>
 //
-// --env is passed through to every run_api.js call (absent → run_api.js's own default-
-// environment resolution; an unknown name is BLOCKED per case by run_api.js).
+// --env is passed through to every run_api.js call (selects environments/<env>.json; absent →
+// run_api.js's own default-environment resolution, the project's defaultEnvironment; an
+// unknown name is BLOCKED per case by run_api.js).
 //
 // --suites is searched recursively for *_suite.json (catalogs from the same swagger-import
 // output live alongside their suite as <name>_api.json in the same folder — must filter on
 // the _suite.json suffix specifically, not just any .json file).
+//
+// A case is BLOCKED without being executed when it carries "skip" or has no expectation
+// (no expect.status / expect.fields / expect.equals) — a case that asserts nothing must never
+// PASS on any status. Logs: <run-dir>/logs/<suiteBase>__<index>-<case-slug>.log (unique).
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL","total":N,"passed":N,"failed":N,"blocked":N,
 //   "cases":[{"name":...,"entry":...,"result":...,"log":...,"failures":[...]?}]}
@@ -55,7 +60,10 @@ for (const f of suiteFiles) {
   let j;
   try { j = JSON.parse(fs.readFileSync(f, 'utf8')); }
   catch (e) { blocked(`invalid JSON in ${f}: ${e.message}`); }
-  for (const c of (j.cases || [])) allCases.push({ ...c, __file: f });
+  // suiteBase: the suite file's path relative to --suites, minus "_suite.json", sanitized —
+  // unique per file, so <suiteBase>__<index> is unique per case.
+  const suiteBase = path.relative(suites, f).replace(/_suite\.json$/, '').replace(/[^A-Za-z0-9.-]+/g, '_');
+  (j.cases || []).forEach((c, i) => allCases.push({ ...c, __file: f, __logBase: `${suiteBase}__${i + 1}` }));
 }
 if (!allCases.length) blocked(`no cases defined across suite files in ${suites}`);
 
@@ -69,11 +77,25 @@ for (const c of allCases) {
     results.push({ name: c.name || '(unnamed)', entry: c.entry, result: 'BLOCKED', reason: `case in ${c.__file} is missing "name" or "entry"` });
     continue;
   }
-  const logPath = path.join(runDir, 'logs', `${String(c.name).replace(/[^A-Za-z0-9._-]+/g, '_')}.log`);
+  // A case carrying "skip" (swagger-import writes one on every generated write-method case) is
+  // never executed: it counts as BLOCKED — "not run", same roll-up as any other BLOCKED case —
+  // quoting the reason so the report says exactly why and how to enable it.
+  if (c.skip) {
+    const why = typeof c.skip === 'string' ? c.skip : 'skip: true';
+    results.push({ name: c.name, entry: c.entry, result: 'BLOCKED', skipped: true, reason: `case skipped: ${JSON.stringify(why)}` });
+    continue;
+  }
+  const expect = c.expect || {};
+  const hasExpect = expect.status !== undefined || (expect.fields || []).length || Object.keys(expect.equals || {}).length;
+  if (!hasExpect) {
+    results.push({ name: c.name, entry: c.entry, result: 'BLOCKED', reason: 'case has no expect — add expect.status, expect.fields or expect.equals' });
+    continue;
+  }
+  const caseSlug = String(c.name).replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^[._]+/, '') || 'case';
+  const logPath = path.join(runDir, 'logs', `${c.__logBase}-${caseSlug}.log`);
   const callArgs = ['--entry', c.entry, '--catalog', catalog, '--log', logPath];
   if (envName) callArgs.push('--env', envName);
   for (const [k, val] of Object.entries(c.params || {})) callArgs.push('--param', `${k}=${val}`);
-  const expect = c.expect || {};
   if (expect.status !== undefined) callArgs.push('--expect-status', String(expect.status));
   for (const field of (expect.fields || [])) callArgs.push('--expect-field', field);
   for (const [p, v] of Object.entries(expect.equals || {})) callArgs.push('--expect-equals', `${p}=${v}`);

@@ -19,12 +19,22 @@ first `/import-swagger` invocation in a session.
   `servers[].url` note below for the one consequence of that).
 - **Format detection**: `"swagger": "2.0"` or `"openapi": "3.x"` at the document root. Anything
   else is BLOCKED.
+- **URL sources**: a spec URL answering a non-2xx status is BLOCKED with that status (the
+  error page is never parsed as a spec).
 
 ## Everything generated is a best-effort skeleton
 
 The importer never invents business-meaningful test data — param example values, generated
-request bodies, and "not found" placeholder values are all flagged in the command's `review`
-list. **Review the generated files before trusting suite results.**
+request bodies, and "not found" placeholder values are all flagged for review. Each flag is
+written **into the generated file** as a `review: [...]` array on the request (catalog) or case
+(suite) it concerns, and is also echoed in the command's `review` output. **Review the
+generated files before trusting suite results.**
+
+**Write operations are opt-in.** Every generated POST/PUT/PATCH/DELETE case is written with
+`"skip": "review: write operation — remove this line to enable"`. `run_suite.js` never
+executes a case carrying `skip` — it reports it BLOCKED with the reason quoted. Delete the line
+once you've reviewed the case. `review` notes themselves don't block anything, so a generated
+case with review notes runs as-is only if it is a GET.
 
 ## `$ref` resolution
 
@@ -51,7 +61,7 @@ Boundaries, both flagged in `review` rather than guessed:
 | Target | — (always written) | — (always written) | `target: "catalog"` — the catalog's own `baseUrl` + `auth` are used; the active environment's `api` block never redirects an imported service |
 | Auth | `components.securitySchemes` | `securityDefinitions` | `auth` (one scheme per catalog file — see below) |
 | Path/method | `paths.<path>.<method>` | same | `requests[].path` / `.method` (path template syntax already matches — `{id}` copied as-is) |
-| Path/query params | `parameters[].in: path\|query` | same | `requests[].params` (names only) |
+| Path/query params | `parameters[].in: path\|query` | same | `requests[].params` (names only); `in: query` names also go in `requests[].query`, so the runner sends them in the query string |
 | Request body | `requestBody.content['application/json'].schema` | body parameter's `.schema` | `requests[].body` (generated example — flagged for review) |
 | 2xx response schema | `responses.<code>.content['application/json'].schema` | `responses.<code>.schema` | suite case `expect.fields` (schema's `required[]` properties only — see below) |
 | 4xx response | any documented 4xx code | same | a second suite case, `expect.status` = that code |
@@ -59,8 +69,9 @@ Boundaries, both flagged in `review` rather than guessed:
 ## Auth scheme selection
 
 The catalog format supports **one auth shape per file** — but a spec can declare several
-security schemes. The importer picks the first it recognizes, in this order: `bearer` →
-`apiKey` (header only) → `basic`. If the spec declared more than one, the others are noted in
+security schemes. The importer picks by preference, **regardless of declaration order**:
+`bearer` → `apiKey` (header only, and only when it declares a header `name` — one without is
+flagged in `review` and skipped) → `basic`. If the spec declared more than one, the others are noted in
 `review` — the catalog format has no per-request auth override, so multi-scheme APIs need a
 manual second catalog file if you actually need both.
 
@@ -68,17 +79,31 @@ Unsupported schemes (`oauth2`, `openIdConnect`, `apiKey` with `in: query`) are *
 auto-wired — the generated `auth` is left as `{"type":"none"}` and flagged in `review` rather
 than silently guessing something wrong.
 
-Generated env var names default to `API_BASE_URL`/`API_TOKEN` (matching the project's
-existing single-service convention) unless `--name` is passed, in which case they're
-namespaced (`<NAME>_BASE_URL`, `<NAME>_TOKEN`, etc.) to avoid collisions across multiple
-imported services. Every value — the base URL and any credential alike — goes in the
-project's `.env` (see the root `.env.example`), never in the catalog and never printed: the
-catalog holds only the names, and `envVarsToSet` lists them with `<set in .env>` for
-credentials. Same rule as everywhere else in this project.
+Generated env var names are prefixed with the service name in UPPER_SNAKE — the `--name`
+value, or the spec's `info.title` when `--name` is omitted (`Pet Store` →
+`PET_STORE_BASE_URL`, `PET_STORE_TOKEN`, …). The bare `API_` prefix is never used (a service
+named `api` gets `API_SERVICE_`): it would collide with the project's own `API_BASE_URL` /
+`API_TOKEN`. Every generated catalog also declares `"target": "catalog"`, so the active
+environment's `api` block never redirects it (see `api-integration`'s `api-requests.md`).
+Where the values go — the house rule from `docs/configuration.md`: **every value — the base URL
+and any credential alike — goes in the project's `.env`**, never in the catalog/suite files and
+never printed: the catalog holds only the names, and `envVarsToSet` lists them with
+`<set in .env>` for credentials. `run_api.js` resolves the catalog's `${VAR}` names from the
+process environment first, then `.env`. The `<NAME>_BASE_URL` value is not a secret: put it in
+`.env` too, or replace the catalog's `baseUrl` with the literal URL. The importer itself never
+writes `.env`.
+
+## Request names
+
+Request names come from `operationId` (slugged), else `<method>-<path>`. Two operations that
+produce the same name are de-duplicated with a `-2`, `-3`, … suffix and flagged in that
+request's `review` — rename them to something meaningful.
 
 ## Param example values
 
 - An `example`/`default` on the param's schema is used first.
+- Any value **not** taken from the spec's `example`/`default` (enum first value, type-based
+  placeholder) is flagged in the happy-path case's `review` as inferred.
 - An **enum** picks its first listed value (e.g. a `status` param with
   `enum: [available, pending, sold]` gets `"available"`) — far more likely to be accepted
   than a generic placeholder.
@@ -115,8 +140,12 @@ guessing "all of them" when nothing is actually guaranteed present.
 
 - **Header/cookie params** (`in: header`, `in: cookie`) — the catalog format has no mechanism
   for custom per-request headers beyond auth. Skipped, and noted in `review`.
-- **Non-JSON response/request bodies** (e.g. XML, form-encoded) — only `application/json` is
-  read; other content types are ignored for that operation's body/response schema.
+- **Non-JSON response/request bodies** (e.g. XML, form-encoded) — only JSON
+  (`application/json`, `application/*+json`) is read. A request body offered only in another
+  content type is dropped and flagged in that request's `review`; response schemas in other
+  types are ignored.
+- **No documented 2xx response** — the happy-path case still gets `expect.status: 200`, flagged
+  in its `review` as a guess.
 - **Array-typed 2xx responses** — `expect.fields` isn't generated for these (no top-level
   object properties to check); only `expect.status` is set.
 
@@ -126,5 +155,5 @@ If the target catalog or suite file already exists
 (`integration/api_test_suites/<name>/<name>_api.json` or
 `.../<name>/<name>_suite.json`), the importer refuses rather than overwriting or picking an
 alternate filename — a second file could otherwise declare the same internal catalog `name`,
-which `run_api.js`'s recursive search-and-match-by-name lookup resolves ambiguously (first
-match wins). Pick a different `--name`, or remove/rename the existing file first.
+which `run_api.js`'s recursive search-and-match-by-name lookup would then BLOCK as ambiguous
+(it refuses to pick one when two catalogs share a `name`). Pick a different `--name`, or remove/rename the existing file first.

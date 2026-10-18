@@ -54,7 +54,12 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
   --run-dir <RUN_DIR>
 ```
 
-Every case in every suite file runs every time — there's no scope/tag selection.
+A case with no `expect` is BLOCKED ("case has no expect") — a case that asserts nothing never
+PASSes.
+
+Every case in every suite file runs every time — there's no scope/tag selection — except a
+case carrying `"skip": "<reason>"`, which is never executed and is reported BLOCKED with that
+reason quoted. `swagger-import` writes `skip` on every generated write-method case.
 
 - **`--env <name>`** picks the environment for the whole run: it is passed to every case's
   `run_api.js` call (omitted = the project's `defaultEnvironment`; an unknown name comes back
@@ -68,11 +73,13 @@ Every case in every suite file runs every time — there's no scope/tag selectio
 - Catalog+suite-only, same as `api-integration`: never compose a request that isn't defined.
 - Secrets stay in env — suite files hold only params/expectations, never token values.
 - Write-method cases (POST/PUT/DELETE) run if cataloged — be deliberate about which write
-  operations you add cases for, since every case under `integration/api_test_suites/` runs
-  every time.
+  operations you add cases for, since every case under `integration/api_test_suites/` without a
+  `skip` runs every time. Generated write cases arrive disabled (`skip`); a generated case's
+  `review` notes are informational, so a reviewed-but-unedited case runs only if it is a GET.
 
 ## Evidence
 
-One log per case under `<RUN_DIR>/logs/<case-name>.log`, plus a final `result.md` written by
+One log per case under `<RUN_DIR>/logs/<suiteBase>__<index>-<case-name>.log` (unique even when
+case names repeat), plus a final `result.md` written by
 `api-executor` summarizing PASS/FAIL/BLOCKED counts and any failures in the project's
 standard defect format.

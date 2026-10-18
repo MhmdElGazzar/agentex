@@ -18,7 +18,9 @@ function probe(cmd, args) {
 
 console.log(JSON.stringify({
   node: { ok: true, version: process.version },
-  appium: probe('npx', ['appium', '--version']),
+  // --no-install: never let npx fetch appium from npm (a silent ~30 s download that then
+  // reports ok for a project that does not have appium). Absent means ok:false.
+  appium: probe('npx', ['--no-install', 'appium', '--version']),
   adb: probe('adb', ['version']),
   xcrun: probe('xcrun', ['simctl', 'help']),
   curl: probe('curl', ['--version']),
