@@ -1049,7 +1049,7 @@ const SUBTASK_FIELDS = {
     assert.deepStrictEqual(await createAdapter({ cwd: proj(), fetch: f0 }).listChildEstimates({ sprints: [], storyType: 'Story' }),
       { stories: [], children: [], truncated: false });
     assert.strictEqual(f0.calls.length, 0);
-    const keys = Array.from({ length: 101 }, (_, i) => ({ id: String(20000 + i), key: `PROJ-${i + 1}`, fields: { summary: `S${i}` } }));
+    const keys = Array.from({ length: 101 }, (_, i) => ({ id: String(30000 + i), key: `PROJ-${i + 1}`, fields: { summary: `S${i}` } }));
     const f = fakeFetch([
       { method: 'POST', match: '/search/jql', bodyMatch: 'sprint in (', json: { issues: keys } },
       { method: 'POST', match: '/search/jql', bodyMatch: 'parent in (', json: { issues: [], nextPageToken: 'more' } },

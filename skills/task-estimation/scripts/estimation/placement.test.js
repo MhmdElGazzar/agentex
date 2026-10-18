@@ -79,7 +79,7 @@ test('placeHours: clamped into [min, max] when rounding would leave the range', 
 
 test('PROPERTY: 10,000 random files and ratings stay within [min, max]; extremes hit the endpoints exactly', () => {
   let seed = 42;
-  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
   for (let n = 0; n < 10000; n++) {
     const a = Math.round((0.05 + rnd() * 10) * 100) / 100;
     const b = Math.round((0.05 + rnd() * 10) * 100) / 100;
