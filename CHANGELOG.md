@@ -58,12 +58,12 @@ All notable changes to AgenTeX are documented here.
   imported entries: `auth.type: "apiKey"` (custom header auth) and an optional `query: [...]`
   list naming the params sent as query string. A declared param used nowhere in the path or
   body falls back to the query string (previously silently dropped); a param used in the body
-  stays out of the URL. The active environment's `api` block (base URL and token) now applies
-  only to catalogs whose `baseUrl` is absent or exactly `${API_BASE_URL}` — a catalog that
-  declares its own host keeps its own host and auth, so an imported service never receives
-  the project's token. Hand-written catalogs send the same requests as before, with one edge:
-  a `baseUrl` such as `${API_BASE_URL}/v2` now resolves itself instead of being replaced by
-  the environment's base URL, which used to drop the `/v2`.
+  stays out of the URL. The active environment's `api` block (base URL and token) now applies,
+  for a catalog without a `target`, only when its `baseUrl` is absent or exactly
+  `${API_BASE_URL}` — a catalog that declares its own host keeps its own host and auth, so an
+  imported service never receives the project's token. A `baseUrl` such as
+  `${API_BASE_URL}/v2` now resolves itself instead of being replaced by the environment's base
+  URL, which used to drop the `/v2`.
 - **Mobile testing** — a new `mobile-testing` skill automates native Android/iOS apps through
   a real [Appium](https://appium.io/docs/en/latest/) session, mirroring the existing
   test-execution flow: sequential (human-in-the-loop) or parallel (autonomous, one
@@ -137,6 +137,10 @@ All notable changes to AgenTeX are documented here.
   untouched. Covered by six new cases in `make_html_report.test.js`.
 - `/estimate-story` and the task-estimation skill use the file; the fixed five-task template and
   the Simple/Medium/Heavy hours table are gone.
+- **A hand-written API catalog on its own base-URL variable no longer follows the environment.**
+  Through 0.23.0 the active environment's `api` block replaced every catalog's base URL and
+  auth; a catalog with no `target` whose `baseUrl` uses a variable other than `${API_BASE_URL}`
+  now calls that URL with its own `auth`. Add `"target": "environment"` to keep the old routing.
 
 ### Fixed
 - **An empty secret in `.env` no longer reads as the next line.** The shared `.env` reader
@@ -158,26 +162,31 @@ All notable changes to AgenTeX are documented here.
   `api` block win over every catalog, its token replacing any catalog auth as
   `Authorization: Bearer` — right for the project's own hand-written catalogs, wrong for one
   `swagger-import` generated for a different service, whose `${<NAME>_BASE_URL}` and
-  `apiKey`/`basic`/`bearer` auth were silently replaced. In the release gate a
+  `apiKey`/`basic`/`bearer` auth were silently replaced. Found twice: by the 2026-10-10
+  post-merge review of the API-suites contribution, and live in the release gate, where a
   wizard-configured project's `/import-swagger` petstore → `/test-endpoints` run went 0/3, every
-  case a 404 from the project's API host; a plain `/init-test` project sent the same calls to
-  the sample environment's host after demanding its `API_TOKEN`. A catalog may now declare
-  `"target": "catalog"`: its own `baseUrl` refs (environment, then `.env`) and its own `auth`
-  are used, and the environment's `api` block is ignored for it — base URL and token both.
-  `import_swagger.js` writes it into every catalog it generates, and the same three cases pass
-  3/3 with the environment untouched. No `target`, or `"environment"`, behaves exactly as
-  before; any other value is `BLOCKED` (exit 2) naming the catalog, the field and the allowed
-  values, before a single request. Opt-in rather than "a catalog that declares `baseUrl` wins",
-  because every hand-written catalog declares `baseUrl: "${API_BASE_URL}"` and relies on the
-  environment for qc/uat switching — that rule would have silently moved them. `run_suite.js`
-  also called `run_api.js` without `--env`, so a suite could never pick a named environment;
-  `/test-endpoints --env <name>` now reaches every case through `api-executor`'s new optional
-  `ENVIRONMENT` input (empty → no flag, the default environment as before). And `swagger-import`
-  told users to export tokens "in your shell, never in `.env`", the opposite of the project's
-  rule and of the root `.env.example` — its `SKILL.md`, `swagger-mapping.md`,
-  `/import-swagger`, endpoint-testing's `suite-format.md` and the `envVarsToSet` placeholders
-  (`<set in .env>`) now keep every value in `.env`. Covered by seven new cases in
-  `run_api.test.js`, two in `import_swagger.test.js` and three in `run_suite.test.js`.
+  case a 404 from the project's API host, and a plain `/init-test` project sent the same calls
+  to the sample environment's host after demanding its `API_TOKEN`. One rule now decides, an
+  explicit `target` first: `"catalog"` uses the catalog's own `baseUrl` refs (environment, then
+  `.env`) and its own `auth`, and the environment's `api` block is ignored for it — base URL and
+  token both; `"environment"` uses the environment's `api` block whatever the `baseUrl` says —
+  the override for a hand-written catalog whose base URL is another variable but should still
+  follow `--env`; with no `target`, the environment applies only to a `baseUrl` that is
+  absent/empty or exactly `${API_BASE_URL}`, and any other keeps its own base URL and auth. Any
+  other `target` value is `BLOCKED` (exit 2) naming the catalog, the field and the allowed
+  values, before a single request; an unknown `--env`, or an unset ref in a catalog's own base
+  URL, stays `BLOCKED` with no fallback to the environment's host. `import_swagger.js` writes
+  `"target": "catalog"` into every catalog it generates, and the gate's three cases pass 3/3
+  with the environment untouched. `run_suite.js` also called `run_api.js` without `--env`, so a
+  suite could never pick a named environment; `/test-endpoints --env <name>` now reaches every
+  case through `api-executor`'s new optional `ENVIRONMENT` input (empty → no flag, the default
+  environment as before). And `swagger-import` told users to export tokens "in your shell,
+  never in `.env`", the opposite of the project's rule and of the root `.env.example` — its
+  `SKILL.md`, `swagger-mapping.md`, `/import-swagger`, endpoint-testing's `suite-format.md` and
+  the `envVarsToSet` placeholders (`<set in .env>`) now keep every value in `.env`. Covered by
+  fifteen target cases in `run_api.test.js` (the four-way rule matrix, an unknown `--env` in
+  every cell, catalog `apiKey`/`bearer`/`basic` auth, unset refs, an unknown `target`), two in
+  `import_swagger.test.js` and four `--env` cases in `run_suite.test.js`.
 
 ### Credits
 - The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
