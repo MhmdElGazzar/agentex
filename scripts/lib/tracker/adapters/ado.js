@@ -13,6 +13,10 @@
 // inverted). It enters memory once and reaches ONLY the Authorization header —
 // never a return value, an error, a log line, argv, or a dry-run descriptor
 // (those print `authorization: <Basic ***, not printed>`, PR #16's wording).
+// Belt and braces on the error path: a provider or proxy can echo request
+// material back, so every TrackerError diagnostic is scrubbed of the PAT in all
+// the forms it can travel in before it leaves request() (see scrub() below).
+// Successful responses are returned untouched.
 //
 // CONFIG (invariants 7/10): org/project/apiVersion come from the consumer's
 // config/project.json `azure` block with legacy AZURE_* .env keys as fallback
@@ -33,6 +37,7 @@ const { TrackerError } = require('../errors.js');
 const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
 const REDACTED_AUTH = '<Basic ***, not printed>';
+const REDACTED = '<redacted>'; // what scrub() leaves where a PAT form was
 
 function configError(message) {
   const e = new Error(message);
@@ -138,7 +143,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
   const doFetch = fetchImpl || globalThis.fetch;
   const projSeg = encodeURIComponent(cfg.project);
 
-  let patState = null; // { header, resolvedName } — resolved lazily, once
+  let patState = null; // { header, resolvedName, secretForms } — resolved lazily, once
   function auth(op, url) {
     if (!patState) {
       let resolvedName = null; let pat = null;
@@ -151,12 +156,36 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
           `No Azure DevOps PAT found — looked for ${PAT_ENV_NAMES.join(', ')} in the environment and in .env. ` +
           'Add AZURE_PAT to the project\'s .env (the /init-test wizard writes it).');
       }
+      const encoded = Buffer.from(':' + pat).toString('base64');
       patState = {
-        header: 'Basic ' + Buffer.from(':' + pat).toString('base64'),
+        header: 'Basic ' + encoded,
         resolvedName,
+        // Every spelling the PAT can take in an echoed diagnostic: the Basic
+        // header, its base64(':'+PAT) payload, the raw value, URL-encoded and
+        // JSON-escaped. Longest first, so the header goes as one piece.
+        secretForms: [...new Set(['Basic ' + encoded, encoded, pat, encodeURIComponent(pat), JSON.stringify(pat).slice(1, -1)])]
+          .sort((a, b) => b.length - a.length),
       };
     }
     return patState;
+  }
+
+  // Error-path scrub — used ONLY where a TrackerError is built, never on a
+  // successful response. Before any PAT is resolved there is nothing to scrub.
+  function scrub(text) {
+    let out = String(text);
+    for (const form of (patState ? patState.secretForms : [])) out = out.replaceAll(form, REDACTED);
+    return out;
+  }
+  // Structured error bodies are scrubbed value by value (keys included), so a
+  // PAT the raw text hid behind JSON \u escapes is caught once it is parsed.
+  function scrubDeep(value) {
+    if (typeof value === 'string') return scrub(value);
+    if (Array.isArray(value)) return value.map(scrubDeep);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [scrub(k), scrubDeep(v)]));
+    }
+    return value;
   }
 
   function url(route, params = {}, { project = true, apiVersion = cfg.apiVersion } = {}) {
@@ -182,14 +211,30 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const msg = e && (e.name === 'TimeoutError' || e.name === 'AbortError')
         ? `request timed out after ${timeoutMs}ms`
         : (e && e.message) || String(e);
-      throw new TrackerError({ op, url: requestUrl, serverMessage: msg });
+      throw new TrackerError({ op, url: scrub(requestUrl), serverMessage: scrub(msg) });
     }
-    const text = await res.text();
+    let text;
+    try {
+      text = await res.text();
+    } catch (e) {
+      // A body that cannot be read is an error path too: wrapped and scrubbed,
+      // never a raw stream error.
+      throw new TrackerError({
+        op, status: res.ok ? undefined : res.status, url: scrub(requestUrl),
+        serverMessage: scrub(`the response body could not be read: ${(e && e.message) || String(e)}`),
+      });
+    }
     if (!res.ok) {
-      let serverMessage = null;
-      try { serverMessage = JSON.parse(text).message || null; } catch { /* not json */ }
+      // A JSON body is scrubbed as parsed values and re-serialized; anything
+      // else is scrubbed as raw text.
+      let serverMessage = null; let body;
+      try {
+        const parsed = scrubDeep(JSON.parse(text));
+        serverMessage = (parsed && parsed.message) || null;
+        body = JSON.stringify(parsed);
+      } catch { body = scrub(text); }
       const err = new TrackerError({
-        op, status: res.status, url: requestUrl, serverMessage, body: text.slice(0, 500),
+        op, status: res.status, url: scrub(requestUrl), serverMessage, body: body.slice(0, 500),
         credentialHint: res.status === 401 || res.status === 403
           ? { tried: [...PAT_ENV_NAMES], resolved: resolvedName }
           : undefined,

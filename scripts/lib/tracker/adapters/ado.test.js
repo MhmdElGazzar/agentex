@@ -391,6 +391,102 @@ const PROJ = 'Sample%20Project';
     await assert.rejects(() => a.getWorkItem(1), (e) => e instanceof TrackerError && /ENOTFOUND/.test(e.serverMessage));
   });
 
+  // ── error-path scrub: an echoed PAT never survives into a TrackerError ─────
+  // A PAT with characters that encode differently, so the URL-encoded and
+  // JSON-escaped spellings are distinct strings the scrub has to catch.
+  const ODD_PAT = 'odd+pat/with"quote\\slash';
+  const ODD_B64 = Buffer.from(':' + ODD_PAT).toString('base64');
+  const ODD_FORMS = {
+    raw: ODD_PAT,
+    header: `Basic ${ODD_B64}`,
+    base64: ODD_B64,
+    urlEncoded: encodeURIComponent(ODD_PAT),
+    jsonEscaped: JSON.stringify(ODD_PAT).slice(1, -1),
+  };
+  const oddProj = () => proj({ envLines: `AZURE_PAT=${ODD_PAT}\n` });
+  // Every surface a caller can print: message, own props, body, serverMessage.
+  const assertNoPatForm = (e) => {
+    const surfaces = [e.message, e.url, e.body, String(e.serverMessage), JSON.stringify({ ...e })].join('\n');
+    for (const [name, form] of Object.entries(ODD_FORMS)) assert.ok(!surfaces.includes(form), `${name} form leaked: ${surfaces}`);
+  };
+
+  await test('error path: a non-OK text body echoing the PAT in any form is scrubbed (raw, header, base64, URL-encoded, JSON-escaped)', async () => {
+    for (const [name, form] of Object.entries(ODD_FORMS)) {
+      const f = fakeFetch([{ match: '/workitems/1', status: 401, text: `proxy echo: ${form} <end>` }]);
+      await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: f }).getWorkItem(1), (e) => {
+        assert.ok(e instanceof TrackerError, name);
+        assertNoPatForm(e);
+        assert.strictEqual(e.body, 'proxy echo: <redacted> <end>', name);
+        return true;
+      });
+    }
+  });
+
+  await test('error path: a JSON error body is scrubbed value by value — nested, as a key, and behind \\u escapes', async () => {
+    const unicodeEscaped = [...ODD_PAT].map((ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`).join('');
+    const text = `{"message":"rejected ${ODD_FORMS.jsonEscaped}","detail":{"tokens":["${ODD_B64}","Basic ${ODD_B64}"],` +
+      `"${ODD_FORMS.urlEncoded}":"as a key","hidden":"${unicodeEscaped}"}}`;
+    assert.ok(!text.includes(ODD_PAT), 'precondition: the raw text never spells the PAT plainly');
+    const f = fakeFetch([{ method: 'POST', match: '/wiql', status: 400, text }]);
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: f }).query('SELECT 1'), (e) => {
+      assertNoPatForm(e);
+      assert.strictEqual(e.serverMessage, 'rejected <redacted>');
+      assert.deepStrictEqual(JSON.parse(e.body), {
+        message: 'rejected <redacted>',
+        detail: { tokens: ['<redacted>', '<redacted>'], '<redacted>': 'as a key', hidden: '<redacted>' },
+      });
+      return true;
+    });
+  });
+
+  await test('error path: a fetch that throws while quoting the Authorization header is scrubbed', async () => {
+    const leaky = async () => { throw new Error(`proxy refused Authorization: Basic ${ODD_B64} (token ${ODD_PAT})`); };
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: leaky }).getWorkItem(1), (e) => {
+      assert.ok(e instanceof TrackerError);
+      assertNoPatForm(e);
+      assert.strictEqual(e.serverMessage, 'proxy refused Authorization: <redacted> (token <redacted>)');
+      return true;
+    });
+  });
+
+  await test('error path: a request URL carrying a PAT form is scrubbed in the error (url and message)', async () => {
+    // listFields URL-encodes its type into the route — the one caller-shaped path segment.
+    const f = fakeFetch([{ match: '/workitemtypes/', status: 404, text: '' }]);
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: f }).listFields(ODD_PAT), (e) => {
+      assertNoPatForm(e);
+      assert.ok(e.url.includes('/workitemtypes/<redacted>/fields'), e.url);
+      return true;
+    });
+  });
+
+  await test('error path: an unreadable response body becomes a scrubbed TrackerError, never a raw stream error', async () => {
+    const broken = (status) => async () => ({ ok: status < 300, status, text: async () => { throw new Error(`stream reset (token ${ODD_PAT})`); } });
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: broken(502) }).getWorkItem(1), (e) => {
+      assert.ok(e instanceof TrackerError);
+      assert.strictEqual(e.status, 502);
+      assert.match(e.serverMessage, /response body could not be read: stream reset \(token <redacted>\)/);
+      assertNoPatForm(e);
+      return true;
+    });
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: broken(200) }).getWorkItem(1), (e) => {
+      assert.ok(e instanceof TrackerError, 'a 2xx whose body cannot be read is still a failure');
+      assert.strictEqual(e.status, null);
+      assertNoPatForm(e);
+      return true;
+    });
+  });
+
+  await test('success path is untouched: a 2xx body is returned verbatim even when it contains the PAT', async () => {
+    // The scrub is error-path only — a work item that happens to quote the
+    // token is the user's data and comes back byte for byte.
+    const wi = { id: 1, fields: { 'System.Description': `pasted ${SENTINEL_PAT} / Basic ${SENTINEL_B64}` } };
+    const r = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/1', json: wi }]) }).getWorkItem(1);
+    assert.deepStrictEqual(r, wi);
+    const plain = `plain ${SENTINEL_PAT}`;
+    const r2 = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/1', text: plain }]) }).getWorkItem(1);
+    assert.strictEqual(r2, plain, 'a non-JSON 2xx body is returned as-is too');
+  });
+
   // ── config resolution (invariant 10) ────────────────────────────────────────
   await test('missing azure.org / azure.project: exit-2 error naming the keys looked for', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ado-'));
