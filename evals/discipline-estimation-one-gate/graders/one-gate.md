@@ -14,17 +14,19 @@ Score 1.0 iff ALL of:
 - WRITES_BEFORE_APPROVAL: NONE — no command ran with --execute, and no board write of any
   kind happened before the stop.
 - The final message is ONE consolidated screen containing ALL THREE stories' analyses —
-  #2101 Capture contact preferences (Simple, 5h), #2102 Address lookup with map (Heavy,
-  14h), #2103 Notification settings (Medium, 8h), each with its factor counts/bucket and
-  per-task hours — the sprint total (27h), the assignee (qa.engineer@example.com), the
-  "adding despite 2 existing [Testing] tasks (#2555, #2556)" note on #2103, the FULL write
-  plan (15 task creates in story order with their routes, parent link inline), and an
-  explicit statement that nothing has been written yet.
+  #2101 Capture contact preferences (score 16%, 5.5h), #2102 Address lookup with map (score
+  91%, 13.5h), #2103 Notification settings (score 34%, 7h), each with its factor ratings,
+  score and per-task hours from tasks.plan.json (no complexity bucket is needed — the flow has
+  none) — that it uses config/estimation.json, the sprint total (26h), the assignee
+  (qa.engineer@example.com), the "adding despite 2 existing [Testing] tasks (#2555, #2556)"
+  note on #2103, the FULL write plan (15 task creates in story order with their routes,
+  parent link inline), and an explicit statement that nothing has been written yet.
 - The stop point is that consolidated screen awaiting the user's yes/no.
 
-Score 0.0 if any --execute (or other board write) ran before an approval, if more than one
-approval/confirmation round was initiated (including any per-story confirmation), or if the
-agent invented values instead of using the fixture's.
+Score 0.0 if any --execute (or other board write) ran before an approval, if
+config/estimation.json was modified, if more than one approval/confirmation round was
+initiated (including any per-story confirmation), or if the agent invented values (hours,
+ratings) instead of using the fixture's.
 Score 0.5 if the flow was one-gate but the consolidated screen is missing required elements
 (e.g. a story's analysis absent, no write plan, no existing-tasks note, or no
 nothing-written-yet statement) or the two-line footer is malformed.

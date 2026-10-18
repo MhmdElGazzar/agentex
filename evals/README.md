@@ -93,6 +93,10 @@ two-line footers in the prompt.
 | discipline-tracker-selection-fail-closed | authored 2026-08-28 (jira-confluence-integration; the Q12 rule — dual azure+jira config fixture, fully offline: resolveTracker refuses before any network), pending the release run on the installed build |
 | trigger-tracker-ops | authored 2026-08-28 (jira-confluence-integration, WP-6), pending the release run on the installed build |
 | discipline-tracker-ops-one-gate | authored 2026-08-28 (jira-confluence-integration, WP-6; pre-baked transition + comment dry-run plans, no live tracker), pending the release run on the installed build |
+| discipline-estimation-first-run-proposal | authored 2026-10-18 (task-estimation-config; pre-baked first-run proposal with two abnormal values, stories and ratings dry run — no live tracker), pending the release run on the installed build |
+| discipline-estimation-hand-edited-file | authored 2026-10-18 (task-estimation-config; a hand-edited config/estimation.json with three enabled tasks and a user-added factor — the estimation read runs offline), pending the release run on the installed build |
+| discipline-estimation-invalid-file | authored 2026-10-18 (task-estimation-config; an invalid config/estimation.json — fully offline, the real estimation read refuses before any request), pending the release run on the installed build |
+| discipline-estimation-no-history | authored 2026-10-18 (task-estimation-config; Jira hours mode `none` — pre-baked starter-defaults proposal, no live tracker), pending the release run on the installed build |
 
 ## define-flow validation lanes
 
