@@ -114,6 +114,59 @@ const catalog = port => ({
     assert.ok(fs.readdirSync(path.join(runDir, 'logs')).length === 1);
   });
 
-  console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
+  // ---- --env: passed through to every run_api.js call; absent -> run_api's default resolution ----
+  // qc and uat each point their api block at their own server; the default is uat.
+  function counting() {
+    const seen = { hits: 0 };
+    return new Promise(resolve => {
+      const srv = http.createServer((req, res) => { seen.hits++; res.writeHead(200); res.end('{"title":"x"}'); });
+      srv.listen(0, '127.0.0.1', () => resolve({ srv, port: srv.address().port, seen }));
+    });
+  }
+  const twoEnvProject = (qcPort, uatPort) => proj({
+    'config/project.json': { defaultEnvironment: 'uat' },
+    'environments/qc.json': { api: { baseUrl: `http://127.0.0.1:${qcPort}` } },
+    'environments/uat.json': { api: { baseUrl: `http://127.0.0.1:${uatPort}` } },
+    'integration/api_test_suites/svc/svc_api.json': { name: 'svc', baseUrl: '${SVC_UNUSED_BASE_URL}', auth: { type: 'none' },
+      requests: [{ name: 'ok', method: 'GET', path: '/ok', params: [] }] },
+    'integration/api_test_suites/svc/svc_suite.json': { cases: [
+      { name: 'one', entry: 'svc.ok', expect: { status: 200 } },
+      { name: 'two', entry: 'svc.ok', expect: { status: 200 } },
+    ] },
+  });
+
+  await test('--env qc is passed to every run_api.js call', async () => {
+    const qc = await counting(), uat = await counting();
+    const dir = twoEnvProject(qc.port, uat.port);
+    const { code, out } = await run(dir, ['--env', 'qc', '--run-dir', path.join(dir, 'run')]);
+    qc.srv.close(); uat.srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(out.passed, 2);
+    assert.strictEqual(qc.seen.hits, 2);
+    assert.strictEqual(uat.seen.hits, 0);
+  });
+
+  await test('no --env -> not passed; run_api.js resolves the default environment', async () => {
+    const qc = await counting(), uat = await counting();
+    const dir = twoEnvProject(qc.port, uat.port);
+    const { code, out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    qc.srv.close(); uat.srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(uat.seen.hits, 2);
+    assert.strictEqual(qc.seen.hits, 0);
+  });
+
+  await test('unknown --env -> every case BLOCKED with the environment resolution error', async () => {
+    const qc = await counting(), uat = await counting();
+    const dir = twoEnvProject(qc.port, uat.port);
+    const { code, out } = await run(dir, ['--env', 'nope', '--run-dir', path.join(dir, 'run')]);
+    qc.srv.close(); uat.srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.blocked, 2);
+    for (const c of out.cases) assert.match(c.reason, /environment "nope" not found — available: qc, uat/);
+    assert.strictEqual(qc.seen.hits + uat.seen.hits, 0);
+  });
+
+  console.log(failures.length ?`\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

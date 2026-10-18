@@ -43,7 +43,9 @@ own service's requests/queries.
 - Standalone runs: `/test-endpoints` runs every `*_suite.json` case without a browser spec; `/import-swagger` generates the catalog + suite from a Swagger/OpenAPI file
 - Catalog sample: `skills/api-integration/templates/sample_api.json`
 - Config: the active environment's `api` block (`baseUrl`, `token`); legacy
-  `API_BASE_URL`/`API_TOKEN` in `.env` as fallback
+  `API_BASE_URL`/`API_TOKEN` in `.env` as fallback. A catalog declaring `"target": "catalog"`
+  (every `swagger-import`ed one) uses only its own `baseUrl` and `auth` — the environment's
+  `api` block is ignored for it
 - Reference: `skills/api-integration/references/api-requests.md`
 
 **DB steps** — `db:` (or "check the database", "verify the row")

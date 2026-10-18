@@ -119,6 +119,30 @@ All notable changes to AgenTeX are documented here.
   The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
   three new cases in `run_api.test.js`. Thanks to @MarwahZain, whose PR #9 flagged the
   inconsistent `API_TOKEN` handling (closed with credit, not merged).
+- **An imported API catalog calls its own service.** `run_api.js` let the active environment's
+  `api` block win over every catalog, its token replacing any catalog auth as
+  `Authorization: Bearer` — right for the project's own hand-written catalogs, wrong for one
+  `swagger-import` generated for a different service, whose `${<NAME>_BASE_URL}` and
+  `apiKey`/`basic`/`bearer` auth were silently replaced. In the release gate a
+  wizard-configured project's `/import-swagger` petstore → `/test-endpoints` run went 0/3, every
+  case a 404 from the project's API host; a plain `/init-test` project sent the same calls to
+  the sample environment's host after demanding its `API_TOKEN`. A catalog may now declare
+  `"target": "catalog"`: its own `baseUrl` refs (environment, then `.env`) and its own `auth`
+  are used, and the environment's `api` block is ignored for it — base URL and token both.
+  `import_swagger.js` writes it into every catalog it generates, and the same three cases pass
+  3/3 with the environment untouched. No `target`, or `"environment"`, behaves exactly as
+  before; any other value is `BLOCKED` (exit 2) naming the catalog, the field and the allowed
+  values, before a single request. Opt-in rather than "a catalog that declares `baseUrl` wins",
+  because every hand-written catalog declares `baseUrl: "${API_BASE_URL}"` and relies on the
+  environment for qc/uat switching — that rule would have silently moved them. `run_suite.js`
+  also called `run_api.js` without `--env`, so a suite could never pick a named environment;
+  `/test-endpoints --env <name>` now reaches every case through `api-executor`'s new optional
+  `ENVIRONMENT` input (empty → no flag, the default environment as before). And `swagger-import`
+  told users to export tokens "in your shell, never in `.env`", the opposite of the project's
+  rule and of the root `.env.example` — its `SKILL.md`, `swagger-mapping.md`,
+  `/import-swagger`, endpoint-testing's `suite-format.md` and the `envVarsToSet` placeholders
+  (`<set in .env>`) now keep every value in `.env`. Covered by seven new cases in
+  `run_api.test.js`, two in `import_swagger.test.js` and three in `run_suite.test.js`.
 ### Credits
 - The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
   and print styles were harvested from community **PR #6** by @YoussefAbdellah2023. Its

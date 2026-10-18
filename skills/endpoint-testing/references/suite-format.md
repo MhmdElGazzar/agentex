@@ -55,13 +55,19 @@ are simply how you organize cases into files (e.g. one per service); which cases
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
-  --catalog ./integration --suites ./integration/api_test_suites --run-dir "$RUN_DIR"
+  --catalog ./integration --suites ./integration/api_test_suites [--env <name>] \
+  --run-dir "$RUN_DIR"
 ```
 
 - Recursively finds every `*_suite.json` under `integration/api_test_suites/`, flattens their
   `cases`, and for each one shells out to **api-integration**'s `run_api.js` (never duplicates
   its catalog/auth/assertion logic — that script stays the single source of truth for one
   call).
+- **`--env <name>`** (optional) is passed to every case's `run_api.js` call: it picks the
+  environment whose `api` block targets catalogs without `"target": "catalog"` (a
+  `swagger-import`ed catalog keeps its own base URL and auth either way). Omitted = the
+  project's `defaultEnvironment`; an unknown name is BLOCKED per case, listing the environments
+  that exist. `/test-endpoints --env <name>` reaches it through `api-executor`'s `ENVIRONMENT`.
 - Writes one evidence log per case to `<run-dir>/logs/<case-name>.log`.
 - Prints ONE final JSON summary:
   `{"result":"PASS|FAIL|BLOCKED","total":N,"passed":N,"failed":N,"blocked":N,"cases":[...]}`.
@@ -71,26 +77,24 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
 
 ## Worked example
 
-Full sequence for a standalone run: create the run folder, load env vars (`.env` for
-non-secret values, shell `export` for tokens — never into `.env`), then run the suite.
+Full sequence for a standalone run: create the run folder, then run the suite from the
+project root. Every value the catalogs name — base URLs and tokens alike (e.g.
+`PETSTORE_BASE_URL`, `PETSTORE_TOKEN`) — lives in the project's `.env`, never in a suite or
+catalog file and never echoed. `run_api.js` reads `.env` itself, so nothing needs exporting.
 
 ```bash
 TS=$(date +%Y-%m-%d_%H-%M-%S)
 mkdir -p "executions/execu_${TS}/api-tests"
 
-set -a; source .env; set +a       # loads e.g. PETSTORE_BASE_URL
-export PETSTORE_TOKEN="..."       # shell-only, never written to .env
-
 node skills/endpoint-testing/scripts/run_suite.js \
-  --catalog ./integration --suites ./integration/api_test_suites \
+  --catalog ./integration --suites ./integration/api_test_suites --env qc \
   --run-dir "executions/execu_${TS}/api-tests"
 ```
 
 Prints the final JSON summary line to stdout; per-case evidence lands in
-`executions/execu_<TS>/api-tests/logs/<case-name>.log`. `env` vars must be present in the
-*same* shell invocation that runs the script — they don't persist across separate shell
-sessions, so `source .env` and any `export` need to happen right before this command, not in
-an earlier one.
+`executions/execu_<TS>/api-tests/logs/<case-name>.log`. `--env qc` is optional — drop it to
+use the project's `defaultEnvironment`. Run from the project root so `.env` is found; a value
+exported in the shell takes precedence over the same name in `.env`.
 
 This is what `/test-endpoints` does for you automatically via the **`api-executor`** subagent
 (which also writes a human-readable `result.md` next to the logs) — running it manually like

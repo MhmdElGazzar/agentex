@@ -172,6 +172,140 @@ function serve(handler) {
     assert.strictEqual(url, '/pets/7?status=sold');
   });
 
+  // ---- catalog "target": "catalog" — an imported service keeps its own base URL and auth ----
+  // The environment's api block points at a second server that must never be hit.
+  const SVC = { name: 'svc', target: 'catalog', baseUrl: '${SVC_BASE_URL_T}',
+    requests: [{ name: 'get-thing', method: 'GET', path: '/thing', params: [] }] };
+  function envSide() {
+    const seen = { hits: 0 };
+    return serve((req, res) => { seen.hits++; res.end('{}'); }).then(s => ({ ...s, seen }));
+  }
+  function catalogSide() {
+    const seen = { url: null, headers: null };
+    return serve((req, res) => { seen.url = req.url; seen.headers = req.headers; res.end('{}'); }).then(s => ({ ...s, seen }));
+  }
+  const envFiles = (envPort, token = { envSecret: 'QA_TOKEN_T' }) => ({
+    'config/project.json': { defaultEnvironment: 'qa' },
+    'environments/qa.json': { api: { baseUrl: `http://127.0.0.1:${envPort}`, token } },
+  });
+
+  await test('target "catalog" + environment api block -> catalog baseUrl and apiKey header, no Bearer', async () => {
+    const env = await envSide(), cat = await catalogSide();
+    const dir = proj({
+      ...envFiles(env.port),
+      'integration/api_test_suites/svc/svc_api.json': { ...SVC, auth: { type: 'apiKey', headerName: 'X-API-Key', tokenEnv: 'SVC_KEY_T' } },
+      '.env': `QA_TOKEN_T=env-tok\nSVC_BASE_URL_T=http://127.0.0.1:${cat.port}\nSVC_KEY_T=svc-key\n`,
+    });
+    const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--expect-status', '200', '--log', path.join(dir, 'x.log')]);
+    env.srv.close(); cat.srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(env.seen.hits, 0, 'the environment api host was called');
+    assert.strictEqual(cat.seen.url, '/thing');
+    assert.strictEqual(cat.seen.headers['x-api-key'], 'svc-key');
+    assert.strictEqual(cat.seen.headers.authorization, undefined);
+  });
+
+  await test('target "catalog" + environment api block -> catalog bearer and basic auth, not the environment token', async () => {
+    const cases = [
+      [{ type: 'bearer', tokenEnv: 'SVC_TOK_T' }, 'SVC_TOK_T=svc-tok\n', 'Bearer svc-tok'],
+      [{ type: 'basic', userEnv: 'SVC_USER_T', passEnv: 'SVC_PASS_T' }, 'SVC_USER_T=qa\nSVC_PASS_T=pw\n', 'Basic ' + Buffer.from('qa:pw').toString('base64')],
+    ];
+    for (const [auth, envLines, expected] of cases) {
+      const env = await envSide(), cat = await catalogSide();
+      const dir = proj({
+        ...envFiles(env.port),
+        'integration/svc_api.json': { ...SVC, auth },
+        '.env': `QA_TOKEN_T=env-tok\nSVC_BASE_URL_T=http://127.0.0.1:${cat.port}\n${envLines}`,
+      });
+      const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--log', path.join(dir, 'x.log')]);
+      env.srv.close(); cat.srv.close();
+      assert.strictEqual(code, 0, `${auth.type}: ${JSON.stringify(out)}`);
+      assert.strictEqual(env.seen.hits, 0, `${auth.type}: the environment api host was called`);
+      assert.strictEqual(cat.seen.headers.authorization, expected, auth.type);
+    }
+  });
+
+  await test('no target, or target "environment" -> unchanged: environment baseUrl + environment Bearer', async () => {
+    for (const target of [undefined, 'environment']) {
+      const env = { seen: { url: null, headers: null } };
+      Object.assign(env, await serve((req, res) => { env.seen.url = req.url; env.seen.headers = req.headers; res.end('{}'); }));
+      const cat = await envSide();
+      const catalog = { ...SVC, auth: { type: 'apiKey', headerName: 'X-API-Key', tokenEnv: 'SVC_KEY_T' } };
+      if (target === undefined) delete catalog.target; else catalog.target = target;
+      const dir = proj({
+        ...envFiles(env.port),
+        'integration/svc_api.json': catalog,
+        '.env': `QA_TOKEN_T=env-tok\nSVC_BASE_URL_T=http://127.0.0.1:${cat.port}\nSVC_KEY_T=svc-key\n`,
+      });
+      const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--log', path.join(dir, 'x.log')]);
+      env.srv.close(); cat.srv.close();
+      assert.strictEqual(code, 0, `${target}: ${JSON.stringify(out)}`);
+      assert.strictEqual(cat.seen.hits, 0, `${target}: the catalog host was called`);
+      assert.strictEqual(env.seen.url, '/thing');
+      assert.strictEqual(env.seen.headers.authorization, 'Bearer env-tok');
+      assert.strictEqual(env.seen.headers['x-api-key'], undefined);
+    }
+  });
+
+  await test('unknown target value -> BLOCKED exit 2 naming the catalog, the field and the allowed values; zero requests', async () => {
+    const env = await envSide();
+    const dir = proj({
+      ...envFiles(env.port),
+      'integration/svc_api.json': { ...SVC, target: 'bogus', baseUrl: `http://127.0.0.1:${env.port}`, auth: { type: 'none' } },
+      '.env': 'QA_TOKEN_T=env-tok\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--log', path.join(dir, 'x.log')]);
+    env.srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.result, 'BLOCKED');
+    assert.match(out.reason, /"svc"/);
+    assert.match(out.reason, /"target"/);
+    assert.match(out.reason, /bogus/);
+    assert.match(out.reason, /"environment"/);
+    assert.match(out.reason, /"catalog"/);
+    assert.strictEqual(env.seen.hits, 0);
+    assert.ok(!fs.existsSync(path.join(dir, 'x.log')), 'an evidence log was written');
+  });
+
+  await test('target "catalog" with its base-URL var unset -> BLOCKED naming the var, no fallback to the environment', async () => {
+    const env = await envSide();
+    const dir = proj({
+      ...envFiles(env.port),
+      'integration/svc_api.json': { ...SVC, auth: { type: 'none' } },
+      '.env': 'QA_TOKEN_T=env-tok\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--log', path.join(dir, 'x.log')]);
+    env.srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.match(out.reason, /SVC_BASE_URL_T/);
+    assert.strictEqual(env.seen.hits, 0);
+  });
+
+  await test('target "catalog" ignores an environment token that is declared but unset', async () => {
+    const env = await envSide(), cat = await catalogSide();
+    const dir = proj({
+      ...envFiles(env.port, { envSecret: 'NOPE_TOKEN_T' }),
+      'integration/svc_api.json': { ...SVC, auth: { type: 'none' } },
+      '.env': `SVC_BASE_URL_T=http://127.0.0.1:${cat.port}\n`,
+    });
+    const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--log', path.join(dir, 'x.log')]);
+    env.srv.close(); cat.srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(cat.seen.url, '/thing');
+  });
+
+  await test('target "catalog" with an unknown --env -> still BLOCKED listing the environments (no silent fallback)', async () => {
+    const dir = proj({
+      ...envFiles(9),
+      'integration/svc_api.json': { ...SVC, auth: { type: 'none' } },
+      '.env': 'SVC_BASE_URL_T=http://127.0.0.1:9\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'svc.get-thing', '--env', 'nope', '--log', path.join(dir, 'x.log')]);
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.match(out.reason, /environment "nope" not found/);
+    assert.match(out.reason, /qa/);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

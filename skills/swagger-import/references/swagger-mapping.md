@@ -48,6 +48,7 @@ Boundaries, both flagged in `review` rather than guessed:
 | Spec concept | OpenAPI 3.x | Swagger 2.0 | Catalog / suite field |
 |---|---|---|---|
 | Base URL | `servers[0].url` | `schemes[0]://host+basePath` | `baseUrl: "${<PREFIX>_BASE_URL}"` (placeholder, never the literal) |
+| Target | — (always written) | — (always written) | `target: "catalog"` — the catalog's own `baseUrl` + `auth` are used; the active environment's `api` block never redirects an imported service |
 | Auth | `components.securitySchemes` | `securityDefinitions` | `auth` (one scheme per catalog file — see below) |
 | Path/method | `paths.<path>.<method>` | same | `requests[].path` / `.method` (path template syntax already matches — `{id}` copied as-is) |
 | Path/query params | `parameters[].in: path\|query` | same | `requests[].params` (names only) |
@@ -70,8 +71,10 @@ than silently guessing something wrong.
 Generated env var names default to `API_BASE_URL`/`API_TOKEN` (matching the project's
 existing single-service convention) unless `--name` is passed, in which case they're
 namespaced (`<NAME>_BASE_URL`, `<NAME>_TOKEN`, etc.) to avoid collisions across multiple
-imported services. Token/credential env vars are never written to `.env` — same shell-export
-rule as everywhere else in this project (see the root `.env.example`).
+imported services. Every value — the base URL and any credential alike — goes in the
+project's `.env` (see the root `.env.example`), never in the catalog and never printed: the
+catalog holds only the names, and `envVarsToSet` lists them with `<set in .env>` for
+credentials. Same rule as everywhere else in this project.
 
 ## Param example values
 

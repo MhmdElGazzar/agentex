@@ -280,7 +280,9 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
   if (fs.existsSync(catalogPath)) blocked(`${catalogPath} already exists — pick a different --name or remove/rename it first`);
   if (fs.existsSync(suitePath)) blocked(`${suitePath} already exists — pick a different --name or remove/rename it first`);
 
-  const catalog = { name, description: doc.info && doc.info.description || `Imported from ${source}`, baseUrl: `\${${baseUrlEnvVar}}`, auth, requests };
+  // "target": "catalog" — an imported service is called at its own ${<NAME>_BASE_URL} with its
+  // own auth; the active environment's api block (the project's own API) never redirects it.
+  const catalog = { name, description: doc.info && doc.info.description || `Imported from ${source}`, target: 'catalog', baseUrl: `\${${baseUrlEnvVar}}`, auth, requests };
   const suite = { name: `${name}-suite`, cases };
 
   fs.mkdirSync(serviceDir, { recursive: true });
@@ -289,7 +291,8 @@ if (!source) blocked('usage: <path-or-url> [--name <service>] required');
 
   out({
     result: 'OK', catalogPath, suitePath, operationsImported: requests.length, casesGenerated: cases.length,
-    envVarsToSet: { [baseUrlEnvVar]: baseUrlLiteral, ...(auth.tokenEnv ? { [auth.tokenEnv]: '<set in your shell, never in .env>' } : {}), ...(auth.userEnv ? { [auth.userEnv]: '<set in your shell>', [auth.passEnv]: '<set in your shell>' } : {}) },
+    // Every value goes in the project's .env (the catalog holds only the names; never printed).
+    envVarsToSet: { [baseUrlEnvVar]: baseUrlLiteral, ...(auth.tokenEnv ? { [auth.tokenEnv]: '<set in .env>' } : {}), ...(auth.userEnv ? { [auth.userEnv]: '<set in .env>', [auth.passEnv]: '<set in .env>' } : {}) },
     review,
   }, 0);
 })();
