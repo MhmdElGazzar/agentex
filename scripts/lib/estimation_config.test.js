@@ -136,6 +136,15 @@ test('AC: JSON that cannot be parsed → parse-error naming the file and the pos
   assert.deepStrictEqual(codes(empty.problems), ['parse-error']);
 });
 
+test('a UTF-8 byte-order mark is a named hard stop (parse-error), never stripped or repaired', () => {
+  const raw = '﻿' + JSON.stringify(VALID(), null, 2);
+  const r = loadKeepingBytes(raw);
+  assert.strictEqual(r.state, 'invalid');
+  assert.deepStrictEqual(codes(r.problems), ['parse-error']);
+  assert.strictEqual(r.problems[0].message,
+    'config/estimation.json: the file starts with a byte-order mark (BOM) — save it as UTF-8 without BOM');
+});
+
 test('AC: minHours > maxHours → min-greater-than-max, the message names the file, the problem and the entry', () => {
   const r = loadKeepingBytes(withTask(2, { minHours: 4, maxHours: 2 }));
   assert.strictEqual(r.state, 'invalid');

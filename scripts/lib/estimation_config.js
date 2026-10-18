@@ -315,6 +315,14 @@ function loadEstimationConfig(cwd) {
     if (e.code === 'ENOENT') return { state: 'missing' };
     return { state: 'invalid', problems: [problem('parse-error', '', undefined, `the file could not be read (${e.code || e.message})`)] };
   }
+  // A BOM is invisible in most editors; name it rather than report a stray
+  // character (still a hard stop: the plugin never strips or repairs the file).
+  if (text.charCodeAt(0) === 0xFEFF) {
+    return {
+      state: 'invalid',
+      problems: [problem('parse-error', '', undefined, 'the file starts with a byte-order mark (BOM) — save it as UTF-8 without BOM')],
+    };
+  }
   const scan = scanJson(text);
   if (!scan.ok) {
     const { line, column } = lineCol(text, scan.offset);
