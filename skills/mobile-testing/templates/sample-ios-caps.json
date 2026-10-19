@@ -1,0 +1,11 @@
+{
+  "capabilities": {
+    "alwaysMatch": {
+      "platformName": "iOS",
+      "appium:automationName": "XCUITest",
+      "appium:app": "/absolute/path/to/app.app",
+      "appium:deviceName": "iPhone 15",
+      "appium:platformVersion": "17.5"
+    }
+  }
+}
