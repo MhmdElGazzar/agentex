@@ -4,15 +4,32 @@ All notable changes to AgenTeX are documented here.
 
 ## [Unreleased]
 ### Added
-- **`store` branch for the Claude plugin directory.** A GitHub Action
-  (`.github/workflows/store-branch.yml`) rebuilds it on every push to `main` as `main` minus
-  development-only paths (`evals/`, `*.test.js`, `.github/`, `.gitattributes`,
-  `scripts/store/`): 286 files against 542 on `main` when this landed, under the directory's
-  512-file review limit, and no root `.gitattributes`, whose eol rewriting stops directory
-  validation. `main` keeps
-  its LF pinning and evals. The sync only fast-forwards `store` and refuses to publish a tree
-  over 512 files. Covered by `scripts/store/sync_store_branch.test.js`. Thanks to @mabdel130,
-  whose PR #30 surfaced the `.gitattributes` validation failure.
+- **One plugin branch per host, generated from `main`.** `main` stays the only source,
+  written the Claude Code way; `.github/workflows/hosts.yml` rebuilds a branch per host on
+  every push to `main`, driven by `hosts/<host>/host.json` and `scripts/hosts/build_host.js`:
+  - **`store`** (Claude plugin directory): `main` minus development-only paths (`evals/`,
+    `*.test.js`, test golden fixtures, `.github/`, `.gitattributes`, `hosts/`,
+    `scripts/hosts/`), which keeps it under the directory's 512-file review limit and free of
+    a root `.gitattributes`, whose eol rewriting stops directory validation. `main` keeps its
+    LF pinning and evals.
+  - **`copilot`** (GitHub Copilot CLI and VS Code), **`devin`** (Devin, formerly Windsurf) and
+    **`codex`** (OpenAI Codex): converted from the Claude layout — `${CLAUDE_PLUGIN_ROOT}`
+    becomes an `<agentex-root>` placeholder explained under each skill's frontmatter, commands
+    become user-invoked skills where the host has no plugin commands (with `/command` mentions
+    rewritten to the host's syntax), agent definitions move to `references/agents/` on Codex,
+    and `AskUserQuestion` is renamed to each host's ask tool. Not yet certified on the live
+    hosts or submitted to their stores.
+
+  Every build runs the host's guards first (skill manifests and the 1024-character
+  description limit, leftover Claude-only text, banned paths, file limits, the manifest) and
+  publishes nothing when one fails. Builds only fast-forward their branch and make no commit
+  when nothing changed; they refuse a branch head the builder didn't make (a hand edit is
+  never overwritten) and a source older than the last build's (no rollback from a re-run).
+  The first build of a new plugin version tags `<host>-v<version>` for stores that pin a tag
+  or sha. How to write `main` so every host builds: `docs/contributing/host-branches.md`.
+  Covered by `scripts/hosts/{transforms,guards,build_host}.test.js`, including a check that
+  every host builds cleanly from the repo's HEAD. Thanks to @mabdel130, whose PR #30 surfaced
+  the `.gitattributes` validation failure.
 - **`endpoint-testing` skill** — standalone API test run over cataloged endpoints ("api-tests"),
   independent of any browser test spec (the "Standalone API tests" row flips from planned to
   available). New `integration/api_test_suites/**/*_suite.json` case files reference a sibling
@@ -72,6 +89,9 @@ All notable changes to AgenTeX are documented here.
   device footprint never goes beyond installing/launching/exercising/closing the app under test.
 
 ### Changed
+- **`test-design`'s description is under 1024 characters** (it was 1122). The Agent Skills
+  limit that Copilot, Devin and Codex enforce; the mechanics clause and a bullet that repeated
+  the opening sentence went, the trigger phrases stayed.
 - `docs/getting-started.md` and `docs/contributing/architecture.md` updated to reflect the new
   mobile-testing capability (no longer describe `qa-executor` as the only subagent).
 - **Bug screenshots are attached annotated.** `bug-report-azure` now uploads, ahead of each
@@ -105,13 +125,48 @@ All notable changes to AgenTeX are documented here.
   The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
   three new cases in `run_api.test.js`. Thanks to @MarwahZain, whose PR #9 flagged the
   inconsistent `API_TOKEN` handling (closed with credit, not merged).
+- **The Azure DevOps PAT is scrubbed from every tracker error.** A provider, proxy or network
+  layer that echoes request material back could carry the token into a `TrackerError`, and
+  from there into a script's JSON output. The ADO adapter now replaces it in every form it
+  travels in (the `Basic` header, its base64 payload, the raw value, URL-encoded and
+  JSON-escaped) in the error's URL, server message and body, nested values of a JSON error
+  body included. The fetch-failure, unreadable-body (now wrapped instead of surfacing a raw
+  stream error) and non-2xx paths are covered; successful responses are returned untouched.
+  Covered by six new cases in `ado.test.js`.
+- **ADO requests are sent only for canonical work-item IDs.** Every adapter call that sends a
+  request refuses, with exit 2 and before anything is sent, a work-item, plan, suite, run,
+  test-case or relation-target id that is not a plain positive decimal (no leading zero,
+  whitespace, `#`, sign, exponent or non-ASCII digits), so an id cannot carry a path or query
+  into a URL. Dry runs check no id: `testplan.js fail --bug NEW` (or `<bugId>`, `new-bug-id`),
+  which the bug flow plans before the Bug exists, works exactly as before. An `azure.org` /
+  `AZURE_URL` carrying credentials, a query string or a fragment is refused at config time,
+  without echoing the value. Covered in `ado.test.js` and `testplan.test.js`.
+- **Bug attachments upload exactly the bytes that passed the structural check.**
+  `create-bug.js` read each screenshot twice, once to check it and once to upload it, so a
+  file changed on disk in between reached the board unchecked. The check's buffer is now
+  handed to `uploadAttachment` (new `opts.bytes`, ADO and Jira) and sent verbatim. This binds
+  the execute run's own check; a screenshot replaced between the approved dry run and
+  `--execute` is still re-checked structurally, not re-reviewed. Covered in
+  `create-bug.test.js`, `ado.test.js` and `jira.test.js`.
 ### Credits
+- The multi-host direction, and the host knowledge behind the Copilot and Codex branches
+  (entry points, native subagent coordination, a certification checklist), came from
+  community **PR #22** and its split into **#27/#28/#29** by @MohamedAbdella. The branches are
+  generated from `main` instead of carrying host files on `main`, so no code was lifted; the
+  ideas were.
 - The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
   and print styles were harvested from community **PR #6** by @YoussefAbdellah2023. Its
   parallel v2/v3 generator files were not adopted: they forked the pre-`schemaVersion: 2`
   renderer and lacked flaky / warning / view-mismatch statuses, timing, evidence and defects,
   so the ideas were rebuilt inside `make_html_report.js` instead. Closed with credit, not
   merged.
+- The ADO error-path PAT scrub, the work-item ID and `azure.org` checks and the attachment
+  byte custody were harvested from community **PR #27** by @MohamedAbdella and rebuilt in
+  house style. The ID check was narrowed to requests actually sent, because the PR's version
+  also refused the dry-run stand-ins the bug flow plans with. Its bug-write receipts and
+  ledger, approved-plan digest, update lock and migrate preflight, strict version stamps,
+  `scaffold.js`/`init.js` changes and host-neutral execution-result contract were not
+  adopted (regressions found in review, or no caller yet). Closed with credit, not merged.
 - `import_swagger.js`: found while testing against a live public OpenAPI spec — relative
   `servers[].url` values (e.g. `"/api/v3"`, common in real specs) were used literally instead
   of being resolved against the spec's own host; now resolved when the spec was fetched from

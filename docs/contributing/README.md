@@ -12,6 +12,7 @@ Documentation for anyone building or extending the plugin itself — as opposed 
 | [Conventions](./conventions.md) | Naming, the no-employer-data rule, secrets, catalog-only execution. |
 | [Testing](./testing.md) | Running and writing script tests. |
 | [PR Workflow](./pr-workflow.md) | Fork → branch → PR, what's checked on review. |
+| [Host Branches](./host-branches.md) | How `main` becomes the `store`, `copilot`, `devin` and `codex` branches, and what breaks a host build. |
 
 New to Claude Code plugins entirely? Start at [Claude Code 101](./claude-code-101.md). Already
 comfortable with plugins/skills/commands and just want to add something? Jump straight to
