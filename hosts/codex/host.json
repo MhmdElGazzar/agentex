@@ -1,6 +1,6 @@
 {
   "label": "OpenAI Codex",
-  "description": "Branch `codex`, for Codex CLI / app plugins. Codex plugins carry skills only: commands become skills, agent definitions move to references/agents/ and are dispatched as native subagents, the plugin root becomes a placeholder (Codex expands it for hooks only), and the manifest moves to .codex-plugin/plugin.json. Codex has no structured ask tool outside Plan mode, and its sandbox blocks network by default; the preamble covers both.",
+  "description": "Branch `codex`, for Codex CLI / app plugins. Codex plugins carry skills only: commands become user-invoked skills (agents/openai.yaml policy; mentions rewritten to `$agentex:<skill>`), agent definitions move to references/agents/ and are dispatched as native subagents, the plugin root becomes a placeholder (Codex expands it for hooks only), and the manifest moves to .codex-plugin/plugin.json. Codex has no structured ask tool outside Plan mode, and its sandbox blocks network by default; the preamble covers both.",
   "target": {
     "branch": "codex"
   },
@@ -11,7 +11,16 @@
   ],
   "transforms": [
     [
-      "commandsToSkills"
+      "commandsToSkills",
+      {
+        "policyFile": true
+      }
+    ],
+    [
+      "invocations",
+      {
+        "prefix": "$agentex:"
+      }
     ],
     [
       "moveAgents",
@@ -55,7 +64,10 @@
           "license",
           "keywords"
         ],
-        "removeSource": true
+        "removeSource": true,
+        "fields": {
+          "skills": "./skills/"
+        }
       }
     ]
   ],

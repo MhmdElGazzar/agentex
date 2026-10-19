@@ -1,6 +1,6 @@
 {
   "label": "Devin",
-  "description": "Branch `devin`, for Devin Desktop / Devin CLI (formerly Windsurf). Devin installs Claude-layout plugins as-is, but documents neither plugin commands/ nor ${CLAUDE_PLUGIN_ROOT} in skill text, so commands become skills and the root becomes a placeholder. The devin-marketplace pins a sha, hence `tag`.",
+  "description": "Branch `devin`, for Devin Desktop / Devin CLI (formerly Windsurf). Devin installs Claude-layout plugins as-is, but documents neither plugin commands/ nor ${CLAUDE_PLUGIN_ROOT} in skill text, so commands become skills (mentions rewritten to `/agentex:<skill>`, Devin's plugin-skill syntax) and the root becomes a placeholder. The devin-marketplace pins a sha, hence `tag`.",
   "target": {
     "branch": "devin"
   },
@@ -12,6 +12,12 @@
   "transforms": [
     [
       "commandsToSkills"
+    ],
+    [
+      "invocations",
+      {
+        "prefix": "/agentex:"
+      }
     ],
     [
       "pluginRoot",

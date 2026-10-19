@@ -28,8 +28,9 @@ function setText(file, content) {
 }
 
 // ---- path patterns ------------------------------------------------------------------
-// A pattern without `*` matches that exact path or anything below it (`evals` matches
-// `evals/a/b.md`). With `*`: `*` stays inside one segment, `**/` spans any depth.
+// A pattern matches a path or anything below it (`evals` matches `evals/a/b.md`,
+// `skills/*/scripts/golden` matches `skills/x/scripts/golden/a.json`). `*` stays inside
+// one segment, `**/` spans any depth.
 function patternToRegExp(pattern) {
   const p = pattern.replace(/\/+$/, '');
   if (!p.includes('*')) {
@@ -43,7 +44,7 @@ function patternToRegExp(pattern) {
     else if (p[i] === '*') re += '[^/]*';
     else re += p[i].replace(/[.+?^${}()|[\]\\]/g, '\\$&');
   }
-  return new RegExp(`^${re}$`);
+  return new RegExp(`^${re}(?:/.*)?$`);
 }
 function matcher(patterns) {
   const res = (patterns || []).map(patternToRegExp);
@@ -111,12 +112,16 @@ function manifest(files, params) {
 
 // `${CLAUDE_PLUGIN_ROOT}` is expanded by Claude Code only. mode "placeholder" swaps it
 // for `<agentex-root>` — a literal the shell cannot silently expand to an empty string —
-// and the `preamble` transform tells the model what it stands for.
+// and the `preamble` transform tells the model what it stands for. Only instruction
+// text is rewritten (`paths`, default every .md file): code that reads the variable is
+// left alone, and the forbiddenText guard catches it if it ever ships to a host that
+// doesn't set it.
 function pluginRoot(files, params) {
   if ((params.mode || 'placeholder') === 'keep') return;
   const token = params.token || ROOT_TOKEN;
-  for (const file of files.values()) {
-    if (!isText(file)) continue;
+  const inScope = matcher(params.paths || ['**/*.md']);
+  for (const [p, file] of files) {
+    if (!inScope(p) || !isText(file)) continue;
     const t = text(file);
     if (t.includes(CLAUDE_ROOT)) setText(file, t.split(CLAUDE_ROOT).join(token));
   }
@@ -124,8 +129,12 @@ function pluginRoot(files, params) {
 
 // Slash commands become skills: commands/<n>.md → skills/<n>/SKILL.md, or
 // skills/<n>-command/ when a skill of that name exists. `$ARGUMENTS` (substituted by
-// Claude Code only) becomes a plain reference to what the user typed.
-function commandsToSkills(files) {
+// Claude Code only) becomes a plain reference to what the user typed. The new skills
+// are user-invoked only: `disable-model-invocation` in the frontmatter, plus — with
+// `policyFile` — the agents/openai.yaml policy Codex reads instead. The old→new names
+// are left in ctx.commands for the `invocations` transform.
+function commandsToSkills(files, params = {}, ctx = {}) {
+  ctx.commands = ctx.commands || {};
   const commands = [...files.keys()].filter((p) => /^commands\/[^/]+\.md$/.test(p)).sort();
   for (const p of commands) {
     const base = p.slice('commands/'.length, -'.md'.length);
@@ -137,8 +146,8 @@ function commandsToSkills(files) {
       throw new Error(`commandsToSkills: cannot place ${p}: skills/${base}/ and skills/${name}/ both exist`);
     }
     const newBody = body
-      .replace(/`\$ARGUMENTS`/g, 'the arguments')
-      .replace(/\$ARGUMENTS/g, "(the arguments the user typed after the command's name)");
+      .replace(/`\$ARGUMENTS`/g, 'the argument text')
+      .replace(/\$ARGUMENTS/g, "(the argument text the user typed after the command's name)");
     const head = renderFrontmatter({
       name,
       description: data.description,
@@ -147,6 +156,33 @@ function commandsToSkills(files) {
     });
     files.delete(p);
     files.set(`skills/${name}/SKILL.md`, makeFile(head + newBody));
+    if (params.policyFile) {
+      files.set(`skills/${name}/agents/openai.yaml`, makeFile('policy:\n  allow_implicit_invocation: false\n'));
+    }
+    ctx.commands[base] = name;
+  }
+}
+
+// Point every `/<command>` mention at the skill the command became, in the host's own
+// invocation syntax: params.prefix, e.g. "$agentex:" (Codex) → `$agentex:ask-kb-command`.
+// A mention counts only where a slash command can start (line start, whitespace, a
+// quote, a bracket or a backtick) and ends at the name, so paths such as
+// `commands/init-test.md` and URLs are never touched. CHANGELOG.md keeps its history.
+function invocations(files, params, ctx) {
+  if (!params.prefix) throw new Error('invocations: prefix is required');
+  const map = Object.entries(ctx.commands || {});
+  if (!map.length) return;
+  const inScope = matcher(params.paths || ['**/*.md']);
+  const skip = matcher(params.skip || ['CHANGELOG.md']);
+  for (const [p, file] of files) {
+    if (!inScope(p) || skip(p) || !isText(file)) continue;
+    let t = text(file);
+    const before = t;
+    for (const [base, name] of map) {
+      const re = new RegExp(`(^|[\\s(\\[\`"'])/${base.replace(/[-]/g, '\\-')}(?![\\w-])`, 'gm');
+      t = t.replace(re, `$1${params.prefix}${name}`);
+    }
+    if (t !== before) setText(file, t);
   }
 }
 
@@ -188,7 +224,7 @@ function preamble(files, params, ctx) {
   }
 }
 
-const TRANSFORMS = { manifest, pluginRoot, commandsToSkills, moveAgents, askUser, preamble };
+const TRANSFORMS = { manifest, pluginRoot, commandsToSkills, invocations, moveAgents, askUser, preamble };
 
 function applyTransforms(files, list, ctx) {
   for (const entry of list || []) {

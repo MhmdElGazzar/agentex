@@ -47,6 +47,7 @@ const DEMO_HOST = {
   exclude: ['skills/legacy'],
   transforms: [
     ['commandsToSkills'],
+    ['invocations', { prefix: '/demo:' }],
     ['pluginRoot', { mode: 'placeholder' }],
     ['preamble', { text: '> On {host}, root is `{root}`.' }],
     ['manifest', { target: '.demo-plugin/plugin.json', pick: ['name', 'version'], removeSource: true }],
@@ -70,6 +71,7 @@ function pluginRepo() {
   write(dir, 'skills/run-it/SKILL.md', '---\nname: run-it\ndescription: Runs it.\n---\nnode ${CLAUDE_PLUGIN_ROOT}/skills/run-it/scripts/run.js\n');
   write(dir, 'skills/run-it/scripts/run.js', '// x\n');
   write(dir, 'skills/run-it/scripts/run.test.js');
+  write(dir, 'skills/run-it/scripts/golden/case1.json', '{}\n');
   write(dir, 'skills/legacy/scripts/old.js');
   write(dir, 'commands/go.md', '---\ndescription: Go. Usage: /go\n---\nGo with $ARGUMENTS\n');
   write(dir, 'scripts/hosts/build_host.js');
@@ -93,7 +95,7 @@ function runCli(cwd, args) {
 const CLAUDE_KEPT = ['.claude-plugin/plugin.json', 'README.md', 'commands/go.md',
   'skills/legacy/scripts/old.js', 'skills/run-it/SKILL.md', 'skills/run-it/scripts/run.js'];
 
-test('claude host: main minus evals, tests, .github, .gitattributes, hosts/ and scripts/hosts', () => {
+test('claude host: main minus evals, tests and golden fixtures, .github, .gitattributes, hosts/ and scripts/hosts', () => {
   const dir = pluginRepo();
   const res = buildHostCommit({ cwd: dir, source: 'main', host: 'claude' });
   assert.strictEqual(res.ok, true, JSON.stringify(res.findings));
@@ -116,7 +118,7 @@ test('transform host: commands become skills, the root is rewritten, preamble an
     'skills/go/SKILL.md', 'skills/run-it/SKILL.md', 'skills/run-it/scripts/run.js']);
   assert.strictEqual(git(dir, 'show', `${res.commit}:skills/run-it/SKILL.md`),
     '---\nname: run-it\ndescription: Runs it.\n---\n\n> On Demo Host, root is `../..`.\n\nnode <agentex-root>/skills/run-it/scripts/run.js');
-  assert.match(git(dir, 'show', `${res.commit}:skills/go/SKILL.md`), /^---\nname: go\n[\s\S]*Go with \(the arguments/);
+  assert.match(git(dir, 'show', `${res.commit}:skills/go/SKILL.md`), /^---\nname: go\ndescription: "Go\. Usage: \/demo:go"[\s\S]*Go with \(the argument text/);
   assert.deepStrictEqual(JSON.parse(git(dir, 'show', `${res.commit}:.demo-plugin/plugin.json`)), { name: 'agentex', version: '1.0.0' });
   assert.strictEqual(git(dir, 'show', `${res.commit}:DEMO.md`), 'demo only');
 });
@@ -160,40 +162,114 @@ test('no change on main → no new commit; a change → one commit on top of the
   assert.strictEqual(git(dir, 'rev-parse', `${next.commit}^`), first.commit, 'parent is the target head');
 });
 
-test('CLI --push creates the branch and the version tag once, then only fast-forwards', () => {
+function setVersion(dir, version) {
+  write(dir, '.claude-plugin/plugin.json', `{"name":"agentex","version":"${version}","description":"d"}\n`);
+  commitAll(dir, `release ${version}`);
+}
+
+test('CLI --push: the version a branch starts at is never tagged; each new version is tagged once', () => {
   const dir = pluginRepo();
   const bare = bareRemote(dir);
   const r1 = runCli(dir, ['--host', 'demo', '--push', 'origin']);
   assert.strictEqual(r1.code, 0, r1.stdout);
-  assert.deepStrictEqual([r1.out.pushed, r1.out.tagged], [true, 'demo-v1.0.0']);
-  assert.strictEqual(git(bare, 'rev-parse', 'demo-v1.0.0'), git(bare, 'rev-parse', 'demo'));
+  assert.deepStrictEqual([r1.out.pushed, r1.out.tagged], [true, null], 'unreleased 1.0.0 content is not tagged');
 
   git(dir, 'fetch', '-q', 'origin');
   const r2 = runCli(dir, ['--host', 'demo', '--push', 'origin']);
   assert.deepStrictEqual([r2.out.changed, r2.out.pushed, r2.out.tagged], [false, false, null]);
 
+  setVersion(dir, '1.1.0');
+  git(dir, 'fetch', '-q', 'origin');
+  const r3 = runCli(dir, ['--host', 'demo', '--push', 'origin']);
+  assert.deepStrictEqual([r3.out.pushed, r3.out.tagged], [true, 'demo-v1.1.0']);
+  assert.strictEqual(git(bare, 'rev-parse', 'demo-v1.1.0'), git(bare, 'rev-parse', 'demo'));
+  assert.strictEqual(git(bare, 'rev-parse', 'demo^'), r1.out.commit, 'fast-forward on top of the first build');
+
   write(dir, 'README.md', 'new\n');
   commitAll(dir, 'readme');
-  const r3 = runCli(dir, ['--host', 'demo', '--push', 'origin']);
-  assert.deepStrictEqual([r3.out.pushed, r3.out.tagged], [true, null], 'same version: no second tag');
-  assert.strictEqual(git(bare, 'rev-parse', 'demo^'), r1.out.commit, 'fast-forward on top of the first build');
+  git(dir, 'fetch', '-q', 'origin');
+  const r4 = runCli(dir, ['--host', 'demo', '--push', 'origin']);
+  assert.deepStrictEqual([r4.out.pushed, r4.out.tagged], [true, null], 'same version: no second tag');
+  assert.strictEqual(git(bare, 'rev-parse', 'demo-v1.1.0'), r3.out.commit, 'the tag stays on the release build');
 });
 
-test('a target moved by hand makes the push fail instead of being overwritten', () => {
+test('a tag whose push was missed is made by the next build of the same version', () => {
   const dir = pluginRepo();
   const bare = bareRemote(dir);
-  assert.strictEqual(runCli(dir, ['--host', 'claude', '--push', 'origin']).code, 0);
+  runCli(dir, ['--host', 'demo', '--push', 'origin']);
+  setVersion(dir, '1.1.0');
   git(dir, 'fetch', '-q', 'origin');
+  runCli(dir, ['--host', 'demo', '--push', 'origin']);
+  git(bare, 'tag', '-d', 'demo-v1.1.0');            // the tag push "failed"
+  write(dir, 'README.md', 'later\n');
+  commitAll(dir, 'later');
+  git(dir, 'fetch', '-q', 'origin');
+  assert.strictEqual(runCli(dir, ['--host', 'demo', '--push', 'origin']).out.tagged, 'demo-v1.1.0');
+});
+
+function handEdit(bare) {
   const other = tmp('agentex-host-other-');
   git(other, 'clone', '-q', '-b', 'store', bare, '.');
   write(other, 'hand-edit.md');
   commitAll(other, 'hand edit');
   git(other, 'push', '-q');
+}
+
+test('a hand edit on the target is refused, not overwritten — with a current ref, as in CI', () => {
+  const dir = pluginRepo();
+  const bare = bareRemote(dir);
+  assert.strictEqual(runCli(dir, ['--host', 'claude', '--push', 'origin']).code, 0);
+  handEdit(bare);
   write(dir, 'README.md', 'new\n');
   commitAll(dir, 'readme');
+  git(dir, 'fetch', '-q', 'origin');                 // CI's checkout refreshes origin/store
   const r = runCli(dir, ['--host', 'claude', '--push', 'origin']);
   assert.strictEqual(r.code, 2);
+  assert.match(r.out.reason, /was not made by the builder/);
   assert.ok(git(bare, 'ls-tree', '--name-only', 'store').includes('hand-edit.md'), 'hand edit survives');
+});
+
+test('a hand edit with a stale local ref still fails at the push', () => {
+  const dir = pluginRepo();
+  const bare = bareRemote(dir);
+  runCli(dir, ['--host', 'claude', '--push', 'origin']);
+  git(dir, 'fetch', '-q', 'origin');
+  handEdit(bare);
+  write(dir, 'README.md', 'new\n');
+  commitAll(dir, 'readme');
+  assert.strictEqual(runCli(dir, ['--host', 'claude', '--push', 'origin']).code, 2);
+  assert.ok(git(bare, 'ls-tree', '--name-only', 'store').includes('hand-edit.md'));
+});
+
+test('an older source (a re-run, or another ref) is refused instead of rolling the branch back', () => {
+  const dir = pluginRepo();
+  const bare = bareRemote(dir);
+  write(dir, 'README.md', 'v2\n');
+  commitAll(dir, 'v2');
+  runCli(dir, ['--host', 'claude', '--push', 'origin']);
+  git(dir, 'fetch', '-q', 'origin');
+  const r = runCli(dir, ['--host', 'claude', '--source', 'main~1', '--push', 'origin']);
+  assert.strictEqual(r.code, 2);
+  assert.match(r.out.reason, /is not newer than/);
+  assert.strictEqual(git(bare, 'show', 'store:README.md'), 'v2');
+  git(dir, 'checkout', '-q', '-b', 'side', 'main~1');
+  write(dir, 'side.md');
+  commitAll(dir, 'side branch');
+  assert.match(runCli(dir, ['--host', 'claude', '--push', 'origin']).out.reason, /is not newer than/, 'a diverged ref');
+  assert.strictEqual(runCli(dir, ['--host', 'claude', '--source', 'main', '--push', 'origin']).code, 0, 'rebuilding the same source is fine');
+});
+
+test('the legacy store sync commit is accepted as a builder-made parent', () => {
+  const dir = pluginRepo();
+  const src = git(dir, 'rev-parse', 'main');
+  const tree = git(dir, 'rev-parse', 'main^{tree}');
+  const legacy = git(dir, 'commit-tree', tree, '-m', `store: sync from main ${src.slice(0, 7)}\n\nmain's tree minus development-only paths.\nSource: ${src}`);
+  git(dir, 'branch', 'store', legacy);
+  write(dir, 'README.md', 'new\n');
+  commitAll(dir, 'readme');
+  const res = buildHostCommit({ cwd: dir, source: 'main', host: 'claude', parent: 'store' });
+  assert.strictEqual(res.changed, true);
+  assert.strictEqual(git(dir, 'rev-parse', `${res.commit}^`), legacy);
 });
 
 test('publish:false builds and guards but never pushes', () => {
@@ -215,6 +291,7 @@ test('--list prints the built paths after the JSON line', () => {
 
 test('unknown host, unknown ref, bad arguments → exit 2 with a reason', () => {
   const dir = pluginRepo();
+  assert.match(runCli(dir, ['--host', 'claude', '--push', '--list']).out.reason, /unexpected argument: --push --list/);
   assert.match(runCli(dir, ['--host', 'nope']).out.reason, /unknown host "nope"/);
   assert.strictEqual(runCli(dir, ['--host', 'claude', '--source', 'nope']).code, 2);
   assert.strictEqual(runCli(dir, ['--bogus', 'x']).code, 2);
@@ -266,6 +343,8 @@ test('this repo, devin: commands became skills (clashes get -command), agents ke
   }
   assert.ok(b.has('agents/qa-executor.md'));
   assert.match(b.read('skills/test-design/SKILL.md'), /`ask_user_question` call/);
+  assert.match(b.read('skills/ask-kb-command/SKILL.md'), /\/agentex:ask-kb-command/);
+  assert.ok(!/(^|\s)\/ask-kb\b/m.test(b.read('skills/ask-kb-command/SKILL.md')), 'no bare /ask-kb left');
 });
 
 test('this repo, codex: skills-only plugin, agents moved to references/agents, own manifest', () => {
@@ -277,6 +356,13 @@ test('this repo, codex: skills-only plugin, agents moved to references/agents, o
   assert.strictEqual(manifest.version, JSON.parse(git(REPO, 'show', 'HEAD:.claude-plugin/plugin.json')).version);
   assert.ok(!('$schema' in manifest));
   assert.match(b.read('skills/execute-test/SKILL.md'), /^---\nname: execute-test\n[\s\S]*disable-model-invocation: true[\s\S]*references\/agents\/<name>\.md/);
+  assert.strictEqual(manifest.skills, './skills/');
+  for (const s of ['execute-test', 'init-test', 'update-agentex', 'ask-kb-command']) {
+    assert.strictEqual(b.read(`skills/${s}/agents/openai.yaml`), 'policy:\n  allow_implicit_invocation: false\n', s);
+  }
+  assert.ok(!b.has('skills/ask-kb/agents/openai.yaml'), 'real skills stay implicitly invocable');
+  assert.match(b.read('skills/ask-kb-command/SKILL.md'), /\$agentex:ask-kb-command/);
+  assert.ok(!b.paths.some((p) => /\/golden\//.test(p)), 'golden fixtures never ship');
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

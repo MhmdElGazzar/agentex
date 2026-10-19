@@ -19,9 +19,11 @@ the differences:
 - **`${CLAUDE_PLUGIN_ROOT}`**: on hosts that don't expand it in skill text, it becomes
   `<agentex-root>`. A short note under each skill's frontmatter tells the model what that
   stands for.
-- **Commands**: Devin and Codex get them as skills (`commands/x.md` →
+- **Commands**: Devin and Codex get them as user-invoked skills (`commands/x.md` →
   `skills/x/SKILL.md`). When a skill of the same name already exists, the command becomes
-  `skills/x-command/`.
+  `skills/x-command/`. Every `/x` mention in instruction text becomes that host's syntax:
+  `/agentex:x` on Devin, `$agentex:x` on Codex. On Codex an `agents/openai.yaml` beside each
+  one stops Codex from starting it on its own.
 - **Agents**: Codex plugins can't ship agents, so they move to `references/agents/`, and the
   note tells Codex to spawn them as native subagents.
 - **`AskUserQuestion`** is renamed to each host's ask tool.
@@ -47,16 +49,26 @@ node scripts/hosts/build_host.js --host codex --list   # see exactly what a host
 `scripts/hosts/build_host.js --host <name>` reads `hosts/<name>/host.json` from the commit it
 builds, then:
 
-1. Exports the tree and drops what no host ships: `evals/`, `*.test.js`, `.github/`,
-   `.gitattributes`, `hosts/`, `scripts/hosts/`. Then it drops the host's own `exclude` list.
-   The non-Claude hosts also drop `docs/contributing/`, because it documents `main` and the
-   converters would rewrite its Claude examples.
+1. Exports the tree and drops what no host ships: `evals/`, `*.test.js`, test golden
+   fixtures (`skills/*/scripts/golden/`), `.github/`, `.gitattributes`, `hosts/`,
+   `scripts/hosts/`. Then it drops the host's own `exclude` list. The non-Claude hosts also
+   drop `docs/contributing/`, because it documents `main` and the converters would rewrite its
+   Claude examples, and `skills/browser-testing/`, a deprecated CI forwarder with no
+   `SKILL.md` that their stores reject.
 2. Runs the host's `transforms`, in order (`scripts/hosts/transforms.js`).
 3. Copies `hosts/<name>/overlay/` on top, for files only that host gets.
 4. Runs the host's `guards` (`scripts/hosts/guards.js`). Any finding fails the build.
 5. Commits on top of the branch's current head, so the branch only fast-forwards. An
-   unchanged tree makes no commit.
-6. With `tag` set, the first build of each plugin version also pushes `<host>-v<version>`.
+   unchanged tree makes no commit. It refuses, and pushes nothing, when that head wasn't
+   made by the builder (a hand edit is never silently overwritten), or when the source is
+   older than the one the head was built from (a re-run of an old workflow run never rolls
+   the branch back). The workflow itself runs only for `main`.
+6. With `tag` set, the first build of a **new** plugin version also pushes
+   `<host>-v<version>`. Stores that pin a tag or sha (Copilot, Devin) need one. The version a
+   branch was created at is never tagged, because it wasn't released there.
+
+A refused build exits 2 with the reason in its JSON line. To recover from a hand edit, move
+the branch back to its last generated commit and make the change on `main` instead.
 
 Everything happens in git objects and a temporary index. Your working tree is never touched.
 

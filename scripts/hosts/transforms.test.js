@@ -39,6 +39,7 @@ test('patterns: * stays in one segment, **/ spans any depth', () => {
   assert.ok(!m('skills/x/scripts/run.js'));
   assert.ok(m('skills/x/SKILL.md'));
   assert.ok(!m('skills/x/refs/SKILL.md'));
+  assert.ok(T.matcher(['skills/*/scripts/golden'])('skills/x/scripts/golden/ado/a.json'), 'a star pattern covers what is below it');
 });
 
 test('frontmatter: plain, quoted and folded values; body kept intact', () => {
@@ -88,6 +89,15 @@ test('pluginRoot: placeholder replaces every occurrence in text files; keep is a
   assert.deepStrictEqual([...files.get('img.png').buf], [0x89, 0, 0x24, 0x7b]);
 });
 
+test('pluginRoot: only instruction text (.md by default) is rewritten, never code', () => {
+  const files = tree({ 'a.md': '${CLAUDE_PLUGIN_ROOT}/x', 'run.js': 'process.env.X || `${CLAUDE_PLUGIN_ROOT}`' });
+  T.TRANSFORMS.pluginRoot(files, {});
+  assert.strictEqual(read(files, 'a.md'), '<agentex-root>/x');
+  assert.strictEqual(read(files, 'run.js'), 'process.env.X || `${CLAUDE_PLUGIN_ROOT}`');
+  T.TRANSFORMS.pluginRoot(files, { paths: ['**/*.js'] });
+  assert.ok(read(files, 'run.js').includes('<agentex-root>'));
+});
+
 test('pluginRoot: an untouched file keeps its source blob id', () => {
   const files = new Map([['a.md', { mode: '100644', sha: 'abc', buf: Buffer.from('plain') }]]);
   T.TRANSFORMS.pluginRoot(files, {});
@@ -104,9 +114,34 @@ test('commandsToSkills: a command becomes a user-only skill; a name clash gets -
   assert.ok(![...files.keys()].some((k) => k.startsWith('commands/')), 'commands/ emptied');
   const run = T.parseFrontmatter(read(files, 'skills/run-it/SKILL.md'));
   assert.deepStrictEqual(run.data, { name: 'run-it', description: 'Run it. Usage: /run-it <x>', 'argument-hint': '<x>', 'disable-model-invocation': 'true' });
-  assert.strictEqual(run.body, "Scope: (the arguments the user typed after the command's name)\nIf the arguments is empty, ask.\n");
+  assert.strictEqual(run.body, "Scope: (the argument text the user typed after the command's name)\nIf the argument text is empty, ask.\n");
   assert.strictEqual(T.parseFrontmatter(read(files, 'skills/ask-kb-command/SKILL.md')).data.name, 'ask-kb-command');
   assert.ok(files.has('skills/ask-kb/SKILL.md'), 'the original skill is untouched');
+});
+
+test('commandsToSkills: policyFile adds the Codex policy; ctx records old→new names', () => {
+  const files = tree({ 'commands/go.md': '---\ndescription: Go\n---\nx\n', 'skills/go/SKILL.md': '---\nname: go\ndescription: d\n---\n' });
+  const ctx = {};
+  T.TRANSFORMS.commandsToSkills(files, { policyFile: true }, ctx);
+  assert.strictEqual(read(files, 'skills/go-command/agents/openai.yaml'), 'policy:\n  allow_implicit_invocation: false\n');
+  assert.ok(!files.has('skills/go/agents/openai.yaml'), 'the real skill gets no policy file');
+  assert.deepStrictEqual(ctx.commands, { go: 'go-command' });
+});
+
+test('invocations: /<command> mentions become the host syntax; paths, URLs, longer names and CHANGELOG untouched', () => {
+  const files = tree({
+    'skills/a/SKILL.md': 'Run /init-test, (/ask-kb) or `/ask-kb x`.\n/init-test first.\nNot commands/init-test.md, https://h/init-test or /init-tests.',
+    'CHANGELOG.md': 'added /init-test',
+    'run.js': '"/init-test"',
+  });
+  const ctx = { commands: { 'init-test': 'init-test', 'ask-kb': 'ask-kb-command' } };
+  T.TRANSFORMS.invocations(files, { prefix: '$agentex:' }, ctx);
+  assert.strictEqual(read(files, 'skills/a/SKILL.md'),
+    'Run $agentex:init-test, ($agentex:ask-kb-command) or `$agentex:ask-kb-command x`.\n$agentex:init-test first.\n'
+    + 'Not commands/init-test.md, https://h/init-test or /init-tests.');
+  assert.strictEqual(read(files, 'CHANGELOG.md'), 'added /init-test');
+  assert.strictEqual(read(files, 'run.js'), '"/init-test"');
+  assert.throws(() => T.TRANSFORMS.invocations(files, {}, ctx), /prefix is required/);
 });
 
 test('commandsToSkills: a command with no description fails the build', () => {

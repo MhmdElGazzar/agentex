@@ -8,24 +8,28 @@ All notable changes to AgenTeX are documented here.
   written the Claude Code way; `.github/workflows/hosts.yml` rebuilds a branch per host on
   every push to `main`, driven by `hosts/<host>/host.json` and `scripts/hosts/build_host.js`:
   - **`store`** (Claude plugin directory): `main` minus development-only paths (`evals/`,
-    `*.test.js`, `.github/`, `.gitattributes`, `hosts/`, `scripts/hosts/`) — 287 files, under
-    the directory's 512-file review limit, and no root `.gitattributes`, whose eol rewriting
-    stops directory validation. `main` keeps its LF pinning and evals.
+    `*.test.js`, test golden fixtures, `.github/`, `.gitattributes`, `hosts/`,
+    `scripts/hosts/`), which keeps it under the directory's 512-file review limit and free of
+    a root `.gitattributes`, whose eol rewriting stops directory validation. `main` keeps its
+    LF pinning and evals.
   - **`copilot`** (GitHub Copilot CLI and VS Code), **`devin`** (Devin, formerly Windsurf) and
     **`codex`** (OpenAI Codex): converted from the Claude layout — `${CLAUDE_PLUGIN_ROOT}`
     becomes an `<agentex-root>` placeholder explained under each skill's frontmatter, commands
-    become skills where the host has no plugin commands, agent definitions move to
-    `references/agents/` on Codex, and `AskUserQuestion` is renamed to each host's ask tool.
-    Not yet certified on the live hosts or submitted to their stores.
+    become user-invoked skills where the host has no plugin commands (with `/command` mentions
+    rewritten to the host's syntax), agent definitions move to `references/agents/` on Codex,
+    and `AskUserQuestion` is renamed to each host's ask tool. Not yet certified on the live
+    hosts or submitted to their stores.
 
   Every build runs the host's guards first (skill manifests and the 1024-character
   description limit, leftover Claude-only text, banned paths, file limits, the manifest) and
-  publishes nothing when one fails. Builds only fast-forward their branch, make no commit
-  when nothing changed, and tag `<host>-v<version>` for stores that pin a tag or sha. How to
-  write `main` so every host builds: `docs/contributing/host-branches.md`. Covered by
-  `scripts/hosts/{transforms,guards,build_host}.test.js`, including a check that every host
-  builds cleanly from the repo's HEAD. Thanks to @mabdel130, whose PR #30 surfaced the
-  `.gitattributes` validation failure.
+  publishes nothing when one fails. Builds only fast-forward their branch and make no commit
+  when nothing changed; they refuse a branch head the builder didn't make (a hand edit is
+  never overwritten) and a source older than the last build's (no rollback from a re-run).
+  The first build of a new plugin version tags `<host>-v<version>` for stores that pin a tag
+  or sha. How to write `main` so every host builds: `docs/contributing/host-branches.md`.
+  Covered by `scripts/hosts/{transforms,guards,build_host}.test.js`, including a check that
+  every host builds cleanly from the repo's HEAD. Thanks to @mabdel130, whose PR #30 surfaced
+  the `.gitattributes` validation failure.
 - **`endpoint-testing` skill** — standalone API test run over cataloged endpoints ("api-tests"),
   independent of any browser test spec (the "Standalone API tests" row flips from planned to
   available). New `integration/api_test_suites/**/*_suite.json` case files reference a sibling
