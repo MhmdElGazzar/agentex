@@ -256,8 +256,11 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
 // and is treated as the user's, always.
 //
 // HISTORICAL_SAMPLE_ENV_SHAPES holds every shipped revision of
-// templates/environments/* from the plugin's git history (currently one: the
-// qa.json shipped from 0.11.0 through 0.16.x, byte-equal to today's qc.json).
+// templates/environments/* from the plugin's git history. Currently two:
+//   1. the qa.json shipped from 0.11.0 through 0.16.x (structurally equal to
+//      today's qc.json again — kept so the next template change still knows it);
+//   2. the same sample plus a placeholder `mobile` block, shipped on main after
+//      PR #24 (2026-10-09) until the mobile block became opt-in.
 // When the template changes, append the outgoing shape here — pre-change
 // projects still carry it.
 const HISTORICAL_SAMPLE_ENV_SHAPES = [
@@ -273,6 +276,23 @@ const HISTORICAL_SAMPLE_ENV_SHAPES = [
       password: { envSecret: 'SQLCMDPASSWORD' },
     },
     api: { baseUrl: 'https://jsonplaceholder.typicode.com', token: { envSecret: 'API_TOKEN' } },
+  },
+  {
+    portalUrl: 'https://example.com',
+    defaults: { otp: '0000', password: 'Test@1234' },
+    users: {
+      valid_user: { phone: '0550000001', role: 'customer' },
+      expired_user: { phone: '0550000002', notes: 'for negative login scenarios' },
+    },
+    db: {
+      server: 'localhost', port: 1433, name: 'my-database', user: 'qa_user',
+      password: { envSecret: 'SQLCMDPASSWORD' },
+    },
+    api: { baseUrl: 'https://jsonplaceholder.typicode.com', token: { envSecret: 'API_TOKEN' } },
+    mobile: {
+      platformName: 'Android', automationName: 'UiAutomator2',
+      app: '/absolute/path/to/app.apk', deviceName: 'emulator-5554',
+    },
   },
 ];
 

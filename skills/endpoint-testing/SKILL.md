@@ -52,21 +52,36 @@ same reasoning as dispatching `qa-executor` for browser sessions). It makes one 
 
 ```
 node "<agentex-root>/skills/endpoint-testing/scripts/run_suite.js" \
-  --catalog ./integration --suites ./integration/api_test_suites --run-dir <RUN_DIR>
+  --catalog ./integration --suites ./integration/api_test_suites [--env <name>] \
+  --run-dir <RUN_DIR>
 ```
 
-Every case in every suite file runs every time — there's no scope/tag selection.
+A case with no `expect` is BLOCKED ("case has no expect") — a case that asserts nothing never
+PASSes.
+
+Every case in every suite file runs every time — there's no scope/tag selection — except a
+case carrying `"skip": "<reason>"`, which is never executed and is reported BLOCKED with that
+reason quoted. `swagger-import` writes `skip` on every generated write-method case.
+
+- **`--env <name>`** picks the environment for the whole run: it is passed to every case's
+  `run_api.js` call (omitted = the project's `defaultEnvironment`; an unknown name comes back
+  BLOCKED per case, listing the environments that exist). It selects the `api` block used by
+  the catalogs that follow the environment (api-integration's "Where the target comes from");
+  a `swagger-import`ed catalog keeps its own base URL and auth either way. Dispatch `api-executor` with `ENVIRONMENT` set to the user's environment
+  (`""` when none was named); it adds `--env` to its `run_suite.js` call only when non-empty.
 
 ## Safety rules (also enforced by the runner)
 
 - Catalog+suite-only, same as `api-integration`: never compose a request that isn't defined.
 - Secrets stay in env — suite files hold only params/expectations, never token values.
 - Write-method cases (POST/PUT/DELETE) run if cataloged — be deliberate about which write
-  operations you add cases for, since every case under `integration/api_test_suites/` runs
-  every time.
+  operations you add cases for, since every case under `integration/api_test_suites/` without a
+  `skip` runs every time. Generated write cases arrive disabled (`skip`); a generated case's
+  `review` notes are informational, so a reviewed-but-unedited case runs only if it is a GET.
 
 ## Evidence
 
-One log per case under `<RUN_DIR>/logs/<case-name>.log`, plus a final `result.md` written by
+One log per case under `<RUN_DIR>/logs/<suiteBase>__<index>-<case-name>.log` (unique even when
+case names repeat), plus a final `result.md` written by
 `api-executor` summarizing PASS/FAIL/BLOCKED counts and any failures in the project's
 standard defect format.

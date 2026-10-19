@@ -112,7 +112,7 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
 ### Reason-code vocabulary
 
 `usage` · `preflight-tools` · `preflight-target` · `preflight-environment` ·
-`preflight-secrets` · `preflight-browser` · `preflight-plugin-version` · `needs-user` ·
+`preflight-secrets` · `preflight-browser` · `preflight-plugin-version` · `preflight-driver` · `needs-user` ·
 `interaction-required` · `captcha-or-otp` · `blocked-scenarios` · `view-mismatch` ·
 `incomplete` · `timeout` · `no-verdict` · `session-error` · `unstable` · `ci-mode`
 
@@ -152,7 +152,7 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
 
 ## CI preflight
 
-Every attempt starts with `ci_preflight.js` — six gating checks, one JSON line, exit 0
+Every attempt starts with `ci_preflight.js` — seven gating checks, one JSON line, exit 0
 or exit 2 with named reasons (unlike the interactive `preflight.js`, which is
 informational):
 
@@ -164,6 +164,7 @@ informational):
 | Secrets present **by name** — every `{ "envSecret": "NAME" }` referenced by the active environment, `config/project.json`, and `integration/` catalogs resolves; missing NAMES are listed, values never appear | `preflight-secrets` |
 | A Playwright browser binary is installed | `preflight-browser` |
 | Plugin manifest readable; plugin↔project version drift is *reported*, not gate-closing | `preflight-plugin-version` |
+| No spec in scope declares `Drivers: mobile` — mobile specs run via `/agentex:execute-mobile-test`, never in a browser; never retried | `preflight-driver` |
 
 ## The `ci` config block
 

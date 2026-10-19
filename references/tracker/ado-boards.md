@@ -86,10 +86,12 @@ children scan that cannot complete also blocks — fail closed, never create bli
   most identities don't have. To handle a duplicate/mistaken Test Case, ask the user to delete
   it from the Azure DevOps portal — never retitle, tag, or otherwise write to it as a cleanup.
 
-## Estimation flow (/agentex:estimate-story)
+## Estimation flow (/agentex:estimate-story, /agentex:estimate-sprint)
 
 The Azure DevOps side of the `task-estimation` skill. The skill body holds the methodology
-and the one-gate workflow; these are the ADO mechanics and the ADO-specific rules on top.
+and the one-gate workflow; the task set, each task's hour range and the rating factors come
+from the project's `config/estimation.json`. These are the ADO mechanics and the
+ADO-specific rules on top.
 
 **Configuration.** Resolved from the `azure` block of `config/project.json`, with legacy
 `AZURE_*` keys in `.env` as the fallback. Never bake an organization, project, team, or
@@ -119,3 +121,27 @@ A `--team` or corrected value is for the run only — never rewrite the user's c
 - `--current-sprint` reads the team's `@CurrentIteration` (the WIQL above). No team in
   `--team` / `azure.team` / `AZURE_TEAM` → exit 2 naming exactly those keys; ask the user in
   the bundled round rather than guessing, then pass `--team "<name>"` for the run.
+
+**First-run history read** — only while the project has no `config/estimation.json`
+(`create-tasks.js estimation --out <file> [--sprints N]`); once the file exists, no run reads
+past sprints:
+
+- **Team**: the same resolution as the current sprint (`--team` → `azure.team` →
+  `AZURE_TEAM`). None → exit 2 naming those keys, with zero requests; it joins the bundled
+  round.
+- **Closed sprints**: ONE GET of the team's iterations
+  (`{project}/{team}/_apis/work/teamsettings/iterations`), kept where `timeFrame` is `past`,
+  newest finish date first, the last N (default 2). Fewer past iterations than N → the ones
+  that exist; the screen says how many were read.
+- **Stories**: one WIQL for User Stories whose `System.IterationPath` is one of those
+  iterations — a story counts in the iteration it sits in now — and their titles through
+  `wit/workitemsbatch`.
+- **Their tasks**: a WIQL on `[System.Parent] IN (…)` per 200 stories, then
+  `wit/workitemsbatch` asking for exactly `System.Id`, `System.Title`, `System.Parent` and
+  `Microsoft.VSTS.Scheduling.OriginalEstimate`. Completed and remaining work are never
+  requested, and hours are never parsed from any text. Typical cost: five requests.
+- Only `[Testing]` children count. A task without an Original Estimate is skipped and
+  counted, never replaced.
+- **No usable history** → labelled starter defaults, with the reason: `no-closed-sprints`
+  (the team has no past iteration), `no-testing-tasks` (those sprints hold no `[Testing]`
+  task), or `no-estimates` (none of those `[Testing]` tasks has an Original Estimate).

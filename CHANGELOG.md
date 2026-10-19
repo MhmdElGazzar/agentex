@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.24.0] — 2026-10-19
 ### Added
 - **One plugin branch per host, generated from `main`.** `main` stays the only source,
   written the Claude Code way; `.github/workflows/hosts.yml` rebuilds a branch per host on
@@ -17,8 +17,10 @@ All notable changes to AgenTeX are documented here.
     becomes an `<agentex-root>` placeholder explained under each skill's frontmatter, commands
     become user-invoked skills where the host has no plugin commands (with `/command` mentions
     rewritten to the host's syntax), agent definitions move to `references/agents/` on Codex,
-    and `ask_user_question` call is renamed to each host's ask tool. Not yet certified on the live
-    hosts or submitted to their stores.
+    and `ask_user_question` call is renamed to each host's ask tool. The `copilot` and `codex`
+    branches are their own marketplaces, so testers install them straight from this repo
+    (`docs/contributing/host-branches.md`). Not yet certified on the live hosts or submitted
+    to their stores.
 
   Every build runs the host's guards first (skill manifests and the 1024-character
   description limit, leftover Claude-only text, banned paths, file limits, the manifest) and
@@ -35,10 +37,13 @@ All notable changes to AgenTeX are documented here.
   available). New `integration/api_test_suites/**/*_suite.json` case files reference a sibling
   `*_api.json` catalog's entries by name and supply the concrete params/expected result a
   standalone run needs — one entry can have multiple cases (happy path, not-found, …). Every
-  case in every suite file runs every time — there's no scope/tag selection.
+  enabled case in every suite file runs every time — there's no scope/tag selection. A case
+  carrying `"skip": "<reason>"` is reported BLOCKED with that reason and never sent, and a case
+  with no `expect` is BLOCKED rather than passed on whatever status comes back.
 - `run_suite.js` — deterministic runner that shells out to `api-integration`'s `run_api.js`
   per case (never duplicates its catalog/auth/assertion logic), aggregating one
-  PASS/FAIL/BLOCKED summary.
+  PASS/FAIL/BLOCKED summary. `--env <name>` is passed to every call, and per-case logs are
+  named `<suite>__<n>-<case>.log` so two cases never share one.
 - `agents/api-executor.md` — subagent (sibling to `qa-executor`) that runs the full set of
   api-tests in one call and returns a consolidated defect report, keeping per-case logs out of
   the orchestrator's context.
@@ -49,44 +54,79 @@ All notable changes to AgenTeX are documented here.
   `.../<service>_suite.json`, from a Swagger 2.0 / OpenAPI 3.x JSON document (local file,
   URL, or a SwaggerHub-hosted spec via the Swagger MCP connector), via `import_swagger.js`
   and the `/import-swagger <source> [--name <service>]` command. Picks one supported auth
-  scheme per catalog file (`bearer` > `apiKey` header > `basic`), flags unsupported schemes
-  (oauth2/openIdConnect) and every generated best-effort value (param examples, request
-  bodies, "not found" placeholders) for manual review instead of guessing silently. Never
-  overwrites an existing catalog/suite file. JSON-only input (no YAML parser); Postman import
+  scheme per catalog file (`bearer` > `apiKey` header > `basic`, whatever the declaration
+  order), flags unsupported schemes (oauth2/openIdConnect) and every generated best-effort
+  value (inferred params, request bodies, an invented `200`, dropped non-JSON bodies, "not
+  found" placeholders) for manual review — in a `review` array on each generated request and
+  case, not only on stdout. Generated write cases (anything but GET/HEAD) are written disabled
+  with a `skip` line, so an import never sends a DELETE/PUT/POST/PATCH until a person enables
+  it. Env-var names carry the service prefix (`PET_STORE_BASE_URL`, …; a service named `api`
+  gets `API_SERVICE_`), never the project's own `API_`, and secrets go in the project's `.env`.
+  Duplicate operation names get `-2`, `-3`; a spec URL that answers non-2xx is BLOCKED.
+  Internal `$ref`s resolve recursively (external and circular ones are flagged), request
+  bodies are built as real nested objects, a relative `servers[].url` resolves against the
+  fetched origin, enum params take their first value and date formats an ISO placeholder —
+  verified against the live Petstore v2 and v3 demos. Never overwrites an existing
+  catalog/suite file. JSON-only input (no YAML parser); Postman import
   and response-schema/contract validation are explicitly out of scope.
 - `run_api.js`: catalog lookup is recursive under `--catalog` (default `./integration`), so
   both hand-written flat catalogs and `swagger-import`'s nested
   `integration/api_test_suites/<service>/` catalogs resolve by their internal `"name"`
-  regardless of location. Also two small additive extensions needed for imported entries to
-  work against real specs — `auth.type: "apiKey"` (custom header auth) and a query-string
-  fallback for any declared param not consumed by a `{name}` path placeholder (previously
-  silently dropped). Backward compatible; existing catalogs are unaffected.
-
+  regardless of location; two catalogs sharing one `"name"` are BLOCKED with both files
+  listed, and `node_modules/` and dot-directories are skipped. Two additive extensions for
+  imported entries: `auth.type: "apiKey"` (custom header auth) and an optional `query: [...]`
+  list naming the params sent as query string. A declared param used nowhere in the path or
+  body falls back to the query string (previously silently dropped); a param used in the body
+  stays out of the URL. The active environment's `api` block (base URL and token) now applies,
+  for a catalog without a `target`, only when its `baseUrl` is absent or exactly
+  `${API_BASE_URL}` — a catalog that declares its own host keeps its own host and auth, so an
+  imported service never receives the project's token. A `baseUrl` such as
+  `${API_BASE_URL}/v2` now resolves itself instead of being replaced by the environment's base
+  URL, which used to drop the `/v2`.
 - **Mobile testing** — a new `mobile-testing` skill automates native Android/iOS apps through
   a real [Appium](https://appium.io/docs/en/latest/) session, mirroring the existing
-  browser-testing flow: sequential (human-in-the-loop) or parallel (autonomous, one
+  test-execution flow: sequential (human-in-the-loop) or parallel (autonomous, one
   `mobile-qa-executor` subagent per spec file, per device/emulator).
 - `/execute-mobile-test` command, `agents/mobile-qa-executor.md` subagent, and bundled starter
-  specs in `test/mobile-suite1/`.
+  specs in `test/mobile-suite1/`. The specs declare `Drivers: mobile`; `/execute-test` and the
+  CI gate BLOCK a mobile spec ("mobile specs run via /execute-mobile-test") instead of running
+  it in a browser. Every session sets `appium:noReset: true`, so a run never wipes app data; a
+  reset needs explicit approval.
 - Two ways to drive an Appium session, documented in
   `skills/mobile-testing/references/`: raw W3C WebDriver REST via `curl`
   (`appium-server-cli.md`, no extra dependency) or the bundled `webdriverio`-based
   `scripts/appium_client.js` wrapper (`appium-client-wrapper.md`, requires the project's own
-  `webdriverio` devDependency).
+  `webdriverio` devDependency). Typed secrets come from `send-keys --text-env NAME`
+  (environment, then `.env`) and never reach stdout; an unreachable server or dead session is
+  BLOCKED as infrastructure, not FAIL.
 - `skills/mobile-testing/scripts/preflight.js` / `init_run.js` / `merge_run.js` — the same
-  deterministic orchestration pattern as `browser-testing`'s scripts, adapted for
+  deterministic orchestration pattern as `test-execution`'s scripts, adapted for
   `mobile-sessions/`.
 - Optional `mobile` block in `environments/<env>.json` (`platformName`, `automationName`,
   `app`/`appPackage`+`appActivity`/`bundleId`, `deviceName`, `platformVersion`, `udid`) —
-  additive, browser-only projects are unaffected. Documented in `docs/configuration.md`.
+  opt-in (the scaffolded `qc.json` carries none), browser-only projects are unaffected.
+  Documented in `docs/configuration.md`.
 - `docs/mobile-testing.md` and `docs/contributing/adding-a-capability.md` — the latter is a new
   contributing guide for additions bigger than one skill (its own subagent/command/docs page),
   using this mobile-testing addition as the worked example.
-- `settings.example.json` — `appium` and read-only `adb`/`xcrun simctl` commands pre-approved;
-  destructive device actions (`adb uninstall`, `adb reboot`, `xcrun simctl erase`, …) prompt
-  instead, matching the existing `az` destructive-action pattern. The same boundary is stated
+- `settings.example.json` — `appium` version/server/driver-list and read-only `adb`/`xcrun
+  simctl` commands pre-approved; `appium driver|plugin install`, `xcrun simctl spawn`,
+  `adb logcat -c` and destructive device actions (`adb uninstall`, `adb reboot`,
+  `xcrun simctl erase`, …) prompt instead, matching the existing `az` destructive-action pattern. The same boundary is stated
   explicitly in `skills/mobile-testing/SKILL.md` and `agents/mobile-qa-executor.md` — a run's
   device footprint never goes beyond installing/launching/exercising/closing the app under test.
+
+- **Configurable task estimation.** `config/estimation.json` (committed, user-owned) defines the
+  `[Testing]` tasks (names, count, order, min/max hours, enabled) and the rating factors. The
+  first estimation run proposes it from the Original Estimates of the team's last 2 closed
+  sprints (ADO and Jira), asks about abnormal values on the same approval screen, and writes it
+  only on approval and never over an existing file. With no usable history, labelled starter
+  defaults (about 3–5 h per story). Hours = a 0–4 factor rating score placed within each task's
+  range. An invalid file stops the run naming the problem. Covered by
+  `scripts/lib/estimation_config.test.js`, `skills/task-estimation/scripts/estimation/*.test.js`,
+  `create-tasks.estimation.test.js`, adapter, conformance and upgrade-path tests, and four new
+  `discipline-estimation-*` evals.
+- `/estimate-sprint` command.
 
 ### Changed
 - **`test-design`'s description is under 1024 characters** (it was 1122). The Agent Skills
@@ -102,7 +142,8 @@ All notable changes to AgenTeX are documented here.
   Both files, and the text the copy adds, are what the one approval lists and uploads, on
   Azure DevOps and Jira alike; `create-bug.js` is unchanged. Without playwright-cli, or when a box is still off after
   two fixes, the raw screenshot is attached and the consolidated screen says why —
-  annotation never blocks a filing or adds a question. Covered by
+  annotation never blocks a filing or adds a question. A box that overhangs the image edge is
+  clipped to its visible part, and one wholly outside is refused. Covered by
   `skills/bug-report-azure/scripts/annotate-image.test.js`.
 - **The extent report opens with the run's verdict.** On a `schemaVersion: 2` run summary,
   `make_html_report.js` now renders a PASSED / FAILED / BLOCKED banner computed by the CI
@@ -116,7 +157,21 @@ All notable changes to AgenTeX are documented here.
   cards, and print styles switch to a light palette with every card expanded. The legacy
   (no `schemaVersion`) output is byte-identical, and the release-gate name→pill window is
   untouched. Covered by six new cases in `make_html_report.test.js`.
+- `/estimate-story` and the task-estimation skill use the file; the fixed five-task template and
+  the Simple/Medium/Heavy hours table are gone.
+- **A hand-written API catalog on its own base-URL variable no longer follows the environment.**
+  Through 0.23.0 the active environment's `api` block replaced every catalog's base URL and
+  auth; a catalog with no `target` whose `baseUrl` uses a variable other than `${API_BASE_URL}`
+  now calls that URL with its own `auth`. Add `"target": "environment"` to keep the old routing.
+
 ### Fixed
+- **An empty secret in `.env` no longer reads as the next line.** The shared `.env` reader
+  (`scripts/lib/project_config.js`) and `ask-kb`'s copy matched `KEY=` across a line break,
+  so an empty `API_TOKEN=` returned the following line — often another secret — and a step
+  that should have been BLOCKED sent it as auth. `.env` is now parsed one line at a time
+  (`export` prefixes, quotes and CRLF line endings handled), and an empty value reads as
+  unset. The wizard updates `export KEY=` and indented lines in place, and the release
+  gate's wizard check uses the same parser.
 - **`api:` steps read catalog secrets from `.env`.** `run_api.js` resolved a catalog's own
   env-var names (`${API_BASE_URL}` in `baseUrl`, `auth.tokenEnv`, `auth.userEnv` /
   `passEnv`) from the shell environment only, so a token kept in `.env`, the documented home
@@ -125,6 +180,35 @@ All notable changes to AgenTeX are documented here.
   The curl fallback in `references/api-requests.md` loads `.env` the same way. Covered by
   three new cases in `run_api.test.js`. Thanks to @MarwahZain, whose PR #9 flagged the
   inconsistent `API_TOKEN` handling (closed with credit, not merged).
+- **An imported API catalog calls its own service.** `run_api.js` let the active environment's
+  `api` block win over every catalog, its token replacing any catalog auth as
+  `Authorization: Bearer` — right for the project's own hand-written catalogs, wrong for one
+  `swagger-import` generated for a different service, whose `${<NAME>_BASE_URL}` and
+  `apiKey`/`basic`/`bearer` auth were silently replaced. Found twice: by the 2026-10-10
+  post-merge review of the API-suites contribution, and live in the release gate, where a
+  wizard-configured project's `/import-swagger` petstore → `/test-endpoints` run went 0/3, every
+  case a 404 from the project's API host, and a plain `/init-test` project sent the same calls
+  to the sample environment's host after demanding its `API_TOKEN`. One rule now decides, an
+  explicit `target` first: `"catalog"` uses the catalog's own `baseUrl` refs (environment, then
+  `.env`) and its own `auth`, and the environment's `api` block is ignored for it — base URL and
+  token both; `"environment"` uses the environment's `api` block whatever the `baseUrl` says —
+  the override for a hand-written catalog whose base URL is another variable but should still
+  follow `--env`; with no `target`, the environment applies only to a `baseUrl` that is
+  absent/empty or exactly `${API_BASE_URL}`, and any other keeps its own base URL and auth. Any
+  other `target` value is `BLOCKED` (exit 2) naming the catalog, the field and the allowed
+  values, before a single request; an unknown `--env`, or an unset ref in a catalog's own base
+  URL, stays `BLOCKED` with no fallback to the environment's host. `import_swagger.js` writes
+  `"target": "catalog"` into every catalog it generates, and the gate's three cases pass 3/3
+  with the environment untouched. `run_suite.js` also called `run_api.js` without `--env`, so a
+  suite could never pick a named environment; `/test-endpoints --env <name>` now reaches every
+  case through `api-executor`'s new optional `ENVIRONMENT` input (empty → no flag, the default
+  environment as before). And `swagger-import` told users to export tokens "in your shell,
+  never in `.env`", the opposite of the project's rule and of the root `.env.example` — its
+  `SKILL.md`, `swagger-mapping.md`, `/import-swagger`, endpoint-testing's `suite-format.md` and
+  the `envVarsToSet` placeholders (`<set in .env>`) now keep every value in `.env`. Covered by
+  fifteen target cases in `run_api.test.js` (the four-way rule matrix, an unknown `--env` in
+  every cell, catalog `apiKey`/`bearer`/`basic` auth, unset refs, an unknown `target`), two in
+  `import_swagger.test.js` and four `--env` cases in `run_suite.test.js`.
 - **The Azure DevOps PAT is scrubbed from every tracker error.** A provider, proxy or network
   layer that echoes request material back could carry the token into a `TrackerError`, and
   from there into a script's JSON output. The ADO adapter now replaces it in every form it
@@ -148,6 +232,11 @@ All notable changes to AgenTeX are documented here.
   the execute run's own check; a screenshot replaced between the approved dry run and
   `--execute` is still re-checked structurally, not re-reviewed. Covered in
   `create-bug.test.js`, `ado.test.js` and `jira.test.js`.
+- **The codex branch builds with the listing icon in place.** `.claude-plugin/icon.png` (#31)
+  landed in a folder the codex host forbids (its manifest moves to `.codex-plugin/`), so every
+  codex build failed its `forbiddenPaths` guard and `build_host.test.js` went red on `main`.
+  `hosts/codex/host.json` now excludes the icon; the other hosts keep it.
+
 ### Credits
 - The multi-host direction, and the host knowledge behind the Copilot and Codex branches
   (entry points, native subagent coordination, a certification checklist), came from
@@ -160,6 +249,11 @@ All notable changes to AgenTeX are documented here.
   renderer and lacked flaky / warning / view-mismatch statuses, timing, evidence and defects,
   so the ideas were rebuilt inside `make_html_report.js` instead. Closed with credit, not
   merged.
+- Standalone API suites and Swagger/OpenAPI import were contributed by @MarwahZain in
+  community **PR #10** (merged via #25), mobile testing through Appium by @mabdel130 in
+  **PR #15** (merged via #24), and annotated bug screenshots by @MahmoudElSharkawy in
+  **PR #20**. Post-merge review hardened all three before release; the changes are folded
+  into the entries above.
 - The ADO error-path PAT scrub, the work-item ID and `azure.org` checks and the attachment
   byte custody were harvested from community **PR #27** by @MohamedAbdella and rebuilt in
   house style. The ID check was narrowed to requests actually sent, because the PR's version
@@ -167,27 +261,6 @@ All notable changes to AgenTeX are documented here.
   ledger, approved-plan digest, update lock and migrate preflight, strict version stamps,
   `scaffold.js`/`init.js` changes and host-neutral execution-result contract were not
   adopted (regressions found in review, or no caller yet). Closed with credit, not merged.
-- `import_swagger.js`: found while testing against a live public OpenAPI spec — relative
-  `servers[].url` values (e.g. `"/api/v3"`, common in real specs) were used literally instead
-  of being resolved against the spec's own host; now resolved when the spec was fetched from
-  a URL (flagged for manual review when imported from a local file, since there's no origin
-  to resolve against). Also: enum-typed params now use the first enum value instead of a
-  generic placeholder (e.g. a `status` param picks its first valid value), and array-typed
-  params are explicitly flagged in `review` — a single representative value is generated, not
-  full OpenAPI array-serialization (`style`/`explode`), which remains a known limitation.
-- `import_swagger.js`: found running the generated Petstore suite against a live server —
-  internal `$ref` pointers (`components.schemas` / `definitions`) were never resolved, so any
-  field defined via `$ref` (in practice, almost every non-trivial field in a real spec)
-  silently degraded to the generic `'example'` placeholder, and every request body — always a
-  `$ref` to a reusable schema in practice — became the literal string `"example"` instead of
-  an object. The server rejected these outright (`400 unable to convert input to <Model>`).
-  Now: `$ref`s resolve recursively (including nested and chained refs), external refs and
-  circular chains are left unresolved/flagged instead of guessed, request bodies build real
-  nested arrays/objects instead of flattening them to a scalar, and `date`/`date-time` string
-  formats get a real ISO-8601 placeholder instead of `'example'`. Verified against the live
-  Petstore demo: all 6 previously-400ing write endpoints now pass body validation (any
-  remaining failures are the shared public demo server's own instability, confirmed
-  independently on read-only endpoints too).
 
 ## [0.23.0] — 2026-10-09
 ### Added

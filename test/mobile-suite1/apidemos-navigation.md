@@ -3,6 +3,7 @@
 App under test: `io.appium.android.apis` (ApiDemos-debug.apk — the official Appium sample app,
 downloadable from the Appium project; a good target for a first smoke run)
 Type: navigation — read-only, stateful chain
+Drivers: mobile
 
 ## Acceptance criteria
 - The home screen lists the API Demos categories (Accessibility, Animation, App, Content,

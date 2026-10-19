@@ -252,9 +252,56 @@ async function validate(adapter, spec, args, cwd) {
   };
 }
 
+// ── the first-run history read (no config/estimation.json yet) ─────────────
+// The team's last `count` past iterations (the team setting, like the current
+// sprint), their User Stories, and those stories' [Testing] tasks with the
+// Original Estimate only. Zero writes.
+async function pastTestingTasks(adapter, args, { count }) {
+  const team = (typeof args.team === 'string' && args.team.trim()) || adapter.config.team;
+  const r = await adapter.listPastSprints({ team: team || null, count });
+  if (!r.ok) {
+    if (r.condition === 'team-required') {
+      return {
+        stop: {
+          code: 2,
+          out: {
+            ok: false, mode: 'estimation',
+            error: {
+              message: 'No team resolved — the first-run history read lists the TEAM\'s past iterations, not just the project\'s. ' +
+                'Pass --team "<name>" for this run, or set azure.team in config/project.json (legacy AZURE_TEAM in .env).',
+            },
+          },
+        },
+      };
+    }
+    throw new Error(`unexpected history-read condition '${r.condition}' from the ADO adapter`);
+  }
+  const read = await adapter.listChildEstimates({ sprints: r.sprints, storyType: STORY_TYPE });
+  const points = rules.historyPoints(read);
+  const estimated = points.filter((p) => p.hours !== null).length;
+  const reason = rules.historyReason({ sprintCount: r.sprints.length, testingCount: points.length, estimatedCount: estimated });
+  const names = r.sprints.map((sp) => sp.name).join(', ');
+  const reasonMessage = {
+    'no-closed-sprints': `the team "${team}" has no past iteration yet, so there is no closed sprint to read`,
+    'no-testing-tasks': `the last ${r.sprints.length} closed sprint(s) (${names}) hold no [Testing] task under a ${STORY_TYPE}`,
+    'no-estimates': `none of the ${points.length} [Testing] task(s) in those sprints (${names}) has an Original Estimate`,
+  }[reason] || null;
+  return {
+    history: {
+      sprintsRequested: count,
+      sprints: r.sprints.map((sp) => ({ id: sp.id, name: sp.name })),
+      storiesRead: read.stories.length,
+      points,
+      truncated: Boolean(read.truncated),
+      reason,
+      reasonMessage,
+    },
+  };
+}
+
 module.exports = {
   provider: 'ado',
-  parseIds, openStoriesRead, currentSprint, readStory, testingChildren, storyRow, validate,
+  parseIds, openStoriesRead, currentSprint, readStory, testingChildren, storyRow, validate, pastTestingTasks,
   // compat (re-exported by create-tasks.js)
   PARENT_LINK, currentIterationWiql,
 };
