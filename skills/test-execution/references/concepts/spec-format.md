@@ -23,3 +23,5 @@ A spec is one markdown file under `test/<suite>/`. Conventions: `<agentex-root>/
 4. An unreadable spec resolves to `browser`, the strictest checks.
 
 An API-only spec therefore declares `Drivers: api`: it needs no browser, no `Target:`, and no `portalUrl`.
+
+A native-app spec declares `Drivers: mobile`. Test-execution never runs it: it is BLOCKED with "mobile specs run via /execute-mobile-test", locally and in CI (`ci_preflight.js` → `preflight-driver`). It is never run in a browser.

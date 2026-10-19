@@ -51,7 +51,9 @@
 //        be exit 2, never 0 or 1.
 //  4. Retry ONLY a BLOCKED attempt (owner decision 8) — never exit 0/1, and
 //     never a BLOCKED whose only reason is `unstable` (Flake doctrine: retrying
-//     to clear instability is the silent-retry anti-pattern one level up).
+//     to clear instability is the silent-retry anti-pattern one level up), and
+//     never a BLOCKED carrying `preflight-driver` (a mobile spec in scope: no retry
+//     can change that).
 //     Fixed 30s pause between attempts (AGENTEX_CI_RETRY_DELAY_MS is a
 //     fixture-only test seam).
 //  5. Conclude: first non-BLOCKED attempt (or the last) is final. Write the
@@ -289,6 +291,10 @@ async function main() {
     const outcome = last.verdict ? last.verdict.verdict : 'BLOCKED';
     if (outcome !== 'BLOCKED') break; // exit 0/1 is never retried
     const codes = last.reasons.map((r) => r.code);
+    if (codes.includes('preflight-driver')) {
+      log('BLOCKED by preflight-driver (a spec this gate does not run, e.g. Drivers: mobile) — deterministic, never auto-retried');
+      break;
+    }
     if (codes.length > 0 && codes.every((c) => c === 'unstable')) {
       log('BLOCKED for `unstable` only — never auto-retried (Flake doctrine)');
       break;

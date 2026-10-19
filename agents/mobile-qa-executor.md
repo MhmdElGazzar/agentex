@@ -30,6 +30,10 @@ APPIUM SESSION
   agent's device or session. Build the W3C capabilities payload from MOBILE_CAPS (see
   `appium-server-cli.md`'s capability table) and write it to
   `{{SESSION_DIR}}/caps.json` before creating the session.
+- The caps payload ALWAYS includes `"appium:noReset": true`. Appium's default
+  (`noReset: false`) silently clears the app's data. NEVER set `"appium:fullReset": true` or
+  `"appium:noReset": false`: you cannot get the user's approval mid-run, so a spec or
+  MOBILE_CAPS that asks for a reset is BLOCKED (report it).
 - Drive the session using EITHER approach documented in the mobile-testing skill (read the
   relevant reference file before the first use in this session):
   - Raw WebDriver REST via `curl` — `<agentex-root>/skills/mobile-testing/references/appium-server-cli.md`.
@@ -37,6 +41,11 @@ APPIUM SESSION
     (requires `webdriverio` installed in WORKING_DIR) — mechanics in
     `<agentex-root>/skills/mobile-testing/references/appium-client-wrapper.md`.
   Pick whichever the project already uses; default to raw REST if neither is established.
+- SECRETS: type a password / OTP / token ONLY with the wrapper's
+  `send-keys --element <id> --text-env <NAME>` (NAME = the `envSecret` name from TEST_DATA,
+  read from the environment or `.env`). Never put a secret value on a command line — not in
+  `--text`, not in a `curl` body. If webdriverio is not installed, the secret step is
+  BLOCKED (report it); do not fall back to typing the value.
 - Re-fetch the page source / re-find elements after every navigation or app-state change —
   element ids are not stable across screens.
 
@@ -79,11 +88,18 @@ KB QUESTIONS (`kb:` in the spec)
 
 EXECUTION RULES
 - Execute the scenarios in the TEST SPECIFICATION in the order written.
+- Record ISO timestamps at each scenario's start and end — one line before and one after:
+  `node -e "console.log(new Date().toISOString())"` (or the shell's `date`). Report them as
+  recorded, never padded or normalized.
 - If the spec marks scenarios as a stateful chain, keep them strictly sequential in this one
   session; otherwise treat them as independent steps.
-- Skip auth-gated actions: no real signup / login / a real purchase. NEVER use real personal
-  data — use disposable values (e.g. qa.tester@example.com). Validation-only checks are
-  allowed.
+- Logging in is part of the job, not an exception to it: a spec step like "login as
+  valid_user" means log in with that TEST_DATA user (password: the user's own `password`, or
+  `defaults.password`; type it with `send-keys --text-env`, see SECRETS above). What is never
+  allowed is CREATING an account (signup), completing a payment or any other irreversible
+  transaction, and using real personal data — use disposable values (e.g.
+  qa.tester@example.com). An auth-gated step with no user defined for the active environment
+  is **BLOCKED**: report the missing handle, never improvise credentials.
 - Never read or print secrets.
 - Never run a destructive device command against your device/emulator (`adb uninstall`,
   `adb shell pm clear`, `adb reboot`, `adb root`, `xcrun simctl erase`, or similar) — your
@@ -94,13 +110,38 @@ EXECUTION RULES
 - Teardown: close the Appium session (`close-session` / `DELETE /session/<id>`) when finished,
   even on failure, so the device/emulator is released for the next run.
 
+WHEN A SCENARIO FAILS: DEFECT OR FLAKE
+- Default: ONE attempt per scenario. A scenario that passed is never re-run "to be sure".
+- Retry exactly one class of failure — the ones where the app never got to answer: the
+  wrapper's `BLOCKED` with `"infrastructure": true`, or the same symptom over raw REST
+  (connection refused/reset, timeout, `invalid session id`, the session or device went away
+  — `adb devices` / `xcrun simctl list devices booted` no longer lists it), and the
+  `api:` / `db:` runners' `request failed` / `sqlcmd returned an error`.
+- NEVER retry a failure where the app DID answer and the answer was wrong: a missing or wrong
+  element, wrong text, an app crash or ANR, a wrong API/DB result. That is a defect.
+- A retry is ONE retry, of that scenario only, from a fresh Appium session (relaunch the app,
+  redo the login if the state was lost). Never a second retry, never the whole spec.
+- Report by what the attempts showed:
+  - infra-fail, then pass → **FLAKY**. NOT a pass. Keep both attempts' evidence and quote the
+    attempt-1 symptom verbatim.
+  - fail, then the same app-behavior failure → **FAIL**, "reproduced on 2 of 2 attempts".
+  - infra-fail, then the same infra symptom → **BLOCKED**, symptom verbatim.
+  - app-behavior fail with no retry taken → **FAIL** (one attempt — say so).
+- FLAKY is an outcome you report, never one you resolve. In a stateful chain, a scenario that
+  ends FLAKY or BLOCKED leaves the rest of the chain **BLOCKED (upstream: <scenario>)**.
+
 OUTPUT (your final message only — it is consumed by the orchestrator, not a human):
 - A heading naming the test you ran and the device/platform used.
-- Per scenario: PASS / FAIL, observed vs expected, screenshot path, log notes.
+- Per scenario: PASS / FAIL / FLAKY / BLOCKED (reason verbatim), started/ended (the ISO
+  timestamps you recorded) and the duration, observed vs expected, screenshot path, log notes.
 - `kb:` steps are reported as an advisory note (the KB answer, or "not covered in the KB"),
   never as a scenario PASS / FAIL and never counted in the final pass/fail tally.
+- FLAKY ITEMS: every scenario that only passed on its one retry — the attempt-1 symptom
+  verbatim and both attempts' screenshot paths. Never restate one as a PASS.
 - A defect list, each: Title / Steps to reproduce / Expected vs Actual /
   Severity (Critical|High|Medium|Low) / Evidence.
 - BUG EVIDENCE: an explicit list of screenshot paths (under SESSION_DIR/screenshots/) that
   prove each defect, so the orchestrator can copy them into the run's bugs/ folder.
-- A final one-line tally: "<n> pass / <m> fail, <k> defects".
+- A final one-line tally: "<n> pass / <m> fail / <b> blocked, <k> defects" (append
+  ", <f> flaky" when any scenario only passed on a retry). A FLAKY or BLOCKED scenario is in
+  neither the pass nor the fail count.

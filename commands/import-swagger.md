@@ -31,9 +31,16 @@ node "<agentex-root>/skills/swagger-import/scripts/import_swagger.js" <source> [
 **On success:**
 - Tell the user exactly which files were written (`catalogPath`, `suitePath`) and how many
   operations/cases were generated.
-- Report `envVarsToSet` verbatim: the base URL value to put in `.env`, and any token/
-  credential env var names to export in their shell (never in `.env`).
+- Report `envVarsToSet` (and `envVarsNote`) verbatim: every listed name goes in the project's
+  `.env` — secrets (tokens, user/pass) live there, never in the catalog/suite files, never
+  printed back; `run_api.js` resolves catalog `${VAR}` names from the environment, then `.env`.
+  The base URL is not a secret and may instead be written as a literal `baseUrl` in the catalog.
+- The catalog carries `"target": "catalog"`, so it calls the imported service at its own base
+  URL with its own auth even when the active environment has an `api` block.
 - Report every `review` entry — these flag skipped params, generated request bodies,
   placeholder "not found" values, or unsupported auth schemes that need manual verification.
+  The same notes are written into the generated files (`review: [...]` per request/case).
+- Tell them every generated write-method case (POST/PUT/PATCH/DELETE) carries a `skip` line
+  and is reported BLOCKED, not run, until they review it and delete that line.
 - Tell them to review the generated files, then try `/test-endpoints` once the env
   vars are set.

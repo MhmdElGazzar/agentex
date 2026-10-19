@@ -68,5 +68,6 @@ Do these steps, then report what was created:
 Finish by telling the user to edit the sample specs in `./test/suite1/` to match their app,
 then run `/execute-test <url or scope>`. Also mention the Azure DevOps commands if they use
 ADO: `/design-test <story-ids>` (create linked test cases from a story's ACs) and
-`/estimate-story [ids]` (estimate QA effort + create [Testing] tasks) — both read the
+`/estimate-story [ids]` / `/estimate-sprint` (estimate QA effort + create [Testing] tasks;
+the first run proposes `config/estimation.json`) — all read the
 `azure` block in `config/project.json` (legacy `AZURE_*` keys in `.env` still work).

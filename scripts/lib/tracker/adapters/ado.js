@@ -42,6 +42,7 @@ const { TrackerError } = require('../errors.js');
 
 const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
+const BATCH_CHUNK = 200;             // wit/workitemsbatch accepts at most 200 ids per call
 const REDACTED_AUTH = '<Basic ***, not printed>';
 const REDACTED = '<redacted>'; // what scrub() leaves where a PAT form was
 
@@ -319,6 +320,15 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
   const webUrl = (id) => `${cfg.base}/${projSeg}/_workitems/edit/${id}`;
 
+  // Positive integer work-item ids, or an exit-2 refusal naming the op.
+  function intIds(ids, op) {
+    return [].concat(ids).map((id) => {
+      const n = Number(id);
+      if (!Number.isInteger(n) || n <= 0) throw configError(`${op} needs positive integer work-item ids (got ${JSON.stringify(id)})`);
+      return n;
+    });
+  }
+
   return {
     name: 'ado',
     cwd,
@@ -396,6 +406,38 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return (res && res.value) || [];
     },
 
+    // Batch read: POST wit/workitemsbatch, chunks of BATCH_CHUNK, errorPolicy
+    // 'omit'. The service may answer in any order, so INPUT order is restored.
+    //   { items: [raw work item…], missing: [id…] }
+    async getWorkItems(ids, { fields } = {}) {
+      const wanted = intIds(ids, 'getWorkItems');
+      const byId = new Map();
+      for (let i = 0; i < wanted.length; i += BATCH_CHUNK) {
+        const chunk = wanted.slice(i, i + BATCH_CHUNK);
+        const body = { ids: chunk, ...(fields && fields.length ? { fields: [...fields] } : {}), errorPolicy: 'omit' };
+        const res = await request('getWorkItems', 'POST', url('wit/workitemsbatch'), { body: JSON.stringify(body), contentType: 'application/json' });
+        for (const wi of (res && res.value) || []) if (wi && wi.id !== undefined && wi.id !== null) byId.set(Number(wi.id), wi);
+      }
+      return {
+        items: wanted.filter((id) => byId.has(id)).map((id) => byId.get(id)),
+        missing: wanted.filter((id) => !byId.has(id)),
+      };
+    },
+
+    // The team's iterations: ONE GET {project}/{team}/_apis/work/teamsettings/iterations,
+    // unfiltered — the docs support only $timeframe=current server-side, so
+    // callers filter on the returned timeFrame. No team → exit 2, ZERO requests.
+    //   [{ id, name, path, startDate, finishDate, timeFrame }]
+    async listIterations({ team } = {}) {
+      if (!team) throw configError('No team resolved — iterations are team settings. Pass --team "<name>" or set azure.team in config/project.json.');
+      const u = `${cfg.base}/${projSeg}/${encodeURIComponent(team)}/_apis/work/teamsettings/iterations?api-version=${encodeURIComponent(cfg.apiVersion)}`;
+      const res = await request('listIterations', 'GET', u);
+      return ((res && res.value) || []).map((it) => {
+        const a = it.attributes || {};
+        return { id: it.id, name: it.name, path: it.path || null, startDate: a.startDate || null, finishDate: a.finishDate || null, timeFrame: a.timeFrame || null };
+      });
+    },
+
     // ── NEUTRAL READS (additive, flow-free) ───────────────────────────────────
     // Provider-neutral shapes for consumer flows: no CLI text, no flow wording,
     // no story-type rule (the caller passes the type). Each issues exactly the
@@ -449,6 +491,72 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const res = await this.query(iterationWiql(cfg.project, team, storyType));
       const rows = Array.isArray(res) ? res : (res && res.workItems) || [];
       return { ok: true, sprint: null, refs: rows.map((w) => w.id).filter((id) => id !== undefined && id !== null) };
+    },
+
+    // PastSprints — the team's last `count` past iterations, newest first.
+    //   { ok: false, condition: 'team-required', data: {} } — no team, ZERO requests
+    //   { ok: true, sprints: [{ id, name, path, finishDate }], found } — ONE GET
+    //     (listIterations), kept where timeFrame is 'past', sorted by finishDate
+    //     desc (ties: startDate desc, then name), sliced to count; found = all past.
+    async listPastSprints({ team, count } = {}) {
+      if (!team) return { ok: false, condition: 'team-required', data: {} };
+      const t = (d) => (d ? Date.parse(d) || 0 : 0);
+      const past = (await this.listIterations({ team }))
+        .filter((it) => it.timeFrame === 'past')
+        .sort((a, b) => (t(b.finishDate) - t(a.finishDate)) || (t(b.startDate) - t(a.startDate)) ||
+          (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      return {
+        ok: true,
+        found: past.length,
+        sprints: past.slice(0, count).map((it) => ({ id: it.id, name: it.name, path: it.path, finishDate: it.finishDate })),
+      };
+    },
+
+    // ChildEstimates — the stories of type opts.storyType in those sprints and
+    // ALL their children with the Original Estimate (and nothing else that
+    // carries hours). ZERO requests when sprints is empty. Typical cost: the
+    // story WIQL, the story titles (workitemsbatch), one child WIQL per 200
+    // stories, the children (workitemsbatch).
+    //   { stories: [{ id, seq, title, url }],
+    //     children: [{ id, seq, title, parentId, hours: number > 0 | null }], truncated: false }
+    async listChildEstimates({ sprints = [], storyType } = {}) {
+      const none = { stories: [], children: [], truncated: false };
+      const paths = sprints.map((sp) => sp.path).filter(Boolean);
+      if (!paths.length) return none;
+      if (!storyType) throw new Error('listChildEstimates needs opts.storyType (the work item type that counts as a story)');
+      const rowsOf = (res) => (Array.isArray(res) ? res : (res && res.workItems) || []).map((w) => w.id).filter((id) => id !== undefined && id !== null);
+      const storyIds = rowsOf(await this.query(
+        `SELECT [System.Id] FROM workitems WHERE [System.TeamProject]='${wiqlEsc(cfg.project)}'` +
+        ` AND [System.WorkItemType]='${wiqlEsc(storyType)}'` +
+        ` AND [System.IterationPath] IN (${paths.map((pth) => `'${wiqlEsc(pth)}'`).join(', ')}) ORDER BY [System.Id]`));
+      if (!storyIds.length) return none;
+      const storyItems = (await this.getWorkItems(storyIds, { fields: ['System.Id', 'System.Title'] })).items;
+      const childIds = [];
+      for (let i = 0; i < storyIds.length; i += BATCH_CHUNK) {
+        const chunk = intIds(storyIds.slice(i, i + BATCH_CHUNK), 'listChildEstimates');
+        childIds.push(...rowsOf(await this.query(
+          `SELECT [System.Id] FROM workitems WHERE [System.TeamProject]='${wiqlEsc(cfg.project)}'` +
+          ` AND [System.Parent] IN (${chunk.join(', ')}) ORDER BY [System.Id]`)));
+      }
+      const childItems = childIds.length
+        ? (await this.getWorkItems(childIds, { fields: ['System.Id', 'System.Title', 'System.Parent', 'Microsoft.VSTS.Scheduling.OriginalEstimate'] })).items
+        : [];
+      const hoursOf = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null);
+      return {
+        stories: storyItems.map((w) => {
+          const f = w.fields || {};
+          return { id: w.id, seq: Number(w.id), title: f['System.Title'] || null, url: webUrl(w.id) };
+        }),
+        children: childItems.map((w) => {
+          const f = w.fields || {};
+          return {
+            id: w.id, seq: Number(w.id), title: f['System.Title'] || '',
+            parentId: f['System.Parent'] ?? null,
+            hours: hoursOf(f['Microsoft.VSTS.Scheduling.OriginalEstimate']),
+          };
+        }),
+        truncated: false,
+      };
     },
 
     // ── WRITES (each takes {execute}; execute:false returns the descriptor) ──
