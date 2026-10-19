@@ -1,0 +1,20 @@
+# AgenTeX Documentation
+
+Detailed docs for each capability. Start with the [project README](../README.md) for install and a
+quick tour.
+
+| Doc | What it covers |
+|-----|----------------|
+| [Using Claude Code](./using-claude-code.md) | New to Claude Code itself? Start here — typing requests, slash commands, approving actions. |
+| [Getting Started](./getting-started.md) | Install → browser driver → `$agentex:init-test` → permissions → first run. |
+| [Test Execution](./test-execution.md) | The core flow — sequential vs. parallel modes, writing specs (browser, API, DB steps), output layout. |
+| [Define Flow](./define-flow.md) | `$agentex:define-flow-command` — build a spec by doing it: each step executed live and asserted before the next is defined; also walks existing specs to clarify them. |
+| [Mobile Testing](./mobile-testing.md) | Native Android/iOS app testing via Appium — sequential vs. parallel modes, capabilities, writing specs. |
+| [API & DB Steps](./api-db-steps.md) | Catalog-only `api:` / `db:` steps inside test scenarios. |
+| [Ask the Knowledge Base](./ask-kb.md) | `kb:` steps and the `$agentex:ask-kb-command` command (advisory only). |
+| [Optimize Login](./optimize-login.md) | Pay a web app's login cost once per session instead of once per test. |
+| [Azure DevOps QA](./azure-devops.md) | `$agentex:estimate-story`, `$agentex:design-test`, `bug-report-azure` bug filing, and Azure resource access. |
+| [Jira QA](./jira.md) | The same tracker flows on Jira Cloud — setup, per-flow behavior, and the honest capability gaps. |
+| [Interactive HTML Report](./extent-report.md) | The standalone `extent-report.html` dashboard. |
+| [CI Quality Gate](./ci-quality-gate.md) | Invoke runs from your CI/CD pipeline: the `ci_gate.js` entry point, exit-code semantics (0/1/2), the public verdict JSON contract, pipeline templates, advisory vs blocking modes. |
+| [Configuration](./configuration.md) | Environment variables, permissions, and secret handling. |

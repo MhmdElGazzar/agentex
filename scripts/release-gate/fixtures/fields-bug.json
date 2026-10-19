@@ -1,0 +1,29 @@
+[
+  {
+    "referenceName": "System.Title",
+    "name": "Title",
+    "alwaysRequired": true
+  },
+  {
+    "referenceName": "Microsoft.VSTS.Common.Severity",
+    "name": "Severity",
+    "alwaysRequired": false,
+    "allowedValues": ["1 - Critical", "2 - High", "3 - Medium", "4 - Low"]
+  },
+  {
+    "referenceName": "Microsoft.VSTS.Common.Priority",
+    "name": "Priority",
+    "alwaysRequired": false,
+    "allowedValues": ["1", "2", "3", "4"]
+  },
+  {
+    "referenceName": "Microsoft.VSTS.TCM.ReproSteps",
+    "name": "Repro Steps",
+    "alwaysRequired": false
+  },
+  {
+    "referenceName": "System.AssignedTo",
+    "name": "Assigned To",
+    "alwaysRequired": false
+  }
+]

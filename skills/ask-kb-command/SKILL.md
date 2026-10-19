@@ -1,0 +1,45 @@
+---
+name: ask-kb-command
+description: "Ask the project's Knowledge Base a natural-language question via the KB Ask API and show the answer with its sources. Usage: $agentex:ask-kb-command <question>, or $agentex:ask-kb-command <project>: <question> to target a specific project."
+disable-model-invocation: true
+---
+
+> **AgenTeX on OpenAI Codex.** `<agentex-root>` stands for this plugin's install folder: `../..` from the folder this file is in. Resolve it to an absolute path before you run or read anything that uses it. When a step says to dispatch a bundled agent (`qa-executor`, `api-executor`, `mobile-qa-executor`), spawn a native subagent and give it the body of `<agentex-root>/references/agents/<name>.md` as its instructions, plus the values this file says to inject. Steps that reach the network (`curl`, `az`, `sqlcmd`, `playwright-cli` on a remote site, the tracker scripts) need network access: if the sandbox blocks one, ask the user to approve it; never skip the step or report it as passed.
+
+Answer the user's question from the project's Knowledge Base using the **ask-kb** skill's
+runner. This is a read-only lookup — the answer is advisory context, never a PASS/FAIL verdict.
+
+Question / arguments: (the argument text the user typed after the command's name)
+
+Do this:
+
+1. **Parse the arguments:**
+   - If they begin with `<project>:` (e.g. `acme-store: how does the checkout flow work?`), use that as
+     the project and the rest as the question.
+   - Otherwise the whole string is the question and the default project is resolved from
+     `config/project.json` (`kb.project`) → `.env` (`KB_PROJECT`) → `agentex.config.json` (`kb.project`).
+   - If the argument text is empty, ask the user what they want to ask the KB, then stop.
+
+2. **Run the bundled runner** (it reads `baseUrl` / `project` / `org` from `config/project.json`'s
+   `kb` block first, falling back to `KB_ASK_BASE_URL` / `KB_PROJECT` / `KB_ORG` in `.env`; the
+   API key always comes from `KB_ASK_API_KEY` in `.env`. Sends the `x-api-key` header when the
+   key is set, and never composes any other request). Create `./executions/ask-kb/` first if
+   missing:
+
+   ```
+   node <agentex-root>/skills/ask-kb/scripts/ask_kb.js \
+     --question "<question>" [--project <id>] --log ./executions/ask-kb/last.log
+   ```
+
+3. **Read the one-line JSON result and present it:**
+   - `OK` → render the `answer` as markdown, then list the `sources`. If `cached` is `true`,
+     note the answer came from cache.
+   - `NOT_COVERED` → tell the user it is not covered in the knowledge base. Do NOT invent an
+     answer.
+   - `BLOCKED` → report the `reason` verbatim and stop (do not retry). Common cases:
+     `KB_ASK_BASE_URL` not set → tell them to set `kb.baseUrl` in `config/project.json` or `KB_ASK_BASE_URL` in `.env`;
+     `404` unknown/empty project → the project has no KB on the server;
+     `401` → set/fix `KB_ASK_API_KEY` in `.env`.
+
+Never print or log the API key. For the full endpoint contract, see
+`<agentex-root>/skills/ask-kb/references/kb-ask-api.md`.
