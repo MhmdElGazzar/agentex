@@ -124,7 +124,9 @@ All notable changes to AgenTeX are documented here.
 - **Bug attachments upload exactly the bytes that passed the structural check.**
   `create-bug.js` read each screenshot twice, once to check it and once to upload it, so a
   file changed on disk in between reached the board unchecked. The check's buffer is now
-  handed to `uploadAttachment` (new `opts.bytes`, ADO and Jira) and sent verbatim. Covered in
+  handed to `uploadAttachment` (new `opts.bytes`, ADO and Jira) and sent verbatim. This binds
+  the execute run's own check; a screenshot replaced between the approved dry run and
+  `--execute` is still re-checked structurally, not re-reviewed. Covered in
   `create-bug.test.js`, `ado.test.js` and `jira.test.js`.
 ### Credits
 - The extent report's verdict banner, pass rate, "Issues only" filter, per-card step counts
