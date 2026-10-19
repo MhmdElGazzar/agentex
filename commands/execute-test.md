@@ -1,0 +1,47 @@
+---
+description: Execute tests against a target, optionally from a named suite folder (e.g. suite3/). Sequential (human-in-the-loop) by default; say "parallel" for an autonomous run.
+---
+
+> **AgenTeX on GitHub Copilot.** `<agentex-root>` stands for this plugin's install folder: `..` from the folder this file is in. Resolve it to an absolute path before you run or read anything that uses it. When a step says to dispatch a bundled agent (`qa-executor`, `api-executor`, `mobile-qa-executor`), start it as a subagent.
+
+Use the **test-execution** skill to test the target described below. It routes each spec step
+to its driver (browser, `api:`, `db:`, `kb:`, `ui-check:`); a spec with no browser steps runs
+without a browser.
+
+Target / scope: $ARGUMENTS
+
+**Suite folder (if named in the arguments):**
+- The arguments may name a suite folder, e.g. `suite3/`, `test/suite3/`, or "run suite3".
+  Resolve a bare name like `suite3/` to `./test/suite3/`. Run ONLY the spec files in that
+  folder (one `qa-executor` / session per file in parallel mode).
+- If the named suite folder doesn't exist yet, create it and seed it with a starter spec
+  copied from `<agentex-root>/test/suite1/`, tell the user to adapt it, then continue.
+- If no suite is named, use the specs the user points at, or default to `./test/suite1/`.
+
+**Environment (if named in the arguments):**
+- "on uat" / "env uat" selects `environments/uat.json` as the active environment;
+  otherwise the project's `defaultEnvironment` applies (legacy projects: `.env`).
+  An environment with no file is an error — list `environments/` and stop.
+
+**Before running:**
+- If the current project has no `test/` directory (or it has no spec files), scaffold a
+  starting point first — run the same steps as `/init-test` (copy the bundled samples from
+  `<agentex-root>/test/suite1/` into `./test/suite1/` and ensure `./executions/`
+  exists), tell the user they're editable examples, then continue.
+- If `test/` already has the user's own specs, skip the scaffold and use theirs.
+
+**CI mode (if the arguments contain the `ci` token):**
+- This is a headless pipeline run (normally spawned by the bundled `ci_gate.js` with
+  `AGENTEX_CI=1` set): use **parallel**-mode orchestration with ZERO user interaction —
+  no checkpoints, no questions, no tracker writes.
+- Read `<agentex-root>/skills/test-execution/references/procedures/ci-run.md` FIRST — it carries
+  the hard rules (NEEDS-USER → BLOCKED with the named question, captcha/OTP → BLOCKED,
+  always generate `extent-report.html`, and the deterministic `write_verdict.js` step at the end
+  of MERGE).
+- The scope token `all` means every spec file under `test/`.
+
+- If no mode is stated, use **sequential** mode (stop at each checkpoint for approval).
+- If the request says parallel / fast / regression / autonomous, use **parallel** mode and
+  dispatch one `qa-executor` subagent per test file.
+- When the run's drivers include browser, read `<agentex-root>/skills/browser-driver/SKILL.md`
+  before the first browser action.

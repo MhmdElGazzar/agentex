@@ -1,0 +1,455 @@
+#!/usr/bin/env node
+// AgenTeX Setup Wizard — Local HTTP Server (Phase 1: Plugin delivery)
+// Usage: node scripts/wizard/server.js [projectRoot] [--port=7373] [--no-open] [--lang=ar|en]
+// Serves the wizard UI on http://127.0.0.1:<port>/setup
+// Writes config/project.json + environments/<env>.json on save.
+// Zero external dependencies — Node.js built-ins only.
+
+'use strict';
+
+const http   = require('http');
+const crypto = require('crypto');
+const fs     = require('fs');
+const path   = require('path');
+const { execSync } = require('child_process');
+
+const { buildConfigs, validate, planSave, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
+const { isPristineSampleEnv } = require('../lib/scaffold.js');
+const { isDeepStrictEqual } = require('util');
+
+// ── CLI args ──────────────────────────────────────────────────────────────
+const args        = process.argv.slice(2);
+const projectRoot = path.resolve(args.find(a => !a.startsWith('--')) || process.cwd());
+const portArg     = args.find(a => a.startsWith('--port='));
+const PORT        = portArg ? parseInt(portArg.split('=')[1]) : 7373;
+const FORCE       = args.includes('--force');
+const NO_OPEN     = args.includes('--no-open');   // tests/agents: never launch a real browser
+// The wizard is bilingual and boots Arabic. --lang=en opens it in English for a
+// caller who already knows which language the user reads; an unrecognised value
+// is dropped rather than guessed at, and the in-page toggle overrides either way.
+const langArg     = args.find(a => a.startsWith('--lang='));
+const LANG        = ['ar', 'en'].includes(langArg?.split('=')[1]) ? langArg.split('=')[1] : '';
+const HOST        = '127.0.0.1';
+const BASE_URL    = `http://${HOST}:${PORT}`;
+const WIZARD_URL  = `${BASE_URL}/setup${LANG ? `?lang=${LANG}` : ''}`;
+
+// Per-run secret the served page carries; API calls must echo it back.
+const TOKEN       = crypto.randomBytes(24).toString('hex');
+
+const pluginRoot  = path.resolve(__dirname, '..', '..');
+const schemaPath  = path.join(__dirname, 'schema.json');
+const uiPath      = path.join(__dirname, 'ui.html');
+
+// Reject running inside the plugin itself
+if (!FORCE && projectRoot === pluginRoot) {
+  console.error('[setup-wizard] error: cannot run from the plugin root — run from your project');
+  process.exit(1);
+}
+
+// ── Schema ────────────────────────────────────────────────────────────────
+const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+
+// Shipped project template — a config/project.json still structurally equal to
+// it is scaffolding, not the user's configuration.
+const projectTemplate = safeReadJSON(path.join(pluginRoot, 'templates', 'config', 'project.json'));
+
+// ── Server ────────────────────────────────────────────────────────────────
+let server;
+
+server = http.createServer((req, res) => {
+  const url    = new URL(req.url, BASE_URL);
+  const method = req.method.toUpperCase();
+
+  // ── GET /setup  →  serve wizard HTML ───────────────────────────────────
+  if (method === 'GET' && url.pathname === '/setup') {
+    let html = fs.readFileSync(uiPath, 'utf8');
+    // The page opens in Arabic unless the URL asks otherwise (?lang=en) — an
+    // unknown value is ignored rather than guessed at, and a language the
+    // tester picked with the in-page toggle still wins over this default.
+    const askedLang = url.searchParams.get('lang');
+    const lang = ['ar', 'en'].includes(askedLang) ? askedLang : '';
+    // Inject mode, API base, this run's token and the requested language.
+    html = html.replace(
+      "const MODE = window.WIZARD_MODE || 'local';",
+      "const MODE = 'local';"
+    ).replace(
+      "const API  = window.WIZARD_API  || '';",
+      `const API  = '${BASE_URL}';`
+    ).replace(
+      "const TOKEN = window.WIZARD_TOKEN || '';",
+      `const TOKEN = '${TOKEN}';`
+    ).replace(
+      "const LANG_REQUESTED = window.WIZARD_LANG || '';",
+      `const LANG_REQUESTED = '${lang}';`
+    );
+    respond(res, 200, 'text/html; charset=utf-8', html);
+    return;
+  }
+
+  // Everything else under /api/ is for this wizard's own page only. Without
+  // this, any site open in the user's browser could read the project config
+  // and write its files (a simple POST needs no CORS preflight).
+  if (url.pathname.startsWith('/api/') && req.headers['x-wizard-token'] !== TOKEN) {
+    respondJSON(res, 403, { error: 'forbidden — this API only serves the wizard page' });
+    return;
+  }
+
+  // ── GET /favicon.ico  →  204 (keeps the browser console free of 404s) ──
+  if (method === 'GET' && url.pathname === '/favicon.ico') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // ── GET /api/schema  →  return wizard schema ────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/schema') {
+    respondJSON(res, 200, schema);
+    return;
+  }
+
+  // ── GET /api/config  →  read current project config files ──────────────
+  // Multi-environment (design #3): enumerates EVERY environments/*.json.
+  // Readable user data is returned for editing; a structurally-pristine sample
+  // is scaffolding, not the user's data — reported by name (pristineSamples),
+  // never presented as an editable environment; an unreadable file is flagged
+  // (null + unreadable[]) and excluded from editing, never silently rewritten.
+  if (method === 'GET' && url.pathname === '/api/config') {
+    const projCfgPath = path.join(projectRoot, 'config', 'project.json');
+    const existingProj = safeReadJSON(projCfgPath);
+    // A file that exists but won't parse is NOT the same as no file: saying
+    // nothing would let the wizard quietly overwrite whatever it couldn't read.
+    const unreadable = [];
+    if (existingProj === null && fs.existsSync(projCfgPath)) unreadable.push('config/project.json');
+    const projectPristine = existingProj !== null && projectTemplate !== null &&
+      isDeepStrictEqual(existingProj, projectTemplate);
+    const envDir = path.join(projectRoot, 'environments');
+    const environments = {};
+    const pristineSamples = [];
+    if (fs.existsSync(envDir)) {
+      for (const f of fs.readdirSync(envDir).filter(f => f.endsWith('.json')).sort()) {
+        const name = f.replace(/\.json$/, '');
+        const parsed = safeReadJSON(path.join(envDir, f));
+        if (parsed === null) { environments[name] = null; unreadable.push(`environments/${f}`); continue; }
+        if (isPristineSampleEnv(parsed, pluginRoot)) { pristineSamples.push(name); continue; }
+        environments[name] = parsed;
+      }
+    }
+    const defaultEnvironment = existingProj?.defaultEnvironment || DEFAULT_ENV_NAME;
+    const samplePristine = pristineSamples.includes(defaultEnvironment);
+    respondJSON(res, 200, {
+      projectConfig: existingProj,
+      environments,
+      defaultEnvironment,
+      samplePristine,
+      sampleName: samplePristine ? defaultEnvironment : null,
+      pristineSamples,
+      projectPristine,
+      unreadable,
+    });
+    return;
+  }
+
+  // ── POST /api/save  →  write config files + execute confirmed ops ───────
+  // Multi-environment batch save (design #3): one payload carries the project
+  // config, every dirty/new environment, and the explicit user-confirmed
+  // renames/deletes. planSave (engine.js) validates it all — the wizard's
+  // first destructive capability executes ONLY what a clean plan allows, and
+  // the response echoes every file op performed.
+  if (method === 'POST' && url.pathname === '/api/save') {
+    readBody(req, buf => {
+      let payload;
+      try { payload = JSON.parse(buf.toString('utf8')); }
+      catch { respondJSON(res, 400, { ok: false, error: 'Invalid JSON' }); return; }
+
+      // Legacy single-environment shape → a one-entry environments map.
+      if (!payload.environments && payload.envConfig && payload.envName !== undefined) {
+        payload.environments = { [payload.envName]: payload.envConfig };
+      }
+      const { projectConfig, environments, secrets } = payload;
+      const ops = payload.ops || {};
+      const renames = Array.isArray(ops.renames) ? ops.renames : [];
+      const deletes = Array.isArray(ops.deletes) ? ops.deletes : [];
+      if (!projectConfig || !environments) {
+        respondJSON(res, 400, { ok: false, error: 'Missing projectConfig or environments' });
+        return;
+      }
+
+      // Never trust the browser: enumerate the disk, then re-validate the whole
+      // plan — per-env configs, ops consent, collisions, path escapes, the
+      // at-least-one-environment rule, the post-ops default check, and the
+      // untouchability of files that exist but would not parse.
+      const envDir = path.join(projectRoot, 'environments');
+      const diskEnvNames = !fs.existsSync(envDir) ? [] :
+        fs.readdirSync(envDir).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, ''));
+      const pristineNames = [];
+      const unreadableNames = [];
+      for (const n of diskEnvNames) {
+        const parsed = safeReadJSON(path.join(envDir, `${n}.json`));
+        if (parsed === null) unreadableNames.push(n);
+        else if (isPristineSampleEnv(parsed, pluginRoot)) pristineNames.push(n);
+      }
+      const plan = planSave({ projectConfig, environments, ops: { renames, deletes } },
+        { envNames: diskEnvNames, pristineNames, unreadableNames });
+      if (plan.errors.length) {
+        respondJSON(res, 400, { ok: false, error: plan.errors.join('; ') });
+        return;
+      }
+
+      // Secret keys become `KEY=value` lines in .env (and a RegExp in the
+      // upsert) — only plain identifiers are allowed through.
+      const badSecretKeys = Object.keys(secrets || {}).filter(k => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k));
+      if (badSecretKeys.length) {
+        respondJSON(res, 400, { ok: false, error: `invalid secret env var name(s): ${badSecretKeys.join(', ')}` });
+        return;
+      }
+
+      try {
+        // Provider-switch echo (Q12 / D14 consent pattern): a save that REMOVES
+        // a provider block the existing config carried is a tracker switch —
+        // announced on the review step, echoed here, never silent. `.env` is
+        // never edited by a switch (secrets are only ever written, not removed).
+        const projDir = path.join(projectRoot, 'config');
+        const prevProj = safeReadJSON(path.join(projDir, 'project.json'));
+        const hasBlock = (obj, p) => !!(obj && obj[p] && typeof obj[p] === 'object' && Object.keys(obj[p]).length > 0);
+        const trackerBlocksRemoved = ['azure', 'jira']
+          .filter(p => hasBlock(prevProj, p) && !hasBlock(projectConfig, p));
+
+        // Write config/project.json
+        fs.mkdirSync(projDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(projDir, 'project.json'),
+          JSON.stringify(projectConfig, null, 2) + '\n',
+          'utf8'
+        );
+        const written = ['config/project.json'];
+        for (const p of trackerBlocksRemoved) {
+          console.log(`[setup-wizard] 🔁 removed the ${p} block from config/project.json — tracker switched (user-reviewed); .env keys stay untouched`);
+        }
+
+        // Write every environment in the payload
+        const envDirOut = path.join(projectRoot, 'environments');
+        fs.mkdirSync(envDirOut, { recursive: true });
+        for (const [name, envConfig] of Object.entries(environments)) {
+          fs.writeFileSync(
+            path.join(envDirOut, `${name}.json`),
+            JSON.stringify(envConfig, null, 2) + '\n',
+            'utf8'
+          );
+          written.push(`environments/${name}.json`);
+        }
+
+        // Apply renames (user-confirmed, validated above). A renamed-and-edited
+        // environment was just written under its NEW name — renaming over it
+        // would resurrect the old content, so only the old file is removed.
+        const renamed = [];
+        for (const r of renames) {
+          const fromPath = path.join(envDirOut, `${r.from}.json`);
+          if (Object.prototype.hasOwnProperty.call(environments, r.to)) {
+            fs.unlinkSync(fromPath);
+          } else {
+            fs.renameSync(fromPath, path.join(envDirOut, `${r.to}.json`));
+          }
+          renamed.push({ from: `environments/${r.from}.json`, to: `environments/${r.to}.json` });
+          console.log(`[setup-wizard] 📝 renamed environments/${r.from}.json → environments/${r.to}.json (user-confirmed)`);
+        }
+
+        // Apply deletes (user-confirmed, validated above) — never silent.
+        const deleted = [];
+        for (const d of deletes) {
+          fs.unlinkSync(path.join(envDirOut, `${d.name}.json`));
+          deleted.push(`environments/${d.name}.json`);
+          console.log(`[setup-wizard] 🗑️ deleted environments/${d.name}.json (user-confirmed)`);
+        }
+
+        // Save-time reconciliation (transparency, not silence): remove the
+        // structurally-pristine leftover samples the plan enumerated — AFTER
+        // the user's files are safely on disk, announced on the review step
+        // beforehand and echoed below.
+        for (const n of plan.reconcile) {
+          fs.unlinkSync(path.join(envDirOut, `${n}.json`));
+          console.log(`[setup-wizard] 🧹 removed pristine sample environments/${n}.json — scaffold artifact replaced by this save`);
+        }
+
+        // Write secrets → .env silently (no UI mention)
+        if (secrets && Object.keys(secrets).length > 0) {
+          writeSecrets(path.join(projectRoot, '.env'), secrets);
+          console.log(`[setup-wizard] 🔐 Secrets written to .env`);
+        }
+
+        console.log(`[setup-wizard] ✅ Saved:`);
+        for (const f of written) console.log(`  ${f}`);
+        respondJSON(res, 200, {
+          ok: true,
+          written,
+          renamed,
+          deleted,
+          reconciled: plan.reconcile.map(n => `environments/${n}.json`),
+          ...(trackerBlocksRemoved.length ? { trackerBlocksRemoved } : {}),
+        });
+      } catch(e) {
+        respondJSON(res, 500, { ok: false, error: e.message });
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/extract  →  turn pasted text / an uploaded file into answers ──
+  // { text } or a text-ish upload is parsed here and returned as schema-shaped
+  // answers for the wizard's preview. Structured JSON (posted by Claude after
+  // reading a PDF/Word file) is passed straight through.
+  if (method === 'POST' && url.pathname === '/api/extract') {
+    const ct = req.headers['content-type'] || '';
+    if (ct.includes('application/json')) {
+      readBody(req, buf => {
+        let data;
+        try { data = JSON.parse(buf.toString('utf8')); }
+        catch { respondJSON(res, 400, { error: 'Invalid JSON' }); return; }
+        if (data && typeof data.text === 'string') {
+          const extracted = extractFromText(data.text);
+          console.log(`[setup-wizard] 🔍 extracted ${Object.keys(extracted).length} field(s) from pasted text`);
+          respondJSON(res, 200, extracted);
+        } else {
+          respondJSON(res, 200, data);   // already-structured answers
+        }
+      });
+    } else {
+      // Browser file upload (multipart). Only text-ish files can be parsed
+      // here; binary ones (PDF/Word) are refused honestly instead of faking a
+      // successful extraction (and no temp copy is ever written).
+      readBody(req, buf => {
+        // Byte-preserving view for splitting the multipart envelope; the file's
+        // own bytes are re-decoded as UTF-8 only once we know it is text.
+        const { filename, content } = parseSingleFileUpload(buf.toString('binary'));
+        if (!isProbablyText(content)) {
+          console.log(`[setup-wizard] ⛔ rejected binary upload: ${filename || '(unnamed)'} — text files only`);
+          respondJSON(res, 415, {
+            error: 'binary-not-supported',
+            message: 'ملفات PDF/Word غير مدعومة حالياً — ارفع ملفاً نصياً (.md أو .txt أو .env) أو الصق المحتوى في وضع اللصق',
+          });
+          return;
+        }
+        const text = Buffer.from(content, 'binary').toString('utf8');
+        const extracted = extractFromText(text);
+        console.log(`[setup-wizard] 🔍 extracted ${Object.keys(extracted).length} field(s) from ${filename || 'upload'}`);
+        respondJSON(res, 200, extracted);
+      });
+    }
+    return;
+  }
+
+  // ── GET /api/done  →  shut down server ─────────────────────────────────
+  if (method === 'GET' && url.pathname === '/api/done') {
+    respondJSON(res, 200, { ok: true, message: 'Wizard complete — server shutting down' });
+    console.log('\n[setup-wizard] ✅ Done. Closing server.');
+    setTimeout(() => server.close(() => process.exit(0)), 500);
+    return;
+  }
+
+  // 404 fallback
+  respond(res, 404, 'text/plain', 'Not found');
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────
+server.listen(PORT, HOST, () => {
+  console.log(`\n[setup-wizard] 🚀 Wizard running at: ${WIZARD_URL}\n`);
+  if (NO_OPEN) console.log('[setup-wizard] --no-open: skipping browser launch.');
+  else openBrowser(WIZARD_URL);
+  console.log('[setup-wizard] Waiting for user to complete setup...');
+  console.log('[setup-wizard] Press Ctrl+C to cancel.\n');
+});
+
+server.on('error', err => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[setup-wizard] Port ${PORT} is in use. Try --port=7374`);
+  } else {
+    console.error('[setup-wizard] Server error:', err.message);
+  }
+  process.exit(1);
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+/**
+ * Write secrets into .env — creates the file if absent, updates existing keys,
+ * appends new ones. Never exposes this flow to the UI.
+ */
+function writeSecrets(envPath, secrets) {
+  let lines = [];
+  if (fs.existsSync(envPath)) {
+    lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+  }
+
+  for (const [key, value] of Object.entries(secrets)) {
+    if (!value) continue; // skip empty secrets
+    const idx = lines.findIndex(l => l.match(new RegExp(`^${key}\\s*=`)));
+    const line = `${key}=${value}`;
+    if (idx >= 0) lines[idx] = line;
+    else lines.push(line);
+  }
+
+  fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf8');
+}
+
+function respond(res, status, ct, body) {
+  res.writeHead(status, {
+    'Content-Type': ct,
+    // No CORS: the UI is same-origin. A wildcard here let any page open in the
+    // user's browser read this project's config and write its files.
+    'X-Content-Type-Options': 'nosniff',
+  });
+  res.end(body);
+}
+
+function respondJSON(res, status, data) {
+  respond(res, status, 'application/json; charset=utf-8', JSON.stringify(data));
+}
+
+/**
+ * Hand the caller the raw body Buffer — the encoding is theirs to choose.
+ * JSON must decode as UTF-8 (latin1 would mangle Arabic); a binary upload must
+ * stay byte-for-byte, so multipart uses 'binary'.
+ */
+function readBody(req, cb) {
+  const chunks = [];
+  req.on('data', chunk => chunks.push(chunk));
+  req.on('end', () => cb(Buffer.concat(chunks)));
+}
+
+/**
+ * Pull the first file part out of a multipart/form-data body.
+ * Minimal by design — the wizard uploads exactly one file.
+ */
+function parseSingleFileUpload(raw) {
+  const head = raw.indexOf('\r\n\r\n');
+  if (head === -1) return { filename: '', content: raw };
+  const headers = raw.slice(0, head);
+  const nameMatch = headers.match(/filename="([^"]*)"/i);
+  const boundaryEnd = raw.indexOf('\r\n--', head);
+  const content = raw.slice(head + 4, boundaryEnd === -1 ? undefined : boundaryEnd);
+  return { filename: nameMatch ? nameMatch[1] : '', content };
+}
+
+/** Treat as text when it decodes as UTF-8 without NUL bytes / heavy control noise. */
+function isProbablyText(s) {
+  if (!s) return false;
+  const sample = s.slice(0, 4000);
+  if (sample.indexOf('\u0000') !== -1) return false;
+  const controls = (sample.match(/[\x01-\x08\x0E-\x1F]/g) || []).length;
+  return controls / sample.length < 0.05;
+}
+
+function safeReadJSON(filePath) {
+  try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); }
+  catch { return null; }
+}
+
+function openBrowser(url) {
+  try {
+    const platform = process.platform;
+    if (platform === 'win32')  execSync(`start "" "${url}"`, { stdio: 'ignore' });
+    else if (platform === 'darwin') execSync(`open "${url}"`, { stdio: 'ignore' });
+    else execSync(`xdg-open "${url}"`, { stdio: 'ignore' });
+  } catch {
+    console.log(`[setup-wizard] Could not open browser automatically.`);
+    console.log(`[setup-wizard] Please open manually: ${url}`);
+  }
+}

@@ -1,0 +1,134 @@
+---
+name: optimize-login
+description: >
+  Pay a web application's login cost once per session instead of once per test — drive the
+  login live, reduce it to the smallest script that works, save the browser session, and
+  reload that session into a fresh browser to continue. Use when login is the slow part of a
+  run, when several scenarios each re-login, or whenever a run needs an authenticated browser.
+---
+
+> **AgenTeX on GitHub Copilot.** `<agentex-root>` stands for this plugin's install folder: `../..` from the folder this file is in. Resolve it to an absolute path before you run or read anything that uses it. When a step says to dispatch a bundled agent (`qa-executor`, `api-executor`, `mobile-qa-executor`), start it as a subagent.
+
+# Optimize Login — pay for the login once
+
+## Role
+You turn a web application's login into a one-time cost per session: discover the real login
+live, script the smallest path through it, then save and reload that session for every later
+run. You never build around a security gate — a captcha or OTP you cannot solve is handed to
+a person, never bypassed.
+
+Login is usually the most expensive step of a browser run and the least interesting. On a real
+project it was **~197 seconds of agentic driving per scenario**, inside a ~12-minute preamble.
+After applying this skill: **~38s once**, then **~8s** per later run.
+
+The loop below is the same everywhere. **How much code it takes is not** — a username/password
+form is three lines; a cross-origin iframe with a captcha and an OTP is a hundred and fifty.
+Find out by looking, not by assuming.
+
+## The loop
+
+1. **Look at the real login.** Open it and read what is actually there: which fields, whether
+   the form sits in an iframe, what the submit control is, what stands between you and a
+   session. Never write the script from memory or from another application's login. Log in
+   with a user from the active environment's `users` (password: the user's `password` or
+   `defaults.password`; `login.mode` in `config/project.json` says whether to reuse saved
+   sessions (`"session"`) or log in fresh every run (`"fresh"`)).
+2. **Write the smallest script that gets through it**, driving only what the page requires.
+3. **Prove you are in** — by a landmark, never by the URL (see below).
+4. **Save the session** (`storageState`).
+5. **Reload it into a fresh browser, prove you are in again**, then continue the real work.
+6. **When the session dies, log in again.** Do not build renewal machinery; re-login is cheap
+   once step 2 exists.
+
+Steps 3–5 are identical in every application and ship with this skill:
+`<agentex-root>/skills/optimize-login/scripts/session.js` —
+`saveSession(page, {statePath, landmark})`, `resumeSession({statePath, url, landmark})`,
+`isAuthenticated(page, landmark)`. Steps 1–2 are yours to discover per application.
+
+To check a saved session without writing any project code:
+
+    node <agentex-root>/skills/optimize-login/scripts/session.js resume \
+      --state test/.auth/<app>-<environment>-state.json \
+      --url   https://app.example.com/dashboard \
+      --absent "role=button[name='Login']"
+
+Prints one `RESULT: RESUME_PASS|RESUME_FAIL` line.
+
+It needs the `playwright` PACKAGE (not `playwright-cli`: only the library can load a saved
+`storageState`), and it looks for it in the project you run it from — the working directory
+and its parents, so a monorepo hoist works — falling back to `NODE_PATH` if you set one. If
+the project has not got it: `npm i -D playwright`, then `npx playwright install chromium`.
+The bundled Chromium is what it launches; add `--channel chrome` (or `msedge`, …) only when
+the test needs that specific browser, and `--headed` to watch a resume fail with your own
+eyes. A channel you ask for and Playwright cannot launch is an error — no other browser is
+quietly used in its place.
+
+## Verify by landmark, never by URL
+
+A landmark is something true **only** when logged in: an element that appears (an account
+menu), or one that disappears (the Login button). Pass `{present: sel}`, `{absent: sel}`, or
+both.
+
+URLs lie. A login page can carry `?returnUrl=/dashboard` and satisfy any path-based check while
+the user is still logged out — observed live, reporting a successful login that had not
+happened, with the real failure surfacing much later somewhere unrelated.
+
+Verify **before** saving and again **after** loading. A state file written from a half-finished
+login is well-formed and useless; and a session that has since expired leaves the file
+untouched, so "the file exists" is never "the session is alive". Do not gate on the file's age
+either — a 15-minute-old session was dead here while a 47-minute-old one restored cleanly.
+
+## When a step does not work
+
+Read the live page, not your assumptions: dump the fields, buttons, disabled states and any
+error text **as they are at the moment of failure**, then fix that specific thing and re-run.
+Most login scripts fail for a reason the page will state plainly if you ask it.
+
+Two habits that pay for themselves:
+- Give every login script a hard watchdog, so a hang always terminates with a result line.
+- Make failures dump page state automatically — the next repair should start from evidence,
+  not from a fresh guess.
+
+## Record what you learn, per application
+
+Whatever you discover about a specific login — a control that ignores clicks on its label, a
+field the server reads that the visible inputs never populate, a step that opens on a different
+method than you expect — belongs in that application's own notes, not in this skill. In a
+project using the AgenTeX page map, that means the page's `gotchas`.
+
+This is deliberate. A shipped list of somebody else's surprises invites you to read the next
+login through the wrong lens; the surprises are findings from exploring one application, and
+the next one will be strange in its own way.
+
+## Limits
+
+- **Gates are surfaced, never defeated.** A captcha the page itself renders can be handed to a
+  person, or read by the agent. reCAPTCHA, hCaptcha and Turnstile are not that, and no attempt
+  to work around them belongs here — run headed, let a person complete the login, and the
+  session is still saved at the end.
+- **An OTP you cannot obtain is a stop.** Static test codes work; a real SMS, email or
+  authenticator code needs a person, and the headed fallback covers it.
+- **`storageState` is cookies and localStorage only.** An application holding its tokens in
+  IndexedDB cannot be resumed this way — the post-load landmark check surfaces that plainly
+  instead of leaving a confusing failure later.
+- **Only for applications you are authorised to access.** This is a way to stop paying for your
+  own login repeatedly, not a way into anyone else's account.
+
+## Output
+
+This skill produces no report of its own — its output is state, consumed by whatever flow
+invoked it:
+- The bundled `session.js resume` check prints exactly one line, `RESULT: RESUME_PASS|RESUME_FAIL`,
+  and exits 0/1 to match.
+- A successful run leaves a session file at `test/.auth/<app>-<environment>-state.json` for
+  later runs to reload.
+- Anything else worth keeping — what the login looked like, gotchas found — goes to the
+  application's own notes (see "Record what you learn" above), never into this skill.
+
+## Session files are credentials
+
+A saved session is a bearer token in a file: whoever holds it is logged in as that user. Keep
+these in `test/.auth/`, which /init-test and /update-agentex add to the project's `.gitignore`,
+and never commit one.
+Sessions are saved per environment — `test/.auth/<app>-<environment>-state.json` (e.g.
+`myapp-qa-state.json`); a session saved on one environment is never resumed on another.
