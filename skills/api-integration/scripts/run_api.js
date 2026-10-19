@@ -8,8 +8,14 @@
 //     [--env <environment-name>] [--catalog ./integration] --log <path>
 //
 // A declared param whose name appears as a `{name}` path placeholder is substituted into the
-// path; any other declared param is sent as a URL query string param instead.
+// path; a param listed in the request's optional "query": [..] array is sent in the query
+// string; a param used only as a `{name}` placeholder in the body stays in the body; a param
+// referenced nowhere in the request template falls back to the query string.
 // auth.type: "bearer" | "basic" | "apiKey" (custom header, e.g. X-API-Key) | "none".
+// Catalog "target" (optional, top level) decides who owns the base URL and auth: "catalog" →
+// the catalog's own baseUrl refs and auth, the environment's api block ignored (swagger-import
+// writes it); "environment" → the active environment's api block; absent → the environment's
+// api block only when the catalog's baseUrl is absent/empty or exactly "${API_BASE_URL}".
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL|BLOCKED", ...}. Exit: 0 PASS, 1 FAIL, 2 BLOCKED.
 // Secrets: env values (tokens) are used for the request but never printed or logged.
@@ -46,24 +52,36 @@ const fileName = entry.slice(0, dot), reqName = entry.slice(dot + 1);
 // Recursive: catalogs may sit flat in <catalog>/ (hand-written, api-integration convention) or
 // nested under <catalog>/api_test_suites/<name>/ (swagger-import output, co-located with its suite).
 if (!fs.existsSync(catalog)) blocked(`catalog folder not found: ${catalog} — scaffold it and define your requests first`);
+// node_modules and dot-directories (.git, .cache, …) are never searched.
 function findApiFiles(dir) {
   let found = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) found = found.concat(findApiFiles(full));
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+      found = found.concat(findApiFiles(full));
+    }
     else if (entry.isFile() && entry.name.endsWith('_api.json')) found.push(full);
   }
   return found;
 }
-const files = findApiFiles(catalog);
-let def = null;
+const files = findApiFiles(catalog).sort();
+const matches = [];
 for (const f of files) {
-  try {
-    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-    if (j.name === fileName) { def = j; break; }
-  } catch (e) { blocked(`invalid JSON in ${f}: ${e.message}`); }
+  let j;
+  try { j = JSON.parse(fs.readFileSync(f, 'utf8')); }
+  catch (e) { blocked(`invalid JSON in ${f}: ${e.message}`); }
+  if (j.name === fileName) matches.push({ file: f, def: j });
 }
+// Two catalogs claiming the same "name" is ambiguous — never silently pick one.
+if (matches.length > 1) blocked(`catalog name "${fileName}" is declared by ${matches.length} files (${matches.map(m => m.file).join(', ')}) — rename one so each catalog "name" is unique`);
+const def = matches.length ? matches[0].def : null;
+const defFile = matches.length ? matches[0].file : null;
 if (!def) blocked(`no *_api.json under ${catalog} has "name": "${fileName}" — define it before this step can run`);
+const TARGETS = ['environment', 'catalog'];
+if (def.target !== undefined && !TARGETS.includes(def.target)) {
+  blocked(`catalog "${fileName}" (${defFile}) has "target": ${JSON.stringify(def.target)} — allowed values: "catalog" (the catalog's own baseUrl and auth) or "environment" (the active environment's api block); leave it out and a catalog whose baseUrl is absent or exactly "\${API_BASE_URL}" follows the environment, any other keeps its own`);
+}
 const req = (def.requests || []).find(r => r.name === reqName);
 if (!req) blocked(`request "${reqName}" is not defined in catalog "${fileName}" — add it to run this step`);
 
@@ -72,7 +90,7 @@ const declared = req.params || [];
 for (const k of Object.keys(params)) if (!declared.includes(k)) blocked(`param "${k}" is not declared for ${entry} (declared: ${declared.join(', ') || 'none'})`);
 for (const k of declared) if (!(k in params)) blocked(`missing value for declared param "${k}"`);
 
-// ---- target: active environment's api block first, catalog ${ENV_VAR} refs second ----
+// ---- target: the environment's api block or the catalog's own baseUrl/auth (one rule below) ----
 const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 // Catalog-named vars resolve like every other secret: process env, then the project's .env.
 const envVar = (name) => pc.readEnvVar(process.cwd(), name);
@@ -83,21 +101,51 @@ function resolveEnvRefs(s) {
     return v;
   });
 }
+// The environment's api block (baseUrl + token) targets the PROJECT's own API. Does it apply
+// to this catalog? An explicit "target" wins; without one, the catalog's baseUrl decides:
+//   1. "target": "catalog"     → no: the catalog's own baseUrl refs and auth (swagger-import).
+//   2. "target": "environment" → yes, whatever the baseUrl — the escape hatch for a hand-written
+//                                catalog whose baseUrl uses another variable but should still
+//                                follow --env.
+//   3. no "target"             → yes only for an absent/empty baseUrl or exactly the project
+//                                default "${API_BASE_URL}"; any other baseUrl (e.g. an imported
+//                                "${PETSTORE_BASE_URL}") keeps its own baseUrl AND auth — the
+//                                app's token is never sent to another host.
+// (Any other "target" value was BLOCKED above.)
+const PROJECT_DEFAULT_BASE_URL = '${API_BASE_URL}';
+function environmentOwnsTarget(catalogDef) {
+  if (catalogDef.target === 'catalog') return false;
+  if (catalogDef.target === 'environment') return true;
+  const base = typeof catalogDef.baseUrl === 'string' ? catalogDef.baseUrl.trim() : '';
+  return base === '' || base === PROJECT_DEFAULT_BASE_URL;
+}
 let target = null;
+// Resolved for every catalog, so an unknown --env is BLOCKED whatever the rule decides; an
+// environment without an api block leaves the catalog's own refs and auth (legacy fallback).
 try { target = pc.resolveApiTarget(process.cwd(), envName); }
 catch (e) { blocked(e.message); }
+if (!environmentOwnsTarget(def)) target = null; // drops base URL and token both
 if (target && target.hasToken && !target.token) blocked(`${target.tokenHint} (api token) is not set`);
 const baseUrl = target ? target.baseUrl : resolveEnvRefs(def.baseUrl || '');
+// Param placement (order matters):
+//   1. `{k}` in the path            → substituted into the path
+//   2. k listed in req.query        → query string (explicit; swagger-import writes this)
+//   3. `{k}` in the body template   → body only (never leaks into the URL)
+//   4. referenced nowhere           → query string (backward-compat fallback)
+const queryList = req.query === undefined ? [] : req.query;
+if (!Array.isArray(queryList)) blocked(`"query" of ${entry} must be an array of param names`);
+for (const k of queryList) if (!declared.includes(k)) blocked(`query param "${k}" of ${entry} is not declared in "params" (declared: ${declared.join(', ') || 'none'})`);
+const bodyTemplate = req.body === undefined ? '' : JSON.stringify(req.body);
 let urlPath = req.path || '';
 const queryParams = [];
 for (const [k, v] of Object.entries(params)) {
   const placeholder = `{${k}}`;
-  if (urlPath.includes(placeholder)) urlPath = urlPath.split(placeholder).join(encodeURIComponent(v));
-  else queryParams.push([k, v]);
+  const inPath = urlPath.includes(placeholder);
+  if (inPath) urlPath = urlPath.split(placeholder).join(encodeURIComponent(v));
+  if (queryList.includes(k) || (!inPath && !bodyTemplate.includes(placeholder))) queryParams.push([k, v]);
 }
 const unresolved = urlPath.match(/\{[a-zA-Z0-9_]+\}/);
 if (unresolved) blocked(`unresolved placeholder ${unresolved[0]} in path`);
-// declared params not consumed by a path placeholder are sent as query string params
 const query = queryParams.length ? '?' + queryParams.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&') : '';
 const url = baseUrl.replace(/\/$/, '') + urlPath + query;
 

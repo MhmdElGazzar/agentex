@@ -85,4 +85,5 @@ always stays in `.env` as `AZURE_PAT`, read by the bundled scripts themselves:
 
 - `$agentex:design-test <story-ids>` — analyze a story's ACs and create linked test cases
   (project conventions live in `.agentex/test-template.md`, scaffolded on first run).
-- `$agentex:estimate-story [ids]` — estimate QA effort and create the 5 `[Testing]` tasks per story.
+- `$agentex:estimate-story [ids]` — estimate QA effort and create the `[Testing]` tasks your
+  `config/estimation.json` defines (`$agentex:estimate-sprint` for the whole current sprint).

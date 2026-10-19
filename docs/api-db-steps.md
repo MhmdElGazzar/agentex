@@ -37,13 +37,18 @@ own service's requests/queries.
   throwaway shared test credentials); real values live in `.env` or your shell.
 
 **API steps** — `api:` (or "verify via API", "call the endpoint")
-- Catalog: `integration/*_api.json` files
+- Catalog: `integration/*_api.json` files, found recursively under `integration/` (flat, or
+  nested under `integration/api_test_suites/<service>/` for a `swagger-import`ed service);
+  each catalog `"name"` must be unique (a duplicate is BLOCKED)
 - Runner: `skills/api-integration/scripts/run_api.js`
-- Catalog: found recursively under `integration/` (flat, or nested under `integration/api_test_suites/<service>/` for a `swagger-import`ed service)
 - Standalone runs: `$agentex:test-endpoints` runs every `*_suite.json` case without a browser spec; `$agentex:import-swagger` generates the catalog + suite from a Swagger/OpenAPI file
 - Catalog sample: `skills/api-integration/templates/sample_api.json`
 - Config: the active environment's `api` block (`baseUrl`, `token`); legacy
-  `API_BASE_URL`/`API_TOKEN` in `.env` as fallback
+  `API_BASE_URL`/`API_TOKEN` in `.env` as fallback. Which catalogs it targets: `"target":
+  "environment"` → always; `"target": "catalog"` (every `swagger-import`ed one) → never, the
+  catalog uses its own `baseUrl` and `auth`; no `target` → only a catalog whose `baseUrl` is
+  absent/empty or exactly `"${API_BASE_URL}"` — any other `baseUrl` keeps its own `baseUrl` and
+  `auth` and never receives the environment token
 - Reference: `skills/api-integration/references/api-requests.md`
 
 **DB steps** — `db:` (or "check the database", "verify the row")

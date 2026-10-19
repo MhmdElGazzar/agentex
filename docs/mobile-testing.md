@@ -56,6 +56,7 @@ selectors):
 
 App under test: (path to .apk/.ipa, or installed appPackage/bundleId — see environments/<env>.json)
 Type: login / validation — no real account is created
+Drivers: mobile
 
 ## Acceptance criteria
 - A valid disposable test user reaches a visible logged-in state.
@@ -72,6 +73,10 @@ Type: login / validation — no real account is created
 - Treat any app crash or unexpected device-log error as a defect even if the UI looks fine.
 ```
 
+Keep the `Drivers: mobile` line in every mobile spec. It tells `$agentex:execute-test` and the CI gate
+that this is not a browser spec: they report it BLOCKED ("mobile specs run via
+$agentex:execute-mobile-test") instead of opening it in a browser. Run it with `$agentex:execute-mobile-test`.
+
 Start from the samples in [`test/mobile-suite1/`](../test/mobile-suite1/) — `$agentex:execute-mobile-test`
 copies them into your project automatically on first run. To add more coverage, drop another
 `.md` file next to them; in parallel mode each becomes its own device session.
@@ -80,7 +85,8 @@ copies them into your project automatically on first run. To add more coverage, 
 
 Mobile targets live in the `mobile` block of `environments/<env>.json` (alongside the existing
 `portalUrl`/`db`/`api` blocks used by browser testing) — see
-[Configuration](./configuration.md#environmentsenvjson):
+[Configuration](./configuration.md#environmentsenvjson). The block is **opt-in**: the sample
+`environments/qc.json` that `$agentex:init-test` scaffolds has none, so add it yourself:
 
 ```json
 "mobile": {
@@ -90,6 +96,12 @@ Mobile targets live in the `mobile` block of `environments/<env>.json` (alongsid
   "deviceName": "emulator-5554"
 }
 ```
+
+Claude turns that block into Appium capabilities and **always adds `"appium:noReset": true`**.
+Appium's own default (`noReset: false`) clears the app's data when a session starts, without
+asking. Claude never requests a reset (`appium:fullReset: true` or `appium:noReset: false`)
+unless you explicitly approve it for that run. A parallel run can't ask, so it reports
+BLOCKED instead.
 
 There's no legacy `.env`-only fallback for mobile targets (unlike `QA_TARGET_URL` for
 browser testing) — an environment file with no `mobile` block means Claude asks you for the
@@ -122,9 +134,10 @@ Optionally, for the bundled wrapper script instead of raw `curl`:
 npm install -D webdriverio
 ```
 Copy the `permissions` block from [`settings.example.json`](../settings.example.json) into your
-project's `.claude/settings.json` to pre-approve `appium` and the read-only `adb`/`xcrun`
-commands, and to prompt (rather than block) before destructive device actions like uninstall
-or reboot.
+project's `.claude/settings.json`. It pre-approves `npx appium --version` / `server` /
+`driver list` and the read-only `adb`/`xcrun` commands. It prompts (rather than blocks)
+before `npx appium driver|plugin install`, `xcrun simctl spawn`, clearing `adb logcat`, and
+destructive device actions like uninstall or reboot.
 
 **Driving a session — two options:**
 - Raw WebDriver REST via `curl` against the running Appium server — no extra dependency.

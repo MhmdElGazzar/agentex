@@ -380,7 +380,11 @@ function writeSecrets(envPath, secrets) {
 
   for (const [key, value] of Object.entries(secrets)) {
     if (!value) continue; // skip empty secrets
-    const idx = lines.findIndex(l => l.match(new RegExp(`^${key}\\s*=`)));
+    // Same line shape the readers (project_config.parseEnvValue) honour —
+    // indented / `export KEY=` lines are replaced in place, never shadowed.
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const keyRe = new RegExp('^[ \\t]*(?:export[ \\t]+)?' + escaped + '[ \\t]*=');
+    const idx = lines.findIndex(l => keyRe.test(l));
     const line = `${key}=${value}`;
     if (idx >= 0) lines[idx] = line;
     else lines.push(line);

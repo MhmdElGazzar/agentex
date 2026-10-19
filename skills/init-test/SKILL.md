@@ -70,5 +70,6 @@ Do these steps, then report what was created:
 Finish by telling the user to edit the sample specs in `./test/suite1/` to match their app,
 then run `$agentex:execute-test <url or scope>`. Also mention the Azure DevOps commands if they use
 ADO: `$agentex:design-test <story-ids>` (create linked test cases from a story's ACs) and
-`$agentex:estimate-story [ids]` (estimate QA effort + create [Testing] tasks) — both read the
+`$agentex:estimate-story [ids]` / `$agentex:estimate-sprint` (estimate QA effort + create [Testing] tasks;
+the first run proposes `config/estimation.json`) — all read the
 `azure` block in `config/project.json` (legacy `AZURE_*` keys in `.env` still work).

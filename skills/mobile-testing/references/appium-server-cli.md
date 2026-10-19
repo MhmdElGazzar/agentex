@@ -10,13 +10,14 @@ session, or when a call behaves unexpectedly. See
 - Install the platform driver(s) you need:
   - Android: `npx appium driver install uiautomator2`
   - iOS (macOS + Xcode only): `npx appium driver install xcuitest`
-- Preflight: `npx appium --version`, `npx appium driver list --installed`.
+- Preflight: `npx --no-install appium --version` (plain `npx appium` silently downloads
+  appium when the project lacks it), `npx appium driver list --installed`.
 - Android also needs `adb` on PATH (from the Android SDK platform-tools) and either a running
   emulator (`emulator -avd <name>`) or a connected device with USB debugging enabled — check
   with `adb devices`.
 - iOS also needs a booted Simulator (`xcrun simctl list devices booted`) or a provisioned real
   device; iOS automation only runs on macOS.
-- Start the server: `npx appium server` (defaults to `http://127.0.0.1:4723`). Appium 2.x
+- Start the server: `npx appium server` (defaults to `http://127.0.0.1:4723`). Appium 2.x+
   serves the WebDriver protocol at the base path `/` (no `/wd/hub` prefix, unlike Appium 1.x).
   Run it in the background before driving any session; check it's up with
   `curl -s http://127.0.0.1:4723/status`.
@@ -36,6 +37,13 @@ capabilities are prefixed `appium:`. These map directly to the `mobile` block in
 | `deviceName` | `appium:deviceName` |
 | `platformVersion` | `appium:platformVersion` |
 | `udid` | `appium:udid` (target one specific real device/simulator) |
+| *(always added)* | `"appium:noReset": true` — keep the app's data |
+
+**Always set `"appium:noReset": true`.** Appium's default is `noReset: false`: the server
+clears the app's data when the session starts, without any prompt. A test run must not
+wipe user state as a side effect. Never send `"appium:fullReset": true` (uninstall and
+reinstall) or `"appium:noReset": false` unless the user explicitly approved a reset for
+this run. In an autonomous (parallel) run nobody can approve, so the session is BLOCKED.
 
 Android example (`caps.json`):
 ```json
@@ -43,7 +51,8 @@ Android example (`caps.json`):
   "platformName": "Android",
   "appium:automationName": "UiAutomator2",
   "appium:app": "/absolute/path/to/app.apk",
-  "appium:deviceName": "emulator-5554"
+  "appium:deviceName": "emulator-5554",
+  "appium:noReset": true
 } } }
 ```
 
@@ -54,7 +63,8 @@ iOS example:
   "appium:automationName": "XCUITest",
   "appium:app": "/absolute/path/to/app.app",
   "appium:deviceName": "iPhone 15",
-  "appium:platformVersion": "17.5"
+  "appium:platformVersion": "17.5",
+  "appium:noReset": true
 } } }
 ```
 
@@ -80,6 +90,8 @@ All examples assume `$BASE=http://127.0.0.1:4723` and `$SID` holds the active se
   depending on server version — read whichever key is present).
 - **Click / tap** — `POST $BASE/session/$SID/element/<elementId>/click`.
 - **Type text** — `POST $BASE/session/$SID/element/<elementId>/value` `{"text":"hello"}`.
+  Non-secret text only: a `curl` body is a command line. Type a password, OTP, or token with
+  `appium_client.js send-keys --text-env <NAME>` instead (see `appium-client-wrapper.md`).
 - **Get text** — `GET $BASE/session/$SID/element/<elementId>/text`.
 - **Screenshot** — `GET $BASE/session/$SID/screenshot` → `{"value":"<base64 PNG>"}`. Decode and
   save, e.g.: `curl -s $BASE/session/$SID/screenshot | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8"));require("fs").writeFileSync(process.argv[1],Buffer.from(d.value,"base64"))' <out.png>`.

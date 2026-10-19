@@ -20,24 +20,65 @@ Jira Cloud — see [jira.md](./jira.md).
 ## Walkthrough: estimating a sprint
 
 ```
-$agentex:estimate-story
+$agentex:estimate-sprint                  # every User Story in the current sprint
+$agentex:estimate-story 12345 12346       # named stories (no IDs → the current sprint too)
 ```
 
-Claude reads your sprint's User Stories (or the ones you name: `$agentex:estimate-story 12345 12346`)
-and analyzes each one — scenario count, fields, validations, integrations → a complexity
-bucket and the hours for the 5 `[Testing]` tasks: Requirement Review, Test Creation, Test
-Execution, Bug Review & Retest, Automation. Anything genuinely open (no assignee configured,
-a story that already has `[Testing]` tasks — skip it or add anyway?) is asked in at most
-**one** bundled question round. Then it validates everything with zero board writes — each
-story really is a User Story, iteration/area inherited fresh from the story, field values
-checked against **your project's real values**, the create pre-validated server-side — and
-shows you **one consolidated screen**: every story's analysis and per-task hours, the sprint
-total, and the exact write plan. Nothing has been written yet.
+Both commands run the same flow, read the same file, and end at the same single approval.
 
-**One approval** creates all the tasks — one atomic create per task, parent link included,
-so an unparented `[Testing]` task cannot exist. If anything fails partway you get an exact
-ledger — every intended task shown as done (ID + URL) or not done (reason) — and nothing is
-retried or cleaned up without you.
+**Your estimation file.** `config/estimation.json` holds your team's method, and you can edit
+it at any time (the next run uses the edit, no questions asked):
+
+| Field | What it holds |
+|---|---|
+| `tasks[]` | The `[Testing]` tasks every story gets — `name`, `enabled`, `minHours`, `maxHours`. You control how many there are, their names, their order, and each one's range; disabled tasks are never created. |
+| `factors` | What Claude rates each story on, with a weight per factor — add, remove, rename or re-weight freely. |
+| `source` | Where the numbers came from (a record; editing it changes nothing). |
+
+Commit it with your project. AgenTeX never edits, repairs or replaces it; an invalid file
+stops the run with every problem named (see [configuration.md](./configuration.md)).
+
+**The first run proposes it from your own history.** With no file yet, the run reads the
+**Original Estimates** your team gave its `[Testing]` tasks in the team's last **two closed
+iterations** (the `azure.team` setting, like the current sprint), groups them by task name,
+and proposes one task per name with min = the lowest and max = the highest estimate. The
+proposal sits on the same consolidated screen as the run's estimates: which sprints were
+read, how many tasks were counted, and how many were skipped (no Original Estimate, or no
+task name after the `[Testing]` marker).
+Completed and remaining work are never read. Values far from the rest — by default more than
+3× or under a third of a task's usual estimate (a tunable default, not a guarantee) — are
+listed with the story and the usual range, each with three choices: **count it · use the
+suggested value · type a number**. The suggested value is in use until you choose; any choice
+re-renders the screen. With no usable history (no closed iteration, no `[Testing]` task, or
+no Original Estimate on them), the proposal is a set of clearly labelled **starter
+defaults** — five tasks, about 3 h per story at every min and 5 h at every max — with the
+reason. One approval writes the file and creates the tasks; declining writes neither.
+
+**How a story gets its hours.** Claude reads each story (scenarios, fields, validations,
+integrations…) and rates every factor in the file from 0 (none) to 4 (the most your team
+sees). A bundled script turns the ratings into a score and places each task's hours inside its
+range: lowest on every factor → each task's min, highest on every factor → each task's max,
+half-hours in between. The same file and ratings always give the same hours.
+
+Anything genuinely open (no assignee or team configured, a story that already has
+`[Testing]` tasks — skip it or add anyway?) is asked in at most **one** bundled question
+round. Then everything is validated with zero board writes — each story really is a User
+Story, iteration/area inherited fresh from the story, field values checked against **your
+project's real values**, the create pre-validated server-side — and you see **one
+consolidated screen**: the file (or the proposal), every story's ratings, score and per-task
+hours, the sprint total, and the exact write plan. Nothing has been written yet. A different
+hour value or a skipped task at the gate applies to this run only — the file is unchanged.
+
+**One approval** writes everything: the file first (on a first run, created only if no file
+exists — never over one), then one atomic create per task, parent link included, so an
+unparented `[Testing]` task cannot exist. If anything fails partway you get an exact ledger —
+every intended write shown as done (ID + URL) or not done (reason) — and nothing is retried
+or cleaned up without you.
+
+**Rebuilding from history.** Once the file exists, past sprints are never read again. To
+re-propose it from your board, delete or move `config/estimation.json`; the next run proposes
+a new one from the last two closed iterations — or as many as your ask names (for example
+`$agentex:estimate-sprint read the last 3 sprints`).
 
 ## Walkthrough: designing test cases
 
@@ -105,7 +146,7 @@ succeeded" or "tail the app's logs."
 
 | Capability | Skill | Reference |
 |---|---|---|
-| Estimate QA effort (`$agentex:estimate-story`) | `skills/task-estimation/SKILL.md` | `references/tracker/ado-boards.md` (plugin root) |
+| Estimate QA effort (`$agentex:estimate-story`, `$agentex:estimate-sprint`) | `skills/task-estimation/SKILL.md` | `references/tracker/ado-boards.md` (plugin root) |
 | Design test cases (`$agentex:design-test`) | `skills/test-design/SKILL.md` | `skills/test-design/references/test-case-mechanics.md`, `references/tracker/ado-boards.md` |
 | File bugs (`bug-report-azure`) | `skills/bug-report-azure/SKILL.md` | `skills/bug-report-azure/references/azure-devops.md` (REST routes + field schema) |
 | Azure resources | `skills/azure-integration/SKILL.md` | `skills/azure-integration/references/azure-cli.md` |

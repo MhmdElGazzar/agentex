@@ -57,7 +57,7 @@ A brand-new Jira project usually misses one of these. You don't have to check up
 each flow detects a missing piece at run time, before writing anything, and tells you
 the fix.
 
-- **Sprints** (for `$agentex:estimate-story` on the current sprint): a Kanban board has no
+- **Sprints** (for `$agentex:estimate-sprint`, or `$agentex:estimate-story` without keys): a Kanban board has no
   sprints. In a team-managed project turn on **Project settings → Features → Sprints**;
   in a company-managed project use a **Scrum** board. Then **start** a sprint that holds
   the stories. You can also skip sprints and estimate specific stories by key.
@@ -71,24 +71,45 @@ the fix.
   admin has to add the field (site: **Settings → Work items → Time tracking**;
   team-managed: **Project settings → Work types → Subtask**; company-managed: the
   sub-task's screens). Hours you see in the Jira UI may have been set by Automation for
-  Jira, which isn't limited by screens.
+  Jira, which isn't limited by screens. Without time tracking, the first-run proposal of
+  `config/estimation.json` can't read past estimates either: it falls back to labelled
+  starter defaults and says why (descriptions are never read as estimates).
 - **A Bug type** (bug filing): add **Bug** to the project's work types if it isn't there.
 
 Menu names differ slightly between Jira versions ("Issues" vs "Work items").
 
 ## What each flow does on Jira
 
-### `$agentex:estimate-story` — QA effort as sub-tasks
+### `$agentex:estimate-story` and `$agentex:estimate-sprint` — QA effort as sub-tasks
 
-The same estimation methodology and the same five `[Testing]` tasks per story — created as
-**sub-tasks** of each story, with the hours mapped to Jira **time tracking**
-(`originalEstimate`/`remainingEstimate`) and the label `testing`. The current sprint
-resolves via JQL (`sprint in openSprints()`); when several sprints are open, the run blocks
-with the real sprint names and asks which one (set `jira.board` to steer it permanently).
-The project's sub-task type is discovered from create metadata — exactly one → used;
-several → asked once and pinned via `jira.subtaskType`. Assignee emails resolve to Jira
-accountIds at validation time, shown on the consolidated screen. Sub-tasks ride their
-parent story's sprint — there is no iteration/area to set.
+`$agentex:estimate-sprint` estimates every story in the open sprint; `$agentex:estimate-story <keys>` the
+stories you name (no keys → the open sprint too). Both use the same flow and the same file
+as on Azure DevOps ([azure-devops.md](./azure-devops.md#walkthrough-estimating-a-sprint)):
+the `[Testing]` tasks, their hour ranges and the rating factors come from your project's
+`config/estimation.json`, and Claude only rates each story's factors 0–4 — a script turns the
+ratings into hours inside each task's range. The tasks are created as **sub-tasks** of each
+story, with the hours mapped to Jira **time tracking** (`originalEstimate`/`remainingEstimate`)
+and the label `testing`.
+
+**First run (no file yet).** The run reads the time-tracking **Original Estimates** of the
+`[Testing]` sub-tasks in your board's last **two closed sprints** and proposes the file from
+them — min/max per task name, with abnormal values asked about on the same approval screen
+(count it · use the suggested value · type a number). The board is `jira.board` (or
+`--board`); without one, the project's one non-Kanban board is used, and when there are
+several you're asked which board's sprints to read in the single question round. If past
+sub-tasks carry no Original Estimate — typically because time tracking is not on the
+sub-task screen, so earlier runs put `Estimate: <n>h` in each description (hours mode
+`none`) — the proposal is the labelled **starter defaults**, with that cause named;
+descriptions are never read as estimates. One approval writes the file and creates the
+sub-tasks.
+
+The current sprint resolves via JQL (`sprint in openSprints()`); when several sprints are
+open, the run blocks with the real sprint names and asks which one (set `jira.board` to steer
+it permanently). The project's sub-task type is discovered from create metadata — exactly one
+→ used; several → asked once and pinned via `jira.subtaskType`. Assignee emails resolve to
+Jira accountIds at validation time, shown on the consolidated screen. Sub-tasks ride their
+parent story's sprint — there is no iteration/area to set. To rebuild the file from history
+later, delete or move `config/estimation.json`.
 
 ### `$agentex:design-test` — test artifacts, your choice of type
 
