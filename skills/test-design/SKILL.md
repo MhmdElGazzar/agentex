@@ -4,13 +4,11 @@ description: >
   Designs test cases for User Stories on the configured tracker — Azure DevOps or Jira Cloud:
   analyze a story's acceptance criteria into test conditions, map them to test case titles,
   create the test artifacts (ADO Test Cases with structured steps, or the Jira issue type the
-  user chooses — Jira has no native Test Case type) and link them to the parent story —
-  validated first, then ONE consolidated approval, through bundled REST scripts (no Azure CLI,
-  no acli). Use this skill whenever the user wants to:
-  - Analyze a user story and identify test conditions (what to test)
+  user chooses — Jira has no native Test Case type) and link them to the parent story, behind
+  ONE consolidated approval. Use this skill whenever the user wants to:
+  - Analyze a user story and identify test conditions
   - Map AC scenarios to test case titles using a naming convention
   - Create test cases in ADO with proper steps, or design test cases for a Jira story
-  - Link test cases to their parent story
   - Review whether a story's ACs are fully covered by test cases
   Trigger on phrases like: "create test cases for story", "design tests for", "design test
   cases for a Jira story", "what test cases do I need", "analyze story for testing", "map ACs
