@@ -577,7 +577,14 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // Multipart with ZERO npm deps: built-in FormData + Blob (undici, the same
     // Node ≥18 floor built-in fetch already imposes); fetch composes the
     // boundary itself — the adapter never sets Content-Type manually.
-    async uploadAttachment(filePath, { fileName, issueId, execute = false } = {}) {
+    // opts.bytes: the caller's already-checked buffer (create-bug.js passes
+    // what its structural check read), so the upload is exactly the validated
+    // bytes even if the file changes on disk in between. Without it the file
+    // is read here, as before.
+    async uploadAttachment(filePath, { fileName, issueId, execute = false, bytes } = {}) {
+      if (bytes !== undefined && bytes !== null && !(bytes instanceof Uint8Array)) {
+        throw configError('uploadAttachment opts.bytes must be a Buffer/Uint8Array when given');
+      }
       const name = fileName || path.basename(filePath);
       if (!issueId) {
         throw configError(
@@ -586,17 +593,16 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       }
       const u = api(`issue/${encodeURIComponent(issueId)}/attachments`);
       if (!execute) {
-        let size = null;
-        try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ }
+        let size = bytes ? bytes.length : null;
+        if (size === null) { try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ } }
         return descriptor('uploadAttachment', 'POST', u, {
           body: `<multipart form-data: file "${name}"${size !== null ? `, ${size} bytes` : ''}>`,
           extraHeaders: { 'X-Atlassian-Token': 'no-check' },
         });
       }
       assertCiWritesAllowed('uploadAttachment');
-      const bytes = fs.readFileSync(filePath);
       const fd = new FormData();
-      fd.append('file', new Blob([bytes]), name);
+      fd.append('file', new Blob([bytes || fs.readFileSync(filePath)]), name);
       const res = await request('uploadAttachment', 'POST', u, {
         body: fd, extraHeaders: { 'X-Atlassian-Token': 'no-check' },
       });
