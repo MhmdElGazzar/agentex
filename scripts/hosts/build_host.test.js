@@ -333,6 +333,9 @@ test('this repo, copilot: Claude layout kept, root placeholder, explicit agents/
   assert.match(b.read('skills/test-execution/SKILL.md'), /AgenTeX on GitHub Copilot[\s\S]*<agentex-root>/);
   assert.match(b.read('commands/execute-test.md'), /^---\ndescription:[\s\S]*?---\n\n> \*\*AgenTeX on GitHub Copilot\.\*\* .*`\.\.` from/);
   assert.ok(!b.has('skills/browser-testing/scripts/ci_gate.js'), 'the SKILL.md-less CI forwarder is dropped');
+  const market = JSON.parse(b.read('.github/plugin/marketplace.json'));
+  assert.deepStrictEqual([market.name, market.plugins[0].name, market.plugins[0].source], ['agentex-copilot', 'agentex', './'],
+    'the branch is its own marketplace: copilot plugin marketplace add <repo>#copilot');
 });
 
 test('this repo, devin: commands became skills (clashes get -command), agents kept', () => {
@@ -363,6 +366,9 @@ test('this repo, codex: skills-only plugin, agents moved to references/agents, o
   assert.ok(!b.has('skills/ask-kb/agents/openai.yaml'), 'real skills stay implicitly invocable');
   assert.match(b.read('skills/ask-kb-command/SKILL.md'), /\$agentex:ask-kb-command/);
   assert.ok(!b.paths.some((p) => /\/golden\//.test(p)), 'golden fixtures never ship');
+  const market = JSON.parse(b.read('.agents/plugins/marketplace.json'));
+  assert.deepStrictEqual([market.name, market.plugins[0].source], ['agentex-codex', { source: 'local', path: './' }],
+    'the branch is its own marketplace: codex plugin marketplace add <repo> --ref codex');
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

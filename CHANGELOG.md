@@ -17,8 +17,10 @@ All notable changes to AgenTeX are documented here.
     becomes an `<agentex-root>` placeholder explained under each skill's frontmatter, commands
     become user-invoked skills where the host has no plugin commands (with `/command` mentions
     rewritten to the host's syntax), agent definitions move to `references/agents/` on Codex,
-    and `AskUserQuestion` is renamed to each host's ask tool. Not yet certified on the live
-    hosts or submitted to their stores.
+    and `AskUserQuestion` is renamed to each host's ask tool. The `copilot` and `codex`
+    branches are their own marketplaces, so testers install them straight from this repo
+    (`docs/contributing/host-branches.md`). Not yet certified on the live hosts or submitted
+    to their stores.
 
   Every build runs the host's guards first (skill manifests and the 1024-character
   description limit, leftover Claude-only text, banned paths, file limits, the manifest) and

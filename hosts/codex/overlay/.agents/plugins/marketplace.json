@@ -1,0 +1,12 @@
+{
+  "name": "agentex-codex",
+  "interface": { "displayName": "AgenTeX" },
+  "plugins": [
+    {
+      "name": "agentex",
+      "source": { "source": "local", "path": "./" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}
