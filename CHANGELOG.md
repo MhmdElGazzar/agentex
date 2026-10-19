@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.24.0] — 2026-10-19
 ### Added
 - **One plugin branch per host, generated from `main`.** `main` stays the only source,
   written the Claude Code way; `.github/workflows/hosts.yml` rebuilds a branch per host on
@@ -232,6 +232,11 @@ All notable changes to AgenTeX are documented here.
   the execute run's own check; a screenshot replaced between the approved dry run and
   `--execute` is still re-checked structurally, not re-reviewed. Covered in
   `create-bug.test.js`, `ado.test.js` and `jira.test.js`.
+- **The codex branch builds with the listing icon in place.** `.claude-plugin/icon.png` (#31)
+  landed in a folder the codex host forbids (its manifest moves to `.codex-plugin/`), so every
+  codex build failed its `forbiddenPaths` guard and `build_host.test.js` went red on `main`.
+  `hosts/codex/host.json` now excludes the icon; the other hosts keep it.
+
 ### Credits
 - The multi-host direction, and the host knowledge behind the Copilot and Codex branches
   (entry points, native subagent coordination, a certification checklist), came from
