@@ -4,7 +4,8 @@
       "platformName": "Android",
       "appium:automationName": "UiAutomator2",
       "appium:app": "/absolute/path/to/app.apk",
-      "appium:deviceName": "emulator-5554"
+      "appium:deviceName": "emulator-5554",
+      "appium:noReset": true
     }
   }
 }

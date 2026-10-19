@@ -16,6 +16,7 @@
 // Exit codes: 0 clean · 1 findings · 2 usage/config error.
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseEnvValue } = require(path.join(__dirname, '..', 'lib', 'project_config.js'));
 
 function usageError(message) {
   const e = new Error(message);
@@ -37,10 +38,9 @@ function readJson(file) {
   catch { return null; }
 }
 
+// The shared per-line .env parser: an empty `KEY=` is unset, never the next line.
 function envHasLine(envText, name, value) {
-  const re = new RegExp('^' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=\\s*(.+)$', 'm');
-  const m = envText.match(re);
-  return !!m && m[1].trim().replace(/^["']|["']$/g, '') === String(value);
+  return parseEnvValue(envText, name) === String(value);
 }
 
 function verifyWizard({ dir, answersFile, schemaPath } = {}) {

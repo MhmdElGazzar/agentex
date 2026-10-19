@@ -21,9 +21,30 @@ const WITH_CHILD = [
   { key: 'PROJ-22', fields: { summary: 'Build the API', status: { name: 'To Do' } } },
 ];
 
+// The 'history' scenario: one scrum board, its closed sprints, two stories, their sub-tasks.
+const HISTORY_ROUTES = [
+  { match: '/rest/agile/1.0/board?projectKeyOrId=', json: { values: [{ id: 7, name: 'PROJ board', type: 'scrum' }] } },
+  { match: '/rest/agile/1.0/board/7/sprint', json: { values: [
+    { id: 40, name: 'Sprint 40', state: 'closed', completeDate: '2026-08-31T00:00:00Z' },
+    { id: 41, name: 'Sprint 41', state: 'closed', completeDate: '2026-09-14T00:00:00Z' },
+    { id: 42, name: 'Sprint 42', state: 'closed', completeDate: '2026-09-28T00:00:00Z' },
+  ] } },
+  { method: 'POST', match: '/search/jql', bodyMatch: 'sprint in (', json: { issues: [
+    { id: '10201', key: 'PROJ-21', fields: { summary: 'Contact preferences' } },
+    { id: '10202', key: 'PROJ-22', fields: { summary: 'Checkout address form' } },
+  ] } },
+  { method: 'POST', match: '/search/jql', bodyMatch: 'parent in (', json: { issues: [
+    { id: '10601', key: 'PROJ-61', fields: { summary: '[Testing] Test Execution', parent: { key: 'PROJ-21' }, timeoriginalestimate: 7200 } },
+    { id: '10602', key: 'PROJ-62', fields: { summary: 'Build the API', parent: { key: 'PROJ-21' }, timeoriginalestimate: 18000 } },
+    { id: '10603', key: 'PROJ-63', fields: { summary: '[Testing] Requirement Review', parent: { key: 'PROJ-22' }, timeoriginalestimate: 3600 } },
+    { id: '10604', key: 'PROJ-64', fields: { summary: '[Testing] Automation', parent: { key: 'PROJ-22' } } },
+  ] } },
+];
+
 module.exports = {
-  refs: { story: 'PROJ-1', story2: 'PROJ-3', nonStory: 'PROJ-4', withTestingChild: 'PROJ-2' },
+  refs: { story: 'PROJ-1', story2: 'PROJ-3', nonStory: 'PROJ-4', withTestingChild: 'PROJ-2', historyNonTesting: 'PROJ-62' },
   nonStoryReason: 'story-not-a-story',
+  historySprintNames: ['Sprint 42', 'Sprint 41'],
 
   project(dir) {
     fs.mkdirSync(path.join(dir, 'config'), { recursive: true });
@@ -33,10 +54,11 @@ module.exports = {
     fs.writeFileSync(path.join(dir, '.env'), 'JIRA_EMAIL=qa.engineer@example.com\nJIRA_API_TOKEN=SENTINEL-conformance-token\n');
   },
 
-  // scenario: 'happy' | 'non-story' | 'existing-children' | 'children-unreadable' | { failWriteAt: k }
+  // scenario: 'happy' | 'non-story' | 'existing-children' | 'children-unreadable' | 'history' | { failWriteAt: k }
   routes(scenario) {
     const failAt = scenario && typeof scenario === 'object' ? scenario.failWriteAt : null;
     return [
+      ...(scenario === 'history' ? HISTORY_ROUTES : []),
       ...(scenario === 'non-story' ? [{ match: '/rest/api/3/issue/PROJ-1?', json: issue('PROJ-1', 'Task') }] : []),
       ...(scenario === 'children-unreadable' ? [{ match: '/rest/api/3/issue/PROJ-2?', json: issue('PROJ-2', 'Story', { subtasks: null }) }] : []),
       { match: '/rest/api/3/field', json: [{ id: 'customfield_10016', name: 'Story Points' }, { id: 'customfield_10020', name: 'Sprint' }] },

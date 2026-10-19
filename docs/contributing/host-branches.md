@@ -11,6 +11,30 @@ generated branch by hand.
 | `devin` | Devin Desktop / Devin CLI (formerly Windsurf) | devin-marketplace (pins a sha; `devin-v<version>` tag) |
 | `codex` | OpenAI Codex (CLI and app) | Codex Plugin Directory |
 
+## Installing a host branch (for testing)
+
+Each generated branch is its own marketplace, so it installs straight from this repo:
+
+**GitHub Copilot CLI**
+```
+copilot plugin marketplace add MhmdElGazzar/agentex#copilot
+copilot plugin install agentex@agentex-copilot
+```
+Fallback: `git clone -b copilot https://github.com/MhmdElGazzar/agentex.git agentex-copilot`,
+then `copilot plugin install ./agentex-copilot`. Update with
+`copilot plugin marketplace update agentex-copilot` and `copilot plugin update agentex`.
+
+**OpenAI Codex**
+```
+codex plugin marketplace add MhmdElGazzar/agentex --ref codex
+```
+Then open the ChatGPT desktop app (Codex), go to the Plugins Directory, pick **AgenTeX**
+and install it. The Codex CLI only adds marketplaces; installing happens in the app. Update with
+`codex plugin marketplace upgrade agentex-codex`.
+
+**Devin**: add `{"source": "github", "repo": "MhmdElGazzar/agentex", "ref": "devin"}` to
+`requiredPlugins` in `.devin/config.json`.
+
 ## What this means when you change `main`
 
 Write it the Claude way. You never write host-specific text in a skill. The converters handle

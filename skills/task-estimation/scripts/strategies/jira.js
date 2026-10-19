@@ -13,10 +13,14 @@
 //   - Story Points / Sprint fields are discovered by display name
 //     (listAllFields), jira.storyPointsField is the confirmed-once override —
 //     never guessed;
-//   - verbatim template parity with ADO: the same five [Testing] titles, one
-//     atomic sub-task create per task (fields.parent inline via the relations
-//     seam), Activity=Testing → the label 'testing', the assignee resolved
+//   - parity with ADO: the same [Testing] tasks (the spine derives them from
+//     config/estimation.json, never this strategy), one atomic sub-task
+//     create per task (fields.parent inline via the relations seam),
+//     Activity=Testing → the label 'testing', the assignee resolved
 //     email → accountId by ONE user-search read (O5), fail closed;
+//   - the first-run history read (pastTestingTasks): one board's last closed
+//     sprints, story-first, Original Estimate only (timeoriginalestimate) —
+//     never a description, so hours mode 'none' history yields no estimates;
 //   - the sub-task type: jira.subtaskType pins it, else exactly one subtask
 //     type is used and several join the bundle round;
 //   - hours follow what Jira's REST API allows (time tracking is only written
@@ -382,9 +386,68 @@ async function validate(adapter, spec, args, cwd) {
   };
 }
 
+// ── the first-run history read (no config/estimation.json yet) ─────────────
+// One board's last `count` closed sprints (--board, then jira.board; else the
+// project's one non-kanban board — several join the ONE bundled round), their
+// stories, then those stories' [Testing] sub-tasks with the time-tracking
+// Original Estimate only. Never descriptions: hours mode `none` put the hours
+// there, and they are never read as estimates. Zero writes.
+const blockedEstimation = (blocked) => ({ code: 2, out: { ok: false, mode: 'estimation', blocked } });
+
+async function pastTestingTasks(adapter, args, { count }) {
+  const cfg = adapter.config;
+  const fromArgs = typeof args.board === 'string' && args.board.trim() ? args.board.trim() : null;
+  const board = fromArgs || cfg.board || null;
+  const r = await adapter.listPastSprints({ board, count });
+  if (!r.ok) {
+    if (r.condition === 'board-not-found') {
+      const boards = r.data.boards.map((b) => `${b.name} (id ${b.id})`);
+      return { stop: blockedEstimation([{
+        reason: 'board-not-found', options: boards,
+        message: `${fromArgs ? '--board' : 'jira.board'} "${board}" matches no board of project ${cfg.project} — real boards: ${boards.join(', ') || 'none'}`,
+      }]) };
+    }
+    if (r.condition === 'board-ambiguous') {
+      const boards = r.data.boards.map((b) => `${b.name} (id ${b.id})`);
+      return { stop: blockedEstimation([{
+        reason: 'history-board-ambiguous', options: boards,
+        message: `project ${cfg.project} has ${boards.length} boards with sprints (${boards.join(', ')}) — ` +
+          'ask the user which board\'s sprints to read (the ONE bundled round) and re-run with --board "<id|name>", ' +
+          'or set jira.board in config/project.json',
+      }]) };
+    }
+    throw new Error(`unexpected history-read condition '${r.condition}' from the Jira adapter`);
+  }
+  const read = await adapter.listChildEstimates({ sprints: r.sprints, storyType: cfg.storyType });
+  const points = rules.historyPoints(read);
+  const estimated = points.filter((p) => p.hours !== null).length;
+  const reason = rules.historyReason({ sprintCount: r.sprints.length, testingCount: points.length, estimatedCount: estimated });
+  const names = r.sprints.map((sp) => sp.name).join(', ');
+  const reasonMessage = {
+    'no-closed-sprints': r.board
+      ? `board "${r.board.name}" has no closed sprint yet`
+      : `project ${cfg.project} has no board with sprints (a kanban board has none)`,
+    'no-testing-tasks': `the last ${r.sprints.length} closed sprint(s) (${names}) hold no [Testing] sub-task under a "${cfg.storyType}"`,
+    'no-estimates': `none of the ${points.length} [Testing] sub-task(s) in those sprints (${names}) has an Original Estimate. ` +
+      'The likely cause: time tracking is not on the sub-task screen, so AgenTeX recorded the hours in each description ' +
+      '(hours mode `none`), and it never reads descriptions as estimates. See references/tracker/jira-boards.md, "Project prerequisites".',
+  }[reason] || null;
+  return {
+    history: {
+      sprintsRequested: count,
+      sprints: r.sprints.map((sp) => ({ id: sp.id, name: sp.name })),
+      storiesRead: read.stories.length,
+      points,
+      truncated: Boolean(read.truncated),
+      reason,
+      reasonMessage,
+    },
+  };
+}
+
 module.exports = {
   provider: 'jira',
-  parseIds, openStoriesRead, currentSprint, readStory, testingChildren, storyRow, validate,
+  parseIds, openStoriesRead, currentSprint, readStory, testingChildren, storyRow, validate, pastTestingTasks,
   // compat (re-exported by create-tasks.js)
   currentSprintJql,
 };

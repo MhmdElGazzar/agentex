@@ -81,6 +81,7 @@ Run `spec_drivers.js <specs>` once, before any other action. Its `drivers` decid
 |---|---|
 | `browser` | Read `${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/SKILL.md` before the first browser action. `portalUrl` (or the spec's `Target:`) is required. |
 | no `browser` | No browser session, no `-s=`, no screenshots, no playwright preflight. `portalUrl` is not required. |
+| `mobile` (a spec's `Drivers: mobile`) | That spec is BLOCKED: "mobile specs run via /execute-mobile-test". Never run it in a browser. The rest of the run goes on. |
 
 ### Which environment?
 Resolve once, before any step. Take the first match:

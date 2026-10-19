@@ -19,13 +19,56 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js" \
   `--expect-equals <dot.path>=<value>`. Non-default catalog dir: `--catalog <dir>`.
 - A `BLOCKED` result tells you exactly what's missing (entry, param, or env var) — surface it
   to the user; do not work around it.
-- **Params**: a declared param whose name matches a `{name}` placeholder in `path` is
-  substituted into the path; any other declared param is sent as a URL query string param
-  instead (e.g. `params: ["userId"]` with a path of `/todos` and no `{userId}` placeholder
-  becomes `?userId=<value>`).
+- **Params** — placement, in order:
+  1. a `{name}` placeholder in `path` → substituted into the path;
+  2. listed in the request's optional `"query": ["name", ...]` → sent in the query string
+     (`swagger-import` writes this for every `in: query` param);
+  3. a `{name}` placeholder in `body` → stays in the body only (never added to the URL);
+  4. referenced nowhere in the request → query string (backward-compatible fallback, e.g.
+     `params: ["userId"]` with a path of `/todos` and no placeholder becomes `?userId=<value>`).
+  A `query` entry that isn't in `params` is BLOCKED.
 - **`auth.type`**: `bearer`, `basic`, `apiKey` (custom header — e.g.
   `{"type":"apiKey","headerName":"X-Api-Key","tokenEnv":"API_TOKEN"}`), or `none`. Same
   missing-env-var → BLOCKED behavior for all three.
+
+## Where the target comes from — the catalog's `target` field
+
+A catalog's optional top-level `"target"` decides who owns its base URL and auth. The active
+environment's `api` block (`environments/<env>.json`; `--env <name>`, omitted = the project's
+`defaultEnvironment`) is **the project's own API**: when it applies, it supplies `baseUrl`, and
+its `token` is sent as `Authorization: Bearer`, replacing the catalog's refs and `auth` block.
+
+- **`"catalog"`** — the catalog's own `baseUrl` (`${ENV_VAR}` refs resolved from the process
+  environment, then `.env`) and its own `auth` are used; the environment's `api` block is
+  ignored for this catalog — base URL and token both. Use it for **a different service** than
+  the project's API: `swagger-import` writes it into every catalog it generates.
+- **`"environment"`** — the environment's `api` block applies, whatever the catalog's `baseUrl`
+  says. Use it on a hand-written catalog whose `baseUrl` uses another variable (e.g.
+  `${ORDERS_BASE_URL}`) but should still switch host with `--env`.
+- **No `target`** — the environment's `api` block applies only when the catalog's `baseUrl` is
+  absent/empty or exactly `"${API_BASE_URL}"` (the project default — one API, a different host
+  per environment, switched with `--env`). A catalog declaring any other `baseUrl` — another
+  variable such as `"${PETSTORE_BASE_URL}"`, or a literal URL — keeps its own `baseUrl` and its
+  own `auth`, and the environment token is never sent to it.
+
+When the rule picks the environment but the environment has no `api` block, the catalog's own
+refs and `auth` are used (legacy fallback). In every case an unset `${…}` ref the catalog itself needs is BLOCKED naming
+the variable — it never falls back to the environment's host — and `--env` must name an
+environment that exists (an unknown name is BLOCKED, listing the ones that do).
+
+```json
+{
+  "name": "petstore",
+  "target": "catalog",
+  "baseUrl": "${PETSTORE_BASE_URL}",
+  "auth": { "type": "apiKey", "headerName": "api_key", "tokenEnv": "PETSTORE_TOKEN" },
+  "requests": [ { "name": "getinventory", "method": "GET", "path": "/store/inventory", "params": [] } ]
+}
+```
+
+Any other `target` value is BLOCKED (exit 2) naming the catalog, the field and the allowed
+values, before any request is sent. Values for every `${…}` ref and `tokenEnv`/`userEnv`/
+`passEnv` name live in the project's `.env` — the catalog holds only the names.
 
 ## Fallback: manual curl (only if node/the runner fails)
 
@@ -69,9 +112,10 @@ Rules:
   (`set -a; . ./.env; set +a; curl …`) and pass them as shell variables; **never echo their values** and never write the
   Authorization header value into the report (the raw log keeps headers you *send* out of it —
   log response status/headers/body only; if you must log the command, redact the token).
-- When the project defines `environments/<env>.json` with an `api` block, its
-  `baseUrl`/`token` override the catalog's env refs; `--env <name>` selects the
-  environment.
+- **Which target a catalog uses** follows "Where the target comes from" above (`--env <name>`
+  selects the environment): when the environment's `api` block applies to the catalog, use its
+  `baseUrl` and token in place of the catalog's refs and `auth`; otherwise use the catalog's own
+  `baseUrl` and `auth` — the environment token is never sent to a catalog that owns its target.
 - URL-encode parameter values that go into the path/query (`--data-urlencode` for query params).
 - `auth.type` values: `bearer` (header shown above), `basic` (`-u "$USER:$PASS"`), `apiKey`
   (`-H "<headerName>: $<tokenEnv>"`), `none`.
