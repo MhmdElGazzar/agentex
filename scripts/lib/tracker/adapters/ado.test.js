@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createAdapter, TrackerError, PAT_ENV_NAMES } = require('./ado.js');
+const { createAdapter, normalizeOrg, TrackerError, PAT_ENV_NAMES } = require('./ado.js');
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -17,8 +17,8 @@ async function test(name, fn) {
 const SENTINEL_PAT = 'SENTINEL-PAT-a1b2c3d4e5f60718293a4b5c6d7e8f90';
 const SENTINEL_B64 = Buffer.from(':' + SENTINEL_PAT).toString('base64');
 
-// The tests own the PAT environment — the machine's real values must not leak in.
-for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AGENTEX_CI']) delete process.env[n];
+// The tests own the PAT and legacy config environment — the machine's real values must not leak in.
+for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AZURE_URL', 'AZURE_PROJECT', 'AGENTEX_CI']) delete process.env[n];
 
 // Throwaway consumer project with an azure block + a sentinel PAT in .env.
 function proj({ org = 'exampleorg', project = 'Sample Project', envLines, azureExtra = {} } = {}) {
@@ -219,6 +219,22 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(Buffer.compare(call.body, fs.readFileSync(png)), 0, 'raw bytes travel as the body');
   });
 
+  await test('uploadAttachment with opts.bytes sends that buffer verbatim — not a re-read of the file', async () => {
+    const dir = proj();
+    const png = path.join(dir, 'shot.png');
+    fs.writeFileSync(png, Buffer.from('what is on disk now'));
+    const checked = Buffer.from([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6]);
+    const f = fakeFetch([{ method: 'POST', match: '/_apis/wit/attachments', json: { id: 'att-2', url: 'https://x/att-2' } }]);
+    const a = createAdapter({ cwd: dir, fetch: f });
+    const d = await a.uploadAttachment(png, { execute: false, bytes: checked });
+    assert.match(d.body, /shot\.png, 8 bytes/, 'the dry-run size is the size that will be sent');
+    await a.uploadAttachment(png, { execute: true, bytes: checked });
+    assert.strictEqual(Buffer.compare(f.calls[0].body, checked), 0, 'the given bytes travel');
+    await assert.rejects(() => a.uploadAttachment(png, { execute: true, bytes: 'not a buffer' }),
+      (e) => e.exitCode === 2 && /opts\.bytes must be a Buffer/.test(e.message));
+    assert.strictEqual(f.calls.length, 1, 'a bad bytes option sends nothing');
+  });
+
   // Suite membership as the legacy GET returns it; flips once the add POST was sent.
   const suiteCases = (present, addedAfterPost = []) => (calls) => {
     const posted = calls.some((c) => c.method === 'POST' && c.url.includes('/testcases/'));
@@ -339,6 +355,119 @@ const PROJ = 'Sample%20Project';
     assert.match(JSON.stringify(descriptors[3].body), /shot\.png/);
   });
 
+  // ── IDs: canonical decimal on every request, unchecked on dry runs ────────
+  // Malformed spellings a caller or an agent could hand over. None may reach the
+  // wire — no leading zero, sign, whitespace, '#', exponent, non-ASCII digits,
+  // unsafe magnitude, injected path/query, or a dry-run stand-in.
+  const BAD_IDS = ['0123', ' 123', '123 ', '123\n', '#123', '+5', '-1', '0', '1.0', '1e2', '0x1f', '١٢٣',
+    '9007199254740993', '77?destroy=true', '77/../78', '', 'NEW', '<bugId>', 'new-bug-id', '{new-bug-id}',
+    0, -1, 1.5, NaN, Infinity, 2 ** 53, null, undefined, true, {}];
+  const EXEC = { execute: true };
+
+  await test('every read and execute path refuses a malformed id (exit 2) and sends ZERO requests', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const routes = (id) => [
+      ['getWorkItem', () => a.getWorkItem(id)],
+      ['getStory', () => a.getStory(id)],
+      ['listSuites', () => a.listSuites(id)],
+      ['listSuiteCases plan', () => a.listSuiteCases(id, 4)],
+      ['listSuiteCases suite', () => a.listSuiteCases(3, id)],
+      ['getPoint plan', () => a.getPoint(id, 4, 77)],
+      ['getPoint suite', () => a.getPoint(3, id, 77)],
+      ['getPoint case', () => a.getPoint(3, 4, id)],
+      ['listRunResults', () => a.listRunResults(id)],
+      ['updateWorkItem', () => a.updateWorkItem(id, { fields: { x: 'y' } }, EXEC)],
+      ['updateWorkItem relation', () => a.updateWorkItem(42, { addRelations: [{ rel: 'r', targetId: id }] }, EXEC)],
+      ['addRelation source', () => a.addRelation(id, 'r', 9, EXEC)],
+      ['addRelation target', () => a.addRelation(42, 'r', id, EXEC)],
+      ['createWorkItem relation', () => a.createWorkItem('Bug', { relations: [{ rel: 'r', targetId: id }] }, EXEC)],
+      ['createWorkItem validateOnly relation', () => a.createWorkItem('Bug', { relations: [{ rel: 'r', targetId: id }] }, { validateOnly: true, execute: true })],
+      ['addCaseToSuite plan', () => a.addCaseToSuite(id, 4, 5, EXEC)],
+      ['addCaseToSuite suite', () => a.addCaseToSuite(3, id, 5, EXEC)],
+      ['addCaseToSuite case', () => a.addCaseToSuite(3, 4, [505, id], EXEC)],
+      ['updateRunResults', () => a.updateRunResults(id, [], EXEC)],
+      ['updateRun', () => a.updateRun(id, { state: 'Completed' }, EXEC)],
+      ['deleteWorkItem', () => a.deleteWorkItem(id, EXEC)],
+    ];
+    for (const id of BAD_IDS) {
+      for (const [name, call] of routes(id)) {
+        await assert.rejects(call, (e) => {
+          assert.strictEqual(e.exitCode, 2, `${name}(${String(id)}): ${e.message}`);
+          // deleteWorkItem's own positive-integer check (unchanged) may fire first.
+          assert.match(e.message, name === 'deleteWorkItem' ? /work-item id/ : /positive canonical decimal/, `${name}(${String(id)})`);
+          return true;
+        }, `${name}(${String(id)}) must be refused`);
+      }
+    }
+    assert.strictEqual(f.calls.length, 0, 'every refusal happened before a request left the machine');
+  });
+
+  await test('canonical IDs reach the wire unchanged — numbers and plain decimal strings alike', async () => {
+    const f = fakeFetch([{ match: '/suites/4/testcases', json: { value: [{ testCase: { id: '505' } }] } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await a.getWorkItem('123');
+    await a.getWorkItem(9007199254740991); // Number.MAX_SAFE_INTEGER is still an id
+    await a.getPoint('3', '4', '77');
+    await a.addCaseToSuite('3', '4', '505', EXEC);
+    await a.updateRun('88', { state: 'Completed' }, EXEC);
+    await a.deleteWorkItem('77', EXEC);
+    const paths = f.calls.map((c) => c.url.replace(/^.*\/_apis\//, '').replace(/\?.*$/, ''));
+    assert.deepStrictEqual(paths, ['wit/workitems/123', 'wit/workitems/9007199254740991',
+      'testplan/Plans/3/Suites/4/TestPoint', 'test/Plans/3/suites/4/testcases', 'test/runs/88', 'wit/workitems/77']);
+  });
+
+  await test('dry runs check NO id: the bug flow\'s stand-ins plan exactly as before, with no PAT and zero requests', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj({ envLines: '' }), fetch: f });
+    const DRY = { execute: false };
+    for (const id of ['NEW', '<bugId>', 'new-bug-id', '{new-bug-id}', '{run-id}', '{new-tc-id}', ' 77', '0123', '#5']) {
+      const link = await a.addRelation(77, 'Microsoft.VSTS.Common.TestedBy-Reverse', id, DRY); // testplan.js fail --bug <id>
+      assert.ok(link.url.includes('/wit/workitems/77?'), link.url);
+      assert.strictEqual(link.body[0].value.url, `${BASE}/_apis/wit/workItems/${id}`);
+      assert.ok((await a.addRelation(id, 'r', 321, DRY)).url.includes(`/wit/workitems/${id}?`));
+      assert.ok((await a.updateWorkItem(id, { fields: { x: 'y' } }, DRY)).url.includes(`/wit/workitems/${id}?`));
+      const create = await a.createWorkItem('Task', { relations: [{ rel: 'r', targetId: id }] }, DRY);
+      assert.strictEqual(create.body[0].value.url, `${BASE}/_apis/wit/workItems/${id}`);
+      assert.ok((await a.addCaseToSuite(id, id, id, DRY)).url.includes(`/test/Plans/${id}/suites/${id}/testcases/${id}?`));
+      assert.ok((await a.updateRunResults(id, [], DRY)).url.includes(`/test/Runs/${id}/results?`));
+      assert.ok((await a.updateRun(id, {}, DRY)).url.includes(`/test/runs/${id}?`));
+    }
+    // deleteWorkItem's dry run keeps its own long-standing positive-integer check;
+    // only the execute path is stricter.
+    assert.ok((await a.deleteWorkItem(' 77', DRY)).url.includes('/wit/workitems/77?'));
+    await assert.rejects(() => a.deleteWorkItem(' 77', EXEC), /positive canonical decimal work-item id/);
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  // ── azure.org must be a plain base URL ─────────────────────────────────────
+  await test('azure.org carrying credentials, a query string or a fragment is refused at config time — value never echoed', async () => {
+    const refused = [
+      ['https://qa.user:TOPSECRET@dev.azure.com/exampleorg', /credentials/],
+      ['https://TOPSECRET@dev.azure.com/exampleorg', /credentials/],
+      ['https://dev.azure.com/exampleorg?TOPSECRET=1', /query string/],
+      ['https://dev.azure.com/exampleorg?', /query string/],
+      ['https://dev.azure.com/exampleorg#TOPSECRET', /fragment/],
+      ['exampleorg?TOPSECRET', /query string/],
+      ['https://bad host/exampleorg', /not a valid/],
+    ];
+    for (const [org, why] of refused) {
+      assert.throws(() => createAdapter({ cwd: proj({ org }), fetch: fakeFetch([]) }), (e) => {
+        assert.strictEqual(e.exitCode, 2, org);
+        assert.match(e.message, why, org);
+        assert.ok(!e.message.includes('TOPSECRET'), `the org value is never echoed: ${e.message}`);
+        return true;
+      });
+    }
+    // The legacy AZURE_URL fallback goes through the same gate.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ado-'));
+    fs.writeFileSync(path.join(dir, '.env'), `AZURE_URL=https://u:TOPSECRET@dev.azure.com/legacyorg\nAZURE_PROJECT=P\nAZURE_PAT=${SENTINEL_PAT}\n`);
+    assert.throws(() => createAdapter({ cwd: dir, fetch: fakeFetch([]) }), /credentials/);
+    // Plain spellings are unchanged.
+    assert.strictEqual(normalizeOrg('exampleorg'), 'https://dev.azure.com/exampleorg');
+    assert.strictEqual(normalizeOrg(' https://tfs.example.com/Collection/ '), 'https://tfs.example.com/Collection');
+  });
+
   // ── error contract ──────────────────────────────────────────────────────────
   await test('non-2xx: TrackerError with op, status, url and a <=500-char body slice', async () => {
     const long = 'x'.repeat(2000);
@@ -389,6 +518,102 @@ const PROJ = 'Sample%20Project';
     const dead = async () => { throw new Error('getaddrinfo ENOTFOUND dev.azure.com'); };
     const a = createAdapter({ cwd: proj(), fetch: dead });
     await assert.rejects(() => a.getWorkItem(1), (e) => e instanceof TrackerError && /ENOTFOUND/.test(e.serverMessage));
+  });
+
+  // ── error-path scrub: an echoed PAT never survives into a TrackerError ─────
+  // A PAT with characters that encode differently, so the URL-encoded and
+  // JSON-escaped spellings are distinct strings the scrub has to catch.
+  const ODD_PAT = 'odd+pat/with"quote\\slash';
+  const ODD_B64 = Buffer.from(':' + ODD_PAT).toString('base64');
+  const ODD_FORMS = {
+    raw: ODD_PAT,
+    header: `Basic ${ODD_B64}`,
+    base64: ODD_B64,
+    urlEncoded: encodeURIComponent(ODD_PAT),
+    jsonEscaped: JSON.stringify(ODD_PAT).slice(1, -1),
+  };
+  const oddProj = () => proj({ envLines: `AZURE_PAT=${ODD_PAT}\n` });
+  // Every surface a caller can print: message, own props, body, serverMessage.
+  const assertNoPatForm = (e) => {
+    const surfaces = [e.message, e.url, e.body, String(e.serverMessage), JSON.stringify({ ...e })].join('\n');
+    for (const [name, form] of Object.entries(ODD_FORMS)) assert.ok(!surfaces.includes(form), `${name} form leaked: ${surfaces}`);
+  };
+
+  await test('error path: a non-OK text body echoing the PAT in any form is scrubbed (raw, header, base64, URL-encoded, JSON-escaped)', async () => {
+    for (const [name, form] of Object.entries(ODD_FORMS)) {
+      const f = fakeFetch([{ match: '/workitems/1', status: 401, text: `proxy echo: ${form} <end>` }]);
+      await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: f }).getWorkItem(1), (e) => {
+        assert.ok(e instanceof TrackerError, name);
+        assertNoPatForm(e);
+        assert.strictEqual(e.body, 'proxy echo: <redacted> <end>', name);
+        return true;
+      });
+    }
+  });
+
+  await test('error path: a JSON error body is scrubbed value by value — nested, as a key, and behind \\u escapes', async () => {
+    const unicodeEscaped = [...ODD_PAT].map((ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`).join('');
+    const text = `{"message":"rejected ${ODD_FORMS.jsonEscaped}","detail":{"tokens":["${ODD_B64}","Basic ${ODD_B64}"],` +
+      `"${ODD_FORMS.urlEncoded}":"as a key","hidden":"${unicodeEscaped}"}}`;
+    assert.ok(!text.includes(ODD_PAT), 'precondition: the raw text never spells the PAT plainly');
+    const f = fakeFetch([{ method: 'POST', match: '/wiql', status: 400, text }]);
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: f }).query('SELECT 1'), (e) => {
+      assertNoPatForm(e);
+      assert.strictEqual(e.serverMessage, 'rejected <redacted>');
+      assert.deepStrictEqual(JSON.parse(e.body), {
+        message: 'rejected <redacted>',
+        detail: { tokens: ['<redacted>', '<redacted>'], '<redacted>': 'as a key', hidden: '<redacted>' },
+      });
+      return true;
+    });
+  });
+
+  await test('error path: a fetch that throws while quoting the Authorization header is scrubbed', async () => {
+    const leaky = async () => { throw new Error(`proxy refused Authorization: Basic ${ODD_B64} (token ${ODD_PAT})`); };
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: leaky }).getWorkItem(1), (e) => {
+      assert.ok(e instanceof TrackerError);
+      assertNoPatForm(e);
+      assert.strictEqual(e.serverMessage, 'proxy refused Authorization: <redacted> (token <redacted>)');
+      return true;
+    });
+  });
+
+  await test('error path: a request URL carrying a PAT form is scrubbed in the error (url and message)', async () => {
+    // listFields URL-encodes its type into the route — the one caller-shaped path segment.
+    const f = fakeFetch([{ match: '/workitemtypes/', status: 404, text: '' }]);
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: f }).listFields(ODD_PAT), (e) => {
+      assertNoPatForm(e);
+      assert.ok(e.url.includes('/workitemtypes/<redacted>/fields'), e.url);
+      return true;
+    });
+  });
+
+  await test('error path: an unreadable response body becomes a scrubbed TrackerError, never a raw stream error', async () => {
+    const broken = (status) => async () => ({ ok: status < 300, status, text: async () => { throw new Error(`stream reset (token ${ODD_PAT})`); } });
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: broken(502) }).getWorkItem(1), (e) => {
+      assert.ok(e instanceof TrackerError);
+      assert.strictEqual(e.status, 502);
+      assert.match(e.serverMessage, /response body could not be read: stream reset \(token <redacted>\)/);
+      assertNoPatForm(e);
+      return true;
+    });
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: broken(200) }).getWorkItem(1), (e) => {
+      assert.ok(e instanceof TrackerError, 'a 2xx whose body cannot be read is still a failure');
+      assert.strictEqual(e.status, null);
+      assertNoPatForm(e);
+      return true;
+    });
+  });
+
+  await test('success path is untouched: a 2xx body is returned verbatim even when it contains the PAT', async () => {
+    // The scrub is error-path only — a work item that happens to quote the
+    // token is the user's data and comes back byte for byte.
+    const wi = { id: 1, fields: { 'System.Description': `pasted ${SENTINEL_PAT} / Basic ${SENTINEL_B64}` } };
+    const r = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/1', json: wi }]) }).getWorkItem(1);
+    assert.deepStrictEqual(r, wi);
+    const plain = `plain ${SENTINEL_PAT}`;
+    const r2 = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/1', text: plain }]) }).getWorkItem(1);
+    assert.strictEqual(r2, plain, 'a non-JSON 2xx body is returned as-is too');
   });
 
   // ── config resolution (invariant 10) ────────────────────────────────────────

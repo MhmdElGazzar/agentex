@@ -13,6 +13,10 @@
 // inverted). It enters memory once and reaches ONLY the Authorization header —
 // never a return value, an error, a log line, argv, or a dry-run descriptor
 // (those print `authorization: <Basic ***, not printed>`, PR #16's wording).
+// Belt and braces on the error path: a provider or proxy can echo request
+// material back, so every TrackerError diagnostic is scrubbed of the PAT in all
+// the forms it can travel in before it leaves request() (see scrub() below).
+// Successful responses are returned untouched.
 //
 // CONFIG (invariants 7/10): org/project/apiVersion come from the consumer's
 // config/project.json `azure` block with legacy AZURE_* .env keys as fallback
@@ -23,6 +27,12 @@
 // NOTHING and returns the full request descriptor (method, url, redacted
 // headers, body summary) for the consolidated pre-approval screen. Nothing here
 // retries or cleans up — that discipline lives in ledger.js.
+//
+// IDS: every call that SENDS a request takes work-item, plan, suite, run and
+// test-case IDs in canonical decimal form only (requireId below), so an id can
+// never carry a path segment or query string into a request URL. Dry runs are
+// deliberately not checked: a plan names IDs that an earlier write in the same
+// plan will create, and the flows pass stand-ins for them.
 const fs = require('node:fs');
 const path = require('node:path');
 const pc = require(path.join(__dirname, '..', '..', 'project_config.js'));
@@ -34,6 +44,7 @@ const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
 const BATCH_CHUNK = 200;             // wit/workitemsbatch accepts at most 200 ids per call
 const REDACTED_AUTH = '<Basic ***, not printed>';
+const REDACTED = '<redacted>'; // what scrub() leaves where a PAT form was
 
 function configError(message) {
   const e = new Error(message);
@@ -54,6 +65,32 @@ function assertCiWritesAllowed(op) {
   }
 }
 
+// A canonical ID is a positive safe integer, or its plain decimal spelling: no
+// sign, no leading zero, no whitespace, no '#', no exponent or fraction.
+function isCanonicalId(id) {
+  if (typeof id === 'number') return Number.isSafeInteger(id) && id > 0;
+  return typeof id === 'string' && /^[1-9][0-9]*$/.test(id) && Number.isSafeInteger(Number(id));
+}
+
+// Called on every path that sends a request, before anything is sent: reads
+// and execute paths only — never on an execute:false descriptor, where
+// the bug flow's stand-ins ('{new-bug-id}', 'NEW', '<bugId>', ...) must keep
+// planning exactly as they always have. Exit 2: refused, nothing was sent.
+function requireId(op, label, id) {
+  if (isCanonicalId(id)) return;
+  const shown = typeof id === 'string' ? JSON.stringify(id)
+    : (id !== null && typeof id === 'object') ? 'an object' : String(id);
+  throw configError(`${op} needs a positive canonical decimal ${label} (got ${shown}) — refused before any request`);
+}
+
+// Relation targets ride inside the json-patch body as a composed URL; one given
+// by url (an attachment) is the server's own and is passed through.
+function requireRelationTargets(op, { relations, addRelations } = {}) {
+  for (const rel of relations || addRelations || []) {
+    if (!rel.url) requireId(op, 'relation target id', rel.targetId);
+  }
+}
+
 // azure block key first, legacy AZURE_* env second; empty/missing => null.
 function pick(cwd, az, key, envName) {
   const j = az[key];
@@ -64,10 +101,22 @@ function pick(cwd, az, key, envName) {
 
 // `azure.org` accepts both spellings, explicitly: a full URL is used as-is
 // (trailing slashes stripped); a bare org name becomes https://dev.azure.com/<org>.
-// No other guessing.
+// No other guessing. Every request URL and dry-run descriptor is composed by
+// appending to this base, so it must be a plain one: credentials, a query
+// string or a fragment are refused at config time. The refusal never echoes
+// the value — it may hold a credential.
 function normalizeOrg(org) {
   const trimmed = String(org).trim().replace(/\/+$/, '');
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  const base = /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  const hint = 'use the bare org name or its https://dev.azure.com/<org> (or on-prem collection) URL';
+  let parsed;
+  try { parsed = new URL(base); } catch {
+    throw configError(`azure.org is not a valid organization name or http(s) URL — ${hint}`);
+  }
+  if (parsed.username || parsed.password || /[?#]/.test(base)) {
+    throw configError(`azure.org must not carry credentials, a query string or a fragment — ${hint}`);
+  }
+  return base;
 }
 
 // Resolve the consumer's non-secret ADO settings (invariant 7). Missing
@@ -139,7 +188,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
   const doFetch = fetchImpl || globalThis.fetch;
   const projSeg = encodeURIComponent(cfg.project);
 
-  let patState = null; // { header, resolvedName } — resolved lazily, once
+  let patState = null; // { header, resolvedName, secretForms } — resolved lazily, once
   function auth(op, url) {
     if (!patState) {
       let resolvedName = null; let pat = null;
@@ -152,12 +201,36 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
           `No Azure DevOps PAT found — looked for ${PAT_ENV_NAMES.join(', ')} in the environment and in .env. ` +
           'Add AZURE_PAT to the project\'s .env (the /init-test wizard writes it).');
       }
+      const encoded = Buffer.from(':' + pat).toString('base64');
       patState = {
-        header: 'Basic ' + Buffer.from(':' + pat).toString('base64'),
+        header: 'Basic ' + encoded,
         resolvedName,
+        // Every spelling the PAT can take in an echoed diagnostic: the Basic
+        // header, its base64(':'+PAT) payload, the raw value, URL-encoded and
+        // JSON-escaped. Longest first, so the header goes as one piece.
+        secretForms: [...new Set(['Basic ' + encoded, encoded, pat, encodeURIComponent(pat), JSON.stringify(pat).slice(1, -1)])]
+          .sort((a, b) => b.length - a.length),
       };
     }
     return patState;
+  }
+
+  // Error-path scrub — used ONLY where a TrackerError is built, never on a
+  // successful response. Before any PAT is resolved there is nothing to scrub.
+  function scrub(text) {
+    let out = String(text);
+    for (const form of (patState ? patState.secretForms : [])) out = out.replaceAll(form, REDACTED);
+    return out;
+  }
+  // Structured error bodies are scrubbed value by value (keys included), so a
+  // PAT the raw text hid behind JSON \u escapes is caught once it is parsed.
+  function scrubDeep(value) {
+    if (typeof value === 'string') return scrub(value);
+    if (Array.isArray(value)) return value.map(scrubDeep);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [scrub(k), scrubDeep(v)]));
+    }
+    return value;
   }
 
   function url(route, params = {}, { project = true, apiVersion = cfg.apiVersion } = {}) {
@@ -183,14 +256,30 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const msg = e && (e.name === 'TimeoutError' || e.name === 'AbortError')
         ? `request timed out after ${timeoutMs}ms`
         : (e && e.message) || String(e);
-      throw new TrackerError({ op, url: requestUrl, serverMessage: msg });
+      throw new TrackerError({ op, url: scrub(requestUrl), serverMessage: scrub(msg) });
     }
-    const text = await res.text();
+    let text;
+    try {
+      text = await res.text();
+    } catch (e) {
+      // A body that cannot be read is an error path too: wrapped and scrubbed,
+      // never a raw stream error.
+      throw new TrackerError({
+        op, status: res.ok ? undefined : res.status, url: scrub(requestUrl),
+        serverMessage: scrub(`the response body could not be read: ${(e && e.message) || String(e)}`),
+      });
+    }
     if (!res.ok) {
-      let serverMessage = null;
-      try { serverMessage = JSON.parse(text).message || null; } catch { /* not json */ }
+      // A JSON body is scrubbed as parsed values and re-serialized; anything
+      // else is scrubbed as raw text.
+      let serverMessage = null; let body;
+      try {
+        const parsed = scrubDeep(JSON.parse(text));
+        serverMessage = (parsed && parsed.message) || null;
+        body = JSON.stringify(parsed);
+      } catch { body = scrub(text); }
       const err = new TrackerError({
-        op, status: res.status, url: requestUrl, serverMessage, body: text.slice(0, 500),
+        op, status: res.status, url: scrub(requestUrl), serverMessage, body: body.slice(0, 500),
         credentialHint: res.status === 401 || res.status === 403
           ? { tried: [...PAT_ENV_NAMES], resolved: resolvedName }
           : undefined,
@@ -260,6 +349,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
     // ── READS (free, no gating) ────────────────────────────────────────────────
     async getWorkItem(id, { expand } = {}) {
+      requireId('getWorkItem', 'work-item id', id);
       const u = url(`wit/workitems/${id}`, expand ? { $expand: expand === true ? 'all' : expand } : {});
       return request('getWorkItem', 'GET', u);
     },
@@ -288,23 +378,30 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     },
 
     async listSuites(planId) {
+      requireId('listSuites', 'plan id', planId);
       const res = await request('listSuites', 'GET', url(`testplan/Plans/${planId}/suites`));
       return (res && res.value) || [];
     },
 
     async listSuiteCases(planId, suiteId) {
+      requireId('listSuiteCases', 'plan id', planId);
+      requireId('listSuiteCases', 'suite id', suiteId);
       const res = await request('listSuiteCases', 'GET', url(`testplan/Plans/${planId}/Suites/${suiteId}/TestCase`));
       return (res && res.value) || [];
     },
 
     // Per-suite point lookup on purpose — the global ?testCaseId shortcut 404s on many orgs.
     async getPoint(planId, suiteId, testCaseId) {
+      requireId('getPoint', 'plan id', planId);
+      requireId('getPoint', 'suite id', suiteId);
+      requireId('getPoint', 'test case id', testCaseId);
       const u = url(`testplan/Plans/${planId}/Suites/${suiteId}/TestPoint`, { testCaseId });
       const res = await request('getPoint', 'GET', u);
       return ((res && res.value) || [])[0] || null;
     },
 
     async listRunResults(runId) {
+      requireId('listRunResults', 'run id', runId);
       const res = await request('listRunResults', 'GET', url(`test/Runs/${runId}/results`));
       return (res && res.value) || [];
     },
@@ -468,6 +565,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const ops = toPatchOps(payload);
       if (!execute) return descriptor('createWorkItem', 'POST', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
       assertCiWritesAllowed('createWorkItem');
+      requireRelationTargets('createWorkItem', payload);
       const res = await request('createWorkItem', 'POST', u, {
         body: JSON.stringify(ops), contentType: 'application/json-patch+json',
       });
@@ -480,6 +578,8 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const ops = toPatchOps(payload);
       if (!execute) return descriptor('updateWorkItem', 'PATCH', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
       assertCiWritesAllowed('updateWorkItem');
+      requireId('updateWorkItem', 'work-item id', id);
+      requireRelationTargets('updateWorkItem', payload);
       const res = await request('updateWorkItem', 'PATCH', u, {
         body: JSON.stringify(ops), contentType: 'application/json-patch+json',
       });
@@ -490,20 +590,27 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return this.updateWorkItem(id, { addRelations: [{ rel: relType, targetId, ...(attributes ? { attributes } : {}) }] }, { execute });
     },
 
-    async uploadAttachment(filePath, { fileName, execute = false } = {}) {
+    // opts.bytes: the caller's already-checked buffer (create-bug.js passes
+    // what its structural check read), so the upload is exactly the validated
+    // bytes even if the file changes on disk in between. Without it the file
+    // is read here, as before.
+    async uploadAttachment(filePath, { fileName, execute = false, bytes } = {}) {
+      if (bytes !== undefined && bytes !== null && !(bytes instanceof Uint8Array)) {
+        throw configError('uploadAttachment opts.bytes must be a Buffer/Uint8Array when given');
+      }
       const name = fileName || path.basename(filePath);
       const u = url('wit/attachments', { fileName: name });
       if (!execute) {
-        let size = null;
-        try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ }
+        let size = bytes ? bytes.length : null;
+        if (size === null) { try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ } }
         return descriptor('uploadAttachment', 'POST', u, {
           body: `<raw bytes of ${name}${size !== null ? `, ${size} bytes` : ''}>`,
           contentType: 'application/octet-stream',
         });
       }
       assertCiWritesAllowed('uploadAttachment');
-      const bytes = fs.readFileSync(filePath);
-      const res = await request('uploadAttachment', 'POST', u, { body: bytes, contentType: 'application/octet-stream' });
+      const body = bytes || fs.readFileSync(filePath);
+      const res = await request('uploadAttachment', 'POST', u, { body, contentType: 'application/octet-stream' });
       return { name, id: res && res.id, url: res && res.url };
     },
 
@@ -523,6 +630,9 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         return descriptor('addCaseToSuite', 'POST', url(`test/Plans/${planId}/suites/${suiteId}/testcases/${ids.join(',')}`));
       }
       assertCiWritesAllowed('addCaseToSuite');
+      requireId('addCaseToSuite', 'plan id', planId);
+      requireId('addCaseToSuite', 'suite id', suiteId);
+      for (const id of ids) requireId('addCaseToSuite', 'test case id', id);
       const before = await memberIds();
       const toAdd = ids.filter((id) => !before.has(id));
       const alreadyPresent = ids.filter((id) => before.has(id));
@@ -553,6 +663,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`test/Runs/${runId}/results`);
       if (!execute) return descriptor('updateRunResults', 'PATCH', u, { body: results, contentType: 'application/json' });
       assertCiWritesAllowed('updateRunResults');
+      requireId('updateRunResults', 'run id', runId);
       await request('updateRunResults', 'PATCH', u, { body: JSON.stringify(results), contentType: 'application/json' });
       return { id: runId };
     },
@@ -561,6 +672,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`test/runs/${runId}`);
       if (!execute) return descriptor('updateRun', 'PATCH', u, { body, contentType: 'application/json' });
       assertCiWritesAllowed('updateRun');
+      requireId('updateRun', 'run id', runId);
       const res = await request('updateRun', 'PATCH', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: (res && res.id) ?? runId, state: res && res.state };
     },
@@ -569,8 +681,10 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // destroy is STRUCTURALLY impossible here: no destroy option exists in the
     // signature, none is ever emitted, and the id is validated to a positive
     // integer before the URL is composed — nothing can smuggle a query string
-    // through it. Backs the capability flag deleteWorkItem: 'partial' (ADO has
-    // no standard delete for test artifacts such as Test Cases).
+    // through it (the execute path additionally takes only the canonical
+    // spelling, like every other request). Backs the capability flag
+    // deleteWorkItem: 'partial' (ADO has no standard delete for test artifacts
+    // such as Test Cases).
     async deleteWorkItem(id, { execute = false } = {}) {
       const n = Number(id);
       if (!Number.isInteger(n) || n <= 0) {
@@ -579,6 +693,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`wit/workitems/${n}`);
       if (!execute) return descriptor('deleteWorkItem', 'DELETE', u);
       assertCiWritesAllowed('deleteWorkItem');
+      requireId('deleteWorkItem', 'work-item id', id);
       const res = await request('deleteWorkItem', 'DELETE', u);
       return { id: (res && res.id) ?? n };
     },

@@ -456,6 +456,23 @@ const SUBTASK_FIELDS = {
     assert.ok(!headerNames.includes('content-type'), 'fetch composes the multipart boundary itself');
   });
 
+  await test('uploadAttachment with opts.bytes sends that buffer verbatim — not a re-read of the file', async () => {
+    const dir = proj();
+    const png = path.join(dir, 'shot.png');
+    fs.writeFileSync(png, Buffer.from('what is on disk now'));
+    const checked = Buffer.from([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6]);
+    const f = fakeFetch([{ method: 'POST', match: '/rest/api/3/issue/PROJ-44/attachments', json: [{ id: '9002', content: `${BASE}/a/9002` }] }]);
+    const a = createAdapter({ cwd: dir, fetch: f });
+    const d = await a.uploadAttachment(png, { issueId: 'PROJ-44', execute: false, bytes: checked });
+    assert.match(d.body, /"shot\.png", 8 bytes/, 'the dry-run size is the size that will be sent');
+    await a.uploadAttachment(png, { issueId: 'PROJ-44', execute: true, bytes: checked });
+    const file = f.calls[0].body.get('file');
+    assert.strictEqual(Buffer.compare(Buffer.from(await file.arrayBuffer()), checked), 0, 'the given bytes travel');
+    await assert.rejects(() => a.uploadAttachment(png, { issueId: 'PROJ-44', execute: true, bytes: 'not a buffer' }),
+      (e) => e.exitCode === 2 && /opts\.bytes must be a Buffer/.test(e.message));
+    assert.strictEqual(f.calls.length, 1, 'a bad bytes option sends nothing');
+  });
+
   await test('uploadAttachment without opts.issueId is a named exit-2 error (Jira has no unparented upload)', async () => {
     const dir = proj();
     const png = path.join(dir, 'shot.png');
