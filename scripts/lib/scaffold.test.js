@@ -71,6 +71,59 @@ test('dryRun reports the sample copy without writing anything', () => {
   assert.ok(!fs.existsSync(path.join(dir, 'environments')), 'dryRun must not write');
 });
 
+// ---- .gitignore: the agent scratch location, and nothing broader ----
+const PRIOR_ENTRIES = ['.env', 'test/.auth/', '.playwright-cli/', 'test/.ui-baselines/', '.agentex/cache/'];
+function checkIgnored(dir, rel) {
+  const { spawnSync } = require('node:child_process');
+  return spawnSync('git', ['-C', dir, 'check-ignore', '-q', '--no-index', rel]).status === 0;
+}
+function scaffoldedRepo() {
+  const { execFileSync } = require('node:child_process');
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  execFileSync('git', ['-C', dir, 'init', '-q']);
+  return dir;
+}
+
+test('a fresh scaffold ignores the agent scratch location .agentex/scratch/', () => {
+  const dir = scaffoldedRepo();
+  assert.match(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8'), /^\.agentex\/scratch\/$/m);
+  assert.strictEqual(checkIgnored(dir, '.agentex/scratch/x.json'), true);
+  assert.strictEqual(checkIgnored(dir, '.agentex/scratch/cases.json'), true);
+});
+
+test('the prior entries are unchanged and in order; the scratch entry is appended last', () => {
+  assert.deepStrictEqual(scaffold.GITIGNORE_ENTRIES.map(e => e.entry), [...PRIOR_ENTRIES, '.agentex/scratch/']);
+  const lines = fs.readFileSync(path.join(scaffoldedRepo(), '.gitignore'), 'utf8').split('\n')
+    .filter(l => l && !l.startsWith('#'));
+  assert.deepStrictEqual(lines, [...PRIOR_ENTRIES, '.agentex/scratch/']);
+});
+
+test('the entries stay narrow: committed plugin files, qa-watchlist, .claude and executions are never ignored', () => {
+  const dir = scaffoldedRepo();
+  for (const rel of ['.agentex/version.json', '.agentex/test-template.md', '.agentex/task-estimation.json',
+    '.agentex/estimation-history.jsonl', 'qa-watchlist/a.md', '.claude/settings.json', 'executions/', 'executions/x/report.md']) {
+    assert.strictEqual(checkIgnored(dir, rel), false, `${rel} must not be ignored`);
+  }
+  const entries = scaffold.GITIGNORE_ENTRIES.map(e => e.entry);
+  for (const whole of ['.agentex/', '.agentex', '.claude/', '.claude', '/.agentex/', '/.claude/']) {
+    assert.ok(!entries.includes(whole), `no entry ignores ${whole} as a whole`);
+  }
+  for (const harness of ['.claude/worktrees/', '.claude/settings.local.json']) {
+    assert.ok(!entries.includes(harness), `${harness} is a docs recommendation, not a scaffold entry`);
+  }
+});
+
+test('the scratch entry: an equivalent spelling or a deliberate un-ignore counts as covered', () => {
+  for (const line of ['.agentex/scratch', '/.agentex/scratch/', '.agentex/', '!.agentex/scratch/', '!/.agentex/scratch']) {
+    const dir = proj({ '.gitignore': `${PRIOR_ENTRIES.join('\n')}\n${line}\n` });
+    assert.deepStrictEqual(scaffold.gitignoreMissing(dir), [], line);
+    const before = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8');
+    scaffold.ensureGitignore(dir);
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8'), before, `${line}: byte-identical`);
+  }
+});
+
 // ---- pristine sample-environment detection ----
 // The shape the qa-era scaffold shipped (plugin <= 0.16.x, templates/environments/qa.json).
 const QA_ERA_SAMPLE = {

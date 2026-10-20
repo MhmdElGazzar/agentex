@@ -63,7 +63,11 @@ function hasEnvFiles(projectRoot) {
 // binaries out of a QA repo, and it carries its own comment so the block does not
 // claim a cache holds a session. Same for .agentex/cache/ — tracker field metadata
 // (picklist allowedValues etc.), safe to delete, rebuilt on demand by the tracker
-// scripts. Committing that cache is a documented one-line opt-in: appending
+// scripts. .agentex/scratch/ is the one defined place where the test-design and
+// task-estimation skills write their intermediate files (cases.json, tasks.json) —
+// agent scratch, safe to delete; ignoring exactly that folder keeps the committed
+// .agentex/ files (version.json, test-template.md, …) visible.
+// Committing the tracker cache is a documented one-line opt-in: appending
 // `!.agentex/cache/` to .gitignore — the negation both re-includes the directory
 // and is listed in the entry's covers, so this scaffold (and m05) never re-adds
 // the ignore line over the user's opt-in.
@@ -95,6 +99,14 @@ const GITIGNORE_ENTRIES = [
       // The documented commit opt-in: the user re-included the cache on purpose —
       // never add the ignore line back over it.
       '!.agentex/cache/', '!.agentex/cache'],
+  },
+  {
+    entry: '.agentex/scratch/',
+    comment: '# and this one is agent scratch - intermediate files of test design and estimation runs, safe to delete',
+    covers: ['.agentex/scratch/', '.agentex/scratch', '/.agentex/scratch/', '/.agentex/scratch',
+      '.agentex/', '.agentex', '/.agentex/', '/.agentex', '.agentex/*', '/.agentex/*',
+      // a deliberate un-ignore: never add the line back over it
+      '!.agentex/scratch/', '!.agentex/scratch', '!/.agentex/scratch/', '!/.agentex/scratch'],
   },
 ];
 
@@ -366,7 +378,7 @@ module.exports = {
   CLAUDE_MD_BULLET, STAMP_REL,
   hasSpecFiles, hasEnvFiles, scaffoldProject, hasLegacySignals,
   sampleEnvShapes, isPristineSampleEnv,
-  gitignoreMissing, ensureGitignore,
+  GITIGNORE_ENTRIES, gitignoreMissing, ensureGitignore,
   claudeMdHasBullet, ensureClaudeMdBullet,
   stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,
 };

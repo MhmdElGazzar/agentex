@@ -857,7 +857,7 @@ test('m05: entries already covered under another spelling are not rewritten', ()
 test('m05: the documented commit opt-in (!.agentex/cache/) is never re-ignored over', () => {
   const dir = repo({
     'test/suite1/smoke.md': SPEC_02,
-    '.gitignore': '.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n!.agentex/cache/\n',
+    '.gitignore': '.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n!.agentex/cache/\n.agentex/scratch/\n',
     '.env': 'AZURE_PAT=\n',
   });
   const before = readText(dir, '.gitignore');
@@ -890,6 +890,43 @@ test('m05 + init: fresh scaffold gitignores sessions and scratch, not just .env'
   assert.match(gi, /^\.env$/m);
   assert.match(gi, /^test\/\.auth\/$/m);
   assert.match(gi, /^\.playwright-cli\/$/m);
+});
+
+// The agent scratch location (.agentex/scratch/) reaches existing projects through
+// m05's state detection — no new migration; on a stamped project it arrives with
+// the next version bump.
+const GI_BEFORE_SCRATCH = 'node_modules/\n.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n.agentex/cache/\nmy-notes/\n';
+
+test('m05: a project stamped at an older version gains ONLY .agentex/scratch/, order kept, re-run unchanged', () => {
+  const dir = proj();
+  runInit(dir);
+  addFiles(dir, { '.gitignore': GI_BEFORE_SCRATCH, '.agentex/version.json': JSON.stringify({ version: '0.23.0' }) + '\n' });
+  gitInit(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] gitignore-secrets — \.gitignore — \.agentex\/scratch\/ appended/);
+  const gi = readText(dir, '.gitignore');
+  assert.ok(gi.startsWith(GI_BEFORE_SCRATCH), 'existing lines and their order untouched');
+  assert.deepStrictEqual(gi.slice(GI_BEFORE_SCRATCH.length).split('\n').filter(l => l && !l.startsWith('#')), ['.agentex/scratch/']);
+  commitAll(dir);
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.23.0' }) + '\n');
+  commitAll(dir);
+  run(dir);
+  assert.strictEqual(readText(dir, '.gitignore'), gi, 'second run changes nothing');
+});
+
+test('m05: an equivalent spelling or a deliberate un-ignore of the scratch location is left unchanged', () => {
+  for (const line of ['.agentex/scratch', '!.agentex/scratch/']) {
+    const dir = proj();
+    runInit(dir);
+    addFiles(dir, { '.gitignore': GI_BEFORE_SCRATCH + line + '\n', '.agentex/version.json': JSON.stringify({ version: '0.23.0' }) + '\n' });
+    gitInit(dir);
+    const before = readText(dir, '.gitignore');
+    const r = run(dir);
+    assert.strictEqual(r.code, 0, r.out);
+    assert.ok(!/\[migrated\] gitignore-secrets/.test(r.out), line);
+    assert.strictEqual(readText(dir, '.gitignore'), before, `${line}: byte-identical`);
+  }
 });
 
 // ── optional pre-commit secret-scan hook: an offer or a consented install ─────
