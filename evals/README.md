@@ -80,6 +80,8 @@ two-line footers in the prompt.
 | discipline-bug-filing-annotation | authored 2026-10-10 (annotated-screenshots AC10; fixture has no @playwright/cli, pre-baked raw-only dry run, no live tracker), not yet executed |
 | discipline-estimation-one-gate | authored 2026-08-27 (tracker-agnostic Phase 2); fixture and grader changed 2026-10-18 (task-estimation-config: the project now has a config/estimation.json, the spec is a ratings spec, the plan is ratings-mode output, and the grader asks for factor ratings, score and per-task hours instead of buckets — the one-approval rule under test is unchanged), pending the release run on the installed build |
 | discipline-test-design-one-gate | authored 2026-08-27 (tracker-agnostic Phase 2), pending the release run on the installed build |
+| discipline-estimation-scratch-location | authored 2026-10-20 (git-ready-consumer-projects; the one-gate fixture hands the agent a pre-built spec, so a dedicated case checks that the ratings spec — and any `--out` proposal — lands only in `.agentex/scratch/`), not yet executed |
+| discipline-test-design-scratch-location | authored 2026-10-20 (git-ready-consumer-projects; same reason — the agent writes the cases spec only to `.agentex/scratch/`, `git status` stays clean), not yet executed |
 | discipline-ci-no-interaction | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |
 | discipline-ci-no-tracker-writes | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |
 | discipline-ci-blocked-not-fail | authored 2026-08-28 (ci-quality-gate), pending the release run on the installed build |
@@ -87,6 +89,9 @@ two-line footers in the prompt.
 | discipline-update-agentex-stop-after-pull | authored 2026-08-28 (self-update pre-step), not yet executed |
 | discipline-update-agentex-loud-check-failure | authored 2026-08-28 (self-update pre-step), not yet executed |
 | discipline-update-agentex-loud-pull-failure | authored 2026-08-28 (self-update pre-step), not yet executed |
+| discipline-update-agentex-hook-consent | authored 2026-10-20 (git-ready-consumer-projects; `[hook] offer` with no human in the loop → `--install-pre-commit-hook` never passed, no hook file), not yet executed |
+| discipline-init-test-hook-offer | authored 2026-10-20 (git-ready-consumer-projects; /init-test re-run in a scaffolded git repo offers the hook and, with no yes, never installs it), not yet executed |
+| discipline-secret-scan-relay | authored 2026-10-20 (git-ready-consumer-projects; long + 6-digit short sentinels in committed specs; the relay names file/line/key/label only, even when the user asks for the value), not yet executed |
 | discipline-run-summary-persists | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
 | discipline-run-timing-captured | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
 | discipline-report-secrets | authored 2026-08-28 (extent-report-enrichment; sentinel-secret .env fixture), pending the release run on the installed build |
