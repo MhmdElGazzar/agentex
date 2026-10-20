@@ -1,7 +1,7 @@
 {
   "assignee": "qa.engineer@example.com",
   "estimation": {
-    "proposalFile": "/tmp/estimation-proposal.json"
+    "proposalFile": ".agentex/scratch/estimation-proposal.json"
   },
   "stories": [
     {

@@ -190,10 +190,12 @@ the map, a persona missing because the conventions file is incomplete, no assign
 is asked in ONE AskUserQuestion **before** validation, never as a series of asks. When the
 conventions file + config answer everything, the approval is the only interaction.
 
-1. Build the spec (`storyId`, `assignee`, `cases` with structured steps), write it to the
-   **OS temp dir**, and dry-run:
+1. Build the spec (`storyId`, `assignee`, `cases` with structured steps), write it to
+   `.agentex/scratch/cases.json` — intermediate files go **only** in `.agentex/scratch/`
+   (create the folder if it is missing; it is gitignored agent scratch), never anywhere else
+   in the project — and dry-run:
    ```bash
-   node …/create-cases.js --spec "$TMP/cases.json" [--allow-duplicate]
+   node …/create-cases.js --spec ".agentex/scratch/cases.json" [--allow-duplicate]
    ```
    Exit 2 = blocked: surface the reasons (duplicate Test Case IDs, bad steps, stale-cache
    options with a `--refresh-fields` offer), correct for the run, re-run — a failure-path

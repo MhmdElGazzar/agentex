@@ -42,7 +42,7 @@
 //   created IDs are in the JSON even when a later step throws. No auto-retry,
 //   no cleanup writes.
 //
-// Spec JSON shape (written by the agent to the OS temp dir):
+// Spec JSON shape (written by the agent to .agentex/scratch/cases.json):
 //   { "storyId": 12345, "assignee": "qa.engineer@example.com",
 //     "cases": [ { "title": "<Persona> || <Feature> || user checks the page UI",
 //                  "steps": [ { "type": "action", "text": "…" },
