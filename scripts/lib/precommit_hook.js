@@ -5,7 +5,7 @@
 // --install-pre-commit-hook consent flag (/update-agentex).
 //
 // The installed hook is STATIC POSIX sh: it never bakes a single plugin path it
-// depends on, because ${CLAUDE_PLUGIN_ROOT} changes with every plugin version and
+// depends on, because the plugin root changes with every plugin version and
 // old version folders are orphaned, then deleted. At commit time an embedded
 // resolver picks the newest non-orphaned installed AgenTeX version (baked cache
 // parent first, then discovery under the plugins roots, then the baked install
