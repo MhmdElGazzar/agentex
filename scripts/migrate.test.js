@@ -892,6 +892,62 @@ test('m05 + init: fresh scaffold gitignores sessions and scratch, not just .env'
   assert.match(gi, /^\.playwright-cli\/$/m);
 });
 
+// ── optional pre-commit secret-scan hook: an offer or a consented install ─────
+// Runs before the version fast path (so a stamped project gets it), never a
+// migration, never touches the report counters or the stamp.
+const HOOK_FILE = '.git/hooks/pre-commit';
+function stampedCurrent() {
+  const dir = proj();
+  runInit(dir);
+  gitInit(dir);
+  return dir;
+}
+
+test('[hook] offer on a project stamped at the installed version (fast path); stamp unchanged, nothing installed', () => {
+  const dir = stampedCurrent();
+  const stamp = readText(dir, '.agentex/version.json');
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[hook\] offer .*--install-pre-commit-hook/m);
+  assert.match(r.out, /already up to date/i);
+  assert.strictEqual(readText(dir, '.agentex/version.json'), stamp);
+  assert.ok(!exists(dir, HOOK_FILE), 'no flag → never installs');
+});
+
+test('--install-pre-commit-hook on a stamped project → installed, still "already up to date", exit 0', () => {
+  const dir = stampedCurrent();
+  const r = run(dir, '--install-pre-commit-hook');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[hook\] installed \(/m);
+  assert.match(r.out, /already up to date/i);
+  assert.match(readText(dir, HOOK_FILE), /agentex-pre-commit-hook v1/);
+  const again = run(dir, '--install-pre-commit-hook');
+  assert.match(again.out, /^\[hook\] already installed/m);
+  assert.match(run(dir).out, /^\[hook\] installed/m, 'no offer once it is in place');
+});
+
+test('[hook] an existing foreign hook is left untouched, with the docs pointer', () => {
+  const dir = stampedCurrent();
+  addFiles(dir, { [HOOK_FILE]: '#!/bin/sh\necho mine\n' });
+  const r = run(dir, '--install-pre-commit-hook');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[hook\] existing hook left untouched.*#calling-the-scan-from-an-existing-hook/m);
+  assert.strictEqual(readText(dir, HOOK_FILE), '#!/bin/sh\necho mine\n');
+});
+
+test('[hook] on a migrating project: the consent install never changes [manual] counts or the stamp', () => {
+  const a = fixture010();
+  const b = fixture010();
+  const plain = run(a);
+  const consented = run(b, '--install-pre-commit-hook');
+  assert.strictEqual(plain.code, 0, plain.out);
+  assert.strictEqual(consented.code, plain.code);
+  const strip = (out, dir) => out.split('\n').filter(l => !l.startsWith('[hook]')).join('\n').split(dir).join('<dir>');
+  assert.strictEqual(strip(consented.out, b), strip(plain.out, a), 'identical report apart from the [hook] line');
+  assert.strictEqual(readJson(b, '.agentex/version.json').version, INSTALLED);
+  assert.ok(exists(b, HOOK_FILE) && !exists(a, HOOK_FILE));
+});
+
 // ── config/estimation.json — created only by an approved estimation run ──────
 // No migration and no scaffold step creates it; once it exists, /update-agentex
 // and an /init-test re-run leave it byte-identical (invariant 11).
