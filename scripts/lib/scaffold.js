@@ -308,6 +308,45 @@ const HISTORICAL_SAMPLE_ENV_SHAPES = [
   },
 ];
 
+// HISTORICAL_PROJECT_TEMPLATE_SHAPES — the same rule for templates/config/project.json:
+// the wizard's "pristine project" check (server.js) judges against the current
+// template plus every shipped revision, so a project scaffolded by an older version
+// and never configured is still recognised as scaffolding. Currently one:
+//   1. the template shipped until Decision A-2 (2026-10-19): the shared test password
+//      was a plain descriptor with the Test@1234 default; A-2 made it secret.
+// When the template changes, append the outgoing shape here.
+const HISTORICAL_PROJECT_TEMPLATE_SHAPES = [
+  {
+    name: 'my-project',
+    defaultEnvironment: 'qc',
+    kb: { baseUrl: '', project: '' },
+    figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } },
+    login: { mode: 'session' },
+    userFields: [
+      { key: 'phone', label: 'رقم الهاتف', labelEn: 'Phone', type: 'text', placeholder: '0550000001' },
+      { key: 'email', label: 'البريد الإلكتروني', labelEn: 'Email', type: 'email', placeholder: 'test@example.com' },
+      { key: 'role', label: 'الدور', labelEn: 'Role', type: 'text', placeholder: 'customer' },
+      { key: 'notes', label: 'ملاحظات', labelEn: 'Notes', type: 'text', placeholder: 'for negative login scenarios' },
+    ],
+    defaultsFields: [
+      { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+        hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+        hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+      { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+    ],
+  },
+];
+
+// Is this parsed config/project.json structurally identical to a shipped template?
+function isPristineProjectConfig(parsed, pluginRoot) {
+  if (!parsed || typeof parsed !== 'object') return false;
+  const shapes = [];
+  try {
+    shapes.push(JSON.parse(fs.readFileSync(path.join(pluginRoot, 'templates', 'config', 'project.json'), 'utf8')));
+  } catch { /* unreadable template — historical shapes still apply */ }
+  return shapes.concat(HISTORICAL_PROJECT_TEMPLATE_SHAPES).some(shape => isDeepStrictEqual(parsed, shape));
+}
+
 // Every sample-environment shape ever shipped: current template first (read from
 // the installed plugin), then the historical revisions.
 function sampleEnvShapes(pluginRoot) {
@@ -377,7 +416,7 @@ function readPluginVersion(pluginRoot) {
 module.exports = {
   CLAUDE_MD_BULLET, STAMP_REL,
   hasSpecFiles, hasEnvFiles, scaffoldProject, hasLegacySignals,
-  sampleEnvShapes, isPristineSampleEnv,
+  sampleEnvShapes, isPristineSampleEnv, isPristineProjectConfig,
   GITIGNORE_ENTRIES, gitignoreMissing, ensureGitignore,
   claudeMdHasBullet, ensureClaudeMdBullet,
   stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,

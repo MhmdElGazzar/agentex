@@ -704,7 +704,8 @@ function makeEnvEntry() {
  * removed*Fields collect the consented removals for the review ops list and
  * the base-key drops. Values NEVER live here — they stay per-environment.
  */
-// Browser copy of engine.js BUILTIN_USER_FIELDS / BUILTIN_DEFAULTS_FIELDS — keep in sync.
+// Browser copy of engine.js BUILTIN_USER_FIELDS / BUILTIN_DEFAULTS_FIELDS / LEGACY_DEFAULTS_FIELDS /
+// LEGACY_HINT_CORRECTIONS — keep in sync (pinned deep-equal by ui.test.js).
 const BUILTIN_USER_FIELDS = [
   { key: 'phone', label: 'رقم الهاتف', labelEn: 'Phone', type: 'text', placeholder: '0550000001' },
   { key: 'email', label: 'البريد الإلكتروني', labelEn: 'Email', type: 'email', placeholder: 'test@example.com' },
@@ -712,11 +713,33 @@ const BUILTIN_USER_FIELDS = [
   { key: 'notes', label: 'ملاحظات', labelEn: 'Notes', type: 'text', placeholder: 'for negative login scenarios' },
 ];
 const BUILTIN_DEFAULTS_FIELDS = [
-  { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
-    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
-    hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+  { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', secret: true,
+    hint: 'كلمة مرور حسابات الاختبار المشتركة — قيمتها تُحفظ في ‎.env فقط، وملف البيئة يشير إليها باسم المتغير',
+    hintEn: 'The shared test-account password — its value is kept in .env only; the environment file refers to it by variable name' },
   { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
 ];
+
+// The pre-A-2 defaults set, FROZEN: the fields the wizard always wrote before the
+// password became secret (plain, with the Test@1234 placeholder). m11 backfills
+// THIS — never the current template — into a project without defaultsFields,
+// because that project's environment files carry the plain literal; the wizard
+// falls back to it for a loaded legacy project. Its hint is the corrected
+// plain-field wording (the shipped wording told users the password was no secret).
+const LEGACY_PLAIN_PASSWORD_HINT = 'كلمة مرور حسابات الاختبار المشتركة، مخزّنة نصًّا عاديًا في كل ملف بيئة. لحفظها في ‎.env بدلًا من ذلك، اجعل هذا الحقل سريًّا في محرر الحقول.';
+const LEGACY_PLAIN_PASSWORD_HINT_EN = 'The shared test-account password, stored as plain text in each environment file. To keep it in .env instead, mark this field secret in the field editor.';
+const LEGACY_DEFAULTS_FIELDS = Object.freeze([
+  Object.freeze({ key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+    hint: LEGACY_PLAIN_PASSWORD_HINT, hintEn: LEGACY_PLAIN_PASSWORD_HINT_EN }),
+  Object.freeze({ key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' }),
+]);
+// Display-time only (never persisted): a descriptor hint byte-equal to a hint the
+// plugin once shipped is SHOWN as the corrected plain-field wording; the stored
+// text in the project's own defaultsFields is left as the user's file has it.
+const LEGACY_HINT_CORRECTIONS = Object.freeze({
+  'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)': LEGACY_PLAIN_PASSWORD_HINT,
+  'The shared test-account password — written as-is into the environment file (not a real secret)': LEGACY_PLAIN_PASSWORD_HINT_EN,
+});
+
 const FIELD_KEY_RE_UI = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 const ENV_VAR_RE_UI = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -727,13 +750,19 @@ let removedDefaultsFields = [];
 let overwrittenUserKeys = [];    // { key, envs } — consented rename-onto overwrites of hand-added disk values
 let overwrittenDefaultsKeys = [];
 
-/** Seed the effective field schema from config/project.json (or built-ins). */
+/** Seed the effective field schema from config/project.json (or built-ins).
+ *  A loaded user project WITHOUT defaultsFields predates the field schema: its
+ *  environment files carry the plain password the old wizard wrote, so it gets
+ *  the frozen pre-A-2 set (LEGACY_DEFAULTS_FIELDS), never the new secret built-in.
+ *  No project.json, or a pristine one (callers pass null), gets the built-ins.
+ *  `_secretAtLoad` remembers which fields were secret when the session began —
+ *  the literal-preservation guard in buildEnvConfig keys on it. */
 function seedFieldSchema(proj) {
   const mk = (arr, builtins) => (Array.isArray(arr) ? arr : builtins)
     .filter(f => f && typeof f === 'object' && FIELD_KEY_RE_UI.test(String(f.key || '')) && f.key !== 'handle')
-    .map(f => ({ ...f, _orig: f.key }));
+    .map(f => ({ ...f, _orig: f.key, _secretAtLoad: !!f.secret }));
   userFieldsSession = mk(proj && proj.userFields, BUILTIN_USER_FIELDS);
-  defaultsFieldsSession = mk(proj && proj.defaultsFields, BUILTIN_DEFAULTS_FIELDS);
+  defaultsFieldsSession = mk(proj && proj.defaultsFields, proj ? LEGACY_DEFAULTS_FIELDS : BUILTIN_DEFAULTS_FIELDS);
   removedUserFields = [];
   removedDefaultsFields = [];
   overwrittenUserKeys = [];
@@ -741,7 +770,39 @@ function seedFieldSchema(proj) {
 }
 
 /** Strip session bookkeeping — what buildProjectConfig writes to the file. */
-function cleanDescriptor(f) { const c = { ...f }; delete c._orig; return c; }
+function cleanDescriptor(f) { const c = { ...f }; delete c._orig; delete c._secretAtLoad; delete c._toggled; return c; }
+
+/** Display-time only: a hint byte-equal to one the plugin once shipped is SHOWN
+ *  as the corrected plain-field wording; the descriptor keeps its stored text. */
+function shownHint(f) {
+  return {
+    hint: (f && LEGACY_HINT_CORRECTIONS[f.hint]) || (f && f.hint),
+    hintEn: (f && LEGACY_HINT_CORRECTIONS[f.hintEn]) || (f && f.hintEn),
+  };
+}
+
+/** A plain (non-reference) value on disk — what the literal guard protects. */
+const isPlainLiteral = (v) => v !== undefined && v !== null && v !== '' && typeof v !== 'object';
+/** The guard applies to a defaults field that was secret when the session began
+ *  and was not flipped by the consented secret/plain toggle since. */
+const literalGuardApplies = (f) => !!(f && f.secret && f._secretAtLoad && !f._toggled);
+
+/** Environments whose file keeps a plain literal under a secret defaults field
+ *  because its name slot is empty (R10.4) — listed on the review step. */
+function plainLiteralsKept() {
+  const out = [];
+  for (const n of envOrder) {
+    const e = envs[n];
+    const disk = (e.loadedFrom && e.loadedFrom.defaults) || {};
+    const a = n === activeEnv ? answers : e.answers;
+    for (const f of defaultsFieldsSession) {
+      if (!literalGuardApplies(f) || !isPlainLiteral(disk[f.key])) continue;
+      if (String(a[`defaults.${f.key}EnvVar`] || '').trim()) continue;
+      out.push({ env: n, key: f.key });
+    }
+  }
+  return out;
+}
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 // Env-scoped secret field keys (db.password, api.token) — schema-derived; their
@@ -798,10 +859,12 @@ async function loadExistingConfig() {
   // scaffolding presented as "your existing configuration" is exactly the
   // phantom-environment bug. The wizard starts from schema defaults instead.
   existingProject = proj || null;
-  // The field schema is config, not data: seed it from project.json whenever
-  // one is readable (a pristine template's arrays ARE the built-ins), BEFORE
-  // any environment is flattened — prefill and rendering both iterate it.
-  seedFieldSchema(proj);
+  // The field schema is config, not data: seed it from a user's project.json,
+  // BEFORE any environment is flattened — prefill and rendering both iterate
+  // it. A pristine project.json (any template shape the plugin ever shipped) is
+  // scaffolding, so it seeds the CURRENT built-ins — an old template's plain
+  // password descriptor must not outlive the template.
+  seedFieldSchema(projPristine ? null : proj);
   const projLoaded = !!(proj && !projPristine);
 
   if (projLoaded) {
@@ -1270,6 +1333,7 @@ function toggleFieldSecret(kind, key) {
   if (!f) return;
   f.secret = !f.secret;
   if (!f.secret) delete f.secret;
+  f._toggled = true;   // consented clear: the literal guard no longer applies
   clearFieldValues(kind, key);
   markAllEnvsDirty();
 }
@@ -1788,11 +1852,12 @@ function renderDefaultsSection() {
   wrap.appendChild(div);
   for (const f of defaultsFieldsSession) {
     if (f.secret) { wrap.appendChild(buildDefaultsSecretField(f)); continue; }
+    const sh = shownHint(f);
     wrap.appendChild(buildField({
       key: `defaults.${f.key}`, label: f.label || f.key, labelEn: f.labelEn, type: f.type || 'text',
       placeholder: f.placeholder !== undefined ? f.placeholder : (f.default || ''),
       placeholderEn: f.placeholderEn,
-      default: f.default, hint: f.hint, hintEn: f.hintEn, required: !!f.required,
+      default: f.default, hint: sh.hint, hintEn: sh.hintEn, required: !!f.required,
     }));
   }
   const editBtn = document.createElement('button');
@@ -1816,9 +1881,17 @@ function buildDefaultsSecretField(f) {
   const suggestion = suggestDefaultsSecretName(f.key);
   const nameVal = answers[nameKey] !== undefined ? answers[nameKey] : '';
   const secVal = (envs[activeEnv] && envs[activeEnv].secrets[`defaults.${f.key}`]) || '';
+  const sh = shownHint(f);
+  const e = envs[activeEnv];
+  const disk = e && e.loadedFrom && e.loadedFrom.defaults ? e.loadedFrom.defaults[f.key] : undefined;
+  // Fixed text only — never the value itself.
+  const literalNote = literalGuardApplies(f) && isPlainLiteral(disk) && !String(nameVal || '').trim()
+    ? `<div class="field-secret-note">${L('⚠️ ملف البيئة ده لسه شايل القيمة دي كنص عادي، وهتفضل زي ما هي. اكتب القيمة هنا عشان تتنقل لـ ‎.env.', '⚠️ This environment file still holds this value as plain text; it is kept as is. Enter the value here to move it to .env.')}</div>`
+    : '';
   div.innerHTML = `
     <label class="field-label">${esc(loc(f, 'label') || f.key)} 🔒${f.required ? ' <span class="req">*</span>' : ''}</label>
-    ${f.hint || f.hintEn ? `<div class="field-hint">${esc(loc(f, 'hint'))}</div>` : ''}
+    ${sh.hint || sh.hintEn ? `<div class="field-hint">${esc(loc(sh, 'hint'))}</div>` : ''}
+    ${literalNote}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input type="text" class="df-name" value="${esc(nameVal)}" placeholder="${esc(suggestion)}"
         style="direction:ltr;font-family:var(--mono);flex:1;min-width:150px" />
@@ -2573,6 +2646,9 @@ function renderReviewStep() {
   for (const x of overwrittenDefaultsKeys) {
     lines.push(L(`<div class="op-line">✏️ كتابة مؤكّدة فوق قيم يدوية: <code>defaults.${esc(x.key)}</code> — قيم القرص تحته في ${x.envs.length === 1 ? 'بيئة واحدة' : x.envs.length + ' بيئات'} هتتكتب فوقها قيم الجلسة</div>`, `<div class="op-line">✏️ confirmed overwrite of hand-written values: <code>defaults.${esc(x.key)}</code> — the disk values under it in ${x.envs.length === 1 ? 'one environment' : x.envs.length + ' environments'} are replaced by the session values</div>`));
   }
+  for (const k of plainLiteralsKept()) {
+    lines.push(L(`<div class="op-line">🔓 <code>environments/${esc(k.env)}.json</code>: <code>defaults.${esc(k.key)}</code> لسه نص عادي وهيفضل زي ما هو — اكتب القيمة في خانة الحقل عشان تتنقل لـ ‎.env</div>`, `<div class="op-line">🔓 <code>environments/${esc(k.env)}.json</code>: <code>defaults.${esc(k.key)}</code> still holds plain text and is kept as is — enter the value in the field to move it to .env</div>`));
+  }
   const untouched = envOrder.filter(n => envs[n].existsOnDisk && !envs[n].dirty && envs[n].diskName === n);
   if (untouched.length) {
     lines.push(L(`<div class="op-line">🔒 من غير أي تغيير: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join('، ')}</div>`, `<div class="op-line">🔒 left untouched: ${untouched.map(n => `<code>environments/${esc(n)}.json</code>`).join(', ')}</div>`));
@@ -2907,7 +2983,12 @@ function buildEnvConfig(name) {
   for (const f of defaultsFieldsSession) {
     if (f.secret) {
       const n = String(a[`defaults.${f.key}EnvVar`] || '').trim();
-      if (n) defaults[f.key] = { envSecret: n }; else delete defaults[f.key];
+      if (n) defaults[f.key] = { envSecret: n };
+      // Literal guard (R10.4): an empty name slot over a plain value on disk
+      // keeps that value byte-identical — a save the user did not direct at it
+      // never drops or resets it. Entering a value (or a name) moves it.
+      else if (literalGuardApplies(f) && base && base.defaults && isPlainLiteral(base.defaults[f.key])) defaults[f.key] = base.defaults[f.key];
+      else delete defaults[f.key];
       continue;
     }
     const raw = a[`defaults.${f.key}`];

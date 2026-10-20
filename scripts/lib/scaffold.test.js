@@ -199,6 +199,58 @@ test('sampleEnvShapes covers the current template plus every shipped revision', 
     'current template included');
 });
 
+// ---- Decision A-2: the shared test password is a secret in every shipped template ----
+const TEMPLATE_PROJECT = JSON.parse(
+  fs.readFileSync(path.join(PLUGIN_ROOT, 'templates', 'config', 'project.json'), 'utf8'));
+// The project template shipped before A-2 (plain password descriptor with a default).
+const PRE_A2_PROJECT_TEMPLATE = {
+  ...JSON.parse(JSON.stringify(TEMPLATE_PROJECT)),
+  defaultsFields: [
+    { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+      hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+      hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+    { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+  ],
+};
+
+test('A-2: the sample environment references DEFAULT_PASSWORD — no plugin template ships a password value', () => {
+  assert.deepStrictEqual(TEMPLATE_ENV.defaults, { otp: '0000', password: { envSecret: 'DEFAULT_PASSWORD' } });
+  assert.ok(!JSON.stringify(TEMPLATE_PROJECT).includes('Test@1234'), 'the project template carries no password value');
+  assert.ok(!JSON.stringify(TEMPLATE_ENV).includes('Test@1234'));
+});
+
+test('A-2: the pre-A-2 sample environment still counts as pristine (historical shape 1)', () => {
+  assert.strictEqual(scaffold.isPristineSampleEnv(QA_ERA_SAMPLE, PLUGIN_ROOT), true);
+  assert.strictEqual(scaffold.isPristineSampleEnv(TEMPLATE_ENV, PLUGIN_ROOT), true);
+});
+
+test('A-2: isPristineProjectConfig accepts the current and the pre-A-2 template, nothing user-touched', () => {
+  assert.strictEqual(scaffold.isPristineProjectConfig(TEMPLATE_PROJECT, PLUGIN_ROOT), true);
+  assert.strictEqual(scaffold.isPristineProjectConfig(PRE_A2_PROJECT_TEMPLATE, PLUGIN_ROOT), true);
+  const touched = JSON.parse(JSON.stringify(PRE_A2_PROJECT_TEMPLATE));
+  touched.name = 'my-real-project';
+  assert.strictEqual(scaffold.isPristineProjectConfig(touched, PLUGIN_ROOT), false);
+  assert.strictEqual(scaffold.isPristineProjectConfig(null, PLUGIN_ROOT), false);
+});
+
+test('A-2: the scaffolded keys-only .env lists DEFAULT_PASSWORD with an empty value', () => {
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  assert.match(fs.readFileSync(path.join(dir, '.env'), 'utf8'), /^DEFAULT_PASSWORD=$/m);
+});
+
+test('A-2: a freshly scaffolded, git add-ed project scans with no plain-string warning and no leak', () => {
+  const { execFileSync, spawnSync } = require('node:child_process');
+  const dir = scaffoldedRepo();
+  execFileSync('git', ['-C', dir, 'add', '-A']);
+  const r = spawnSync(process.execPath, [path.join(PLUGIN_ROOT, 'scripts', 'secret_scan.js'), '--staged'],
+    { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } });
+  const out = JSON.parse(r.stdout);
+  assert.strictEqual(r.status, 0, r.stdout);
+  assert.deepStrictEqual(out.findings, [], 'zero findings from the plugin\'s own files');
+  assert.strictEqual(out.result, 'CLEAN');
+});
+
 // ---- config/estimation.json: the user's file, committed, never scaffolded ----
 const ESTIMATION = 'config/estimation.json';
 const ESTIMATION_BYTES = '{\n  "schemaVersion": 1,\n  "tasks": [ { "name": "Exploratory Pass", "enabled": true, "minHours": 1, "maxHours": 3 } ],\n  "factors": { "Scope": 1 }\n}\n';

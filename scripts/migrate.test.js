@@ -727,6 +727,7 @@ test('m10: a claimed file (any value changed) is the user\'s — never flagged',
 // ── m11 user-field-schema — additive built-ins backfill (design #4) ──────────
 const TPL_PROJECT = JSON.parse(fs.readFileSync(
   path.join(PLUGIN_ROOT, 'templates', 'config', 'project.json'), 'utf8'));
+const { LEGACY_DEFAULTS_FIELDS } = require('./wizard/engine.js');
 
 test('m11: pre-field-schema project gains the built-in arrays; environment files byte-identical', () => {
   const dir = repo({
@@ -749,7 +750,11 @@ test('m11: pre-field-schema project gains the built-in arrays; environment files
   const proj = readJson(dir, 'config/project.json');
   assert.deepStrictEqual(proj.userFields, TPL_PROJECT.userFields,
     'built-in userFields backfilled from the template — semantics-preserving');
-  assert.deepStrictEqual(proj.defaultsFields, TPL_PROJECT.defaultsFields);
+  // Decision A-2: the template's password descriptor is secret now, but this
+  // project's environment holds the plain literal the old wizard wrote — m11
+  // backfills the FROZEN legacy plain set, never the current template.
+  assert.deepStrictEqual(proj.defaultsFields, LEGACY_DEFAULTS_FIELDS);
+  assert.ok(!proj.defaultsFields.find(f => f.key === 'password').secret, 'the legacy plain descriptor');
   assert.strictEqual(proj.name, 'pre-fields', 'existing config values untouched');
   const after = snapshot(dir);
   assert.deepStrictEqual(subset(after, 'environments/'), subset(before, 'environments/'),
@@ -796,7 +801,7 @@ test('m11: only the missing array is added when one is already present', () => {
   assert.match(r.out, /\[migrated\] user-field-schema/);
   const proj = readJson(dir, 'config/project.json');
   assert.deepStrictEqual(proj.userFields, customUsers, 'the present array is never rewritten');
-  assert.deepStrictEqual(proj.defaultsFields, TPL_PROJECT.defaultsFields, 'the missing one is backfilled');
+  assert.deepStrictEqual(proj.defaultsFields, LEGACY_DEFAULTS_FIELDS, 'the missing one is backfilled (frozen legacy set, A-2)');
 });
 
 test('m11 + init: fresh scaffold carries the field arrays from the template', () => {
