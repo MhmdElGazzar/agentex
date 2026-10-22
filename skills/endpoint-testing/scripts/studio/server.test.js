@@ -6,6 +6,16 @@ const { assert, fs, os, path, harness, req, studio, fakeService, waitRun, editor
 const { test, done } = harness();
 
 (async () => {
+  await test('S-4: the studio run-folder name equals init_run.js\'s for the same instant', async () => {
+    const { stamp } = require('./server.js');
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-stamp-'));
+    const before = stamp();
+    const out = require('node:child_process').execFileSync(process.execPath, [path.join(__dirname, '..', '..', '..', 'test-execution', 'scripts', 'init_run.js')], { cwd, encoding: 'utf8' });
+    const after = stamp();
+    const name = path.basename(JSON.parse(out.trim().split('\n').pop()).runDir);
+    assert.ok([`execu_${before}`, `execu_${after}`].includes(name), `${name} vs ${before}/${after}`);
+  });
+
   await test('every /api/* route answers 403 without the token; binds 127.0.0.1', async () => {
     const dir = editorProject(9);
     const s = await studio(dir);
@@ -130,6 +140,11 @@ const { test, done } = harness();
     assert.deepStrictEqual(done.result.cases.map(c => c.result), ['PASS', 'PASS', 'BLOCKED', 'BLOCKED']);
     assert.strictEqual(done.result.cases[2].reasonCode, 'placeholder');
     const runDir = path.join(dir, r.json.runDir);
+    // S-4: the folder is named like init_run.js names /test-endpoints runs — local time, no "T"/"Z"
+    assert.match(path.basename(path.dirname(r.json.runDir)), /^execu_\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d(-\d+)?$/);
+    const m = /execu_(\d{4})-(\d\d)-(\d\d)_(\d\d)-(\d\d)-(\d\d)/.exec(r.json.runDir);
+    const named = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+    assert.ok(Math.abs(Date.now() - named) < 60000, 'the folder name is the local time of the run');
     assert.ok(fs.existsSync(path.join(runDir, 'suite-result.json')));
     assert.match(fs.readFileSync(path.join(runDir, 'result.md'), 'utf8'), /Severity: not rated \(run from the editor/);
     assert.strictEqual(fs.readdirSync(path.join(runDir, 'logs')).length, 2);

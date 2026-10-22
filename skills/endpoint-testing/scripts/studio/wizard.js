@@ -244,7 +244,7 @@ function mount(studio) {
       bySource: gen.summary.bySource, cases: gen.summary.total, created, tokenRef });
     let runId = null;
     if (b.run === true) {
-      const r = studio.startRun({ suite: wz.files.suite, env: wz.env });
+      const r = studio.startRun({ suite: wz.files.suite, env: wz.env, origin: 'wizard' });
       runId = r.body && r.body.id ? r.body.id : null;
     }
     state.mode = 'editor';
@@ -367,6 +367,8 @@ function mount(studio) {
       return { ok: true };
     },
     ended(r, b) {
+      // `failed` is final: the wizard page keeps showing the failure note.
+      if (r.status === 'failed') return { ok: true, ignored: 'run-already-failed' };
       r.status = 'ended'; r.gate = null;
       r.found = Number.isFinite(Number(b.found)) ? Number(b.found) : undefined;
       r.total = Number.isFinite(Number(b.total)) ? Number(b.total) : undefined;

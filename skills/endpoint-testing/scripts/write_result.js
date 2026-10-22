@@ -10,15 +10,17 @@ const fs = require('fs');
 const path = require('path');
 
 const SEVERITY_LINE = 'Severity: not rated (run from the editor — ask the agent in chat to triage)';
+const WIZARD_SEVERITY_LINE = SEVERITY_LINE.replace('run from the editor', 'run from the suite wizard');
 
 function render(r, opts = {}) {
   const cases = r.cases || [];
+  const SEV = opts.origin === 'wizard' ? WIZARD_SEVERITY_LINE : SEVERITY_LINE;
   const lines = ['# API tests', ''];
   const meta = [`Run: ${r.startedAt || 'unknown'}`, `Environment: ${r.env || 'project default'}`, `Suite: ${r.suite || 'all suites'}`];
   if (r.case !== undefined) meta.push(`Case: ${r.case}`);
   lines.push(meta.join(' · '), '');
   lines.push('| Total | Passed | Failed | Blocked |', '|---|---|---|---|', `| ${r.total || 0} | ${r.passed || 0} | ${r.failed || 0} | ${r.blocked || 0} |`, '');
-  lines.push(SEVERITY_LINE, '');
+  lines.push(SEV, '');
   if (r.reason && !cases.length) lines.push(`Run BLOCKED: ${r.reason}`, '');
   const fails = cases.filter(c => c.result === 'FAIL');
   lines.push('## Failures', '');
@@ -28,7 +30,7 @@ function render(r, opts = {}) {
     lines.push(`### ${c.name} (FAIL)`);
     lines.push(`- Steps to reproduce: run entry \`${c.entry}\`${params ? ` with params \`${JSON.stringify(params)}\`` : ''} (${c.suite || 'suite'} #${c.index || '?'})`);
     lines.push(`- Expected vs Actual: ${(c.failures && c.failures.length ? c.failures.join('; ') : c.reason || 'see the log')}${c.status !== undefined ? ` (actual status ${c.status})` : ''}`);
-    lines.push(`- ${SEVERITY_LINE}`);
+    lines.push(`- ${SEV}`);
     lines.push(`- Evidence: ${c.log || 'no log'}`, '');
   }
   const blocked = cases.filter(c => c.result === 'BLOCKED');
@@ -52,9 +54,9 @@ function paramsFrom(root) {
   };
 }
 
-function writeResult(resultFile, outFile, root) {
+function writeResult(resultFile, outFile, root, opts = {}) {
   const r = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
-  const md = render(r, root ? { params: paramsFrom(root) } : {});
+  const md = render(r, { ...(root ? { params: paramsFrom(root) } : {}), origin: opts.origin });
   fs.writeFileSync(outFile, md);
   return outFile;
 }
@@ -70,4 +72,4 @@ if (require.main === module) {
   } catch (e) { console.log(JSON.stringify({ ok: false, error: e.message })); process.exit(2); }
 }
 
-module.exports = { render, writeResult, paramsFrom, SEVERITY_LINE };
+module.exports = { render, writeResult, paramsFrom, SEVERITY_LINE, WIZARD_SEVERITY_LINE };

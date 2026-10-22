@@ -49,6 +49,12 @@ test('the severity line says not rated (run from the editor)', () => {
   assert.ok(W.render(RESULT).includes('Severity: not rated (run from the editor — ask the agent in chat to triage)'));
 });
 
+test('a run started from the wizard says so, in the tally and in each failure', () => {
+  const md = W.render(RESULT, { origin: 'wizard' });
+  assert.ok(md.includes('Severity: not rated (run from the suite wizard — ask the agent in chat to triage)'));
+  assert.ok(!md.includes('run from the editor'));
+});
+
 test('deterministic: the same input renders the same bytes', () => {
   assert.strictEqual(W.render(RESULT), W.render(JSON.parse(JSON.stringify(RESULT))));
 });
