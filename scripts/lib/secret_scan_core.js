@@ -3,7 +3,7 @@
 // No I/O beyond what callers pass in: they hand over .env text, file contents and
 // remote URLs; this module returns needles, findings and the result object.
 //
-// Four areas:
+// Five areas:
 //   needles   — the project's own secret values (every .env key + every envSecret
 //               name + the plugin's canonical secret names, resolved the way the
 //               plugin resolves them: process env and .env), minus the plugin's
@@ -16,6 +16,10 @@
 //   fields    — the position-aware JSON walker and the secret-capable field table
 //               behind the `plain-secret-field` warning (never a block).
 //   remotes   — credential detection in http(s) remote URLs (never printed).
+//   shapes    — public, prefixed credential formats (`credential-shape`, a warning
+//               only, independent of .env) in file text and remote-URL userinfo, plus
+//               the --hook confirmation rules (asked, default No; a "no" refuses
+//               through the installed hook's existing LEAK contract).
 //
 // Values are held in memory only. Findings carry file, line, key / field / label
 // names — never a value, never raw file text. Error text is fixed vocabulary.
@@ -328,6 +332,89 @@ function remoteHasCredential(url, knownValues) {
   return !!(knownValues && (knownValues.has(user) || knownValues.has(userinfo)));
 }
 
+// ── Credential shapes (token-patterns design) ────────────────────────────────
+// Public, documented, prefixed credential formats only (invariant #7) — a token
+// that is NOT one of the project's own values but has a well-known shape. A match
+// is a warning, never a leak on its own. Word boundaries on both sides. Only the
+// match position is used: the matched text is never stored, returned or printed.
+const SHAPE_LEFT = '(?<![A-Za-z0-9_])';
+const SHAPE_RIGHT = '(?![A-Za-z0-9_])';
+const shapeRe = (src) => new RegExp(SHAPE_LEFT + '(?:' + src + ')' + SHAPE_RIGHT, 'g');
+const SHAPE_PATTERNS = Object.freeze([
+  { label: 'private-key-block', re: shapeRe('-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY-----') },
+  { label: 'github-token', re: shapeRe('gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,}') },
+  { label: 'aws-access-key-id', re: shapeRe('(?:AKIA|ASIA)[A-Z0-9]{16}') },
+  { label: 'atlassian-api-token', re: shapeRe('ATATT3[A-Za-z0-9_\\-=]{30,}') },
+  { label: 'figma-token', re: shapeRe('figd_[A-Za-z0-9_\\-]{30,}') },
+].map(Object.freeze));
+
+/**
+ * Every credential shape in a text: one { line, pattern } per line and label,
+ * sorted by line then label. Never the matched text.
+ */
+function scanShapes(text) {
+  const s = String(text || '');
+  const seen = new Set();
+  const out = [];
+  let idx = null;
+  for (const { label, re } of SHAPE_PATTERNS) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(s)) !== null) {
+      idx = idx || lineIndex(s);
+      const line = idx.lineAt(m.index);
+      const id = `${line}\0${label}`;
+      if (!seen.has(id)) { seen.add(id); out.push({ line, pattern: label }); }
+    }
+    re.lastIndex = 0;
+  }
+  return out.sort((a, b) => a.line - b.line || byName(a.pattern, b.pattern));
+}
+
+// The userinfo of an http(s) remote URL as decoded parts — [] when none.
+function remoteUserinfoParts(url) {
+  const m = /^https?:\/\//i.exec(String(url || ''));
+  if (!m) return [];
+  const rest = url.slice(m[0].length);
+  const slash = rest.indexOf('/');
+  const authority = slash < 0 ? rest : rest.slice(0, slash);
+  const at = authority.lastIndexOf('@');
+  if (at < 0) return [];
+  const userinfo = authority.slice(0, at);
+  const colon = userinfo.indexOf(':');
+  return (colon < 0 ? [userinfo] : [userinfo.slice(0, colon), userinfo.slice(colon + 1)])
+    .filter(p => p !== '').map(safeDecode);
+}
+
+// The shape labels found in a remote URL's userinfo (user or password part), sorted.
+function remoteShapes(url) {
+  const labels = new Set();
+  for (const part of remoteUserinfoParts(url)) for (const f of scanShapes(part)) labels.add(f.pattern);
+  return [...labels].sort(byName);
+}
+
+// ── The hook-mode confirmation (owner decision #1) ───────────────────────────
+// Asked only with --hook, only when nothing is a leak and at least one warning is a
+// credential shape. Default No.
+function shapeConfirmationNeeded({ hook, findings }) {
+  if (!hook || !Array.isArray(findings)) return false;
+  if (findings.some(f => f.severity === 'leak')) return false;
+  return findings.some(f => f.kind === 'credential-shape');
+}
+
+function confirmAnswerIsYes(answer) {
+  if (typeof answer !== 'string') return false;
+  return /^(?:y|yes)$/i.test(answer.split('\n')[0].trim());
+}
+
+// A declined confirmation refuses the commit through the contract installed hooks
+// already honour (exit 1 + "result":"LEAK"); counts stay true (zero leaks).
+function declinedResult(r) {
+  const { tool, schemaVersion, mode, ...rest } = r;
+  delete rest.result; delete rest.exit;
+  return { tool, schemaVersion, mode, result: 'LEAK', exit: 1, reason: 'declined', ...rest };
+}
+
 // ── Binary sniff ─────────────────────────────────────────────────────────────
 function isBinary(buf, sniff = DEFAULTS.BINARY_SNIFF_BYTES) {
   return buf.subarray(0, Math.min(buf.length, sniff)).includes(0);
@@ -446,6 +533,9 @@ function scanFile({ file, text, needles, fieldKind = null, fieldTable = null }) 
     }
   }
 
+  // credential shapes: every file, both modes, with or without .env needles
+  for (const s of scanShapes(text)) warns.push({ severity: 'warn', kind: 'credential-shape', file, line: s.line, pattern: s.pattern });
+
   const out = [...leaks.values()].map(x => x.f).sort((a, b) => a.line - b.line || byName(a.key, b.key));
   return out.concat(warns);
 }
@@ -476,5 +566,7 @@ module.exports = {
   parseJson, formatPath, walkValues, walkObjects,
   secretFieldTable, environmentSecretField,
   remoteHasCredential, isBinary,
+  SHAPE_PATTERNS, scanShapes, remoteShapes,
+  shapeConfirmationNeeded, confirmAnswerIsYes, declinedResult,
   scanFile, buildResult, errorResult,
 };
