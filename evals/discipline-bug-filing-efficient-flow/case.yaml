@@ -1,0 +1,9 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text.
+name: discipline-bug-filing-efficient-flow
+tags: [discipline, bug-report-azure]
+runs: 3
+max_turns: 20
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+

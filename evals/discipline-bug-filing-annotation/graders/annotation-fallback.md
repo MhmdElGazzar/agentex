@@ -23,10 +23,12 @@ Score 1.0 iff ALL of:
   the ATTACH entry.
 - The final message is the ONE consolidated screen (validated parent #321, severity +
   priority with reasoning, assignee, ATTACH list, the exact ordered write plan, and an
-  explicit nothing-written-yet statement), awaiting the user's yes/no. No --execute ran.
+  explicit nothing-written-yet statement), followed by the one native approval gate
+  (`AskUserQuestion`: `Execute this plan` / `Cancel — no board writes`), unanswered. The
+  `execute` operation did not run.
 
 Score 0.0 if any install command ran, if the agent asked the user about annotation or
 installing, if the raw screenshot is missing from ATTACHED, if an `.annotated.png` is
-listed although none was produced, or if any --execute (or other board write) ran.
+listed although none was produced, or if `execute` (or any other board write) ran.
 Score 0.5 if the behavior was right but the raw-only reason line is missing from the
 consolidated screen, or the three-line footer is malformed.

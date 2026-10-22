@@ -1,0 +1,53 @@
+{
+  "projection": "selected fields from the intent-aware context result (context --intent bug-1.intent.json)",
+  "ok": true,
+  "mode": "context",
+  "parent": { "id": 321, "type": "User Story", "title": "Purchased Policies - Expired State", "state": "Active" },
+  "duplicateCandidates": [
+    {
+      "id": 4840, "type": "Bug", "state": "Closed", "source": "project", "parentId": 318,
+      "title": "Dashboard || Pending Policies || Download Receipt crashes the app to a blank page",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4840",
+      "reproductionSummary": "Pending Policies tab → card → Policy actions → Download Receipt. The SPA crashes to a blank page; TypeError reading 'at' in generate-receipt-pdf."
+    },
+    {
+      "id": 4711, "type": "Bug", "state": "Closed", "source": "project", "parentId": 319,
+      "title": "Dashboard || Active Policies || 'Download Receipt' downloads no file — opens a print preview",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4711",
+      "reproductionSummary": "Active Policies → Download Receipt opens a print preview instead of downloading the PDF."
+    },
+    {
+      "id": 4702, "type": "Bug", "state": "Closed", "source": "project", "parentId": 319,
+      "title": "Dashboard || Policy Details || 'Download Documents' presents as enabled but does nothing",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4702",
+      "reproductionSummary": "The Download Documents button looks enabled; clicking it does nothing."
+    }
+  ],
+  "duplicateReview": {
+    "reviewId": "5151515151515151515151515151515151515151515151515151515151515151",
+    "strategy": "lexical-idf-recall-v0",
+    "view": "shortlist",
+    "defaultShortlistSize": 25,
+    "totalCandidates": 55,
+    "shownCandidates": 25,
+    "omittedCandidateCount": 30,
+    "truncated": true,
+    "pinnedExactTitleCount": 0,
+    "shortlistCandidateIds": [4840, 4711, 4702],
+    "lowSignal": false,
+    "projectWideCandidates": 55
+  },
+  "watchlistMatches": [
+    {
+      "id": "recheck-20261008101500-a1b2",
+      "kind": "pendingRechecks",
+      "file": "qa/retest-queue.md",
+      "ref": "321",
+      "createdAt": "2026-10-08T10:15:00.000Z",
+      "text": "Re-check Download Receipt on the Expired tab once the receipt-PDF fix for Bug 4840 is deployed to QA.",
+      "sameStory": true,
+      "matchedTerms": ["download", "receipt", "expired"]
+    }
+  ],
+  "nothingWritten": true
+}

@@ -1,0 +1,4 @@
+{
+  "azure": { "org": "exampleorg", "project": "Sample Project", "assignee": "qa.engineer@example.com" },
+  "qaRecords": { "pendingRechecks": "qa/retest-queue.md" }
+}
