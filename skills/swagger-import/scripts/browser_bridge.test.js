@@ -156,6 +156,26 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     assert.match(r.argv, /button\[type=submit\]/);
   });
 
+  await test('fill-secret (plain-string password): refused without --submit, naming the flag; filled and submitted with it', async () => {
+    const dir = proj({ 'environments/qc.json': { users: { qa_user_a: { password: PASSWORD } } } });
+    const filled = path.join(dir, '..', `${path.basename(dir)}-filled.json`);
+    // without --submit: a typed password would sit in the field for the next snapshot to print
+    const no = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a'], { SHIM_FILLED: filled });
+    assert.strictEqual(no.code, 2, no.out);
+    assert.strictEqual(no.json.ok, false);
+    assert.strictEqual(no.json.error, 'submit-required');
+    assert.match(no.json.message, /--submit <submit button>/);
+    assert.strictEqual(no.argv, '', 'the browser was driven');
+    assert.ok(!fs.existsSync(filled), 'the password was served');
+    assert.ok(!no.out.includes(PASSWORD) && !no.err.includes(PASSWORD));
+    // with --submit: typed and submitted in the same call
+    const yes = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]'], { SHIM_FILLED: filled });
+    assert.strictEqual(yes.code, 0, yes.out);
+    assert.deepStrictEqual(yes.json, { ok: true, filled: true, submitted: true, user: 'qa_user_a', passwordFieldCleared: false });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(filled, 'utf8')), { status: 200, value: PASSWORD });
+    assert.ok(!yes.out.includes(PASSWORD) && !yes.err.includes(PASSWORD) && !yes.argv.includes(PASSWORD));
+  });
+
   await test('fill-secret --submit (plain-string password): a password field still filled after submit is cleared and reported (wrong password, same-page OTP)', async () => {
     const dir = proj({ 'environments/qc.json': { users: { qa_user_a: { password: PASSWORD } } } });
     const field = path.join(dir, '..', `${path.basename(dir)}-field.json`);

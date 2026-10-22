@@ -23,9 +23,10 @@
 //       - { "envSecret": NAME }: refused before the browser is touched (exit 2,
 //         "error":"use-fill-secret"); the result names NAME and the exact fill_secret.js call
 //         (--target <loc>, --submit-target <submit> or --submit), which reads the value itself.
-//       - A plain string (legacy; the secret scan warns on it): resolved in this process and
+//       - A plain string (legacy; the secret scan warns on it): --submit is required (without
+//         it: exit 2, "error":"submit-required", nothing typed). Resolved in this process and
 //         served ONCE from an ephemeral 127.0.0.1 listener on a random path; the run-code reads
-//         it from there and fills the field, then clicks --submit when given. After a submit, a
+//         it from there, fills the field and clicks --submit. After the submit, a
 //         password field still on screen and non-empty is cleared ("passwordFieldCleared": true)
 //         so no later snapshot can print it. The password never appears in a command line, an
 //         output or a log.
@@ -266,6 +267,10 @@ async function main(argv) {
         command: fillSecretCommand({ session, locator, envVar: pw.envVar, env, submit }),
         message: `the password of "${user}" is { "envSecret": "${pw.envVar}" }: type it with browser-driver's fill_secret.js — run "command" as given (it reads the value itself and submits in the same call); nothing was typed` }, 2);
     }
+    if (!submit) {
+      return emit({ ok: false, error: 'submit-required', user,
+        message: `a plain-string password is typed only together with its submit: add --submit <submit button> (the locator of the form's sign-in button) so the field is submitted, and cleared if it stays filled, in the same call; nothing was typed` }, 2);
+    }
     const handle = await serveOnce(pw.value);
     const r = await runCli(root, session, fillCode({ handleUrl: handle.url, locator, submit }));
     const used = handle.used();
@@ -274,7 +279,6 @@ async function main(argv) {
     if (!used || !m) {
       return emit({ ok: false, error: 'not-filled', message: `the password field was not filled (playwright-cli exit ${r.status})`, detail: redactString(r.output.slice(-400), [pw.value]) }, 1);
     }
-    if (!submit) return emit({ ok: true, filled: true, submitted: false, user }, 0);
     if (m[1] === '-cleared') {
       return emit({ ok: true, filled: true, submitted: true, user, passwordFieldCleared: true,
         message: 'a password field was still filled after submit (wrong password, or a captcha/OTP on the same page) and has been cleared; to try again, re-fill it with fill-secret' }, 0);

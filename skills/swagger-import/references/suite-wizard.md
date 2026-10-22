@@ -53,6 +53,7 @@ example "no application URL is configured for qc") and stop. The wizard goes on.
      (`--submit` presses Enter instead).
    - A plain string (legacy; the secret scan warns on it): the bridge,
      `node swagger-import/scripts/browser_bridge.js fill-secret --session agentex-collect --locator <password field> --env <env> --user <user> --submit <submit button>`.
+     `--submit` is required: without it the bridge types nothing (`"error":"submit-required"`).
      It refuses an `envSecret` password (`"error":"use-fill-secret"`) before touching the
      browser and gives the `fill_secret.js` call to run instead in `command`: run it as given.
    Rules:
