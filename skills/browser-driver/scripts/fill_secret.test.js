@@ -60,7 +60,9 @@ if (mode === 'hang') { setTimeout(() => {}, 60000); return; }
 // eval: run the generated code against a mock page
 const spec = JSON.parse(process.env.FAKE_PAGE || '{}');
 const els = {};
-for (const [sel, d] of Object.entries(spec.elements || {})) els[sel] = { type: d.type || 'text', value: d.value || '', count: d.count === undefined ? 1 : d.count, security: d.security || 'none', tagName: 'INPUT', attrs: d.marked ? { 'data-agentex-secret': '' } : {}, setAttribute(k, v) { this.attrs[k] = v; } };
+const mk = (d) => ({ type: d.type || 'text', value: d.value || '', count: d.count === undefined ? 1 : d.count, security: d.security || 'none', tagName: 'INPUT', attrs: d.marked ? { 'data-agentex-secret': '' } : {}, setAttribute(k, v) { this.attrs[k] = v; } });
+for (const [sel, d] of Object.entries(spec.elements || {})) els[sel] = mk(d);
+const navigate = () => { for (const k of Object.keys(els)) els[k].count = 0; for (const [sel, d] of Object.entries(spec.rerender || {})) els[sel] = mk({ ...d, value: d.value === '$SECRET' ? secret : (d.value || '') }); };
 const chars = Array.from(secret);
 const act = (o) => append('actions.json', o);
 global.getComputedStyle = (e) => ({ webkitTextSecurity: e.security, getPropertyValue: (p) => (p === '-webkit-text-security' ? e.security : '') });
@@ -70,14 +72,18 @@ const page = {
       const marked = Object.entries(els).filter(([, e]) => e.count > 0 && 'data-agentex-secret' in e.attrs);
       return { async count() { return marked.length; }, nth: (i) => page.locator(marked[i][0]) };
     }
+    if (sel === 'input, textarea') {
+      const all = Object.entries(els).filter(([, e]) => e.count > 0);
+      return { async count() { return all.length; }, nth: (i) => page.locator(all[i][0]) };
+    }
     const el = els[sel];
     return {
       async count() { return el ? el.count : 0; },
       async fill(v) { if (!el) throw new Error('no element'); el.value = v; act({ op: 'fill', sel, whole: v === secret, charIndex: v === '' ? -2 : chars.indexOf(v) }); },
       async pressSequentially(v) { if (!el) throw new Error('no element'); el.value += v; act({ op: 'pressSequentially', sel, whole: v === secret, charIndex: chars.indexOf(v) }); },
-      async click() { act({ op: 'click', sel }); if (spec.navigateOnSubmit && spec.submitSel === sel) for (const k of Object.keys(els)) els[k].count = 0; },
-      async press(key) { act({ op: 'press', sel, key }); if (key === 'Enter' && spec.navigateOnSubmit) for (const k of Object.keys(els)) els[k].count = 0; },
-      async evaluate(fn) { return fn(el); },
+      async click() { act({ op: 'click', sel }); if ((spec.navigateOnSubmit || spec.rerender) && spec.submitSel === sel) navigate(); },
+      async press(key) { act({ op: 'press', sel, key }); if (key === 'Enter' && (spec.navigateOnSubmit || spec.rerender)) navigate(); },
+      async evaluate(fn, arg) { return fn(el, arg); },
     };
   },
   async waitForLoadState() {}, async waitForTimeout() {},
@@ -372,6 +378,25 @@ test('--submit also scrubs secret fields an EARLIER call filled without --submit
   assert.strictEqual(r.status, 0, r.stdout);
   assert.strictEqual(r.json.scrubbed, 2, 'this call\'s target + the earlier marked field; never the unmarked username');
   assert.deepStrictEqual(r.actions.filter((a) => a.charIndex === -2).map((a) => a.sel).sort(), ['aria-ref=e4', 'aria-ref=e5']);
+});
+
+test('a login page that re-renders the posted password after submit: no field holds it, scrubbed >= 1, no leak', () => {
+  // The gate's F1: a failed login comes back with value="<password>" on a NEW element that
+  // carries no data-agentex-secret marker.
+  const page = { elements: LOGIN_PAGE.elements, rerender: { '#pw-new': { type: 'password', value: '$SECRET' }, '#user-new': { type: 'text', value: 'alice' } } };
+  const r = run([...BASE, '--submit'], { page });
+  assert.strictEqual(r.status, 0, r.stdout);
+  assert.ok(r.json.scrubbed >= 1, `scrubbed ${r.json.scrubbed}`);
+  const cleared = r.actions.filter((a) => a.charIndex === -2).map((a) => a.sel);
+  assert.deepStrictEqual(cleared, ['#pw-new'], 'only the field holding the secret is cleared, never the username');
+  assertNoLeak(r);
+});
+
+test('a re-rendered password in a plain text input or textarea is scrubbed too', () => {
+  const page = { elements: LOGIN_PAGE.elements, rerender: { '#shown': { type: 'text', value: '$SECRET' }, '#ta': { type: 'text', value: '$SECRET' }, '#other': { type: 'text', value: 'keep' } } };
+  const r = run([...BASE, '--submit'], { page });
+  assert.strictEqual(r.json.scrubbed, 2);
+  assertNoLeak(r);
 });
 
 test('--submit-target clicks that element instead of pressing Enter', () => {

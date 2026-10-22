@@ -95,6 +95,8 @@ say why in the design.
     - Row in `docs/README.md`'s table and the root `README.md` feature table (a new capability
       this size usually also earns a badge next to the existing ones).
     - A changelog fragment `changelog.d/<slug>.md` (never `CHANGELOG.md` directly).
+    - The README's architecture map: `node scripts/dev/architecture.js --write` (a test fails
+      until the new command, skill or agent is on it).
     - `settings.example.json` — permission entries for the capability's new CLI tools.
       `allow` only read-only probes (like `adb devices`, `npx appium --version`). Put in
       `ask` anything that installs or fetches code, runs an arbitrary command, sends data off

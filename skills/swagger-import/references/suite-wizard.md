@@ -68,8 +68,10 @@ example "no application URL is configured for qc") and stop. The wizard goes on.
    - `"scrubbed": 0` (the bridge: `"passwordFieldCleared": false`): the page moved on, or no
      field kept the password. Go on to step 4.
    - `"scrubbed"` 1 or more (the bridge: `"passwordFieldCleared": true`): the login did not
-     leave the page (wrong password, or a captcha/OTP on the same page). The field was emptied
-     after the submit, so a snapshot is safe again. To try again, run the same call once more.
+     leave the page (wrong password, or a captcha/OTP on the same page), or the server sent the
+     form back with the password in it. Every field on the page holding the password was emptied
+     after the submit, so a snapshot is safe again — only after this scrub, never before. To
+     try again, run the same call once more.
    - `"reason":"secret-unavailable"`: NAME is not set in `.env` (or not declared). Post
      `failed {runId, reason}` naming the variable, never a value, and stop the UI step.
    - `"reason":"target-not-found"`: nothing was typed. If no earlier secret fill on this page
@@ -124,8 +126,9 @@ list.
 
 ## 4. End
 
-- Post `ended {runId, found, total}` when collection is done.
-- On any failure, post `failed {runId, reason}`. The wizard always continues with project,
+- Post `ended {runId, found, total}` only when collection succeeded.
+- On any failure, post `failed {runId, reason}` and no `ended` after it: `failed` is final, and
+  a later `ended` does not replace the failure note. The wizard always continues with project,
   typed and placeholder values.
 - On `cancel`, stop the browser work and post `ended`.
 - On `closed` (`reason: "approved" | "done" | "shutdown"`), stop waiting and summarize in chat:

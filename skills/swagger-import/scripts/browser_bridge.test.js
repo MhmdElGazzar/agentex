@@ -198,6 +198,24 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     assert.ok(!stuck.out.includes(PASSWORD));
   });
 
+  await test('fill-secret code (plain-string): a re-rendered password in a plain text input is cleared after submit', async () => {
+    const code = B.fillCode({ handleUrl: 'http://127.0.0.1:1/h', locator: '#password', submit: 'button' });
+    const mk = (type, value) => ({ type, value, count: 1 });
+    const els = { '#password': mk('password', ''), '#shown': mk('text', PASSWORD), '#user': mk('text', 'alice') };
+    const loc = (sel) => {
+      const group = sel === 'input[type=password]' ? ['#password'] : sel === 'input, textarea' ? Object.keys(els) : [sel];
+      const one = (k) => ({ first() { return one(k); }, async count() { return els[k] ? els[k].count : 0; }, async inputValue() { return els[k].value; },
+        async fill(v) { els[k].value = v; }, async click() { els['#password'].value = PASSWORD; } });
+      return { ...one(group[0]), first() { return one(group[0]); }, async count() { return group.length; }, nth: (i) => one(group[i]) };
+    };
+    const page = { request: { get: async () => ({ ok: () => true, text: async () => PASSWORD }) }, locator: loc, waitForLoadState: async () => {}, waitForTimeout: async () => {} };
+    const out = await eval('(' + code + ')')(page);
+    assert.strictEqual(out, 'filled-cleared', String(out));
+    assert.strictEqual(els['#shown'].value, '');
+    assert.strictEqual(els['#password'].value, '');
+    assert.strictEqual(els['#user'].value, 'alice');
+  });
+
   await test('fill-secret refuses an { envSecret } password before touching the browser and names the fill_secret.js call', async () => {
     for (const env of [
       { defaults: { password: { envSecret: 'QA_PASSWORD' } }, users: { qa_user_a: { email: 'qa_user_a@example.test' } } },

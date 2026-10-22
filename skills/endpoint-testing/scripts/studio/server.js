@@ -48,7 +48,11 @@ function pidAlive(pid) {
   if (!pid) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 }
-const stamp = (d = new Date()) => d.toISOString().replace(/\.\d+Z$/, '').replace('T', '_').replace(/:/g, '-');
+// Local time, YYYY-MM-DD_HH-MM-SS: the same name init_run.js gives /test-endpoints run folders.
+const stamp = (d = new Date()) => {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+};
 
 function envList(root) {
   let def = null;
@@ -144,7 +148,7 @@ async function createStudio(opts) {
   const studio = { state, route, root, envList: () => envList(root), startRun, sessionFile: sessionFile(root) };
 
   // ---- runs (editor; also "Approve and run now") ----
-  function startRun({ suite, caseN, env }) {
+  function startRun({ suite, caseN, env, origin }) {
     if (state.activeRun) return { status: 409, body: { ok: false, error: 'busy' } };
     let loaded;
     try { loaded = S.load(root, suite); } catch (e) { return { status: 400, body: { ok: false, error: 'bad-suite', message: e.message } }; }
@@ -172,7 +176,7 @@ async function createStudio(opts) {
       try {
         const resFile = path.join(root, runDir, 'suite-result.json');
         run.result = JSON.parse(fs.readFileSync(resFile, 'utf8'));
-        W.writeResult(resFile, path.join(root, runDir, 'result.md'), root);
+        W.writeResult(resFile, path.join(root, runDir, 'result.md'), root, { origin });
       } catch (e) { run.result = { result: 'BLOCKED', reason: `the run left no result: ${e.message}`, cases: [] }; }
       run.status = 'done';
       state.activeRun = null;
@@ -368,4 +372,4 @@ async function main(argv) {
 
 if (require.main === module) main(process.argv);
 
-module.exports = { createStudio, sessionFile, envList, catalogIndex, endpointsFor, DEFAULT_PORT, IDLE_MS };
+module.exports = { stamp, createStudio, sessionFile, envList, catalogIndex, endpointsFor, DEFAULT_PORT, IDLE_MS };
