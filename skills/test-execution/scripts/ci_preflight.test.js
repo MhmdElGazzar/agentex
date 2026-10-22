@@ -328,6 +328,17 @@ const codes = (j) => (j.blockedReasons || []).map((b) => b.code);
     assert.ok(!r.stdout.includes(SENTINEL) && !r.stderr.includes(SENTINEL));
   });
 
+  await test('scaffold default figma block (empty fileKey) is not a required secret; a configured one is', async () => {
+    const figma = (fileKey) => ({ name: 'sample', defaultEnvironment: 'qc', figma: { fileKey, token: { envSecret: 'CIPF_FIGMA_TOKEN' } } });
+    const env = { portalUrl: base, users: { valid_user: { password: { envSecret: 'QA_TESTER_PASSWORD' } } } };
+    const unused = await runPreflight(proj({ config: figma(''), envFile: env }), [], {});
+    assert.strictEqual(unused.status, 0, unused.stdout + unused.stderr);
+    assert.ok(!unused.json.checks.secrets.missing.includes('CIPF_FIGMA_TOKEN'));
+    const used = await runPreflight(proj({ config: figma('AbC123'), envFile: env }), [], {});
+    assert.strictEqual(used.status, 2, used.stdout + used.stderr);
+    assert.ok(used.json.checks.secrets.missing.includes('CIPF_FIGMA_TOKEN'));
+  });
+
   server.close();
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;

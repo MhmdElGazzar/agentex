@@ -41,6 +41,9 @@ All notable changes to AgenTeX are documented here.
     a placeholder is BLOCKED "needs a real value" and never sent). Also `--suite <file>` and
     `--case <n>` subset runs, and a `suite-result.json` in every run folder.
   - Existing suites run unchanged; a legacy-suite snapshot test guards it.
+
+## [0.26.0] — 2026-10-22
+### Added
 - **A password-gated login can pass in CI.** Until now, every way to type an
   `{ "envSecret": "NAME" }` value into a browser field leaked it into a command line or tool
   output, so a headless run refused them all and ended BLOCKED `captcha-or-otp`. The new
@@ -61,6 +64,7 @@ All notable changes to AgenTeX are documented here.
 - **`write_verdict.js` run reason `secret-unavailable`.** A missing or empty variable at fill
   time is a named BLOCKED (exit 2), no longer reported as `captcha-or-otp`. This is additive to
   verdict contract v1. `captcha-or-otp` now means a real captcha or an OTP nobody can supply.
+
 ### Changed
 - `import_swagger.js` now runs on the shared `swagger_model.js`. Its output is byte-identical
   (golden tests over fifteen specs).
@@ -72,6 +76,14 @@ All notable changes to AgenTeX are documented here.
 - **`settings.example.json` no longer warns at startup.** The `Write`, `MultiEdit` and
   `NotebookEdit` path rules are gone: Claude Code consults only `Edit(path)` rules for file edits,
   and `Edit(./src/**)` already covers every file-editing tool, so protection is unchanged.
+
+### Fixed
+- **CI preflight no longer fails on a fresh project that does not use Figma.** The scaffold's
+  `figma` block (empty `fileKey`, token `{ "envSecret": "FIGMA_TOKEN" }`) counted as a required
+  secret, so every new project's first CI run ended `preflight-secrets`. With no `fileKey`,
+  Figma is not configured and its token is not required.
+- The CI gate closes the headless session's stdin, so each attempt no longer waits 3 seconds
+  for piped input.
 
 ## [0.25.0] — 2026-10-22
 ### Added

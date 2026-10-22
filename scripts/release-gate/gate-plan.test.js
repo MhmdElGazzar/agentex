@@ -69,6 +69,11 @@ test('docs, evals and tests only → docsOnly, every lane off (the gate is skipp
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan), plan.unmapped], [true, false, [], []]);
 });
 
+test('maintainer dev tooling (scripts/dev) is inert — never shipped, so it gates nothing', () => {
+  const plan = gp.planLanes(['scripts/dev/affected.js']);
+  assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan), plan.unmapped], [true, false, [], []]);
+});
+
 test('an empty diff is docsOnly too — nothing to gate', () => {
   const plan = gp.planLanes([]);
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan)], [true, false, []]);
