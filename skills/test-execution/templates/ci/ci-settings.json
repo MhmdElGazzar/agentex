@@ -5,7 +5,8 @@
     "deny > .env and key material: the bundled scripts read secrets from the environment themselves; the session never needs to READ them, so those reads are denied rather than trusted. test/.auth/** is secret-grade saved-login state — never readable here and NEVER a published pipeline artifact.",
     "deny > the interactive recommendation's 'ask' entries (bare curl/sqlcmd, close-all/kill-all, destructive az) are denied outright here: under dontAsk there is nobody to ask. API/DB steps run through the cataloged node runners, which stay allowed.",
     "read scope > Read(./**) covers the CONSUMER project only. The plugin's own files (references, bundled scripts, templates) become readable via the `--add-dir <plugin-root>` argument ci_gate.js passes at spawn time from its self-resolved install location — a read-oriented grant this static file cannot carry; do not widen Read() here to compensate.",
-    "deny > Edit/Write(./src/**) protect the application source only if it lives in ./src — repoint at your real source folder; a test run never needs to write there (it writes under test/ and executions/)."
+    "deny > Edit/Write(./src/**) protect the application source only if it lives in ./src — repoint at your real source folder; a test run never needs to write there (it writes under test/ and executions/).",
+    "shell rules > every Bash(...) rule has a PowerShell(...) twin: which set applies is decided by the runner's shell tool (Bash on Linux/macOS, PowerShell on Windows), so the unmatched set is inert and one template serves Linux and Windows runners. The PowerShell deny set also names the PowerShell spellings of the denied verbs (Remove-Item and its rm/del/rd/rmdir aliases, Invoke-WebRequest/iwr and Invoke-RestMethod/irm for curl). When you edit a shell rule, edit its twin too."
   ],
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
@@ -13,6 +14,9 @@
       "Bash(npx playwright-cli:*)",
       "Bash(node:*)",
       "Bash(npm install:*)",
+      "PowerShell(npx playwright-cli:*)",
+      "PowerShell(node:*)",
+      "PowerShell(npm install:*)",
       "Read(./**)",
       "Write(./executions/**)",
       "Edit(./executions/**)",
@@ -33,7 +37,6 @@
       "Read(./test/.auth/**)",
       "Edit(./src/**)",
       "Write(./src/**)",
-      "MultiEdit(./src/**)",
       "NotebookEdit(./src/**)",
       "Bash(npx playwright-cli close-all:*)",
       "Bash(npx playwright-cli kill-all:*)",
@@ -46,7 +49,26 @@
       "Bash(rmdir:*)",
       "Bash(git push:*)",
       "Bash(git reset --hard:*)",
-      "Bash(git clean:*)"
+      "Bash(git clean:*)",
+      "PowerShell(npx playwright-cli close-all:*)",
+      "PowerShell(npx playwright-cli kill-all:*)",
+      "PowerShell(curl:*)",
+      "PowerShell(sqlcmd:*)",
+      "PowerShell(rm -rf:*)",
+      "PowerShell(rm -fr:*)",
+      "PowerShell(rm -r:*)",
+      "PowerShell(Remove-Item:*)",
+      "PowerShell(rmdir:*)",
+      "PowerShell(git push:*)",
+      "PowerShell(git reset --hard:*)",
+      "PowerShell(git clean:*)",
+      "PowerShell(rm:*)",
+      "PowerShell(del:*)",
+      "PowerShell(rd:*)",
+      "PowerShell(Invoke-WebRequest:*)",
+      "PowerShell(iwr:*)",
+      "PowerShell(Invoke-RestMethod:*)",
+      "PowerShell(irm:*)"
     ]
   }
 }
