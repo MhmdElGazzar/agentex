@@ -139,6 +139,14 @@ test('the requirements shape covers one name segment only: an agent dump named r
     'requirements_pip_freeze_dump.txt']);
 });
 
+test('the constraints shape covers one name segment only: constraints-dev.txt is the user\'s, an agent dump is litter', () => {
+  const dir = repo({ untracked: { 'constraints.txt': 'x', 'constraints-dev.txt': 'x', 'constraints_py311.txt': 'x',
+    'constraints-probe-output.txt': 'x', 'constraints_pip_freeze_dump.txt': 'x' } });
+  const r = list(dir);
+  assert.deepStrictEqual(paths(r, 'litter'), ['constraints-probe-output.txt', 'constraints_pip_freeze_dump.txt']);
+  assert.deepStrictEqual(paths(r, 'unplaced'), []);
+});
+
 test('protected subtrees and files are never listed, even with litter-named files in them', () => {
   const files = {
     'test/probe-x.mjs': 'x', 'test/suite1/tmp-a.json': 'x', 'config/probe.json': '{}', 'environments/tmp-qc.json': '{}',

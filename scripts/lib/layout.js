@@ -319,8 +319,9 @@ const ROOT_ALLOWLIST = [
   /^package\.json$/, /^package-lock\.json$/, /^npm-shrinkwrap\.json$/, /^yarn\.lock$/, /^pnpm-lock\.yaml$/,
   /^pnpm-workspace\.yaml$/, /^bun\.lockb?$/, /^bunfig\.toml$/, /^deno\.jsonc?$/, /^deno\.lock$/,
   /^lerna\.json$/, /^nx\.json$/, /^turbo\.json$/, /^vercel\.json$/, /^netlify\.toml$/,
-  // requirements: one name segment (requirements-dev.txt), so requirements-probe-output.txt stays a dump
-  /^requirements([-_.][A-Za-z0-9]+)?\.txt$/, /^constraints.*\.txt$/, /^pyproject\.toml$/, /^setup\.cfg$/, /^setup\.py$/, /^tox\.ini$/,
+  // requirements / constraints: one name segment (requirements-dev.txt), so
+  // requirements-probe-output.txt stays a dump
+  /^requirements([-_.][A-Za-z0-9]+)?\.txt$/, /^constraints([-_.][A-Za-z0-9]+)?\.txt$/, /^pyproject\.toml$/, /^setup\.cfg$/, /^setup\.py$/, /^tox\.ini$/,
   /^pytest\.ini$/, /^conftest\.py$/, /^Pipfile(\.lock)?$/, /^poetry\.lock$/, /^uv\.lock$/, /\.lock\.hcl$/,
   /^Gemfile(\.lock)?$/, /^go\.(mod|sum|work)$/, /^Cargo\.(toml|lock)$/, /^composer\.(json|lock)$/,
   /^pom\.xml$/, /^(build|settings)\.gradle(\.kts)?$/, /^gradle\.properties$/, /^gradlew(\.bat)?$/, /^mvnw(\.cmd)?$/,

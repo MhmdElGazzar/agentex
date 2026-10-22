@@ -152,8 +152,8 @@ Ordinary root files are `README.md`, `LICENSE` and the like; package manifests a
 (`Makefile`, `Taskfile.yml`, `justfile`, `Dockerfile*`, `docker-compose*.yml`,
 `azure-pipelines*.yml`, …). A litter-named file stays litter even when it looks like tool
 config: `probe-jest.config.js` and `jest.config.js.tmp` are both reported, and so is a dump
-such as `requirements-probe-output.txt` (a requirements file has one name part after
-`requirements`).
+such as `requirements-probe-output.txt` (a requirements or constraints file has one name
+part after `requirements` or `constraints`).
 
 **The guarantees:**
 
