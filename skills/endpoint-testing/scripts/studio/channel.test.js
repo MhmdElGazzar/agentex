@@ -31,10 +31,21 @@ async function wizardAt(dir) {
   sp.close();
   return s;
 }
+// Poll until cond() holds, or fail after timeoutMs: a spawned `channel.js wait` needs a
+// variable time to reach the server (process start-up under load), so no fixed sleep is safe.
+async function until(cond, what, timeoutMs = 10000, everyMs = 20) {
+  const end = Date.now() + timeoutMs;
+  for (;;) {
+    if (await cond()) return;
+    if (Date.now() > end) throw new Error(`timed out after ${timeoutMs} ms waiting for ${what}`);
+    await new Promise(r => setTimeout(r, everyMs));
+  }
+}
+const attached = s => until(async () => (await s.page('GET', '/api/wizard/state')).json.attached === true, 'the agent\'s wait to attach');
 // Start a collect run: one wait attaches the agent, then the page's Collect is delivered.
 async function collecting(s, dir) {
-  const first = channel(dir, ['wait', '--timeout', '3000']);
-  await new Promise(r => setTimeout(r, 300));
+  const first = channel(dir, ['wait', '--timeout', '15000']);
+  await attached(s);
   const c = await s.page('POST', '/api/wizard/collect', { user: 'qa_user_a' });
   assert.strictEqual(c.json.ok, true, c.text);
   const ev = await first;
@@ -128,13 +139,12 @@ async function collecting(s, dir) {
   await test('closing the studio answers a pending wait with closed; a later wait sees shutdown', async () => {
     const dir = project();
     const s = await wizardAt(dir);
-    const pending = channel(dir, ['wait', '--timeout', '5000']);
-    await new Promise(r => setTimeout(r, 300));
+    const pending = channel(dir, ['wait', '--timeout', '15000']);
+    await attached(s);
     await s.page('GET', '/api/done');
     const w = await pending;
     assert.deepStrictEqual(w.json, { event: 'closed', reason: 'done' }, w.out);
-    await new Promise(r => setTimeout(r, 400));
-    assert.ok(!fs.existsSync(sessionFile(dir)));
+    await until(() => !fs.existsSync(sessionFile(dir)), 'the session file to be removed');
   });
 
   await test('the session file is in the OS temp dir, 0600, outside the project', async () => {
