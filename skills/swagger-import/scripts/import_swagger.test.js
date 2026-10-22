@@ -243,8 +243,8 @@ test('envVarsToSet points secrets at the project .env, never "shell only"', () =
 });
 
 // Golden: stdout + both written files, byte for byte, as main's importer produced them before
-// the spec model was extracted into swagger_model.js (fixtures/golden/<case>/expected/).
-const GOLDEN = path.join(__dirname, 'fixtures', 'golden');
+// the spec model was extracted into swagger_model.js (golden/import/<case>/expected/).
+const GOLDEN = path.join(__dirname, 'golden', 'import');
 function walkFiles(d, base = d) {
   let r = [];
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {

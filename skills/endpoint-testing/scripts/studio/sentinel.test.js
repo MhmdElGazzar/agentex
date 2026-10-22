@@ -22,7 +22,7 @@ const SENTINEL = `EVAL_SENTINEL_TOKEN_${Math.random().toString(36).slice(2, 10)}
 const SERVER = path.join(__dirname, 'server.js');
 const CHANNEL = path.join(__dirname, 'channel.js');
 const BRIDGE = path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'browser_bridge.js');
-const SHIM = path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'fixtures', 'fake_playwright_cli.js');
+const SHIM = path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'golden', 'fake_playwright_cli.js');
 
 const outputs = [];   // every stdout/stderr byte of the server, channel and bridge processes
 const responses = []; // every page response body

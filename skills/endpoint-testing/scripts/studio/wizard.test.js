@@ -1,10 +1,10 @@
 'use strict';
 // Tests for studio/wizard.js — "New suite from Swagger": steps 1, 2, 4, 5 on the server alone.
 // Run: node skills/endpoint-testing/scripts/studio/wizard.test.js
-const { assert, fs, path, http, harness, proj, treeOf, studio, waitRun } = require('./test_helpers.js');
+const { assert, fs, path, http, harness, proj, treeOf, studio, waitRun } = require('../golden/studio_helpers.js');
 const { test, done } = harness();
 
-const PET = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'fixtures', 'golden', 'petstore-oa3', 'spec.json'), 'utf8'));
+const PET = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'golden', 'import', 'petstore-oa3', 'spec.json'), 'utf8'));
 // The spec server counts its requests; the "service" behind the spec counts its own.
 function servers() {
   return new Promise(resolve => {
@@ -187,7 +187,7 @@ const ALL_SAFE = ['GET /pets', 'POST /pets', 'GET /pets/{petId}', 'GET /store/in
 
   await test('the wizard page is served in Arabic by default, with the spec prefilled when given', async () => {
     const s = await studio(project(), { mode: 'wizard', spec: 'specs/orders.json' });
-    const html = (await require('./test_helpers.js').req(s.st.port, 'GET', '/wizard')).text;
+    const html = (await require('../golden/studio_helpers.js').req(s.st.port, 'GET', '/wizard')).text;
     assert.match(html, /<html lang="ar" dir="rtl">/);
     assert.ok(html.includes("spec: 'specs/orders.json'"));
   });

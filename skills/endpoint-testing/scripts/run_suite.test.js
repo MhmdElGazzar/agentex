@@ -413,8 +413,8 @@ const catalog = port => ({
   });
 
   await test('legacy suite: per-case outcome identical to the snapshot taken on main', async () => {
-    const fx = require('./fixtures/legacy_suite_fixture.js');
-    const snapshot = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'legacy-suite-snapshot.json'), 'utf8'));
+    const fx = require('./golden/legacy_suite_fixture.js');
+    const snapshot = JSON.parse(fs.readFileSync(path.join(__dirname, 'golden', 'legacy-suite-snapshot.json'), 'utf8'));
     const srv = http.createServer(fx.handler);
     await new Promise(r => srv.listen(0, '127.0.0.1', r));
     const dir = proj(fx.files(srv.address().port));

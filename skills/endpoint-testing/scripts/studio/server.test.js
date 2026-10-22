@@ -2,7 +2,7 @@
 // Tests for studio/server.js — the loopback studio: token gate, session file, editor Save/Run.
 // Wizard steps and the agent channel are in wizard.test.js.
 // Run: node skills/endpoint-testing/scripts/studio/server.test.js
-const { assert, fs, os, path, harness, req, studio, fakeService, waitRun, editorProject, SUITE_REL, sessionFile } = require('./test_helpers.js');
+const { assert, fs, os, path, harness, req, studio, fakeService, waitRun, editorProject, SUITE_REL, sessionFile } = require('../golden/studio_helpers.js');
 const { test, done } = harness();
 
 (async () => {

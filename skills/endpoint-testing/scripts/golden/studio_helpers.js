@@ -10,8 +10,8 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 process.env.TMPDIR = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-studio-tmp-'));
-const { createStudio, sessionFile } = require('./server.js');
-const wizardMount = require('./wizard.js').mount;
+const { createStudio, sessionFile } = require('../studio/server.js');
+const wizardMount = require('../studio/wizard.js').mount;
 
 // Everything a test opens (studios, fake services) is closed after it, pass or fail, so a
 // failing assertion never leaves a server holding the process open.

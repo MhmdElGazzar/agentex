@@ -1,7 +1,7 @@
 'use strict';
 // Tests for studio/channel.js — the agent's long-poll channel to the studio page.
 // Run: node skills/endpoint-testing/scripts/studio/channel.test.js
-const { assert, fs, os, path, http, harness, proj, studio, sessionFile } = require('./test_helpers.js');
+const { assert, fs, os, path, http, harness, proj, studio, sessionFile } = require('../golden/studio_helpers.js');
 const { spawn } = require('node:child_process');
 const { test, done } = harness();
 const CHANNEL = path.join(__dirname, 'channel.js');
@@ -16,7 +16,7 @@ function channel(dir, args, stdin) {
   });
 }
 function specServer() {
-  const spec = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'fixtures', 'golden', 'petstore-oa3', 'spec.json'), 'utf8'));
+  const spec = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'golden', 'import', 'petstore-oa3', 'spec.json'), 'utf8'));
   return new Promise(resolve => {
     const srv = http.createServer((q, res) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(spec)); });
     srv.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${srv.address().port}/spec.json`, close: () => { srv.close(); srv.closeAllConnections(); } }));

@@ -1,6 +1,6 @@
 'use strict';
 // Tests for browser_bridge.js — capture / fill-secret / token-status, against a fake
-// playwright-cli (fixtures/fake_playwright_cli.js, via AGENTEX_PLAYWRIGHT_CLI).
+// playwright-cli (golden/fake_playwright_cli.js, via AGENTEX_PLAYWRIGHT_CLI).
 // Run: node skills/swagger-import/scripts/browser_bridge.test.js
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -12,7 +12,7 @@ const { spawn, execFileSync } = require('node:child_process');
 process.env.TMPDIR = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-bridge-tmp-'));
 const B = require('./browser_bridge.js');
 const BRIDGE = path.join(__dirname, 'browser_bridge.js');
-const SHIM = path.join(__dirname, 'fixtures', 'fake_playwright_cli.js');
+const SHIM = path.join(__dirname, 'golden', 'fake_playwright_cli.js');
 
 let passed = 0; const failures = [];
 async function test(name, fn) {

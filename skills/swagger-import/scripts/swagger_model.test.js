@@ -12,7 +12,7 @@ function test(name, fn) {
   try { fn(); passed++; console.log(`  ok - ${name}`); }
   catch (e) { failures.push(name); console.error(`  FAIL - ${name}: ${e.message}`); }
 }
-const golden = c => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'golden', c, 'spec.json'), 'utf8'));
+const golden = c => JSON.parse(fs.readFileSync(path.join(__dirname, 'golden', 'import', c, 'spec.json'), 'utf8'));
 const PET3 = golden('petstore-oa3');
 const PET2 = golden('petstore-swagger2');
 const model3 = () => M.parseSpec(PET3, 'spec.json');
