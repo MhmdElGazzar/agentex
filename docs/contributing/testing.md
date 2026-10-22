@@ -29,8 +29,20 @@ without the real dependency, a live server, or a device.
 **Pros/cons:** + catches regressions in safety rules, no framework overhead — but one more
 file to write per script.
 
-**Run it:** `node skills/<name>/scripts/<script>.test.js` — run every `.test.js` you touched
-(no single "run all" command yet).
+**Run it:** `node skills/<name>/scripts/<script>.test.js` for one file; the whole suite with
+
+```
+node scripts/run-tests.js                 # every tracked *.test.js, in parallel (CPU count)
+node scripts/run-tests.js --filter wizard # only paths containing "wizard"
+node scripts/run-tests.js --serial        # one at a time (or --concurrency <n>)
+```
+
+It runs each file as `node <file>` from the repo root, prints one line per failure plus
+totals and wall time on stderr, and one JSON line on stdout
+(`{ok,total,passed,failed:[{file,exit,tail}],durationMs}`); exit 0 all pass · 1 any fail ·
+2 usage/IO error. Only **tracked** files are found — `git add` a new test first. Tests run
+side by side, so a test must not hold a fixed port or a fixed temp path (take port `0`,
+`fs.mkdtempSync`); one that truly cannot goes in the runner's documented `SERIAL_ONLY` list.
 
 **Minimum coverage:** the success path, each `FAIL` mode, each `BLOCKED` precondition, and any
 safety rule enforced in code (catalog-only lookup, DDL ban, param sanitization, secret-header

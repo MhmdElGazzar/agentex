@@ -9,8 +9,15 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const SERVER = path.join(__dirname, 'server.js');
-const PORT = 7391;
-const BASE = `http://127.0.0.1:${PORT}`;
+// An ephemeral port, not a fixed one: two suite runs at once (parallel runner, another
+// worktree) must never collide — a taken port made the server exit and this test hang.
+let PORT = 0;
+let BASE = '';
+const freePort = () => new Promise((resolve, reject) => {
+  const probe = require('node:net').createServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+});
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -28,6 +35,8 @@ const post = (route, body, headers = {}) =>
   });
 
 (async () => {
+  PORT = await freePort();
+  BASE = `http://127.0.0.1:${PORT}`;
   const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv-'));
   const child = spawn(process.execPath, [SERVER, projectDir, `--port=${PORT}`, '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';

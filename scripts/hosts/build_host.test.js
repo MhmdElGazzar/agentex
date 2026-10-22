@@ -75,6 +75,9 @@ function pluginRepo() {
   write(dir, 'skills/legacy/scripts/old.js');
   write(dir, 'commands/go.md', '---\ndescription: Go. Usage: /go\n---\nGo with $ARGUMENTS\n');
   write(dir, 'scripts/hosts/build_host.js');
+  write(dir, 'scripts/run-tests.js');                 // maintainer tooling (delivery-speed)
+  write(dir, 'scripts/release-gate/gate-plan.js');
+  write(dir, 'scripts/release-gate/prepare.js');      // a gate script that does ship
   write(dir, 'hosts/claude/host.json', JSON.stringify(CLAUDE_HOST));
   write(dir, 'hosts/demo/host.json', JSON.stringify(DEMO_HOST));
   write(dir, 'hosts/demo/overlay/DEMO.md', 'demo only\n');
@@ -93,9 +96,10 @@ function runCli(cwd, args) {
 }
 
 const CLAUDE_KEPT = ['.claude-plugin/plugin.json', 'README.md', 'commands/go.md',
+  'scripts/release-gate/prepare.js',
   'skills/legacy/scripts/old.js', 'skills/run-it/SKILL.md', 'skills/run-it/scripts/run.js'];
 
-test('claude host: main minus evals, tests and golden fixtures, .github, .gitattributes, hosts/ and scripts/hosts', () => {
+test('claude host: main minus evals, tests and golden fixtures, .github, .gitattributes, hosts/, scripts/hosts and the maintainer runners', () => {
   const dir = pluginRepo();
   const res = buildHostCommit({ cwd: dir, source: 'main', host: 'claude' });
   assert.strictEqual(res.ok, true, JSON.stringify(res.findings));
@@ -115,7 +119,7 @@ test('transform host: commands become skills, the root is rewritten, preamble an
   const res = buildHostCommit({ cwd: dir, source: 'main', host: 'demo' });
   assert.strictEqual(res.ok, true, JSON.stringify(res.findings));
   assert.deepStrictEqual(treeFiles(dir, res.commit), ['.demo-plugin/plugin.json', 'DEMO.md', 'README.md',
-    'skills/go/SKILL.md', 'skills/run-it/SKILL.md', 'skills/run-it/scripts/run.js']);
+    'scripts/release-gate/prepare.js', 'skills/go/SKILL.md', 'skills/run-it/SKILL.md', 'skills/run-it/scripts/run.js']);
   assert.strictEqual(git(dir, 'show', `${res.commit}:skills/run-it/SKILL.md`),
     '---\nname: run-it\ndescription: Runs it.\n---\n\n> On Demo Host, root is `../..`.\n\nnode <agentex-root>/skills/run-it/scripts/run.js');
   assert.match(git(dir, 'show', `${res.commit}:skills/go/SKILL.md`), /^---\nname: go\ndescription: "Go\. Usage: \/demo:go"[\s\S]*Go with \(the argument text/);
@@ -322,6 +326,7 @@ test('this repo, claude: the `store` branch content — unconverted, no dev-only
   assert.strictEqual(b.res.config.target.branch, 'store');
   assert.ok(b.has('.claude-plugin/plugin.json') && b.under('commands').length && b.under('agents').length);
   assert.ok(!b.paths.some((p) => /^(evals|hosts|\.github)\//.test(p) || p.endsWith('.test.js') || p === '.gitattributes'));
+  assert.ok(!b.has('scripts/run-tests.js') && !b.has('scripts/release-gate/gate-plan.js'), 'maintainer runners never ship');
   assert.ok(b.read('skills/test-execution/SKILL.md').includes('${CLAUDE_PLUGIN_ROOT}'), 'Claude keeps its own variable');
 });
 
