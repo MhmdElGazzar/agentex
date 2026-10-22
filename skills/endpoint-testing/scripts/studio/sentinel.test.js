@@ -104,7 +104,9 @@ function walk(dir) {
     assert.strictEqual((await page('POST', '/api/wizard/select', { selection: ['GET /pets/{petId}'] })).status, 200);
     // step 3: the agent attaches (channel.js wait), the page asks to collect
     const wait1 = proc(CHANNEL, ['wait', '--timeout', '5000', '--project', dir]);
-    await new Promise(r => setTimeout(r, 400));
+    // wait for the server to see the waiter, not a fixed delay: under load channel.js can take
+    // longer than any fixed sleep to start, and collect then answers no-agent
+    for (let i = 0; i < 100 && !(await page('GET', '/api/wizard/state')).json.attached; i++) await new Promise(r => setTimeout(r, 50));
     const collect = await page('POST', '/api/wizard/collect', { user: 'qa_user_a' });
     assert.strictEqual(collect.json.ok, true, collect.text);
     const ev = lastJson(await wait1.done);
