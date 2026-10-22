@@ -1,0 +1,50 @@
+{
+  "argv": [
+    "show",
+    "--id",
+    "42",
+    "--expand",
+    "all"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "provider": "ado",
+    "workItem": {
+      "id": 42,
+      "type": "User Story",
+      "title": "Checkout totals",
+      "state": "Active",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/42",
+      "fields": {
+        "System.WorkItemType": "User Story",
+        "System.Title": "Checkout totals",
+        "System.State": "Active",
+        "System.Description": "<div>Totals include tax</div>"
+      },
+      "relations": [
+        {
+          "rel": "System.LinkTypes.Hierarchy-Forward",
+          "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/43",
+          "attributes": {
+            "isLocked": false
+          }
+        },
+        {
+          "rel": "System.LinkTypes.Hierarchy-Reverse",
+          "url": "https://dev.azure.com/exampleorg/_apis/wit/workItems/7",
+          "attributes": {
+            "isLocked": false
+          }
+        }
+      ]
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?$expand=all&api-version=7.1",
+      "body": null
+    }
+  ]
+}

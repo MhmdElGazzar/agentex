@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "transition",
+    "--id",
+    "42"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "error": {
+      "message": "--id and --to are required. usage: tracker.js show --id <id> [--expand all] [--fields f1,f2] [--out <file>] | search --query \"<jql|wiql>\" [--fields f1,f2] [--top n] [--out <file>] | batch (--ids a,b,… | --ids-file <file>) --fields f1,f2 [--out <file>] | comments --id <id> [--out <file>] | relations --id <id>[,<id>…] [--kind parent|child|tested-by|related|link|all] [--fields f1,f2] [--out <file>] | iterations [--team <name> | --board <id|name>] [--timeframe current|future|past|all] [--out <file>] | create --type <type> --spec <file.json> [--execute] | update --id <id> [--spec <file.json>] [--discussion \"<text>\" | --discussion-file <file>] [--mention <who>] [--execute] | transition --id <id> --to <name-or-id> [--execute] | comment --id <id> (--body \"<text>\" | --body-file <file>) [--mention <who>] [--execute] | link --id <id> --type <linkType> --target <id> [--direction inward] [--execute]"
+    }
+  },
+  "requests": []
+}

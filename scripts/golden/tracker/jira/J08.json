@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "show",
+    "--id",
+    "PROJ-404"
+  ],
+  "code": 1,
+  "out": {
+    "mode": "plan",
+    "ok": false,
+    "error": {
+      "message": "getWorkItem failed: HTTP 401 — Jira rejected the credentials (GET /myself → 401), so it answered anonymously with a 404 — check that JIRA_EMAIL and JIRA_API_TOKEN in .env belong to the same Atlassian account and that the token is not revoked (https://example.atlassian.net/rest/api/3/issue/PROJ-404?expand=renderedFields%2Cnames)",
+      "op": "getWorkItem",
+      "status": 401,
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-404?expand=renderedFields%2Cnames",
+      "serverMessage": "Jira rejected the credentials (GET /myself → 401), so it answered anonymously with a 404 — check that JIRA_EMAIL and JIRA_API_TOKEN in .env belong to the same Atlassian account and that the token is not revoked",
+      "credentialHint": {
+        "tried": [
+          "JIRA_API_TOKEN"
+        ],
+        "resolved": "JIRA_API_TOKEN",
+        "emailVar": "JIRA_EMAIL"
+      }
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-404?expand=renderedFields%2Cnames",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/myself",
+      "body": null
+    }
+  ]
+}

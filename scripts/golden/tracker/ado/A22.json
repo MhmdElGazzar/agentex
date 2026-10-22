@@ -1,0 +1,34 @@
+{
+  "argv": [
+    "comment",
+    "--id",
+    "42",
+    "--body",
+    "retested — passes"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "plan": [
+      {
+        "step": "comment",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workItems/42/comments?api-version=7.1-preview.4",
+        "request": {
+          "op": "addComment",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workItems/42/comments?api-version=7.1-preview.4",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "text": "retested — passes"
+          }
+        }
+      }
+    ],
+    "note": "nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
+  },
+  "requests": []
+}

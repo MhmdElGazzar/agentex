@@ -41,7 +41,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const pc = require(path.join(__dirname, '..', '..', 'project_config.js'));
 const { TrackerError } = require('../errors.js');
-const { toAdf } = require('../adf.js');
+const { toAdf, toPlainText } = require('../adf.js');
 
 const CRED_ENV_NAMES = ['JIRA_EMAIL', 'JIRA_API_TOKEN'];
 const DEFAULT_TIMEOUT_MS = 30_000;      // same bound as the ADO adapter
@@ -51,6 +51,9 @@ const SEARCH_MAX_PAGES = 10;            // documented hard cap; result carries t
 const META_PAGE_SIZE = 100;
 const META_MAX_PAGES = 10;
 const SPRINT_MAX_PAGES = 20;            // runaway guard for sprint paging (refuses past it)
+const BULK_CHUNK = 100;                 // issue/bulkfetch accepts at most 100 keys per call
+const COMMENT_PAGE_SIZE = 100;
+const MAX_PAGES = 1000;                 // runaway guard for comment paging
 // Rich-text fields whose plain-string values the dialect layer wraps via toAdf.
 const ADF_FIELDS = ['description', 'environment'];
 
@@ -319,23 +322,27 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       attachments: true,            // POST …/issue/{key}/attachments — post-create, needs issueId
       testPlans: false,
       testRuns: false,
-      relations: { parent: true, testedBy: false, attachedFile: false },
+      relations: { parent: true, child: true, related: true, testedBy: false, attachedFile: false },
       dialect: 'json',
       query: 'jql',
       deleteWorkItem: false,        // only permanent destroy exists; never offered (O7)
       transitions: true,            // NEW optional flag — undefined on ADO (falsy)
       comments: true,               // NEW optional flag — undefined on ADO
-      sprints: true,                // agile board/sprint reads — undefined on ADO
+      sprints: true,                // agile board/sprint reads
+      batchRead: true,              // issue/bulkfetch (getWorkItems)
+      mentions: true,               // ADF mention nodes in comment bodies
     },
 
     webUrl,
 
     // ── READS (free, no gating) ───────────────────────────────────────────────
-    async getWorkItem(id) {
+    async getWorkItem(id, { fields } = {}) {
       // expand always requested — renderedFields is the read path's ADF answer:
       // Jira returns HTML renderings of every rich-text field, the shape the
-      // agents already parse on ADO.
-      const u = api(`issue/${encodeURIComponent(id)}?${new URLSearchParams({ expand: 'renderedFields,names' })}`);
+      // agents already parse on ADO. opts.fields adds fields= (additive: the
+      // URL is unchanged without it).
+      const params = { expand: 'renderedFields,names', ...(fields && fields.length ? { fields: [].concat(fields).join(',') } : {}) };
+      const u = api(`issue/${encodeURIComponent(id)}?${new URLSearchParams(params)}`);
       return request('getWorkItem', 'GET', u);
     },
 
@@ -453,6 +460,60 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         op: 'listSprints', url: agile(`board/${encodeURIComponent(boardId)}/sprint`),
         serverMessage: `more than ${SPRINT_MAX_PAGES} pages of sprints — stopping rather than looping`,
       });
+    },
+
+    // Batch read: POST issue/bulkfetch, chunks of 100. The service answers in
+    // ascending id order, so INPUT order is restored here.
+    //   { items: [raw issue…], missing: [key…], moved: [{id, key, fields}…] }
+    // missing = keys in issueErrors + keys nothing matched; an issue returned
+    // under a key that was not asked for (a moved issue) is listed in moved,
+    // never merged into the old key's slot.
+    async getWorkItems(keys, { fields } = {}) {
+      const wanted = [].concat(keys).map(String);
+      const byRef = new Map();
+      const moved = [];
+      const asked = new Set(wanted);
+      for (let i = 0; i < wanted.length; i += BULK_CHUNK) {
+        const chunk = wanted.slice(i, i + BULK_CHUNK);
+        const body = { issueIdsOrKeys: chunk, ...(fields && fields.length ? { fields: [...fields] } : {}) };
+        const res = await request('getWorkItems', 'POST', api('issue/bulkfetch'), { body: JSON.stringify(body), contentType: 'application/json' });
+        for (const iss of (res && res.issues) || []) {
+          if (!iss) continue;
+          const hit = asked.has(String(iss.key)) ? String(iss.key) : asked.has(String(iss.id)) ? String(iss.id) : null;
+          if (hit) byRef.set(hit, iss);
+          else moved.push({ id: String(iss.id), key: iss.key, fields: iss.fields || {} });
+        }
+      }
+      return {
+        items: wanted.filter((k) => byRef.has(k)).map((k) => byRef.get(k)),
+        missing: wanted.filter((k) => !byRef.has(k)),
+        moved,
+      };
+    },
+
+    // Comment thread, oldest first: GET issue/{key}/comment?orderBy=created,
+    // paged by startAt/maxResults until total. ADF bodies become plain text
+    // (adf.toPlainText).
+    //   [{ id, author, date, text, user: { id, displayName, email } }]
+    async listComments(key) {
+      const out = [];
+      let startAt = 0;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const u = api(`issue/${encodeURIComponent(key)}/comment?orderBy=created&startAt=${startAt}&maxResults=${COMMENT_PAGE_SIZE}`);
+        const res = await request('listComments', 'GET', u);
+        const batch = (res && res.comments) || [];
+        for (const c of batch) {
+          const a = c.author || {};
+          out.push({
+            id: c.id, author: a.displayName || null, date: c.created || null, text: toPlainText(c.body),
+            user: { id: a.accountId || null, displayName: a.displayName || null, email: a.emailAddress || null },
+          });
+        }
+        startAt += batch.length;
+        const total = res && typeof res.total === 'number' ? res.total : startAt;
+        if (!batch.length || startAt >= total) return out;
+      }
+      throw new TrackerError({ op: 'listComments', url: api(`issue/${key}/comment`), serverMessage: `more than ${MAX_PAGES} pages — stopping rather than looping` });
     },
 
     // ── NEUTRAL READS (additive, flow-free) ───────────────────────────────────
@@ -757,10 +818,15 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // Test-plan/run surface: Jira has no equivalent APIs. Consumers branch on
     // the capability flags first — these are honest backstops, never reached
     // by shipped flows.
+    listPlans: unsupported('listPlans', 'testPlans'),
+    getPlan: unsupported('getPlan', 'testPlans'),
+    createPlan: unsupported('createPlan', 'testPlans'),
+    createSuite: unsupported('createSuite', 'testPlans'),
     listSuites: unsupported('listSuites', 'testPlans'),
     listSuiteCases: unsupported('listSuiteCases', 'testPlans'),
     getPoint: unsupported('getPoint', 'testPlans'),
     addCaseToSuite: unsupported('addCaseToSuite', 'testPlans'),
+    removeCaseFromSuite: unsupported('removeCaseFromSuite', 'testPlans'),
     listRunResults: unsupported('listRunResults', 'testRuns'),
     createRun: unsupported('createRun', 'testRuns'),
     updateRunResults: unsupported('updateRunResults', 'testRuns'),

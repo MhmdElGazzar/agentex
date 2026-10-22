@@ -1,0 +1,34 @@
+{
+  "argv": [
+    "show",
+    "--id",
+    "42"
+  ],
+  "code": 1,
+  "out": {
+    "mode": "plan",
+    "ok": false,
+    "error": {
+      "message": "getWorkItem failed: HTTP 401 (https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1)",
+      "op": "getWorkItem",
+      "status": 401,
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+      "serverMessage": null,
+      "credentialHint": {
+        "tried": [
+          "AZURE_PAT",
+          "AZURE_DEVOPS_EXT_PAT",
+          "AZURE_DEVOPS_PAT"
+        ],
+        "resolved": "AZURE_PAT"
+      }
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+      "body": null
+    }
+  ]
+}

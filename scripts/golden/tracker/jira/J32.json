@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "transition",
+    "--id",
+    "PROJ-1",
+    "--to",
+    "Done",
+    "--execute"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "executed",
+    "blocked": [
+      {
+        "reason": "ci-mode",
+        "message": "tracker writes are disabled in CI (AGENTEX_CI=1) — ad-hoc work-item writes stay interactive; run this from an interactive session"
+      }
+    ]
+  },
+  "requests": []
+}

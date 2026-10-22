@@ -1,0 +1,32 @@
+{
+  "argv": [
+    "show",
+    "--id",
+    "42"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "provider": "ado",
+    "workItem": {
+      "id": 42,
+      "type": "User Story",
+      "title": "Checkout totals",
+      "state": "Active",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/42",
+      "fields": {
+        "System.WorkItemType": "User Story",
+        "System.Title": "Checkout totals",
+        "System.State": "Active",
+        "System.Description": "<div>Totals include tax</div>"
+      }
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+      "body": null
+    }
+  ]
+}

@@ -199,6 +199,53 @@ test('sampleEnvShapes covers the current template plus every shipped revision', 
     'current template included');
 });
 
+// ---- the QA watchlist (skill-consolidation-foundation R6) ----
+// The QA-record files hold user decisions: they are committed, so no scaffolded
+// ignore entry may cover them, and they are created lazily by qa-records.js —
+// never by the scaffold. The paths come from the one constant.
+const { STRUCTURED_DEFAULTS } = require('./project_config.js');
+const QA_PATHS = Object.values(STRUCTURED_DEFAULTS.qaRecords);
+
+test('the scaffolded .gitignore covers none of the default QA watchlist paths (git check-ignore)', () => {
+  const { spawnSync } = require('node:child_process'); // test-side only
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  const gi = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8');
+  assert.ok(gi.includes('.env'), 'the scaffold wrote its ignore block');
+  const init = spawnSync('git', ['init', '-q'], { cwd: dir, encoding: 'utf8' });
+  if (init.status !== 0) { console.log('    (skipped: git unavailable)'); return; }
+  const folder = `${path.posix.dirname(QA_PATHS[0])}/`;
+  for (const p of [...QA_PATHS, folder]) {
+    const r = spawnSync('git', ['check-ignore', '--no-index', '-v', p], { cwd: dir, encoding: 'utf8' });
+    assert.strictEqual(r.status, 1, `${p} is ignored by: ${r.stdout.trim()}`);
+  }
+  for (const e of scaffold.gitignoreMissing(proj())) {
+    for (const p of QA_PATHS) assert.ok(!p.startsWith(e.entry.replace(/^\//, '')), `${e.entry} would cover ${p}`);
+  }
+});
+
+test('the scaffold creates no QA watchlist file or folder (they are created lazily on first append)', () => {
+  const dir = proj();
+  const actions = scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  for (const p of QA_PATHS) assert.ok(!fs.existsSync(path.join(dir, p)), `${p} must not be scaffolded`);
+  assert.ok(!fs.existsSync(path.join(dir, path.dirname(QA_PATHS[0]))), 'nor its folder');
+  assert.ok(!actions.some((a) => QA_PATHS.some((p) => a.path.startsWith(path.posix.dirname(p)))));
+});
+
+test('the scaffolded config/project.json carries the two plugin blocks, equal to STRUCTURED_DEFAULTS; no provider block', () => {
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  const cfg = readJson(dir, 'config/project.json');
+  for (const k of ['testDesign', 'qaRecords']) {
+    assert.deepStrictEqual(cfg[k], STRUCTURED_DEFAULTS[k], `${k} equals the default`);
+  }
+  for (const k of ['testingTasks', 'estimation']) {
+    assert.ok(!(k in cfg), `no ${k} block (decision #13: config/estimation.json is the one task-list source)`);
+  }
+  assert.ok(!('azure' in cfg) && !('jira' in cfg), 'the template carries no provider block (the wizard writes the chosen one)');
+  assert.ok(!('workflow' in cfg) && !('reproSummaryRow' in cfg), 'provider-block keys are never top-level');
+});
+
 // ---- Decision A-2: the shared test password is a secret in every shipped template ----
 const TEMPLATE_PROJECT = JSON.parse(
   fs.readFileSync(path.join(PLUGIN_ROOT, 'templates', 'config', 'project.json'), 'utf8'));
@@ -249,6 +296,35 @@ test('A-2: a freshly scaffolded, git add-ed project scans with no plain-string w
   assert.strictEqual(r.status, 0, r.stdout);
   assert.deepStrictEqual(out.findings, [], 'zero findings from the plugin\'s own files');
   assert.strictEqual(out.result, 'CLEAN');
+});
+
+// ---- pristine project config across the plugin-block seeding (SCF R6/R7) ----
+// The template gained the two plugin-owned blocks; migration 12 and the wizard
+// save add them (at their defaults) to an older scaffold. Neither makes an
+// untouched scaffold the user's: an older shipped shape is pristine with or
+// without the seeded defaults; a customized block is the user's.
+const PLUGIN_BLOCK_KEYS = ['testDesign', 'qaRecords'];
+const withoutPluginBlocks = (cfg) => Object.fromEntries(Object.entries(cfg).filter(([k]) => !PLUGIN_BLOCK_KEYS.includes(k)));
+
+test('pristine: the template shipped before the plugin blocks (0.25) is pristine, bare or after m12/wizard seeding', () => {
+  const { withPluginConfigBlocks } = require('./project_config.js');
+  const before = withoutPluginBlocks(TEMPLATE_PROJECT);
+  assert.strictEqual(scaffold.isPristineProjectConfig(before, PLUGIN_ROOT), true, 'the outgoing shape is a historical shape');
+  assert.strictEqual(scaffold.isPristineProjectConfig(withPluginConfigBlocks(before), PLUGIN_ROOT), true, 'seeded = the current template');
+  const preA2 = withoutPluginBlocks(PRE_A2_PROJECT_TEMPLATE);
+  assert.strictEqual(scaffold.isPristineProjectConfig(preA2, PLUGIN_ROOT), true);
+  assert.strictEqual(scaffold.isPristineProjectConfig(withPluginConfigBlocks(preA2), PLUGIN_ROOT), true, 'an older scaffold after m12 is still scaffolding');
+});
+
+test('pristine: a customized plugin block, or a provider block, makes the config the user\'s', () => {
+  const custom = JSON.parse(JSON.stringify(TEMPLATE_PROJECT));
+  custom.testDesign = { approval: 'per-story' };
+  assert.strictEqual(scaffold.isPristineProjectConfig(custom, PLUGIN_ROOT), false);
+  const partial = withoutPluginBlocks(TEMPLATE_PROJECT);
+  partial.qaRecords = { pendingQuestions: 'notes/questions.md' };
+  assert.strictEqual(scaffold.isPristineProjectConfig(partial, PLUGIN_ROOT), false);
+  const tracked = { ...JSON.parse(JSON.stringify(TEMPLATE_PROJECT)), azure: { org: 'exampleorg', project: 'Sample Project' } };
+  assert.strictEqual(scaffold.isPristineProjectConfig(tracked, PLUGIN_ROOT), false);
 });
 
 // ---- config/estimation.json: the user's file, committed, never scaffolded ----

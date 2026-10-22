@@ -629,6 +629,93 @@ const PROJ = 'Sample%20Project';
     });
   });
 
+  // ── skill-consolidation-foundation ops take main's id guard and error scrub ──
+  // Every new op that sends a request with an id goes through requireId on its
+  // read / execute path (dry runs stay unchecked, as for every other write).
+  await test('SCF ops: every read and execute path refuses a malformed id (exit 2) and sends ZERO requests', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const routes = (id) => [
+      ['getWorkItem fields', () => a.getWorkItem(id, { fields: ['System.Title'] })],
+      ['listComments', () => a.listComments(id)],
+      ['addComment', () => a.addComment(id, 'hi', EXEC)],
+      ['getPlan', () => a.getPlan(id)],
+      ['createSuite plan', () => a.createSuite(id, { type: 'static', name: 'S', parent: 5 }, EXEC)],
+      ['createSuite parent', () => a.createSuite(3, { type: 'static', name: 'S', parent: id }, EXEC)],
+      ['createSuite requirement', () => a.createSuite(3, { type: 'requirement', requirementId: id, parent: 5 }, EXEC)],
+      ['removeCaseFromSuite plan', () => a.removeCaseFromSuite(id, 4, [77], EXEC)],
+      ['removeCaseFromSuite suite', () => a.removeCaseFromSuite(3, id, [77], EXEC)],
+      ['removeCaseFromSuite case', () => a.removeCaseFromSuite(3, 4, [77, id], EXEC)],
+      ['listChildRefs', () => a.listChildRefs([42, id])],
+    ];
+    for (const id of BAD_IDS) {
+      for (const [name, call] of routes(id)) {
+        // An absent parent / name is refused by the op's own usage check first.
+        if (id === undefined || id === null || id === '') continue;
+        await assert.rejects(call, (e) => {
+          assert.strictEqual(e.exitCode, 2, `${name}(${String(id)}): ${e.message}`);
+          // createSuite's own "needs a parent suite id" usage check fires first on a falsy parent.
+          assert.match(e.message, name === 'createSuite parent' && !id ? /needs a parent suite id/ : /positive canonical decimal/, `${name}(${String(id)})`);
+          return true;
+        }, `${name}(${String(id)}) must be refused`);
+      }
+    }
+    assert.strictEqual(f.calls.length, 0, 'every refusal happened before a request left the machine');
+  });
+
+  await test('SCF ops: dry runs check NO id (stand-ins plan as before); canonical ids reach the wire unchanged', async () => {
+    const f = fakeFetch([{ match: '/Suites/4/TestCase', json: { value: [] } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const DRY = { execute: false };
+    assert.ok((await a.addComment('{new-bug-id}', 'hi', DRY)).url.includes('/wit/workItems/{new-bug-id}/comments?'));
+    assert.deepStrictEqual((await a.createSuite('NEW', { type: 'static', name: 'S', parent: '<root>' }, DRY)).body.suiteType, 'staticTestSuite');
+    assert.strictEqual(f.calls.length, 0);
+    await a.listComments('123');
+    await a.getPlan('3');
+    await a.removeCaseFromSuite('3', '4', ['77'], EXEC);
+    const paths = f.calls.map((c) => c.url.replace(/^.*\/_apis\//, '').replace(/\?.*$/, ''));
+    assert.deepStrictEqual(paths, ['wit/workItems/123/comments', 'testplan/plans/3', 'testplan/Plans/3/Suites/4/TestCase']);
+  });
+
+  await test('SCF ops: an error echoing the PAT is scrubbed on every new route (comments, plans, suites, identities, batch)', async () => {
+    for (const [name, call, match, method] of [
+      ['listComments', (a) => a.listComments(1), '/comments', 'GET'],
+      ['addComment', (a) => a.addComment(1, 'hi', EXEC), '/comments', 'POST'],
+      ['listPlans', (a) => a.listPlans(), 'testplan/plans', 'GET'],
+      ['getPlan', (a) => a.getPlan(3), 'testplan/plans/3', 'GET'],
+      ['createPlan', (a) => a.createPlan({ name: 'P' }, EXEC), 'testplan/plans', 'POST'],
+      ['createSuite', (a) => a.createSuite(3, { type: 'static', name: 'S', parent: 5 }, EXEC), 'testplan/Plans/3/suites', 'POST'],
+      ['removeCaseFromSuite', (a) => a.removeCaseFromSuite(3, 4, [77], EXEC), '/TestCase', 'GET'],
+      ['findIdentity', (a) => a.findIdentity('qa.engineer@example.com'), '/_apis/identities', 'GET'],
+      ['getWorkItems', (a) => a.getWorkItems([1, 2]), 'wit/workitemsbatch', 'POST'],
+      ['listChildRefs', (a) => a.listChildRefs([42]), '/wiql', 'POST'],
+    ]) {
+      for (const status of [401, 500]) {
+        const f = fakeFetch([{ method, match, status, text: `proxy echo: ${ODD_FORMS.header} ${ODD_FORMS.raw} <end>` }]);
+        await assert.rejects(() => call(createAdapter({ cwd: oddProj(), fetch: f })), (e) => {
+          assert.ok(e instanceof TrackerError, `${name} ${status}`);
+          assertNoPatForm(e);
+          return true;
+        }, `${name} ${status}`);
+      }
+    }
+  });
+
+  await test('SCF ops: a repeated continuation token / a failed re-read is a TrackerError with no PAT form in it', async () => {
+    const pagedForever = { match: '/comments', json: { comments: [{ id: 1, text: 'x', createdBy: {} }], continuationToken: ODD_FORMS.raw } };
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: fakeFetch([pagedForever]) }).listComments(1), (e) => {
+      assert.ok(e instanceof TrackerError && /repeated continuation token/.test(e.message), e.message);
+      assertNoPatForm(e);
+      return true;
+    });
+    const stillMember = fakeFetch([{ match: '/Suites/4/TestCase', json: { value: [{ workItem: { id: 77 } }] } }]);
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: stillMember }).removeCaseFromSuite(3, 4, [77], EXEC), (e) => {
+      assert.ok(e instanceof TrackerError && /still in suite 4/.test(e.message), e.message);
+      assertNoPatForm(e);
+      return true;
+    });
+  });
+
   await test('legacy AZURE_* env keys back the azure block (pick pattern)', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ado-'));
     fs.writeFileSync(path.join(dir, '.env'),
@@ -653,7 +740,7 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(a.capabilities.testRuns, true);
     assert.strictEqual(a.capabilities.dialect, 'json-patch');
     assert.strictEqual(a.capabilities.query, 'wiql');
-    assert.deepStrictEqual(a.capabilities.relations, { parent: true, testedBy: true, attachedFile: true });
+    assert.deepStrictEqual(a.capabilities.relations, { parent: true, child: true, related: true, testedBy: true, attachedFile: true });
     assert.strictEqual(a.capabilities.deleteWorkItem, 'partial');
     assert.deepStrictEqual(PAT_ENV_NAMES, ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT']);
   });
@@ -857,6 +944,327 @@ const PROJ = 'Sample%20Project';
     const f = fakeFetch([]);
     await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listSprintStories({ team: 'T' }), /storyType/);
     assert.strictEqual(f.calls.length, 0);
+  });
+
+  // ════ neutral reads for the tracker CLI (skill-consolidation-foundation WP-6) ════
+  // A richer fake: respond(call, n) per route, optional response headers.
+  function fake2(routes = []) {
+    const calls = []; const hits = new Map();
+    const fn = async (url, opts = {}) => {
+      const call = { url: String(url), method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body };
+      calls.push(call);
+      for (const r of routes) {
+        if ((r.method || 'GET') !== call.method || !call.url.includes(r.match)) continue;
+        const n = (hits.get(r) || 0) + 1; hits.set(r, n);
+        const resp = r.respond ? r.respond(call, n) : r;
+        const status = resp.status || 200;
+        const text = resp.text !== undefined ? resp.text : JSON.stringify(resp.json ?? {});
+        const hdrs = resp.headers || {};
+        return { ok: status >= 200 && status < 300, status, text: async () => text, headers: { get: (k) => hdrs[k.toLowerCase()] ?? null } };
+      }
+      return { ok: true, status: 200, text: async () => '{}', headers: { get: () => null } };
+    };
+    fn.calls = calls;
+    return fn;
+  }
+  // workitemsbatch echo: returns every requested id except those in `drop`, SHUFFLED (reversed).
+  const batchEcho = (drop = []) => ({
+    method: 'POST', match: '/wit/workitemsbatch',
+    respond: (call) => {
+      const b = JSON.parse(call.body);
+      return { json: { count: b.ids.length, value: b.ids.filter((i) => !drop.includes(i)).reverse().map((id) => ({ id, fields: { 'System.Title': `T${id}` } })) } };
+    },
+  });
+
+  await test('getWorkItems: ceil(n/200) POST workitemsbatch requests for 1/200/201/450 ids; input order kept', async () => {
+    for (const [n, reqs] of [[1, 1], [200, 1], [201, 2], [450, 3]]) {
+      const ids = Array.from({ length: n }, (_, i) => 1000 + n - i); // descending: order is the caller's, not sorted
+      const f = fake2([batchEcho()]);
+      const res = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems(ids, { fields: ['System.Title'] });
+      assert.strictEqual(f.calls.length, reqs, `${n} ids`);
+      assert.ok(f.calls.every((c) => c.method === 'POST' && c.url.startsWith(`${BASE}/${PROJ}/_apis/wit/workitemsbatch?api-version=7.1`)));
+      assert.ok(f.calls.every((c) => JSON.parse(c.body).ids.length <= 200));
+      assert.deepStrictEqual(res.items.map((w) => w.id), ids);
+      assert.deepStrictEqual(res.missing, []);
+    }
+  });
+
+  await test('getWorkItems: body carries ids (numbers), fields, errorPolicy omit; missing ids listed, never dropped', async () => {
+    const f = fake2([batchEcho([12])]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems(['11', 12, 13], { fields: ['System.Title', 'System.State'] });
+    assert.deepStrictEqual(JSON.parse(f.calls[0].body), { ids: [11, 12, 13], fields: ['System.Title', 'System.State'], errorPolicy: 'omit' });
+    assert.deepStrictEqual(res.items.map((w) => w.id), [11, 13]);
+    assert.deepStrictEqual(res.missing, [12]);
+    const f2 = fake2([{ method: 'POST', match: '/workitemsbatch', json: { value: [{ id: 11, fields: {} }, null] } }]);
+    const r2 = await createAdapter({ cwd: proj(), fetch: f2 }).getWorkItems([11, 12]);
+    assert.ok(!('fields' in JSON.parse(f2.calls[0].body)), 'no fields -> the key is omitted');
+    assert.deepStrictEqual(r2.missing, [12], 'a null slot (errorPolicy omit) counts as missing');
+  });
+
+  await test('getWorkItems: a non-integer id is a config error (exit 2) before any request; [] reads nothing', async () => {
+    const f = fake2([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await assert.rejects(a.getWorkItems([1, 'PROJ-1']), (e) => e.exitCode === 2 && /PROJ-1/.test(e.message));
+    assert.deepStrictEqual(await a.getWorkItems([]), { items: [], missing: [] });
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('getWorkItem {fields}: a fields= param; combining fields with expand is refused (exit 2, zero requests)', async () => {
+    const f = fake2([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await a.getWorkItem(42, { fields: ['System.Title', 'System.Description'] });
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/wit/workitems/42?fields=System.Title%2CSystem.Description&api-version=7.1`);
+    await assert.rejects(a.getWorkItem(42, { fields: ['System.Title'], expand: 'all' }), (e) => e.exitCode === 2 && /fields.*expand|expand.*fields/.test(e.message));
+    assert.strictEqual(f.calls.length, 1);
+    await a.getWorkItem(42);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/wit/workitems/42?api-version=7.1`, 'no option -> the URL is unchanged');
+  });
+
+  await test('query {top}: $top only when passed; the request bytes are otherwise unchanged', async () => {
+    const f = fake2([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await a.query('SELECT [System.Id] FROM workitems');
+    await a.query('SELECT [System.Id] FROM workitems', { top: 50 });
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/wit/wiql?api-version=7.1`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/wit/wiql?$top=50&api-version=7.1`);
+    assert.strictEqual(f.calls[0].body, f.calls[1].body);
+  });
+
+  const COMMENT = (id, name, date, text) => ({ id, createdBy: { id: `guid-${name}`, displayName: name, uniqueName: `${name.toLowerCase()}@example.com` }, createdDate: date, text });
+  await test('listComments: comments API 7.1-preview.4, order=asc, continuationToken followed; HTML -> plain; oldest first', async () => {
+    const f = fake2([{ match: '/wit/workItems/42/comments', respond: (call, n) => (n === 1
+      ? { json: { count: 2, continuationToken: 'tok-2', comments: [COMMENT(1, 'Ana', '2026-01-01T10:00:00Z', '<div>first &amp; &lt;b&gt;</div>'), COMMENT(2, 'Ben', '2026-01-02T10:00:00Z', 'second<br>line')] } }
+      : { json: { count: 1, comments: [COMMENT(3, 'Ana', '2026-01-03T10:00:00Z', '<div>مرحبا</div>')] } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listComments(42);
+    assert.strictEqual(f.calls.length, 2);
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/wit/workItems/42/comments?order=asc&api-version=7.1-preview.4`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/wit/workItems/42/comments?order=asc&continuationToken=tok-2&api-version=7.1-preview.4`);
+    assert.deepStrictEqual(res.map((c) => c.text), ['first & <b>', 'second\nline', 'مرحبا']);
+    assert.deepStrictEqual(res[0], { id: 1, author: 'Ana', date: '2026-01-01T10:00:00Z', text: 'first & <b>', user: { id: 'guid-Ana', displayName: 'Ana', email: 'ana@example.com' } });
+  });
+
+  await test('listComments: a repeated continuation token fails closed instead of looping', async () => {
+    const f = fake2([{ match: '/comments', json: { comments: [], continuationToken: 'same' } }]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listComments(42), (e) => e instanceof TrackerError && /continuation/.test(e.message));
+    assert.strictEqual(f.calls.length, 2);
+  });
+
+  const ITERS = { value: [
+    { id: 'g1', name: 'Sprint 8', path: 'Sample Project\\Sprint 8', attributes: { startDate: '2026-01-01T00:00:00Z', finishDate: '2026-01-14T00:00:00Z', timeFrame: 'past' } },
+    { id: 'g2', name: 'Sprint 9', path: 'Sample Project\\Sprint 9', attributes: { startDate: '2026-01-15T00:00:00Z', finishDate: '2026-01-28T00:00:00Z', timeFrame: 'current' } },
+    { id: 'g3', name: 'Sprint 10', path: 'Sample Project\\Sprint 10', attributes: { timeFrame: 'future' } },
+  ] };
+  await test('listIterations: ONE team-scoped request; neutral rows; client-side timeframe filter', async () => {
+    const f = fake2([{ match: '/_apis/work/teamsettings/iterations', json: ITERS }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const all = await a.listIterations({ team: 'Sample Team' });
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/Sample%20Team/_apis/work/teamsettings/iterations?api-version=7.1`);
+    assert.deepStrictEqual(all[1], { id: 'g2', name: 'Sprint 9', path: 'Sample Project\\Sprint 9', startDate: '2026-01-15T00:00:00Z', finishDate: '2026-01-28T00:00:00Z', timeFrame: 'current' });
+    assert.deepStrictEqual(all[2], { id: 'g3', name: 'Sprint 10', path: 'Sample Project\\Sprint 10', startDate: null, finishDate: null, timeFrame: 'future' });
+    assert.deepStrictEqual((await a.listIterations({ team: 'Sample Team', timeframe: 'future' })).map((i) => i.name), ['Sprint 10']);
+    assert.deepStrictEqual((await a.listIterations({ team: 'Sample Team', timeframe: 'past' })).map((i) => i.name), ['Sprint 8']);
+    assert.strictEqual(f.calls.length, 3, 'one request per call');
+  });
+
+  await test('listIterations: no team -> exit-2 error naming azure.team, ZERO requests; unknown timeframe refused', async () => {
+    const f = fake2([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await assert.rejects(a.listIterations({}), (e) => e.exitCode === 2 && /azure\.team/.test(e.message));
+    await assert.rejects(a.listIterations({ team: 'T', timeframe: 'soon' }), (e) => e.exitCode === 2 && /current, future, past, all/.test(e.message));
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('listChildRefs: ONE project-scoped WIQL on [System.Parent] IN (...) whatever the parent count', async () => {
+    const f = fake2([{ method: 'POST', match: '/wit/wiql', json: { workItems: [{ id: 501 }, { id: 502 }] } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    assert.deepStrictEqual(await a.listChildRefs([42, '43']), [501, 502]);
+    assert.strictEqual(f.calls.length, 1);
+    assert.strictEqual(JSON.parse(f.calls[0].body).query,
+      'SELECT [System.Id] FROM workitems WHERE [System.Parent] IN (42, 43) AND [System.TeamProject] = @project ORDER BY [System.Id]');
+    await assert.rejects(a.listChildRefs(['x']), (e) => e.exitCode === 2);
+    assert.deepStrictEqual(await a.listChildRefs([]), []);
+    assert.strictEqual(f.calls.length, 1);
+  });
+
+  const IDENT = { count: 1, value: [{ id: 'guid-po', providerDisplayName: 'Pat Owner', properties: { Mail: { $type: 'System.String', $value: 'po@example.com' } } }] };
+  await test('findIdentity: identity host derived from the org URL; same Authorization header; neutral rows', async () => {
+    for (const [org, host] of [
+      ['exampleorg', 'https://vssps.dev.azure.com/exampleorg'],
+      ['https://exampleorg.visualstudio.com', 'https://exampleorg.vssps.visualstudio.com'],
+    ]) {
+      const f = fake2([{ match: '/_apis/identities', json: IDENT }]);
+      const res = await createAdapter({ cwd: proj({ org }), fetch: f }).findIdentity('po@example.com');
+      assert.strictEqual(f.calls[0].url, `${host}/_apis/identities?searchFilter=General&filterValue=po%40example.com&queryMembership=None&api-version=7.1`);
+      assert.strictEqual(f.calls[0].headers.Authorization, `Basic ${SENTINEL_B64}`);
+      assert.deepStrictEqual(res, [{ id: 'guid-po', displayName: 'Pat Owner', email: 'po@example.com' }]);
+    }
+  });
+
+  await test('findIdentity: any other host refuses "mention by email" (exit 2, zero requests); 401 names the Identity (Read) scope', async () => {
+    const f = fake2([]);
+    await assert.rejects(createAdapter({ cwd: proj({ org: 'https://tfs.example.com/Collection' }), fetch: f }).findIdentity('a@example.com'),
+      (e) => e.exitCode === 2 && /mention by email/.test(e.message));
+    assert.strictEqual(f.calls.length, 0);
+    const f2 = fake2([{ match: '/_apis/identities', status: 401, text: 'no' }]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f2 }).findIdentity('a@example.com'),
+      (e) => e instanceof TrackerError && e.status === 401 && /Identity \(Read\)/.test(e.message) && Boolean(e.credentialHint));
+    assert.strictEqual(f2.calls.length, 1, 'never retried');
+  });
+
+  await test('listSuites follows x-ms-continuationtoken; the first request URL is unchanged', async () => {
+    const f = fake2([{ match: '/testplan/Plans/3/suites', respond: (call, n) => (n === 1
+      ? { json: { value: [{ id: 4, name: 'A' }] }, headers: { 'x-ms-continuationtoken': 'c2' } }
+      : { json: { value: [{ id: 5, name: 'B' }] } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listSuites(3);
+    assert.deepStrictEqual(res.map((s) => s.id), [4, 5]);
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/testplan/Plans/3/suites?api-version=7.1`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/testplan/Plans/3/suites?continuationToken=c2&api-version=7.1`);
+    const plain = fakeFetch([{ match: '/suites', json: { value: [{ id: 4 }] } }]);
+    assert.strictEqual((await createAdapter({ cwd: proj(), fetch: plain }).listSuites(3)).length, 1, 'a response without headers is one page');
+  });
+
+  await test('new capability flags: batchRead, sprints, relations child/related', async () => {
+    const c = createAdapter({ cwd: proj(), fetch: fakeFetch([]) }).capabilities;
+    assert.strictEqual(c.batchRead, true);
+    assert.strictEqual(c.sprints, true);
+    assert.deepStrictEqual(c.relations, { parent: true, child: true, related: true, testedBy: true, attachedFile: true });
+  });
+
+  await test('addComment: POST wit/workItems/{id}/comments (7.1-preview.4) {text}; the dry-run body is EXACT (never summarized)', async () => {
+    const long = `<div>${'x'.repeat(300)} &lt;tag&gt; مرحبا</div>`;
+    const f = fake2([{ method: 'POST', match: '/wit/workItems/42/comments', json: { id: 77, workItemId: 42 } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const d = await a.addComment(42, long, { execute: false });
+    assert.strictEqual(f.calls.length, 0, 'dry run sends nothing');
+    assert.strictEqual(d.method, 'POST');
+    assert.strictEqual(d.url, `${BASE}/${PROJ}/_apis/wit/workItems/42/comments?api-version=7.1-preview.4`);
+    assert.deepStrictEqual(d.body, { text: long }, 'the exact body the execute run sends');
+    assert.strictEqual(d.headers.authorization, '<Basic ***, not printed>');
+    const r = await a.addComment(42, long, { execute: true });
+    assert.strictEqual(f.calls.length, 1);
+    assert.deepStrictEqual(JSON.parse(f.calls[0].body), { text: long });
+    assert.strictEqual(f.calls[0].headers['Content-Type'], 'application/json');
+    assert.deepStrictEqual(r, { id: 77, workItemId: 42 });
+  });
+
+  await test('addComment: the CI choke point refuses execute:true (exit 2, ci-mode, zero requests); the dry run still works', async () => {
+    process.env.AGENTEX_CI = '1';
+    try {
+      const f = fake2([]);
+      const a = createAdapter({ cwd: proj(), fetch: f });
+      await assert.rejects(a.addComment(42, 'x', { execute: true }), (e) => e.exitCode === 2 && e.reason === 'ci-mode');
+      assert.strictEqual((await a.addComment(42, 'x', { execute: false })).method, 'POST');
+      assert.strictEqual(f.calls.length, 0);
+    } finally { delete process.env.AGENTEX_CI; }
+  });
+
+  await test('capability comments is now true on ADO (comment threads read + written via the comments API)', async () => {
+    assert.strictEqual(createAdapter({ cwd: proj(), fetch: fakeFetch([]) }).capabilities.comments, true);
+  });
+
+  // ════ test-plan "ensure" ops (WP-9) ════
+  await test('listPlans: GET testplan/plans following x-ms-continuationtoken -> { plans, truncated:false }', async () => {
+    const f = fake2([{ match: '/_apis/testplan/plans', respond: (call, n) => (n === 1
+      ? { json: { value: [{ id: 1, name: 'A', rootSuite: { id: 10 } }] }, headers: { 'x-ms-continuationtoken': 't2' } }
+      : { json: { value: [{ id: 2, name: 'B', rootSuite: { id: 20 } }] } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listPlans();
+    assert.deepStrictEqual(res.plans.map((p) => p.id), [1, 2]);
+    assert.strictEqual(res.truncated, false);
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/testplan/plans?api-version=7.1`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/${PROJ}/_apis/testplan/plans?continuationToken=t2&api-version=7.1`);
+  });
+
+  await test('listPlans: a page cap reports truncated:true (the caller then cannot prove a name absent)', async () => {
+    const f = fake2([{ match: '/_apis/testplan/plans', respond: (call, n) => ({ json: { value: [{ id: n, name: `P${n}` }] }, headers: { 'x-ms-continuationtoken': `t${n + 1}` } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listPlans({ maxPages: 3 });
+    assert.strictEqual(res.truncated, true);
+    assert.strictEqual(f.calls.length, 3);
+  });
+
+  await test('getPlan: GET testplan/plans/{id}', async () => {
+    const f = fake2([{ match: '/testplan/plans/7', json: { id: 7, name: 'P', rootSuite: { id: 70 } } }]);
+    const p = await createAdapter({ cwd: proj(), fetch: f }).getPlan(7);
+    assert.strictEqual(p.rootSuite.id, 70);
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/_apis/testplan/plans/7?api-version=7.1`);
+  });
+
+  await test('createPlan: dry-run descriptor (POST testplan/plans {name, areaPath?, iteration?}); execute hits the CI choke point', async () => {
+    const f = fake2([{ method: 'POST', match: '/_apis/testplan/plans', json: { id: 9, name: 'Gate', rootSuite: { id: 90 } } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const d = await a.createPlan({ name: 'Gate', areaPath: 'Sample Project\\QA' }, { execute: false });
+    assert.strictEqual(d.method, 'POST');
+    assert.strictEqual(d.url, `${BASE}/${PROJ}/_apis/testplan/plans?api-version=7.1`);
+    assert.deepStrictEqual(d.body, { name: 'Gate', areaPath: 'Sample Project\\QA' });
+    assert.strictEqual(f.calls.length, 0);
+    const r = await a.createPlan({ name: 'Gate' }, { execute: true });
+    assert.deepStrictEqual(JSON.parse(f.calls[0].body), { name: 'Gate' });
+    assert.deepStrictEqual(r, { id: 9, name: 'Gate', rootSuiteId: 90 });
+    process.env.AGENTEX_CI = '1';
+    try { await assert.rejects(a.createPlan({ name: 'Gate' }, { execute: true }), (e) => e.reason === 'ci-mode'); }
+    finally { delete process.env.AGENTEX_CI; }
+    assert.strictEqual(f.calls.length, 1);
+  });
+
+  await test('createSuite: requirement and static bodies under a parent; execute hits the CI choke point', async () => {
+    const f = fake2([{ method: 'POST', match: '/testplan/Plans/7/suites', json: { id: 71, name: 'S', suiteType: 'staticTestSuite' } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const d1 = await a.createSuite(7, { type: 'requirement', requirementId: 42, parent: 70 }, { execute: false });
+    assert.strictEqual(d1.url, `${BASE}/${PROJ}/_apis/testplan/Plans/7/suites?api-version=7.1`);
+    assert.deepStrictEqual(d1.body, { suiteType: 'requirementTestSuite', requirementId: 42, parentSuite: { id: 70 } });
+    const d2 = await a.createSuite(7, { type: 'static', name: 'Regression — gate', parent: 70 }, { execute: false });
+    assert.deepStrictEqual(d2.body, { suiteType: 'staticTestSuite', name: 'Regression — gate', parentSuite: { id: 70 } });
+    await assert.rejects(a.createSuite(7, { type: 'dynamic', parent: 70 }, { execute: false }), (e) => e.exitCode === 2);
+    assert.strictEqual(f.calls.length, 0);
+    const r = await a.createSuite(7, { type: 'static', name: 'S', parent: 70 }, { execute: true });
+    assert.deepStrictEqual(r, { id: 71, name: 'S', suiteType: 'staticTestSuite' });
+    process.env.AGENTEX_CI = '1';
+    try { await assert.rejects(a.createSuite(7, { type: 'static', name: 'S', parent: 70 }, { execute: true }), (e) => e.reason === 'ci-mode'); }
+    finally { delete process.env.AGENTEX_CI; }
+    assert.strictEqual(f.calls.length, 1);
+  });
+
+  // ════ removeCaseFromSuite (release gate only, WP-14) ════
+  const members = (ids) => ({ value: ids.map((id) => ({ workItem: { id, name: `TC ${id}` } })) });
+  await test('removeCaseFromSuite: dry run = DELETE testplan/.../TestCase?testCaseIds=… descriptor; association only, no destroy', async () => {
+    const f = fake2([]);
+    const d = await createAdapter({ cwd: proj(), fetch: f }).removeCaseFromSuite(3, 4, [77, '78'], { execute: false });
+    assert.strictEqual(d.method, 'DELETE');
+    assert.strictEqual(d.url, `${BASE}/${PROJ}/_apis/testplan/Plans/3/Suites/4/TestCase?testCaseIds=77%2C78&api-version=7.1`);
+    assert.ok(!/destroy/i.test(JSON.stringify(d)) && !/wit\/workitems/i.test(d.url));
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('removeCaseFromSuite --execute: reads members, removes only members (idempotent), re-reads; never DELETEs a work item', async () => {
+    let removed = false;
+    const f = fake2([
+      { method: 'DELETE', match: '/testplan/Plans/3/Suites/4/TestCase', respond: () => { removed = true; return { text: '' }; } },
+      { match: '/testplan/Plans/3/Suites/4/TestCase', respond: () => ({ json: members(removed ? [90] : [77, 90]) }) },
+    ]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).removeCaseFromSuite(3, 4, [77, 78], { execute: true });
+    assert.deepStrictEqual(r, { ids: [77, 78], removed: [77], notMembers: [78], planId: 3, suiteId: 4 });
+    assert.deepStrictEqual(f.calls.map((c) => c.method), ['GET', 'DELETE', 'GET']);
+    assert.match(f.calls[1].url, /TestCase\?testCaseIds=77&api-version/);
+    assert.ok(!f.calls.some((c) => c.method === 'DELETE' && /wit\/workitems/i.test(c.url)), 'a work item is never deleted');
+    assert.ok(!f.calls.some((c) => /destroy/i.test(c.url)));
+    const g = fake2([{ match: '/TestCase', json: members([90]) }]);
+    const r2 = await createAdapter({ cwd: proj(), fetch: g }).removeCaseFromSuite(3, 4, [77], { execute: true });
+    assert.deepStrictEqual(r2.removed, []);
+    assert.deepStrictEqual(g.calls.map((c) => c.method), ['GET'], 'nothing to remove -> no DELETE');
+  });
+
+  await test('removeCaseFromSuite fails closed when a case is still a member on re-read; CI choke point refuses execute', async () => {
+    const f = fake2([
+      { method: 'DELETE', match: '/TestCase', text: '' },
+      { match: '/TestCase', json: members([77]) },
+    ]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).removeCaseFromSuite(3, 4, [77], { execute: true }),
+      (e) => e instanceof TrackerError && /77/.test(e.message) && /re-read/.test(e.message));
+    process.env.AGENTEX_CI = '1';
+    try {
+      const g = fake2([]);
+      await assert.rejects(createAdapter({ cwd: proj(), fetch: g }).removeCaseFromSuite(3, 4, [77], { execute: true }), (e) => e.reason === 'ci-mode');
+      assert.strictEqual(g.calls.length, 0);
+    } finally { delete process.env.AGENTEX_CI; }
   });
 
   // ── primitives shared with Phase 0 (listIterations, getWorkItems) ──────────

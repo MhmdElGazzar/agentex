@@ -1,0 +1,75 @@
+{
+  "argv": [
+    "create-case",
+    "--plan",
+    "3",
+    "--suite",
+    "4",
+    "--title",
+    "Checkout — totals include tax"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "validation": {
+      "duplicates": []
+    },
+    "plan": [
+      {
+        "step": "create-test-case",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Test%20Case?api-version=7.1",
+        "request": {
+          "op": "createWorkItem",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Test%20Case?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.Title",
+              "value": "Checkout — totals include tax"
+            },
+            {
+              "op": "add",
+              "path": "/fields/System.AreaPath",
+              "value": "Sample Project\\QA"
+            }
+          ]
+        }
+      },
+      {
+        "step": "add-to-suite",
+        "describe": "POST https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/Plans/3/suites/4/testcases/{new-tc-id}?api-version=7.1",
+        "request": {
+          "op": "addCaseToSuite",
+          "method": "POST",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/Plans/3/suites/4/testcases/{new-tc-id}?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>"
+          }
+        }
+      }
+    ],
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>"
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1",
+      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='Test Case' AND [System.TeamProject]='Sample Project' AND [System.Title]='Checkout — totals include tax'\"}"
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Test%20Case/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    }
+  ]
+}

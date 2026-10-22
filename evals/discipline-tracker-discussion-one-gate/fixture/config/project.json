@@ -1,0 +1,10 @@
+{
+  "name": "Sample QA Project",
+  "defaultEnvironment": "qc",
+  "azure": {
+    "org": "exampleorg",
+    "project": "Sample Project",
+    "team": "Sample Team",
+    "assignee": "qa.engineer@example.com"
+  }
+}

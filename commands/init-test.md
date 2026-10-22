@@ -16,7 +16,7 @@ Do these steps, then report what was created:
    - sample specs → `./test/suite1/` + `./test/README.md` (skipped entirely if the user
      already has their own specs under `./test/`)
    - `./executions/` output folder (no timestamped run folder — that happens at run time)
-   - `./config/project.json` — project settings (Azure org/project, default environment, login mode)
+   - `./config/project.json` — project settings (default environment, login mode, and the plugin's default `testDesign` and `qaRecords` blocks; the `[Testing]` task list is not here — it lives in `config/estimation.json`, created by the first approved estimation run). The QA watchlist files themselves are not created here: each appears the first time something is recorded, and it is committed, never gitignored
    - `./environments/qc.json` — sample environment (portal URL, defaults, test users, db/api targets); copied only when `./environments/` has no environment files yet, and the wizard reconciles it to the name the user actually chooses
    - keys-only secrets `./.env` (PAT, DB password, API token, KB key) from the plugin's `.env.example` (every value left empty) and, in `.gitignore`, entries for everything that holds a live credential — `.env`, `test/.auth/` (saved login sessions) and `.playwright-cli/` (browser scratch profile)
    - `./integration/` with `sample_api.json` + `sample_db.json`

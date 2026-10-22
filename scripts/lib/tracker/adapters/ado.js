@@ -39,12 +39,17 @@ const pc = require(path.join(__dirname, '..', '..', 'project_config.js'));
 // The shared error class lives in ../errors.js (one home, O1); re-exported
 // below unchanged so existing `require('./ado.js').TrackerError` keeps working.
 const { TrackerError } = require('../errors.js');
+const { htmlToText } = require('../plaintext.js');
 
 const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
 const BATCH_CHUNK = 200;             // wit/workitemsbatch accepts at most 200 ids per call
 const REDACTED_AUTH = '<Basic ***, not printed>';
 const REDACTED = '<redacted>'; // what scrub() leaves where a PAT form was
+const COMMENTS_API_VERSION = '7.1-preview.4';
+const ITERATION_TIMEFRAMES = ['current', 'future', 'past', 'all'];
+const PLAN_PAGE_CAP = 50;                // listPlans pages before it reports truncated
+const SUITE_TYPES = { requirement: 'requirementTestSuite', static: 'staticTestSuite' };
 
 function configError(message) {
   const e = new Error(message);
@@ -242,7 +247,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     return `${cfg.base}${project ? '/' + projSeg : ''}/_apis/${route}?${query}`;
   }
 
-  async function request(op, method, requestUrl, { body, contentType } = {}) {
+  async function request(op, method, requestUrl, { body, contentType, withHeaders = false } = {}) {
     const { header, resolvedName } = auth(op, requestUrl);
     const headers = { Authorization: header, Accept: 'application/json' };
     if (contentType) headers['Content-Type'] = contentType;
@@ -286,8 +291,31 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       });
       throw err;
     }
-    if (!text.trim()) return null;
-    try { return JSON.parse(text); } catch { return text; }
+    let parsed = null;
+    if (text.trim()) { try { parsed = JSON.parse(text); } catch { parsed = text; } }
+    if (!withHeaders) return parsed;
+    // Response headers (continuation tokens). A response object without a
+    // headers accessor reads as "no header".
+    const readHeader = (name) => (res.headers && typeof res.headers.get === 'function' ? res.headers.get(name) : null);
+    return { body: parsed, header: readHeader };
+  }
+
+  // Positive-integer work-item ids, or an exit-2 error naming the offender.
+  function intIds(ids, op) {
+    return [].concat(ids).map((id) => {
+      const n = Number(id);
+      if (!Number.isInteger(n) || n <= 0) throw configError(`${op} needs positive integer work-item ids (got ${JSON.stringify(id)})`);
+      return n;
+    });
+  }
+
+  // The org's identity host — derived ONLY from the two hosted URL shapes.
+  function identityHost() {
+    let m = cfg.base.match(/^https:\/\/dev\.azure\.com\/([^/]+)$/i);
+    if (m) return `https://vssps.dev.azure.com/${m[1]}`;
+    m = cfg.base.match(/^https:\/\/([^./]+)\.visualstudio\.com$/i);
+    if (m) return `https://${m[1]}.vssps.visualstudio.com`;
+    return null;
   }
 
   // Dry-run descriptor: the full request, minus anything secret, minus the send.
@@ -320,15 +348,6 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
   const webUrl = (id) => `${cfg.base}/${projSeg}/_workitems/edit/${id}`;
 
-  // Positive integer work-item ids, or an exit-2 refusal naming the op.
-  function intIds(ids, op) {
-    return [].concat(ids).map((id) => {
-      const n = Number(id);
-      if (!Number.isInteger(n) || n <= 0) throw configError(`${op} needs positive integer work-item ids (got ${JSON.stringify(id)})`);
-      return n;
-    });
-  }
-
   return {
     name: 'ado',
     cwd,
@@ -341,21 +360,33 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       attachments: true,                // binary upload API exists
       testPlans: true,
       testRuns: true,
-      relations: { parent: true, testedBy: true, attachedFile: true },
+      relations: { parent: true, child: true, related: true, testedBy: true, attachedFile: true },
       dialect: 'json-patch',            // work-item write body dialect ('json' for Jira)
       query: 'wiql',                    // 'jql' for Jira
       deleteWorkItem: 'partial',        // ADO: most types yes, Test Case no
+      batchRead: true,                  // wit/workitemsbatch (getWorkItems)
+      comments: true,                   // comments API: listComments + addComment
+      mentions: true,                   // data-vss-mention anchors (identity ids)
+      sprints: true,                    // team iterations (listIterations)
     },
 
     // ── READS (free, no gating) ────────────────────────────────────────────────
-    async getWorkItem(id, { expand } = {}) {
+    // opts.fields (array) adds a fields= param; ADO rejects fields together
+    // with $expand, so that pair is refused before any request.
+    async getWorkItem(id, { expand, fields } = {}) {
       requireId('getWorkItem', 'work-item id', id);
-      const u = url(`wit/workitems/${id}`, expand ? { $expand: expand === true ? 'all' : expand } : {});
-      return request('getWorkItem', 'GET', u);
+      if (fields && fields.length && expand) {
+        throw configError('getWorkItem: fields and expand cannot be combined (Azure DevOps rejects the pair) — ask for specific fields OR expand, not both');
+      }
+      const params = expand ? { $expand: expand === true ? 'all' : expand } : {};
+      if (fields && fields.length) params.fields = [].concat(fields).join(',');
+      return request('getWorkItem', 'GET', url(`wit/workitems/${id}`, params));
     },
 
-    async query(text) {
-      return request('query', 'POST', url('wit/wiql'), {
+    // WIQL. opts.top adds $top (only when given — the request is otherwise
+    // byte-identical); the service caps a WIQL result at 20,000 items.
+    async query(text, { top } = {}) {
+      return request('query', 'POST', url('wit/wiql', top ? { $top: top } : {}), {
         body: JSON.stringify({ query: text }), contentType: 'application/json',
       });
     },
@@ -377,10 +408,45 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return (res && res.value) || [];
     },
 
+    // Follows the x-ms-continuationtoken response header (additive: the first
+    // request URL is unchanged; a response without the header is the last page).
     async listSuites(planId) {
       requireId('listSuites', 'plan id', planId);
-      const res = await request('listSuites', 'GET', url(`testplan/Plans/${planId}/suites`));
-      return (res && res.value) || [];
+      const out = [];
+      let token = null;
+      const seen = new Set();
+      for (;;) {
+        const u = url(`testplan/Plans/${planId}/suites`, token ? { continuationToken: token } : {});
+        const { body, header } = await request('listSuites', 'GET', u, { withHeaders: true });
+        out.push(...((body && body.value) || []));
+        token = header('x-ms-continuationtoken');
+        if (!token) return out;
+        if (seen.has(token)) throw new TrackerError({ op: 'listSuites', url: scrub(u), serverMessage: scrub(`the service repeated continuation token "${token}" — stopping rather than looping`) });
+        seen.add(token);
+      }
+    },
+
+    // Test plans of the project: GET testplan/plans following
+    // x-ms-continuationtoken, at most opts.maxPages pages. { plans, truncated }
+    // — truncated means "more pages exist", so a name cannot be proven absent.
+    async listPlans({ maxPages = PLAN_PAGE_CAP } = {}) {
+      const plans = [];
+      let token = null;
+      for (let page = 0; page < maxPages; page++) {
+        const u = url('testplan/plans', token ? { continuationToken: token } : {});
+        const { body, header } = await request('listPlans', 'GET', u, { withHeaders: true });
+        plans.push(...((body && body.value) || []));
+        const next = header('x-ms-continuationtoken');
+        if (!next) return { plans, truncated: false };
+        if (next === token) throw new TrackerError({ op: 'listPlans', url: scrub(u), serverMessage: scrub(`the service repeated continuation token "${next}" — stopping rather than looping`) });
+        token = next;
+      }
+      return { plans, truncated: true };
+    },
+
+    async getPlan(planId) {
+      requireId('getPlan', 'plan id', planId);
+      return request('getPlan', 'GET', url(`testplan/plans/${planId}`));
     },
 
     async listSuiteCases(planId, suiteId) {
@@ -425,17 +491,23 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     },
 
     // The team's iterations: ONE GET {project}/{team}/_apis/work/teamsettings/iterations,
-    // unfiltered — the docs support only $timeframe=current server-side, so
-    // callers filter on the returned timeFrame. No team → exit 2, ZERO requests.
+    // unfiltered on the wire — the docs support only $timeframe=current
+    // server-side. opts.timeframe ('current' | 'future' | 'past' | 'all', default
+    // 'all') filters the returned timeFrame client-side; the default returns
+    // every iteration. No team → exit 2, ZERO requests; an unknown timeframe →
+    // exit 2, ZERO requests.
     //   [{ id, name, path, startDate, finishDate, timeFrame }]
-    async listIterations({ team } = {}) {
+    async listIterations({ team, timeframe = 'all' } = {}) {
       if (!team) throw configError('No team resolved — iterations are team settings. Pass --team "<name>" or set azure.team in config/project.json.');
+      if (!ITERATION_TIMEFRAMES.includes(timeframe)) throw configError(`unknown timeframe ${JSON.stringify(timeframe)} — accepted: ${ITERATION_TIMEFRAMES.join(', ')}`);
       const u = `${cfg.base}/${projSeg}/${encodeURIComponent(team)}/_apis/work/teamsettings/iterations?api-version=${encodeURIComponent(cfg.apiVersion)}`;
       const res = await request('listIterations', 'GET', u);
-      return ((res && res.value) || []).map((it) => {
-        const a = it.attributes || {};
-        return { id: it.id, name: it.name, path: it.path || null, startDate: a.startDate || null, finishDate: a.finishDate || null, timeFrame: a.timeFrame || null };
-      });
+      return ((res && res.value) || [])
+        .map((it) => {
+          const a = it.attributes || {};
+          return { id: it.id, name: it.name, path: it.path || null, startDate: a.startDate || null, finishDate: a.finishDate || null, timeFrame: a.timeFrame || null };
+        })
+        .filter((it) => timeframe === 'all' || it.timeFrame === timeframe);
     },
 
     // ── NEUTRAL READS (additive, flow-free) ───────────────────────────────────
@@ -491,6 +563,77 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const res = await this.query(iterationWiql(cfg.project, team, storyType));
       const rows = Array.isArray(res) ? res : (res && res.workItems) || [];
       return { ok: true, sprint: null, refs: rows.map((w) => w.id).filter((id) => id !== undefined && id !== null) };
+    },
+
+    // ── NEUTRAL READS for the tracker CLI (skill-consolidation-foundation) ───
+
+    // Comment thread, oldest first: GET wit/workItems/{id}/comments (comments
+    // API 7.1-preview.4, order=asc), following continuationToken. Comment HTML
+    // becomes plain text (plaintext.htmlToText).
+    //   [{ id, author, date, text, user: { id, displayName, email } }]
+    async listComments(id) {
+      requireId('listComments', 'work-item id', id);
+      const out = [];
+      let token = null;
+      const seen = new Set();
+      for (;;) {
+        const u = url(`wit/workItems/${id}/comments`, { order: 'asc', ...(token ? { continuationToken: token } : {}) }, { apiVersion: COMMENTS_API_VERSION });
+        const res = await request('listComments', 'GET', u);
+        for (const c of (res && res.comments) || []) {
+          const by = c.createdBy || {};
+          out.push({
+            id: c.id, author: by.displayName || null, date: c.createdDate || null, text: htmlToText(c.text),
+            user: { id: by.id || null, displayName: by.displayName || null, email: by.uniqueName || null },
+          });
+        }
+        token = res && res.continuationToken;
+        if (!token) return out;
+        if (seen.has(token)) throw new TrackerError({ op: 'listComments', url: scrub(u), serverMessage: scrub(`the service repeated continuation token "${token}" — stopping rather than looping`) });
+        seen.add(token);
+      }
+    },
+
+    // Child refs of many parents in ONE project-scoped WIQL — a constant request
+    // count however many children there are (listChildren stays per-child).
+    async listChildRefs(parentIds) {
+      for (const id of [].concat(parentIds)) requireId('listChildRefs', 'parent work-item id', id);
+      const ids = intIds(parentIds, 'listChildRefs');
+      if (!ids.length) return [];
+      const res = await this.query(
+        `SELECT [System.Id] FROM workitems WHERE [System.Parent] IN (${ids.join(', ')}) AND [System.TeamProject] = @project ORDER BY [System.Id]`);
+      const rows = Array.isArray(res) ? res : (res && res.workItems) || [];
+      return rows.map((w) => w.id).filter((x) => x !== undefined && x !== null);
+    },
+
+    // Identity search by email on the org's identity host (for a mention of
+    // someone who never touched the item). Same Authorization header; a 401/403
+    // names the PAT scope it needs and is never retried. Any host other than
+    // the two hosted shapes refuses (exit 2) with zero requests.
+    //   [{ id, displayName, email }]
+    async findIdentity(email) {
+      const host = identityHost();
+      if (!host) {
+        throw configError(`mention by email is not available for ${cfg.base} — the identity search needs a dev.azure.com or *.visualstudio.com organization; mention someone already on the item or its thread instead`);
+      }
+      const q = new URLSearchParams({ searchFilter: 'General', filterValue: String(email), queryMembership: 'None', 'api-version': cfg.apiVersion });
+      const u = `${host}/_apis/identities?${q.toString()}`;
+      let res;
+      try {
+        res = await request('findIdentity', 'GET', u);
+      } catch (e) {
+        if (e instanceof TrackerError && (e.status === 401 || e.status === 403)) {
+          throw new TrackerError({
+            op: 'findIdentity', status: e.status, url: e.url, credentialHint: e.credentialHint,
+            serverMessage: 'the identity search was refused — the PAT needs the Identity (Read) scope to resolve a mention by email',
+          });
+        }
+        throw e;
+      }
+      return ((res && res.value) || []).map((v) => ({
+        id: v.id,
+        displayName: v.providerDisplayName || v.customDisplayName || null,
+        email: (v.properties && v.properties.Mail && v.properties.Mail.$value) || null,
+      }));
     },
 
     // PastSprints — the team's last `count` past iterations, newest first.
@@ -586,6 +729,21 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return { id: (res && res.id) ?? id, rev: res && res.rev, url: webUrl(id) };
     },
 
+    // A discussion comment: POST wit/workItems/{id}/comments (comments API
+    // 7.1-preview.4) with { text: <html> }. The caller renders the HTML (the
+    // tracker-ops strategy's renderDiscussion — encoding + mention anchor);
+    // the dry-run descriptor carries that EXACT body, never a summary, so the
+    // approved text is the written text.
+    async addComment(id, html, { execute = false } = {}) {
+      const u = url(`wit/workItems/${id}/comments`, {}, { apiVersion: COMMENTS_API_VERSION });
+      const body = { text: String(html) };
+      if (!execute) return descriptor('addComment', 'POST', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('addComment');
+      requireId('addComment', 'work-item id', id);
+      const res = await request('addComment', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
+      return { id: res && res.id, workItemId: (res && res.workItemId) ?? Number(id) };
+    },
+
     async addRelation(id, relType, targetId, { execute = false, attributes } = {}) {
       return this.updateWorkItem(id, { addRelations: [{ rel: relType, targetId, ...(attributes ? { attributes } : {}) }] }, { execute });
     },
@@ -649,6 +807,73 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         }
       }
       return { ids: ids.map(Number), added: toAdd.map(Number), alreadyPresent: alreadyPresent.map(Number), suiteId, planId };
+    },
+
+    // POST testplan/plans { name, areaPath?, iteration? } -> { id, name, rootSuiteId }.
+    async createPlan({ name, areaPath, iteration } = {}, { execute = false } = {}) {
+      if (!name) throw configError('createPlan needs a plan name');
+      const u = url('testplan/plans');
+      const body = { name: String(name), ...(areaPath ? { areaPath: String(areaPath) } : {}), ...(iteration ? { iteration: String(iteration) } : {}) };
+      if (!execute) return descriptor('createPlan', 'POST', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('createPlan');
+      const res = await request('createPlan', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
+      return { id: res && res.id, name: res && res.name, rootSuiteId: res && res.rootSuite ? res.rootSuite.id : null };
+    },
+
+    // POST testplan/Plans/{p}/suites — a requirement-based suite (by
+    // requirementId) or a static suite (by name), under parentSuite.
+    async createSuite(planId, { type, requirementId, name, parent } = {}, { execute = false } = {}) {
+      if (!SUITE_TYPES[type]) throw configError(`createSuite: type must be ${Object.keys(SUITE_TYPES).join(' or ')} (got ${JSON.stringify(type)})`);
+      if (!parent) throw configError('createSuite needs a parent suite id');
+      const u = url(`testplan/Plans/${planId}/suites`);
+      const body = {
+        suiteType: SUITE_TYPES[type],
+        ...(type === 'requirement' ? { requirementId: Number(requirementId) } : { name: String(name) }),
+        parentSuite: { id: Number(parent) },
+      };
+      if (!execute) return descriptor('createSuite', 'POST', u, { body, contentType: 'application/json' });
+      assertCiWritesAllowed('createSuite');
+      requireId('createSuite', 'plan id', planId);
+      requireId('createSuite', 'parent suite id', parent);
+      if (type === 'requirement') requireId('createSuite', 'requirement id', requirementId);
+      const res = await request('createSuite', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
+      return { id: res && res.id, name: res && res.name, suiteType: res && res.suiteType };
+    },
+
+    // Release gate only: remove test cases FROM A SUITE (the association) —
+    // DELETE testplan/Plans/{p}/Suites/{s}/TestCase?testCaseIds=…. The work
+    // items themselves are never deleted and nothing here can destroy one.
+    // Idempotent: ids that are not members are skipped (no DELETE when none
+    // is). Fails closed: after the DELETE the suite is re-read (testplan
+    // route), and any id still a member throws.
+    async removeCaseFromSuite(planId, suiteId, caseIds, { execute = false } = {}) {
+      const route = `testplan/Plans/${planId}/Suites/${suiteId}/TestCase`;
+      const del = (list) => url(route, { testCaseIds: list.join(',') });
+      if (!execute) return descriptor('removeCaseFromSuite', 'DELETE', del(intIds(caseIds, 'removeCaseFromSuite')));
+      assertCiWritesAllowed('removeCaseFromSuite');
+      requireId('removeCaseFromSuite', 'plan id', planId);
+      requireId('removeCaseFromSuite', 'suite id', suiteId);
+      for (const id of [].concat(caseIds)) requireId('removeCaseFromSuite', 'test case id', id);
+      const ids = intIds(caseIds, 'removeCaseFromSuite');
+      const memberIds = async () => {
+        const res = await request('removeCaseFromSuite', 'GET', url(route));
+        return new Set(((res && res.value) || []).map((e) => Number((e.workItem || e).id)));
+      };
+      const before = await memberIds();
+      const toRemove = ids.filter((id) => before.has(id));
+      if (toRemove.length) {
+        const u = del(toRemove);
+        await request('removeCaseFromSuite', 'DELETE', u);
+        const after = await memberIds();
+        const still = toRemove.filter((id) => after.has(id));
+        if (still.length) {
+          throw new TrackerError({
+            op: 'removeCaseFromSuite', url: scrub(u),
+            serverMessage: `the request succeeded but test case(s) ${still.join(', ')} are still in suite ${suiteId} on re-read`,
+          });
+        }
+      }
+      return { ids, removed: toRemove, notMembers: ids.filter((id) => !before.has(id)), planId: Number(planId), suiteId: Number(suiteId) };
     },
 
     async createRun(body, { execute = false } = {}) {

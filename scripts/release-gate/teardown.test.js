@@ -188,6 +188,70 @@ function fakeAdapter({ failIds = [] } = {}) {
     assert.ok(fs.existsSync(path.join(dir, 'keep.txt')));
   });
 
+  // ════ associated suite entries (skill-consolidation-foundation WP-14) ════
+  function suiteAdapter({ fail = false, badDescriptor = null } = {}) {
+    const a = fakeAdapter();
+    a.removals = [];
+    a.removeCaseFromSuite = async (planId, suiteId, ids, { execute = false } = {}) => {
+      a.removals.push({ planId, suiteId, ids: [...ids], execute });
+      if (!execute) {
+        return badDescriptor || { op: 'removeCaseFromSuite', method: 'DELETE', url: `https://dev.azure.com/exampleorg/Sample%20Project/_apis/testplan/Plans/${planId}/Suites/${suiteId}/TestCase?testCaseIds=${ids.join('%2C')}&api-version=7.1` };
+      }
+      if (fail) throw new Error('removeCaseFromSuite failed: test case(s) 77 are still in suite 4 on re-read');
+      return { ids, removed: ids, notMembers: [] };
+    };
+    return a;
+  }
+  const entry = (id, suiteId = 4) => ({ step: 'suite-add', describe: `add TC ${id}`, kind: 'associated', type: 'suite-entry', id, planId: 3, suiteId });
+
+  await test('live: suite entries are removed as associations (grouped per suite), never deleted as work items → removed, exit 0', async () => {
+    const { dir } = throwaway('live', [entry(77), entry(78), entry(79, 5), { step: 'fixture-story', describe: 'story', type: 'User Story', id: 900 }]);
+    const a = suiteAdapter();
+    const r = await runTeardown({ dir, adapter: a, runsDir: tmp(), envFromDir: envSource() });
+    assert.strictEqual(r.exitCode, 0, JSON.stringify(r));
+    assert.deepStrictEqual(a.removals.map((x) => [x.suiteId, x.ids, x.execute]), [[4, [77, 78], true], [5, [79], true]]);
+    assert.deepStrictEqual(a.calls.map((c) => c.id), [900], 'deleteWorkItem only for the created story — never for a suite entry');
+    assert.strictEqual(r.check.associationsRemoved, 3);
+    assert.strictEqual(r.projectRemoved, true);
+  });
+
+  await test('live: a test case that is both a created Test Case and a suite entry — association removed, the case left undeletable-standard', async () => {
+    const { dir } = throwaway('live', [{ step: 'tc', describe: 'tc', type: 'Test Case', id: 77 }, entry(77)]);
+    const a = suiteAdapter();
+    const r = await runTeardown({ dir, adapter: a, runsDir: tmp(), envFromDir: envSource() });
+    assert.strictEqual(r.exitCode, 3, JSON.stringify(r));
+    assert.strictEqual(a.removals.length, 1);
+    assert.strictEqual(a.calls.length, 0, 'the Test Case is never delete-attempted');
+    const l = gl.readLedger(path.join(r.survivingDir, 'ledger.json'));
+    assert.deepStrictEqual(l.entries.map((e) => [e.kind, e.disposition]), [['created', 'undeletable-standard'], ['associated', 'removed']]);
+  });
+
+  await test('live: a failed association removal stays pending with the reason → exit 1 FAIL, folder kept', async () => {
+    const { dir } = throwaway('live', [entry(77)]);
+    const r = await runTeardown({ dir, adapter: suiteAdapter({ fail: true }), runsDir: tmp(), envFromDir: envSource() });
+    assert.strictEqual(r.exitCode, 1, JSON.stringify(r));
+    assert.deepStrictEqual(r.check.nonTerminal.map((x) => [x.kind, x.id, x.disposition]), [['associated', 77, 'pending']]);
+    assert.strictEqual(r.projectRemoved, false);
+    const l = gl.readLedger(path.join(dir, '.agentex', 'release-gate', 'ledger.json'));
+    assert.match(l.entries[0].reason, /still in suite 4/);
+  });
+
+  await test('sentinel: the removal descriptor is composed and asserted DELETE on the TestCase route — no destroy, no work-item route; nothing sent', async () => {
+    const { dir } = throwaway('sentinel', [entry(77)]);
+    const a = suiteAdapter();
+    const r = await runTeardown({ dir, adapter: a, runsDir: tmp(), envFromDir: envSource() });
+    assert.strictEqual(r.exitCode, 0, JSON.stringify(r));
+    assert.deepStrictEqual(a.removals.map((x) => x.execute), [false]);
+    for (const bad of [
+      { op: 'x', method: 'DELETE', url: 'https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/77?api-version=7.1' },
+      { op: 'x', method: 'DELETE', url: 'https://dev.azure.com/exampleorg/Sample%20Project/_apis/testplan/Plans/3/Suites/4/TestCase?testCaseIds=77&destroy=true' },
+      { op: 'x', method: 'POST', url: 'https://dev.azure.com/exampleorg/Sample%20Project/_apis/testplan/Plans/3/Suites/4/TestCase?testCaseIds=77' },
+    ]) {
+      const t = throwaway('sentinel', [entry(77)]);
+      await assert.rejects(runTeardown({ dir: t.dir, adapter: suiteAdapter({ badDescriptor: bad }), runsDir: tmp(), envFromDir: envSource() }), /removal descriptor/);
+    }
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

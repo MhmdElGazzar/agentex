@@ -1,0 +1,97 @@
+{
+  "argv": [
+    "fail",
+    "--plan",
+    "3",
+    "--testcase",
+    "77",
+    "--bug",
+    "4711",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "ledger": [
+      {
+        "step": "create-run",
+        "describe": "create a manual test run over the point (POST _apis/test/runs)",
+        "status": "done",
+        "id": 88,
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/Runs/88"
+      },
+      {
+        "step": "record-failed-result",
+        "describe": "mark the run result Failed + associate the bug (PATCH _apis/test/Runs/{run}/results)",
+        "status": "done",
+        "id": 100000
+      },
+      {
+        "step": "complete-run",
+        "describe": "complete the run (PATCH _apis/test/runs/{run} state=Completed)",
+        "status": "done",
+        "id": 88
+      },
+      {
+        "step": "link-tested-by",
+        "describe": "durable TC -> bug link (Microsoft.VSTS.Common.TestedBy-Reverse)",
+        "status": "done",
+        "id": 77
+      }
+    ],
+    "point": {
+      "suiteId": 5,
+      "suiteName": "Smoke",
+      "pointId": 900
+    },
+    "run": {
+      "id": 88
+    },
+    "resultId": 100000,
+    "testCaseId": 77,
+    "bugId": 4711
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/testplan/Plans/3/suites?api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/testplan/Plans/3/Suites/4/TestPoint?testCaseId=77&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/testplan/Plans/3/Suites/5/TestPoint?testCaseId=77&api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/runs?api-version=7.1",
+      "body": "{\"name\":\"Regression fail — TC 77 (Bug 4711)\",\"plan\":{\"id\":\"3\"},\"pointIds\":[900],\"automated\":false,\"state\":\"InProgress\"}"
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/Runs/88/results?api-version=7.1",
+      "body": null
+    },
+    {
+      "method": "PATCH",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/Runs/88/results?api-version=7.1",
+      "body": "[{\"id\":100000,\"outcome\":\"Failed\",\"state\":\"Completed\",\"comment\":\"Failed during automated regression run; see Bug #4711.\",\"associatedBugs\":[{\"id\":\"4711\"}]}]"
+    },
+    {
+      "method": "PATCH",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/test/runs/88?api-version=7.1",
+      "body": "{\"state\":\"Completed\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/77?api-version=7.1",
+      "body": "[{\"op\":\"add\",\"path\":\"/relations/-\",\"value\":{\"rel\":\"Microsoft.VSTS.Common.TestedBy-Reverse\",\"url\":\"https://dev.azure.com/exampleorg/_apis/wit/workItems/4711\"}}]"
+    }
+  ]
+}

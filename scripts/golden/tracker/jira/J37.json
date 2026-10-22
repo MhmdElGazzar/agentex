@@ -1,0 +1,48 @@
+{
+  "argv": [
+    "comment",
+    "--id",
+    "PROJ-1",
+    "--body",
+    "x"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "plan": [
+      {
+        "step": "comment",
+        "describe": "POST https://example.atlassian.net/rest/api/3/issue/PROJ-1/comment",
+        "request": {
+          "op": "addComment",
+          "method": "POST",
+          "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1/comment",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "body": {
+              "type": "doc",
+              "version": 1,
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "note": "nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
+  },
+  "requests": []
+}

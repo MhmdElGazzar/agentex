@@ -1,0 +1,36 @@
+{
+  "argv": [
+    "update",
+    "--id",
+    "PROJ-1",
+    "--spec",
+    "{SPEC}"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "plan": [
+      {
+        "step": "update",
+        "describe": "PUT https://example.atlassian.net/rest/api/3/issue/PROJ-1",
+        "request": {
+          "op": "updateWorkItem",
+          "method": "PUT",
+          "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json"
+          },
+          "body": {
+            "fields": {
+              "summary": "Renamed"
+            }
+          }
+        }
+      }
+    ],
+    "note": "nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
+  },
+  "requests": []
+}

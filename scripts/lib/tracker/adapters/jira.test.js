@@ -549,13 +549,15 @@ const SUBTASK_FIELDS = {
       attachments: true,
       testPlans: false,
       testRuns: false,
-      relations: { parent: true, testedBy: false, attachedFile: false },
+      relations: { parent: true, child: true, related: true, testedBy: false, attachedFile: false },
       dialect: 'json',
       query: 'jql',
       deleteWorkItem: false,
       transitions: true,
       comments: true,
       sprints: true,
+      batchRead: true,
+      mentions: true,
     });
   });
 
@@ -916,6 +918,139 @@ const SUBTASK_FIELDS = {
   await test('listSprintStories: storyType is a REQUIRED caller parameter (no adapter default)', async () => {
     const f = fakeFetch([]);
     await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listSprintStories({ sprintFieldId: SP }), /storyType/);
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  // ════ neutral reads for the tracker CLI (skill-consolidation-foundation WP-6) ════
+  function fake2(routes = []) {
+    const calls = []; const hits = new Map();
+    const fn = async (url, opts = {}) => {
+      const call = { url: String(url), method: opts.method || 'GET', headers: opts.headers || {}, body: opts.body };
+      calls.push(call);
+      for (const r of routes) {
+        if ((r.method || 'GET') !== call.method || !call.url.includes(r.match)) continue;
+        const n = (hits.get(r) || 0) + 1; hits.set(r, n);
+        const resp = r.respond ? r.respond(call, n) : r;
+        const status = resp.status || 200;
+        const text = resp.text !== undefined ? resp.text : JSON.stringify(resp.json ?? {});
+        return { ok: status >= 200 && status < 300, status, text: async () => text };
+      }
+      return { ok: true, status: 200, text: async () => '{}' };
+    };
+    fn.calls = calls;
+    return fn;
+  }
+  // bulkfetch echo: every requested key except `drop`, returned in ASCENDING id order
+  // (the service's order), with id = 10000 + the key's number.
+  const keyNum = (k) => Number(String(k).split('-')[1]);
+  const bulkEcho = (drop = []) => ({
+    method: 'POST', match: '/rest/api/3/issue/bulkfetch',
+    respond: (call) => {
+      const b = JSON.parse(call.body);
+      const keep = b.issueIdsOrKeys.filter((k) => !drop.includes(k));
+      return { json: {
+        issues: keep.map((k) => ({ id: String(10000 + keyNum(k)), key: k, fields: { summary: `S ${k}` } })).sort((x, y) => Number(x.id) - Number(y.id)),
+        issueErrors: drop.filter((k) => b.issueIdsOrKeys.includes(k)).length
+          ? [{ issueIdsOrKeys: drop.filter((k) => b.issueIdsOrKeys.includes(k)), status: 404, elementErrors: { errorMessages: ['not found'] } }] : [],
+      } };
+    },
+  });
+
+  await test('getWorkItems: ceil(n/100) POST issue/bulkfetch requests for 1/100/101/250 keys; input order restored', async () => {
+    for (const [n, reqs] of [[1, 1], [100, 1], [101, 2], [250, 3]]) {
+      const keys = Array.from({ length: n }, (_, i) => `PROJ-${n - i}`); // descending — the service answers ascending
+      const f = fake2([bulkEcho()]);
+      const res = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems(keys, { fields: ['summary'] });
+      assert.strictEqual(f.calls.length, reqs, `${n} keys`);
+      assert.ok(f.calls.every((c) => c.method === 'POST' && c.url === `${BASE}/rest/api/3/issue/bulkfetch`));
+      assert.ok(f.calls.every((c) => JSON.parse(c.body).issueIdsOrKeys.length <= 100));
+      assert.deepStrictEqual(res.items.map((i) => i.key), keys);
+      assert.deepStrictEqual(res.missing, []);
+    }
+  });
+
+  await test('getWorkItems: body {issueIdsOrKeys, fields}; issueErrors -> missing; a moved key is listed in moved[], never merged', async () => {
+    const f = fake2([bulkEcho(['PROJ-2'])]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems(['PROJ-1', 'PROJ-2', 'PROJ-3'], { fields: ['summary', 'status'] });
+    assert.deepStrictEqual(JSON.parse(f.calls[0].body), { issueIdsOrKeys: ['PROJ-1', 'PROJ-2', 'PROJ-3'], fields: ['summary', 'status'] });
+    assert.deepStrictEqual(res.items.map((i) => i.key), ['PROJ-1', 'PROJ-3']);
+    assert.deepStrictEqual(res.missing, ['PROJ-2']);
+    assert.ok(!('moved' in res) || res.moved.length === 0);
+    const moved = fake2([{ method: 'POST', match: '/bulkfetch', json: { issues: [{ id: '10001', key: 'PROJ-1', fields: {} }, { id: '20005', key: 'NEW-5', fields: {} }], issueErrors: [] } }]);
+    const r2 = await createAdapter({ cwd: proj(), fetch: moved }).getWorkItems(['PROJ-1', 'PROJ-5']);
+    assert.deepStrictEqual(r2.items.map((i) => i.key), ['PROJ-1']);
+    assert.deepStrictEqual(r2.missing, ['PROJ-5'], 'the old key is missing as asked');
+    assert.deepStrictEqual(r2.moved, [{ id: '20005', key: 'NEW-5', fields: {} }], 'the issue under its new key is reported, not merged');
+    assert.ok(!('fields' in JSON.parse(moved.calls[0].body)), 'no fields -> the key is omitted');
+  });
+
+  await test('getWorkItems: a request by numeric id matches the returned issue id; [] reads nothing', async () => {
+    const f = fake2([{ method: 'POST', match: '/bulkfetch', json: { issues: [{ id: '10007', key: 'PROJ-7', fields: {} }] } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const res = await a.getWorkItems(['10007']);
+    assert.deepStrictEqual(res.items.map((i) => i.key), ['PROJ-7']);
+    assert.deepStrictEqual(await a.getWorkItems([]), { items: [], missing: [], moved: [] });
+    assert.strictEqual(f.calls.length, 1);
+  });
+
+  await test('getWorkItem {fields}: fields= beside the existing expand; without it the URL is unchanged', async () => {
+    const f = fake2([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await a.getWorkItem('PROJ-1', { fields: ['summary', 'description'] });
+    await a.getWorkItem('PROJ-1');
+    assert.strictEqual(f.calls[0].url, `${BASE}/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames&fields=summary%2Cdescription`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/rest/api/3/issue/PROJ-1?expand=renderedFields%2Cnames`);
+  });
+
+  const JC = (id, name, date, text) => ({ id, author: { accountId: `acc-${name}`, displayName: name, emailAddress: `${name.toLowerCase()}@example.com` }, created: date, body: require('../adf.js').toAdf(text) });
+  await test('listComments: orderBy=created, paged by startAt/maxResults=100 until total; ADF -> plain; oldest first', async () => {
+    const f = fake2([{ match: '/issue/PROJ-1/comment', respond: (call, n) => (n === 1
+      ? { json: { startAt: 0, maxResults: 100, total: 3, comments: [JC('1', 'Ana', '2026-01-01T10:00:00.000+0000', 'first <b> & "q"'), JC('2', 'Ben', '2026-01-02T10:00:00.000+0000', 'second\nline')] } }
+      : { json: { startAt: 2, maxResults: 100, total: 3, comments: [JC('3', 'Ana', '2026-01-03T10:00:00.000+0000', 'مرحبا')] } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listComments('PROJ-1');
+    assert.strictEqual(f.calls[0].url, `${BASE}/rest/api/3/issue/PROJ-1/comment?orderBy=created&startAt=0&maxResults=100`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/rest/api/3/issue/PROJ-1/comment?orderBy=created&startAt=2&maxResults=100`);
+    assert.strictEqual(f.calls.length, 2);
+    assert.deepStrictEqual(res.map((c) => c.text), ['first <b> & "q"', 'second\nline', 'مرحبا']);
+    assert.deepStrictEqual(res[0], { id: '1', author: 'Ana', date: '2026-01-01T10:00:00.000+0000', text: 'first <b> & "q"', user: { id: 'acc-Ana', displayName: 'Ana', email: 'ana@example.com' } });
+  });
+
+  await test('listComments on a 404: the /myself probe runs (82fb3e9 composes); the comment request itself is not retried', async () => {
+    const f = fake2([
+      { match: '/rest/api/3/myself', json: { accountId: 'abc' } },
+      { match: '/issue/PROJ-404/comment', status: 404, text: JSON.stringify({ errorMessages: ['Issue does not exist'] }) },
+    ]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listComments('PROJ-404'), (e) => e instanceof TrackerError && e.status === 404);
+    assert.deepStrictEqual(f.calls.filter((c) => !c.url.includes('/myself')).map((c) => c.url), [`${BASE}/rest/api/3/issue/PROJ-404/comment?orderBy=created&startAt=0&maxResults=100`]);
+  });
+
+  await test('listSprints pages only while isLast is false; the first request URL is unchanged', async () => {
+    const f = fake2([{ match: '/rest/agile/1.0/board/9/sprint', respond: (call, n) => (n === 1
+      ? { json: { maxResults: 2, startAt: 0, isLast: false, values: [{ id: 1, name: 'S1' }, { id: 2, name: 'S2' }] } }
+      : { json: { maxResults: 2, startAt: 2, isLast: true, values: [{ id: 3, name: 'S3' }] } }) }]);
+    const res = await createAdapter({ cwd: proj(), fetch: f }).listSprints(9, { state: 'future' });
+    assert.deepStrictEqual(res.map((s) => s.id), [1, 2, 3]);
+    assert.strictEqual(f.calls[0].url, `${BASE}/rest/agile/1.0/board/9/sprint?state=future`);
+    assert.strictEqual(f.calls[1].url, `${BASE}/rest/agile/1.0/board/9/sprint?state=future&startAt=2`);
+    const g = fake2([{ match: '/board/9/sprint', json: { values: [{ id: 1 }] } }]);
+    await createAdapter({ cwd: proj(), fetch: g }).listSprints(9);
+    assert.strictEqual(g.calls.length, 1, 'no isLast field -> one page, as before');
+    assert.strictEqual(g.calls[0].url, `${BASE}/rest/agile/1.0/board/9/sprint`);
+  });
+
+  await test('new capability flags: batchRead, mentions, relations child/related (testedBy stays false)', async () => {
+    const c = createAdapter({ cwd: proj(), fetch: fakeFetch([]) }).capabilities;
+    assert.strictEqual(c.batchRead, true);
+    assert.strictEqual(c.mentions, true);
+    assert.deepStrictEqual(c.relations, { parent: true, child: true, related: true, testedBy: false, attachedFile: false });
+  });
+
+  await test('test-plan create ops are honest refusals on Jira naming testPlans (zero requests)', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    for (const [m, args] of [['listPlans', []], ['getPlan', [1]], ['createPlan', [{ name: 'x' }, { execute: false }]], ['createSuite', [1, { type: 'static', name: 'x', parent: 1 }, { execute: false }]], ['removeCaseFromSuite', [1, 2, [3], { execute: false }]]]) {
+      await assert.rejects(a[m](...args), (e) => e instanceof TrackerError && /capabilities\.testPlans: false/.test(e.message), m);
+    }
     assert.strictEqual(f.calls.length, 0);
   });
 

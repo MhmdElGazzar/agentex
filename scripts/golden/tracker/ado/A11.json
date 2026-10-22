@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "create",
+    "--type",
+    "Task",
+    "--spec",
+    "{SPEC}",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "result": {
+      "id": 501,
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/501",
+      "validateOnly": false
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/$Task?api-version=7.1",
+      "body": "[{\"op\":\"add\",\"path\":\"/fields/System.Title\",\"value\":\"Ad-hoc task\"},{\"op\":\"add\",\"path\":\"/fields/System.Description\",\"value\":\"Ä — résumé — تجربة\"},{\"op\":\"add\",\"path\":\"/relations/-\",\"value\":{\"rel\":\"System.LinkTypes.Hierarchy-Reverse\",\"url\":\"https://dev.azure.com/exampleorg/_apis/wit/workItems/42\"}}]"
+    }
+  ]
+}

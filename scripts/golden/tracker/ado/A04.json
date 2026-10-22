@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "search",
+    "--query",
+    "SELECT [System.Id] FROM workitems WHERE [System.State] = 'Active' ORDER BY [System.Id]"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "provider": "ado",
+    "queryLanguage": "wiql",
+    "count": 2,
+    "results": [
+      {
+        "id": 42,
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/42"
+      },
+      {
+        "id": 44,
+        "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/44"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1",
+      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.TeamProject] = @project AND ([System.State] = 'Active') ORDER BY [System.Id]\"}"
+    }
+  ]
+}

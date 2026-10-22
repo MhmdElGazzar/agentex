@@ -1,0 +1,47 @@
+{
+  "argv": [
+    "create-case",
+    "--plan",
+    "3",
+    "--suite",
+    "4",
+    "--title",
+    "Checkout — totals include tax"
+  ],
+  "code": 2,
+  "out": {
+    "ok": false,
+    "mode": "plan",
+    "blocked": [
+      {
+        "reason": "duplicate-title",
+        "ids": [
+          400
+        ],
+        "message": "1 existing Test Case(s) share this exact title (#400) — confirm with the user, then pass --allow-duplicate"
+      }
+    ],
+    "validation": {
+      "duplicates": [
+        400
+      ]
+    },
+    "cache": {
+      "file": "<CWD>/.agentex/cache/tracker-fields-ado.json",
+      "rebuilt": true,
+      "builtAt": "<BUILT_AT>"
+    }
+  },
+  "requests": [
+    {
+      "method": "POST",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/wiql?api-version=7.1",
+      "body": "{\"query\":\"SELECT [System.Id] FROM workitems WHERE [System.WorkItemType]='Test Case' AND [System.TeamProject]='Sample Project' AND [System.Title]='Checkout — totals include tax'\"}"
+    },
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitemtypes/Test%20Case/fields?$expand=allowedValues&api-version=7.1",
+      "body": null
+    }
+  ]
+}

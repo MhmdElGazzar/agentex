@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "provider": "ado",
+  "workItem": {
+    "id": 1204,
+    "type": null,
+    "title": "البحث في قائمة المنتجات",
+    "state": null,
+    "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/1204",
+    "fields": {
+      "System.Title": "البحث في قائمة المنتجات",
+      "System.Description": "<div>كمستخدم، أريد البحث عن منتج بالاسم حتى أجده بسرعة.</div>",
+      "Microsoft.VSTS.Common.AcceptanceCriteria": "<div>1. عند كتابة جزء من الاسم تظهر النتائج المطابقة.</div><div>2. عند ترك حقل البحث فارغاً يبقى زر البحث معطلاً.</div><div>3. تظهر رسالة «لا توجد نتائج» عندما لا يطابق أي منتج.</div>"
+    }
+  }
+}

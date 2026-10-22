@@ -1,0 +1,35 @@
+{
+  "argv": [
+    "transition",
+    "--id",
+    "PROJ-1",
+    "--to",
+    "21",
+    "--execute"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "executed",
+    "result": {
+      "id": "PROJ-1",
+      "transition": {
+        "id": "21",
+        "name": "Done",
+        "to": "Done"
+      }
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1/transitions",
+      "body": null
+    },
+    {
+      "method": "POST",
+      "url": "https://example.atlassian.net/rest/api/3/issue/PROJ-1/transitions",
+      "body": "{\"transition\":{\"id\":\"21\"}}"
+    }
+  ]
+}

@@ -21,5 +21,12 @@
       "hint": "كلمة مرور حسابات الاختبار المشتركة — قيمتها تُحفظ في ‎.env فقط، وملف البيئة يشير إليها باسم المتغير",
       "hintEn": "The shared test-account password — its value is kept in .env only; the environment file refers to it by variable name" },
     { "key": "otp", "label": "OTP الافتراضي", "labelEn": "Default OTP", "default": "0000" }
-  ]
+  ],
+  "testDesign": { "approval": "consolidated", "independentCoverageCheck": false },
+  "qaRecords": {
+    "pendingQuestions": "qa-watchlist/awaiting-answers.md",
+    "pendingRechecks": "qa-watchlist/awaiting-retest.md",
+    "envIssues": "qa-watchlist/environment-blockers.md",
+    "deferredConditions": "qa-watchlist/deferred-conditions.md"
+  }
 }

@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "transition",
+    "--id",
+    "42",
+    "--to",
+    "Resolved"
+  ],
+  "code": 0,
+  "out": {
+    "ok": true,
+    "mode": "plan",
+    "plan": [
+      {
+        "step": "transition-as-state-update",
+        "describe": "PATCH https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+        "request": {
+          "op": "updateWorkItem",
+          "method": "PATCH",
+          "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/42?api-version=7.1",
+          "headers": {
+            "authorization": "<Basic ***, not printed>",
+            "content-type": "application/json-patch+json"
+          },
+          "body": [
+            {
+              "op": "add",
+              "path": "/fields/System.State",
+              "value": "Resolved"
+            }
+          ]
+        }
+      }
+    ],
+    "note": "this tracker has no transition API — the honest equivalent is a State-field update (System.State = \"Resolved\") via updateWorkItem, shown below. nothing has been written yet — render this plan for the user and get the ONE approval, then re-run with --execute"
+  },
+  "requests": []
+}

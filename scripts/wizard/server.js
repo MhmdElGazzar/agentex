@@ -15,6 +15,8 @@ const { execSync } = require('child_process');
 
 const { buildConfigs, validate, planSave, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
 const { isPristineSampleEnv, isPristineProjectConfig } = require('../lib/scaffold.js');
+const { withPluginConfigBlocks } = require('../lib/project_config.js');
+const { isDeepStrictEqual } = require('util');
 
 // ── CLI args ──────────────────────────────────────────────────────────────
 const args        = process.argv.slice(2);
@@ -210,11 +212,18 @@ server = http.createServer((req, res) => {
         const trackerBlocksRemoved = ['azure', 'jira']
           .filter(p => hasBlock(prevProj, p) && !hasBlock(projectConfig, p));
 
-        // Write config/project.json
+        // Write config/project.json — seeded first with the plugin-owned
+        // blocks (skill-consolidation-foundation R7 / S9): each ABSENT
+        // top-level block (testDesign, qaRecords) and the ONE configured
+        // provider block's empty `workflow`, through the
+        // same function migration 12 uses, so fresh and migrated projects
+        // converge. Plugin scaffolding, not answers: never shown as wizard
+        // fields; never creates a provider block, never touches a second one,
+        // never overwrites a present block. No QA watchlist file is created.
         fs.mkdirSync(projDir, { recursive: true });
         fs.writeFileSync(
           path.join(projDir, 'project.json'),
-          JSON.stringify(projectConfig, null, 2) + '\n',
+          JSON.stringify(withPluginConfigBlocks(projectConfig), null, 2) + '\n',
           'utf8'
         );
         const written = ['config/project.json'];

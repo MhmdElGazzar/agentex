@@ -72,6 +72,23 @@ project = "<KEY>" AND issuetype = "<storyType>" AND sprint in openSprints() ORDE
 There is no iteration/area on Jira: sub-tasks ride their parent story's sprint — the plan
 states this explicitly.
 
+## JQL gotchas
+
+The Jira counterparts of the ADO WIQL pitfalls, as `scripts/tracker.js` handles them:
+
+- **Project scope belongs in the JQL** (`project = "KEY" AND …`). `tracker.js search` does
+  not inject it on Jira — a JQL without it searches every project the account can see.
+- **Results are capped** at the adapter's 10 pages × 100 issues; `--top n` (up to 1,000)
+  asks for fewer. `truncated: true` means the same as on ADO: at the cap, more may exist —
+  narrow the query.
+- **Sub-tasks come inline** with the story read (`tracker.js relations --kind child` costs
+  one request per story, never one per sub-task).
+- **Never pipe text through a CLI.** Use `--out .agentex/scratch/<name>.json` and Read the
+  file for anything you will analyse.
+- **`key in (…)` fails on one unknown key.** To read many issues use `tracker.js batch`,
+  which reports unknown keys under `missing` (and moved issues under `moved`) instead of
+  failing the whole read.
+
 ## Links, parents, and directions
 
 - **Sub-task → parent** is `fields.parent` inside the create/update — the only relation the
@@ -125,6 +142,9 @@ Menu names drift across Jira Cloud UI versions ("Issues" ↔ "Work items", "Issu
 "Work types"); the fix is the same.
 
 ## Known limitations (capability flags — the honest gaps)
+
+The full operation × provider matrix is [`capabilities.md`](capabilities.md); the Jira gaps
+that shape the flows:
 
 | Flag | Jira | What the flows do about it |
 |---|---|---|

@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "show",
+    "--id",
+    "999"
+  ],
+  "code": 1,
+  "out": {
+    "mode": "plan",
+    "ok": false,
+    "error": {
+      "message": "getWorkItem failed: HTTP 404 — TF401232: Work item 999 does not exist. (https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/999?api-version=7.1)",
+      "op": "getWorkItem",
+      "status": 404,
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/999?api-version=7.1",
+      "serverMessage": "TF401232: Work item 999 does not exist."
+    }
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://dev.azure.com/exampleorg/Sample%20Project/_apis/wit/workitems/999?api-version=7.1",
+      "body": null
+    }
+  ]
+}
