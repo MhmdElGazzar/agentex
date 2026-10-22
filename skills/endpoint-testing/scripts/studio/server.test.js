@@ -6,6 +6,16 @@ const { assert, fs, os, path, harness, req, studio, fakeService, waitRun, editor
 const { test, done } = harness();
 
 (async () => {
+  await test('S-4: the studio run-folder name equals init_run.js\'s for the same instant', async () => {
+    const { stamp } = require('./server.js');
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-stamp-'));
+    const before = stamp();
+    const out = require('node:child_process').execFileSync(process.execPath, [path.join(__dirname, '..', '..', '..', 'test-execution', 'scripts', 'init_run.js')], { cwd, encoding: 'utf8' });
+    const after = stamp();
+    const name = path.basename(JSON.parse(out.trim().split('\n').pop()).runDir);
+    assert.ok([`execu_${before}`, `execu_${after}`].includes(name), `${name} vs ${before}/${after}`);
+  });
+
   await test('every /api/* route answers 403 without the token; binds 127.0.0.1', async () => {
     const dir = editorProject(9);
     const s = await studio(dir);

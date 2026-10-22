@@ -33,7 +33,6 @@ const S = require('./suite_store.js');
 const D = require('./data_store.js');
 const W = require('../write_result.js');
 const pc = require(path.join(__dirname, '..', '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
-const { runStamp } = require(path.join(__dirname, '..', '..', '..', '..', 'scripts', 'lib', 'run_stamp.js'));
 
 const DEFAULT_PORT = 7380;                 // (Q8)
 const IDLE_MS = 120 * 60 * 1000;           // shut down after 120 min without a request (Q8)
@@ -49,7 +48,11 @@ function pidAlive(pid) {
   if (!pid) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 }
-const stamp = runStamp; // the same local-time name init_run.js gives /test-endpoints runs
+// Local time, YYYY-MM-DD_HH-MM-SS: the same name init_run.js gives /test-endpoints run folders.
+const stamp = (d = new Date()) => {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+};
 
 function envList(root) {
   let def = null;
@@ -369,4 +372,4 @@ async function main(argv) {
 
 if (require.main === module) main(process.argv);
 
-module.exports = { createStudio, sessionFile, envList, catalogIndex, endpointsFor, DEFAULT_PORT, IDLE_MS };
+module.exports = { stamp, createStudio, sessionFile, envList, catalogIndex, endpointsFor, DEFAULT_PORT, IDLE_MS };
