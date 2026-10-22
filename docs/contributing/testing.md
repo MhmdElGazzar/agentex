@@ -29,11 +29,44 @@ without the real dependency, a live server, or a device.
 **Pros/cons:** + catches regressions in safety rules, no framework overhead — but one more
 file to write per script.
 
-**Run it:** `node skills/<name>/scripts/<script>.test.js` — run every `.test.js` you touched
-(no single "run all" command yet).
+**Run it:** `node skills/<name>/scripts/<script>.test.js` for one file, or let impact analysis
+pick them — see [Running only what a change affects](#running-only-what-a-change-affects).
 
 **Minimum coverage:** the success path, each `FAIL` mode, each `BLOCKED` precondition, and any
 safety rule enforced in code (catalog-only lookup, DDL ban, param sanitization, secret-header
 presence/absence).
+
+## Running only what a change affects
+
+**What:** `scripts/dev/affected.js` reads what changed since `main` (commits, uncommitted
+edits and untracked files) and lists the script tests and evals that change can affect.
+
+```
+node scripts/dev/affected.js            # list what to run
+node scripts/dev/affected.js --run      # run the selected script tests
+node scripts/dev/affected.js --all --run   # run every script test (releases)
+```
+
+Also `--base <ref>` (default `main`), `--files a,b` (skip the git lookup) and `--json`.
+
+**How it picks:**
+
+- **Script tests** — from each test's dependency graph: what it `require()`s, every path it
+  builds from `__dirname` (spawned runners, templates, fixture folders), and transitively what
+  those files depend on. A changed code or data file that no test reaches selects **every**
+  script test, so a missed edge costs time, never coverage.
+- **Evals** — from `evals/coverage.json`, which maps each case to the paths it exercises. A
+  changed `.js` file also counts for every file that requires or spawns it. A changed
+  `description` in any `skills/*/SKILL.md` or `commands/*.md` selects every `trigger-*` and
+  `negative-*` case, since triggering depends on all descriptions together. Evals are only
+  listed, never started — each `claude plugin eval` run is slow and paid.
+- **No impact** — anything outside `skills/`, `scripts/`, `commands/`, `agents/`,
+  `templates/`, `hosts/`, `references/`, `evals/`, `test/` and `.claude-plugin/` (docs,
+  CHANGELOG).
+
+**When you add an eval case:** add its entry to `evals/coverage.json`;
+`scripts/dev/affected.test.js` fails until you do.
+
+**Releases still run everything:** `--all --run` for the script tests, and the full eval suite.
 
 Next: [PR Workflow](./pr-workflow.md).
