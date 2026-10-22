@@ -22,18 +22,7 @@
       "hintEn": "The shared test-account password — its value is kept in .env only; the environment file refers to it by variable name" },
     { "key": "otp", "label": "OTP الافتراضي", "labelEn": "Default OTP", "default": "0000" }
   ],
-  "testingTasks": [
-    { "stage": "requirementReview", "title": "[Testing] Requirement Review", "enabled": true },
-    { "stage": "testCreation", "title": "[Testing] Test Creation", "enabled": true },
-    { "stage": "testExecution", "title": "[Testing] Test Execution", "enabled": true },
-    { "stage": "bugRetest", "title": "[Testing] Bug Review and Retest", "enabled": true },
-    { "stage": "automation", "title": "[Testing] Automation", "enabled": true }
-  ],
   "testDesign": { "approval": "consolidated", "independentCoverageCheck": false },
-  "estimation": {
-    "modelPath": ".agentex/task-estimation.json",
-    "historyPath": ".agentex/estimation-history.jsonl"
-  },
   "qaRecords": {
     "pendingQuestions": "qa-watchlist/awaiting-answers.md",
     "pendingRechecks": "qa-watchlist/awaiting-retest.md",

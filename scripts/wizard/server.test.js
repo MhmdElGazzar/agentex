@@ -301,7 +301,7 @@ const post = (route, body, headers = {}) =>
 
   // ── save-time seeding of the plugin-owned blocks (R7 / S9) ────────────────
   const { STRUCTURED_DEFAULTS: SD } = require('../lib/project_config.js');
-  const PLUGIN_BLOCKS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+  const PLUGIN_BLOCKS = ['testDesign', 'qaRecords'];
   const readProj = () => JSON.parse(fs.readFileSync(path.join(projectDir, 'config', 'project.json'), 'utf8'));
   const saveProj = (projectConfig) => post('/api/save', {
     projectConfig, envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } }, envName: 'qa', secrets: {},
@@ -316,7 +316,7 @@ const post = (route, body, headers = {}) =>
     assert.ok(!('jira' in disk));
     // round-trip: what the browser sends back (disk + edits) is written as-is — nothing re-seeded over it
     const custom = { ...disk,
-      testingTasks: [{ stage: 'automation', enabled: false }],
+      testDesign: { approval: 'per-story' },
       qaRecords: { envIssues: 'notes/env.jsonl' },
       azure: { ...disk.azure, workflow: { inTestState: 'In QA', closeOut: { state: 'Accepted' } } } };
     r = await saveProj(JSON.parse(JSON.stringify(custom)));
@@ -328,7 +328,7 @@ const post = (route, body, headers = {}) =>
     disk = readProj();
     assert.ok(!('azure' in disk));
     assert.deepStrictEqual(disk.jira, { site: 'example', project: 'PROJ', workflow: SD.workflow });
-    assert.deepStrictEqual(disk.testingTasks, custom.testingTasks);
+    assert.deepStrictEqual(disk.testDesign, custom.testDesign);
     // tracker none: no provider block, no workflow anywhere
     r = await saveProj({ name: 'demo', defaultEnvironment: 'qa' });
     disk = readProj();

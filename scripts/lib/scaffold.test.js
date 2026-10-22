@@ -232,12 +232,15 @@ test('the scaffold creates no QA watchlist file or folder (they are created lazi
   assert.ok(!actions.some((a) => QA_PATHS.some((p) => a.path.startsWith(path.posix.dirname(p)))));
 });
 
-test('the scaffolded config/project.json carries the four plugin blocks, equal to STRUCTURED_DEFAULTS; no provider block', () => {
+test('the scaffolded config/project.json carries the two plugin blocks, equal to STRUCTURED_DEFAULTS; no provider block', () => {
   const dir = proj();
   scaffold.scaffoldProject(dir, PLUGIN_ROOT);
   const cfg = readJson(dir, 'config/project.json');
-  for (const k of ['testingTasks', 'testDesign', 'estimation', 'qaRecords']) {
+  for (const k of ['testDesign', 'qaRecords']) {
     assert.deepStrictEqual(cfg[k], STRUCTURED_DEFAULTS[k], `${k} equals the default`);
+  }
+  for (const k of ['testingTasks', 'estimation']) {
+    assert.ok(!(k in cfg), `no ${k} block (decision #13: config/estimation.json is the one task-list source)`);
   }
   assert.ok(!('azure' in cfg) && !('jira' in cfg), 'the template carries no provider block (the wizard writes the chosen one)');
   assert.ok(!('workflow' in cfg) && !('reproSummaryRow' in cfg), 'provider-block keys are never top-level');
@@ -296,11 +299,11 @@ test('A-2: a freshly scaffolded, git add-ed project scans with no plain-string w
 });
 
 // ---- pristine project config across the plugin-block seeding (SCF R6/R7) ----
-// The template gained the four plugin-owned blocks; migration 12 and the wizard
+// The template gained the two plugin-owned blocks; migration 12 and the wizard
 // save add them (at their defaults) to an older scaffold. Neither makes an
 // untouched scaffold the user's: an older shipped shape is pristine with or
 // without the seeded defaults; a customized block is the user's.
-const PLUGIN_BLOCK_KEYS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+const PLUGIN_BLOCK_KEYS = ['testDesign', 'qaRecords'];
 const withoutPluginBlocks = (cfg) => Object.fromEntries(Object.entries(cfg).filter(([k]) => !PLUGIN_BLOCK_KEYS.includes(k)));
 
 test('pristine: the template shipped before the plugin blocks (0.25) is pristine, bare or after m12/wizard seeding', () => {
@@ -315,7 +318,7 @@ test('pristine: the template shipped before the plugin blocks (0.25) is pristine
 
 test('pristine: a customized plugin block, or a provider block, makes the config the user\'s', () => {
   const custom = JSON.parse(JSON.stringify(TEMPLATE_PROJECT));
-  custom.testingTasks = [{ stage: 'automation', enabled: false }];
+  custom.testDesign = { approval: 'per-story' };
   assert.strictEqual(scaffold.isPristineProjectConfig(custom, PLUGIN_ROOT), false);
   const partial = withoutPluginBlocks(TEMPLATE_PROJECT);
   partial.qaRecords = { pendingQuestions: 'notes/questions.md' };

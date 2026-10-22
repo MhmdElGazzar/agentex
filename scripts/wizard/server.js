@@ -214,8 +214,8 @@ server = http.createServer((req, res) => {
 
         // Write config/project.json — seeded first with the plugin-owned
         // blocks (skill-consolidation-foundation R7 / S9): each ABSENT
-        // top-level block (testingTasks, testDesign, estimation, qaRecords) and
-        // the ONE configured provider block's empty `workflow`, through the
+        // top-level block (testDesign, qaRecords) and the ONE configured
+        // provider block's empty `workflow`, through the
         // same function migration 12 uses, so fresh and migrated projects
         // converge. Plugin scaffolding, not answers: never shown as wizard
         // fields; never creates a provider block, never touches a second one,

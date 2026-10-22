@@ -316,7 +316,7 @@ const HISTORICAL_SAMPLE_ENV_SHAPES = [
 //      was a plain descriptor with the Test@1234 default; A-2 made it secret.
 //   2. the template shipped until the plugin-owned config blocks (skill-consolidation-
 //      foundation, 1.0.0): shape 1's fields with A-2's secret password, and no
-//      testingTasks / testDesign / estimation / qaRecords.
+//      testDesign / qaRecords.
 // When the template changes, append the outgoing shape here. Each shape also counts
 // with the plugin blocks seeded at their defaults (withPluginConfigBlocks — what
 // migration 12 and the wizard save add), so an older scaffold stays scaffolding

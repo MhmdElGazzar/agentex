@@ -899,12 +899,12 @@ test('m05 + init: fresh scaffold gitignores sessions and scratch, not just .env'
 
 // ── m12 qa-records-and-workflow — the plugin-owned config blocks (R6) ────────
 // A 0.22/0.23-shaped project: today's full scaffold, but config/project.json
-// predates the four plugin blocks and its provider block has no workflow.
+// predates the two plugin blocks and its provider block has no workflow.
 // Every expectation reads STRUCTURED_DEFAULTS — the default QA watchlist paths
 // live only in that constant.
 const { STRUCTURED_DEFAULTS: SD, withPluginConfigBlocks } = require('./lib/project_config.js');
 const M12 = require('./migrations/12-qa-records-and-workflow.js');
-const PLUGIN_BLOCKS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+const PLUGIN_BLOCKS = ['testDesign', 'qaRecords'];
 const QA_FOLDER = path.posix.dirname(SD.qaRecords.pendingQuestions);
 const AZ_BLOCK = { org: 'https://dev.azure.com/exampleorg', project: 'Sample Project', team: 'QA Team', assignee: '' };
 const JI_BLOCK = { site: 'example', project: 'PROJ', board: '42', assignee: '' };
@@ -939,7 +939,7 @@ function m12ctx(dir) {
   };
 }
 
-test('m12: a pre-1.0 ADO project gains the four blocks and azure.workflow; only config/project.json changes; no watchlist file', () => {
+test('m12: a pre-1.0 ADO project gains the two blocks and azure.workflow; only config/project.json changes; no watchlist file', () => {
   const dir = preOneZero({ azure: { ...AZ_BLOCK } });
   const beforeCfg = readJson(dir, 'config/project.json');
   const before = snapshot(dir);
@@ -949,6 +949,7 @@ test('m12: a pre-1.0 ADO project gains the four blocks and azure.workflow; only 
   assert.match(r.out, /^\[migrated\] qa-records-and-workflow — /m);
   const cfg = readJson(dir, 'config/project.json');
   for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k], `${k} added from the defaults`);
+  assert.ok(!('testingTasks' in cfg) && !('estimation' in cfg), 'decision #13: no task list or estimation paths in project.json');
   assert.deepStrictEqual(cfg.azure, { ...AZ_BLOCK, workflow: SD.workflow }, 'azure keeps its keys and gains the EMPTY workflow');
   assert.ok(!('jira' in cfg), 'never creates a provider block');
   assert.ok(!('reproSummaryRow' in cfg.azure), 'reproSummaryRow is never written');
@@ -980,7 +981,6 @@ test('m12: a second run is a zero-write no-op', () => {
 test('m12: customized blocks are preserved; only the missing ones are added', () => {
   const custom = {
     azure: { ...AZ_BLOCK, areaPath: 'Sample Project\\QA', workflow: { inTestState: 'In QA', devDoneStates: ['Dev Complete'], closeOut: { state: 'Accepted' } } },
-    testingTasks: [{ stage: 'automation', enabled: false }],
     testDesign: { approval: 'per-story' },
   };
   const dir = preOneZero(JSON.parse(JSON.stringify(custom)));
@@ -990,11 +990,9 @@ test('m12: customized blocks are preserved; only the missing ones are added', ()
   assert.match(r.out, /\[migrated\] qa-records-and-workflow/);
   const cfg = readJson(dir, 'config/project.json');
   assert.deepStrictEqual(cfg.azure, custom.azure, 'a customized workflow is never rewritten');
-  assert.deepStrictEqual(cfg.testingTasks, custom.testingTasks, 'a customized testingTasks is never rewritten');
-  assert.deepStrictEqual(cfg.testDesign, custom.testDesign);
-  assert.deepStrictEqual(cfg.estimation, SD.estimation, 'the missing block is added');
-  assert.deepStrictEqual(cfg.qaRecords, SD.qaRecords);
-  assert.deepStrictEqual(Object.keys(cfg), [...Object.keys(beforeCfg), 'estimation', 'qaRecords'], 'key order kept');
+  assert.deepStrictEqual(cfg.testDesign, custom.testDesign, 'a customized testDesign is never rewritten');
+  assert.deepStrictEqual(cfg.qaRecords, SD.qaRecords, 'the missing block is added');
+  assert.deepStrictEqual(Object.keys(cfg), [...Object.keys(beforeCfg), 'qaRecords'], 'key order kept');
   for (const k of Object.keys(beforeCfg)) assert.deepStrictEqual(cfg[k], beforeCfg[k], `pre-existing ${k} parsed-equal`);
 });
 
@@ -1008,7 +1006,7 @@ test('m12: a Jira project gets jira.workflow and no azure key', () => {
   for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k]);
 });
 
-test('m12: a tracker-less project gets the four blocks and no provider key', () => {
+test('m12: a tracker-less project gets the two blocks and no provider key', () => {
   const dir = preOneZero({});
   const r = run(dir);
   assert.strictEqual(r.code, 0, r.out);
@@ -1017,7 +1015,7 @@ test('m12: a tracker-less project gets the four blocks and no provider key', () 
   assert.ok(!('azure' in cfg) && !('jira' in cfg), 'no provider block is created');
   for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k]);
   const all = preOneZero({}, { omit: [] });
-  assert.strictEqual(M12.detect(m12ctx(all)), false, 'all four present + no tracker: nothing to do');
+  assert.strictEqual(M12.detect(m12ctx(all)), false, 'both present + no tracker: nothing to do');
 });
 
 test('m12: two provider blocks are left alone and flagged; the top-level blocks are still added', () => {

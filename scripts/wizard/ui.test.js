@@ -701,12 +701,10 @@ setTimeout(() => {
   // touches only the four managed keys — so the plugin blocks and a nested
   // <provider>.workflow survive a wizard re-run deep-equal. (The server seeds
   // what is ABSENT; it never overwrites what this function keeps.)
-  test('a re-run over a project carrying every plugin block keeps them deep-equal (customized testingTasks, azure.workflow)', () => {
+  test('a re-run over a project carrying every plugin block keeps them deep-equal (customized testDesign, azure.workflow)', () => {
     const savedExisting = ui.existingProjectV;
     const blocks = {
-      testingTasks: [{ stage: 'automation', enabled: false }, { stage: 'testCreation', title: '[Testing] Test Design' }],
       testDesign: { approval: 'per-story', independentCoverageCheck: true },
-      estimation: { modelPath: 'qa/model.json', historyPath: 'qa/history.jsonl' },
       qaRecords: { envIssues: 'notes/env.jsonl' },
     };
     const azWorkflow = { inTestState: 'In QA', devDoneStates: ['Dev Complete'], closeOut: { state: 'Accepted', assignee: '' } };

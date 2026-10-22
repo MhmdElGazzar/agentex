@@ -793,7 +793,7 @@ test('buildConfigs without a tracker answer keeps the historical answer-emptines
 // buildConfigs mirrors the server's save: it passes the project config through
 // withPluginConfigBlocks, so the engine and the server agree. The seeded keys
 // are scaffolding (like userFields), not answers — no wizard field asks them.
-const PLUGIN_BLOCKS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+const PLUGIN_BLOCKS = ['testDesign', 'qaRecords'];
 
 test('buildConfigs seeds the plugin blocks; ONLY the chosen provider gets a workflow (Q12)', () => {
   const base = { name: 'demo', 'azure.org': 'exampleorg', 'azure.project': 'Sample Project', 'jira.site': 'example', 'jira.project': 'PROJ' };

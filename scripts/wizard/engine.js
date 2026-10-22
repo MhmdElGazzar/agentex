@@ -271,8 +271,8 @@ function buildConfigs(answers, steps, fields = {}) {
 
   // Plugin-owned blocks (skill-consolidation-foundation R7 / S9): the same
   // seeding the server applies at /api/save — absent top-level blocks
-  // (testingTasks, testDesign, estimation, qaRecords) and the ONE remaining
-  // provider block's empty workflow. Runs AFTER the provider pick and the
+  // (testDesign, qaRecords) and the ONE remaining provider block's empty
+  // workflow. Runs AFTER the provider pick and the
   // emptiness strip, so it never creates or revives a provider block.
   return { projectConfig: withPluginConfigBlocks(projectConfig), envConfig, envName };
 }
