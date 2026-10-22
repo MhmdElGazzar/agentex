@@ -20,8 +20,8 @@ Target / scope: $ARGUMENTS
 - "on uat" / "env uat" selects `environments/uat.json` as the active environment;
   otherwise the project's `defaultEnvironment` applies. A legacy project (no `config/project.json`,
   no `environments/`) uses the URL the user gave; with none, CI mode leaves the target to
-  `ci_preflight.js`, and any other mode stops before running anything and says "give the URL, or run `/update-agentex`".
-  Never read `.env`.
+  `ci_preflight.js`, and any other mode stops before running anything and says
+  "give the URL, or run `/update-agentex`". Never read `.env`.
   An environment with no file is an error — list `environments/` and stop.
 
 **Before running:**
