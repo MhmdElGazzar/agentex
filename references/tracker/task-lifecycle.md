@@ -80,7 +80,8 @@ silently.
 
 ## 6. Before reporting done
 
-Re-query the tracker (`tracker.js batch --ids … --fields …`, written to a file with `--out`)
+Re-query the tracker (`tracker.js batch --ids … --fields …`, written with
+`--out .agentex/scratch/<name>.json`)
 and report what the board says now, not what was planned. A write the board does not show
 is not done.
 

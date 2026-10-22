@@ -68,8 +68,8 @@ Four pitfalls that cost real runs, and how `scripts/tracker.js` handles each:
    one batch read covers any number of stories (`tracker.js relations --id a,b,c --kind
    child`) — never one read per child.
 4. **Never pipe text through a CLI.** Read text-bearing fields (descriptions, acceptance
-   criteria, comments) with `--out <file>` and Read the file: piping can drop non-ASCII
-   characters, and a story in a non-Latin script comes back garbled.
+   criteria, comments) with `--out .agentex/scratch/<name>.json` and Read the file: piping
+   can drop non-ASCII characters, and a story in a non-Latin script comes back garbled.
 
 ## Relation types and directions
 

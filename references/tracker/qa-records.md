@@ -78,10 +78,11 @@ Use this to decide whether an open `pendingQuestions` entry has been answered. R
 start of any run that touches the entry's story.
 
 1. **Read every thread, merged by date.** Read the story's discussion with
-   `tracker.js comments --id <story> --out <file>` and Read the file. Find its bugs with
-   `tracker.js relations --id <story> --kind related,child --out <file>`. Read each bug's
-   thread the same way. Merge all comments by date. Text always goes through `--out` and
-   Read, never through a pipe, which can drop non-ASCII.
+   `tracker.js comments --id <story> --out .agentex/scratch/<name>.json` and Read the file.
+   Find its bugs with `tracker.js relations --id <story> --kind related,child --out
+   .agentex/scratch/<name>.json`. Read each bug's thread the same way. Merge all comments
+   by date. Text always goes through `--out` and Read, never through a pipe, which can drop
+   non-ASCII.
 2. **Keep only what came after the question.** Ignore comments dated before the entry's
    `createdAt`.
 3. **Classify each reply.**
@@ -110,11 +111,11 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" append --kind pendingQuestion
   --text "Story 1204, criterion 3: (A) all nine columns; (B) the six in the sample. Which one?"
 # -> {"ok":true,"kind":"pendingQuestions","file":"…","id":"question-…","createdAt":"…","created":true}
 
-# long or non-Latin text: write it to a file first
-node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" append --kind envIssues --text-file blocker.txt
+# long or non-Latin text: write it to a scratch file first (.agentex/scratch/ only)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" append --kind envIssues --text-file .agentex/scratch/blocker.txt
 
 # what is still open (the default is every kind, status open), into a file to Read
-node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" list --out .agentex/cache/watchlist.json
+node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" list --out .agentex/scratch/watchlist.json
 node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" list --kind pendingQuestions --ref 1204 --status all
 
 # a decisive reply arrived
