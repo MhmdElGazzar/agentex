@@ -180,6 +180,82 @@ function editJson(file, fn) {
     assert.ok(r.findings.some((f) => f.startsWith('api.token') && f.includes('API_TOKEN')), r.findings.join('; '));
   });
 
+  // ── Secret defaults.* answers (decision #6): descriptor-driven, value only in .env ──
+  const PW = 'dummy-default-pass-321';
+  // The project as the wizard writes a typed secret default: .env holds the value
+  // under its env-var name, the environment file holds { envSecret: NAME } (or nothing).
+  function secretDefaultsProject({ defaults = { password: { envSecret: 'DEFAULT_PASSWORD' }, otp: '2468' },
+    envLines = [`DEFAULT_PASSWORD=${PW}`], defaultsFields } = {}) {
+    const dir = goodProject();
+    editJson(path.join(dir, 'environments', 'qc.json'), (d) => { d.defaults = defaults; });
+    if (defaultsFields) editJson(path.join(dir, 'config', 'project.json'), (d) => { d.defaultsFields = defaultsFields; });
+    fs.appendFileSync(path.join(dir, '.env'), envLines.join('\n') + '\n');
+    return dir;
+  }
+  const TYPED = { ...ANSWERS, 'defaults.password': PW, 'defaults.otp': '2468' };
+
+  await test('typed secret default (built-in descriptor) in .env, env file { envSecret } → 0 findings', async () => {
+    const dir = secretDefaultsProject();
+    const r = verifyWizard({ dir, answersFile: withAnswers(dir, TYPED) });
+    assert.deepStrictEqual(r.findings, []);
+    assert.strictEqual(r.ok, true);
+  });
+
+  await test('typed secret default with the env file holding nothing for it (blank name slot) → 0 findings', async () => {
+    const dir = secretDefaultsProject({ defaults: { otp: '2468' } });
+    const r = verifyWizard({ dir, answersFile: withAnswers(dir, TYPED) });
+    assert.deepStrictEqual(r.findings, []);
+  });
+
+  await test('typed secret default under a custom defaults.<key>EnvVar name → read from .env under that name', async () => {
+    const dir = secretDefaultsProject({ defaults: { password: { envSecret: 'MY_PW' }, otp: '2468' }, envLines: [`MY_PW=${PW}`] });
+    const r = verifyWizard({ dir, answersFile: withAnswers(dir, { ...TYPED, 'defaults.passwordEnvVar': 'MY_PW' }) });
+    assert.deepStrictEqual(r.findings, []);
+  });
+
+  await test('typed secret default missing from .env → finding names the env var, never the value', async () => {
+    const dir = secretDefaultsProject({ envLines: [] });
+    const r = verifyWizard({ dir, answersFile: withAnswers(dir, TYPED) });
+    assert.strictEqual(r.ok, false);
+    assert.ok(r.findings.some((f) => f.startsWith('defaults.password') && f.includes('DEFAULT_PASSWORD')), JSON.stringify(r.findings));
+    assert.ok(!JSON.stringify(r.findings).includes(PW), 'secret value never echoed');
+  });
+
+  await test('typed secret default leaked into qc.json → finding without the value', async () => {
+    const dir = secretDefaultsProject({ defaults: { password: PW, otp: '2468' } });
+    const r = verifyWizard({ dir, answersFile: withAnswers(dir, TYPED) });
+    assert.strictEqual(r.ok, false);
+    assert.ok(r.findings.some((f) => f.startsWith('defaults.password') && f.includes('leaked into environments/qc.json')), JSON.stringify(r.findings));
+    assert.ok(r.findings.some((f) => f.startsWith('defaults.password') && f.includes('{ "envSecret": "DEFAULT_PASSWORD" }')), JSON.stringify(r.findings));
+    assert.ok(!JSON.stringify(r.findings).includes(PW), 'secret value never echoed');
+    const cli = spawnSync(process.execPath, [CLI, dir, '--answers', withAnswers(dir, TYPED)], { encoding: 'utf8' });
+    assert.strictEqual(cli.status, 1);
+    assert.ok(!(cli.stdout + cli.stderr).includes(PW), 'CLI never prints the value');
+  });
+
+  await test('the secret rule follows the project\'s defaultsFields descriptors, not the key name', async () => {
+    // pin is secret, password is a plain (legacy) field in this project's schema
+    const fields = [{ key: 'password', label: 'P', default: 'Test@1234' }, { key: 'pin', label: 'PIN', secret: true }];
+    const dir = secretDefaultsProject({ defaultsFields: fields,
+      defaults: { password: 'Plain@Pass1', pin: { envSecret: 'DEFAULT_PIN' } }, envLines: ['DEFAULT_PIN=dummy-pin-9753'] });
+    const answers = { ...ANSWERS, 'defaults.password': 'Plain@Pass1', 'defaults.pin': 'dummy-pin-9753' };
+    let r = verifyWizard({ dir, answersFile: withAnswers(dir, answers) });
+    assert.deepStrictEqual(r.findings, []);
+    editJson(path.join(dir, 'environments', 'qc.json'), (d) => { d.defaults.pin = 'dummy-pin-9753'; });
+    r = verifyWizard({ dir, answersFile: withAnswers(dir, answers) });
+    assert.ok(r.findings.some((f) => f.startsWith('defaults.pin') && f.includes('leaked')), JSON.stringify(r.findings));
+    assert.ok(!JSON.stringify(r.findings).includes('dummy-pin-9753'));
+  });
+
+  await test('plain defaults.otp is unchanged: verbatim in the env file, a wrong value is a finding', async () => {
+    const dir = secretDefaultsProject();
+    let r = verifyWizard({ dir, answersFile: withAnswers(dir, { ...ANSWERS, 'defaults.otp': '2468' }) });
+    assert.deepStrictEqual(r.findings, []);
+    editJson(path.join(dir, 'environments', 'qc.json'), (d) => { d.defaults.otp = '1111'; });
+    r = verifyWizard({ dir, answersFile: withAnswers(dir, { ...ANSWERS, 'defaults.otp': '2468' }) });
+    assert.deepStrictEqual(r.findings, ['defaults.otp: not placed at environments/qc.json → defaults.otp']);
+  });
+
   await test('CLI: exit 0 on clean, 1 on findings, one JSON line on stdout', async () => {
     const clean = goodProject();
     let r = spawnSync(process.execPath, [CLI, clean, '--answers', withAnswers(clean)], { encoding: 'utf8' });
