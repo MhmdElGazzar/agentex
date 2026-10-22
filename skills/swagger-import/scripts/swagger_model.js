@@ -489,6 +489,9 @@ function generate(model, selection, values, opts) {
     });
     const entry = `${name}.${o.request}`;
     const skip = o.write ? { skip: WRITE_SKIP } : {};
+    // The catalog's auth applies to every request in it; a public operation's cases are sent
+    // without a credential, as the spec describes it (and never BLOCKED on a missing token).
+    const publicAuth = o.auth === 'public' && auth.type !== 'none' ? { auth: 'none' } : {};
     const baseParams = {}, baseSources = {};
     for (const n of o.needs) {
       const v = vals[n.param];
@@ -512,7 +515,7 @@ function generate(model, selection, values, opts) {
       const fields = okSchema.required.filter(k => k in okSchema.properties);
       if (fields.length) happyExpect.fields = fields;
     }
-    add({ name: `${o.request}-happy`, entry, kind: 'happy', ...skip, params: { ...baseParams }, sources: { ...baseSources }, expect: happyExpect, ...(happyReview.length ? { review: happyReview } : {}) });
+    add({ name: `${o.request}-happy`, entry, kind: 'happy', ...publicAuth, ...skip, params: { ...baseParams }, sources: { ...baseSources }, expect: happyExpect, ...(happyReview.length ? { review: happyReview } : {}) });
 
     // not-found: an ID in the path (the last path param)
     const pathNeeds = o.needs.filter(n => n.in === 'path');
@@ -520,7 +523,7 @@ function generate(model, selection, values, opts) {
       const idNeed = pathNeeds[pathNeeds.length - 1];
       const msg = messageOf(exampleBody(model, h, responses['404']));
       const expect = { status: 404, ...(msg ? { equals: { [msg.path]: msg.text } } : {}) };
-      add({ name: `${o.request}-not-found`, entry, kind: 'not-found', ...skip,
+      add({ name: `${o.request}-not-found`, entry, kind: 'not-found', ...publicAuth, ...skip,
         params: { ...baseParams, [idNeed.param]: autoIdFor(idNeed) }, sources: { ...baseSources, [idNeed.param]: 'auto' }, expect,
         ...(msg ? {} : { review: ['no documented 404 message — the case checks the status only; add the expected message if the service documents one'] }) });
     }
@@ -533,7 +536,7 @@ function generate(model, selection, values, opts) {
     if (missing) {
       const msg = messageOf(exampleBody(model, h, responses['400']));
       const expect = { status: 400, ...(msg ? { contains: { [msg.path]: msg.text } } : {}) };
-      add({ name: `${o.request}-missing-${slug(missing.field || missing.param)}`, entry, kind: 'missing-field', ...skip,
+      add({ name: `${o.request}-missing-${slug(missing.field || missing.param)}`, entry, kind: 'missing-field', ...publicAuth, ...skip,
         params: { ...baseParams }, sources: { ...baseSources }, omit: [missing.param], expect,
         ...(msg ? {} : { review: ['no documented 400 message — the case checks the status only; add the expected message if the service documents one'] }) });
     }
@@ -574,4 +577,5 @@ function needsReview(c) {
 module.exports = {
   SpecError, slug, envPrefixFor, WRITE_SKIP, AUTO_IDS, MESSAGE_PATHS, DESTRUCTIVE_VERBS,
   loadSpec, parseSpec, listOperations, generate, generateLegacy, messageOf, needsReview,
+  baseUrlOf: model => baseUrlFor(model, []),
 };

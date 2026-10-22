@@ -90,6 +90,13 @@ test('no-token only when the operation requires auth; auth: "none", 401', () => 
   assert.strictEqual(nt.expect.status, 401);
 });
 
+test('a public operation in a token catalog: its cases carry auth "none" (no credential needed)', () => {
+  const out = M.generate(model3(), ['GET /store/inventory', 'GET /pets'], {}, { name: 'petstore' });
+  const inv = out.suite.cases.filter(c => c.entry === 'petstore.getinventory');
+  assert.ok(inv.length && inv.every(c => c.auth === 'none'), JSON.stringify(inv));
+  assert.strictEqual(out.suite.cases.find(c => c.entry === 'petstore.listpets' && c.kind === 'happy').auth, undefined);
+});
+
 test('missing-field: the first required query param or top-level body field, with omit set', () => {
   const out = M.generate(model3(), all(model3()), {}, { name: 'petstore' });
   const q = casesFor(out, 'GET /pets').find(c => c.kind === 'missing-field');

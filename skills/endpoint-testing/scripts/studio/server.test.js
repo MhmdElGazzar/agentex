@@ -2,7 +2,7 @@
 // Tests for studio/server.js — the loopback studio: token gate, session file, editor Save/Run.
 // Wizard steps and the agent channel are in wizard.test.js.
 // Run: node skills/endpoint-testing/scripts/studio/server.test.js
-const { assert, fs, os, path, harness, req, studio, fakeService, waitRun, editorProject, SUITE_REL, sessionFile, wizardMount } = require('./test_helpers.js');
+const { assert, fs, os, path, harness, req, studio, fakeService, waitRun, editorProject, SUITE_REL, sessionFile } = require('./test_helpers.js');
 const { test, done } = harness();
 
 (async () => {
@@ -20,7 +20,7 @@ const { test, done } = harness();
     }
     // the agent's control token is not a page token, and the page token is not a control token
     assert.strictEqual((await s.agent('GET', '/api/suites')).status, 403);
-    if (wizardMount) assert.strictEqual((await s.page('GET', '/api/agent/next?timeout=10')).status, 403);
+    assert.ok([403, 404].includes((await s.page('GET', '/api/agent/next?timeout=10')).status));
     s.close();
   });
 

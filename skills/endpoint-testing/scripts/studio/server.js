@@ -340,8 +340,7 @@ async function main(argv) {
     }
   } catch { /* no session, or a stale one we overwrite */ }
 
-  let wizardMount;
-  try { wizardMount = require('./wizard.js').mount; } catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e; }
+  const wizardMount = require('./wizard.js').mount;
   let st;
   try {
     st = await createStudio({ root, mode, suite: val('--suite'), spec: val('--spec'), port, lang, mount: wizardMount, onShutdown: () => setTimeout(() => process.exit(0), 300) });
