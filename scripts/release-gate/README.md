@@ -28,7 +28,14 @@ of the fresh-consumer path this gate attests).
 | `suite-check.js` | Tracker lane, after `/design-test`: the **suite-membership check**. Reads the pooled suite's members (testplan route), adds ≥ 1 pool case that is **not** a member (every pool case already a member → FAIL naming them as residue), ledgers each chosen id **before** the add, adds through the adapter's real `addCaseToSuite`, then re-reads independently — any missing id FAILS, named. `plan` (sentinel) sends nothing: the add descriptor + the planned re-read. Prints the lane's `suite-membership:` line. | 0 · 1 · 2 |
 | `teardown.js` | Settle every ledger entry into a terminal disposition — suite entries first (association removal only), then created ids (deletes via the tracker lib — Recycle Bin only) — finalize the surviving ledger copy, run the secret scan, only then remove the throwaway folder. | 0 · 3 · 1 · 2 |
 | `scan-secrets.js` | Mechanical PAT / never-name scan of gate artifacts: compares env-loaded values in memory (PATs + their base64 auth forms, org URL + org segment, project name) and reports file + line + env **key** only. | 0 · 1 hit · 2 no values |
+| `gate-plan.js` | **Which lanes this release needs** (policy Q16): reads `git diff --name-only <base>..HEAD` (`--base`, default the latest `chore: bump to` commit) and maps each file through a path-glob → lane table kept as data at the top of the script. `setup` and `wizard` always run; a change to the execution core or the shared libraries (`skills/browser-testing/`, `agents/qa-executor.md`, run merging/reporting scripts, `scripts/lib/tracker/`, `scripts/lib/project_config.js`) runs the full gate; docs/evals/tests only → `docsOnly` (gate skipped); a non-doc file the table does not know forces the full gate. Prints one JSON line `{base, head, full, docsOnly, lanes:{<lane>:{run, because}}, unmapped}`. Maintainer-only: never shipped by a host. | 0 · 2 git/usage |
 | `fixtures/` | Sentinel-mode canned reads: `story-ar.json` (generic Arabic User Story, `getWorkItem` shape) and `fields-bug.json` (`listFields` shape). Generic content only. |  |
+
+Before a gate run, `node scripts/release-gate/gate-plan.js` decides its scope: run only
+the lanes with `run: true`, and name every skipped lane with its reason (no changed file
+maps to it) in the gate record. `full: true` means all lanes; `docsOnly: true` means no gate.
+When the plan lists `unmapped` files, add them to the table rather than accepting the full
+gate silently.
 
 Run order in a gate run: `prepare` → persona follows `commands/init-test.md` + drives the
 wizard → `verify-wizard` → `inject-env` → lanes (recording every tracker create in the

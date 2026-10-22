@@ -727,6 +727,7 @@ test('m10: a claimed file (any value changed) is the user\'s — never flagged',
 // ── m11 user-field-schema — additive built-ins backfill (design #4) ──────────
 const TPL_PROJECT = JSON.parse(fs.readFileSync(
   path.join(PLUGIN_ROOT, 'templates', 'config', 'project.json'), 'utf8'));
+const { LEGACY_DEFAULTS_FIELDS } = require('./wizard/engine.js');
 
 test('m11: pre-field-schema project gains the built-in arrays; environment files byte-identical', () => {
   const dir = repo({
@@ -749,7 +750,11 @@ test('m11: pre-field-schema project gains the built-in arrays; environment files
   const proj = readJson(dir, 'config/project.json');
   assert.deepStrictEqual(proj.userFields, TPL_PROJECT.userFields,
     'built-in userFields backfilled from the template — semantics-preserving');
-  assert.deepStrictEqual(proj.defaultsFields, TPL_PROJECT.defaultsFields);
+  // Decision A-2: the template's password descriptor is secret now, but this
+  // project's environment holds the plain literal the old wizard wrote — m11
+  // backfills the FROZEN legacy plain set, never the current template.
+  assert.deepStrictEqual(proj.defaultsFields, LEGACY_DEFAULTS_FIELDS);
+  assert.ok(!proj.defaultsFields.find(f => f.key === 'password').secret, 'the legacy plain descriptor');
   assert.strictEqual(proj.name, 'pre-fields', 'existing config values untouched');
   const after = snapshot(dir);
   assert.deepStrictEqual(subset(after, 'environments/'), subset(before, 'environments/'),
@@ -796,7 +801,7 @@ test('m11: only the missing array is added when one is already present', () => {
   assert.match(r.out, /\[migrated\] user-field-schema/);
   const proj = readJson(dir, 'config/project.json');
   assert.deepStrictEqual(proj.userFields, customUsers, 'the present array is never rewritten');
-  assert.deepStrictEqual(proj.defaultsFields, TPL_PROJECT.defaultsFields, 'the missing one is backfilled');
+  assert.deepStrictEqual(proj.defaultsFields, LEGACY_DEFAULTS_FIELDS, 'the missing one is backfilled (frozen legacy set, A-2)');
 });
 
 test('m11 + init: fresh scaffold carries the field arrays from the template', () => {
@@ -857,7 +862,7 @@ test('m05: entries already covered under another spelling are not rewritten', ()
 test('m05: the documented commit opt-in (!.agentex/cache/) is never re-ignored over', () => {
   const dir = repo({
     'test/suite1/smoke.md': SPEC_02,
-    '.gitignore': '.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n!.agentex/cache/\n',
+    '.gitignore': '.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n!.agentex/cache/\n.agentex/scratch/\n',
     '.env': 'AZURE_PAT=\n',
   });
   const before = readText(dir, '.gitignore');
@@ -894,12 +899,12 @@ test('m05 + init: fresh scaffold gitignores sessions and scratch, not just .env'
 
 // ── m12 qa-records-and-workflow — the plugin-owned config blocks (R6) ────────
 // A 0.22/0.23-shaped project: today's full scaffold, but config/project.json
-// predates the four plugin blocks and its provider block has no workflow.
+// predates the two plugin blocks and its provider block has no workflow.
 // Every expectation reads STRUCTURED_DEFAULTS — the default QA watchlist paths
 // live only in that constant.
 const { STRUCTURED_DEFAULTS: SD, withPluginConfigBlocks } = require('./lib/project_config.js');
 const M12 = require('./migrations/12-qa-records-and-workflow.js');
-const PLUGIN_BLOCKS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+const PLUGIN_BLOCKS = ['testDesign', 'qaRecords'];
 const QA_FOLDER = path.posix.dirname(SD.qaRecords.pendingQuestions);
 const AZ_BLOCK = { org: 'https://dev.azure.com/exampleorg', project: 'Sample Project', team: 'QA Team', assignee: '' };
 const JI_BLOCK = { site: 'example', project: 'PROJ', board: '42', assignee: '' };
@@ -934,7 +939,7 @@ function m12ctx(dir) {
   };
 }
 
-test('m12: a pre-1.0 ADO project gains the four blocks and azure.workflow; only config/project.json changes; no watchlist file', () => {
+test('m12: a pre-1.0 ADO project gains the two blocks and azure.workflow; only config/project.json changes; no watchlist file', () => {
   const dir = preOneZero({ azure: { ...AZ_BLOCK } });
   const beforeCfg = readJson(dir, 'config/project.json');
   const before = snapshot(dir);
@@ -944,6 +949,7 @@ test('m12: a pre-1.0 ADO project gains the four blocks and azure.workflow; only 
   assert.match(r.out, /^\[migrated\] qa-records-and-workflow — /m);
   const cfg = readJson(dir, 'config/project.json');
   for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k], `${k} added from the defaults`);
+  assert.ok(!('testingTasks' in cfg) && !('estimation' in cfg), 'decision #13: no task list or estimation paths in project.json');
   assert.deepStrictEqual(cfg.azure, { ...AZ_BLOCK, workflow: SD.workflow }, 'azure keeps its keys and gains the EMPTY workflow');
   assert.ok(!('jira' in cfg), 'never creates a provider block');
   assert.ok(!('reproSummaryRow' in cfg.azure), 'reproSummaryRow is never written');
@@ -975,7 +981,6 @@ test('m12: a second run is a zero-write no-op', () => {
 test('m12: customized blocks are preserved; only the missing ones are added', () => {
   const custom = {
     azure: { ...AZ_BLOCK, areaPath: 'Sample Project\\QA', workflow: { inTestState: 'In QA', devDoneStates: ['Dev Complete'], closeOut: { state: 'Accepted' } } },
-    testingTasks: [{ stage: 'automation', enabled: false }],
     testDesign: { approval: 'per-story' },
   };
   const dir = preOneZero(JSON.parse(JSON.stringify(custom)));
@@ -985,11 +990,9 @@ test('m12: customized blocks are preserved; only the missing ones are added', ()
   assert.match(r.out, /\[migrated\] qa-records-and-workflow/);
   const cfg = readJson(dir, 'config/project.json');
   assert.deepStrictEqual(cfg.azure, custom.azure, 'a customized workflow is never rewritten');
-  assert.deepStrictEqual(cfg.testingTasks, custom.testingTasks, 'a customized testingTasks is never rewritten');
-  assert.deepStrictEqual(cfg.testDesign, custom.testDesign);
-  assert.deepStrictEqual(cfg.estimation, SD.estimation, 'the missing block is added');
-  assert.deepStrictEqual(cfg.qaRecords, SD.qaRecords);
-  assert.deepStrictEqual(Object.keys(cfg), [...Object.keys(beforeCfg), 'estimation', 'qaRecords'], 'key order kept');
+  assert.deepStrictEqual(cfg.testDesign, custom.testDesign, 'a customized testDesign is never rewritten');
+  assert.deepStrictEqual(cfg.qaRecords, SD.qaRecords, 'the missing block is added');
+  assert.deepStrictEqual(Object.keys(cfg), [...Object.keys(beforeCfg), 'qaRecords'], 'key order kept');
   for (const k of Object.keys(beforeCfg)) assert.deepStrictEqual(cfg[k], beforeCfg[k], `pre-existing ${k} parsed-equal`);
 });
 
@@ -1003,7 +1006,7 @@ test('m12: a Jira project gets jira.workflow and no azure key', () => {
   for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k]);
 });
 
-test('m12: a tracker-less project gets the four blocks and no provider key', () => {
+test('m12: a tracker-less project gets the two blocks and no provider key', () => {
   const dir = preOneZero({});
   const r = run(dir);
   assert.strictEqual(r.code, 0, r.out);
@@ -1012,7 +1015,7 @@ test('m12: a tracker-less project gets the four blocks and no provider key', () 
   assert.ok(!('azure' in cfg) && !('jira' in cfg), 'no provider block is created');
   for (const k of PLUGIN_BLOCKS) assert.deepStrictEqual(cfg[k], SD[k]);
   const all = preOneZero({}, { omit: [] });
-  assert.strictEqual(M12.detect(m12ctx(all)), false, 'all four present + no tracker: nothing to do');
+  assert.strictEqual(M12.detect(m12ctx(all)), false, 'both present + no tracker: nothing to do');
 });
 
 test('m12: two provider blocks are left alone and flagged; the top-level blocks are still added', () => {
@@ -1056,16 +1059,18 @@ test('m12 uses the ONE shared function: apply == withPluginConfigBlocks on the p
   }
 });
 
-test('migrations 01→12 chain on a 0.10-era project: m12 applies after m11, the stamp moves, a second run is a no-op', () => {
+test('migrations 01→13 chain on a 0.10-era project: m12 applies after m11, m13 last, the stamp moves, a second run is a no-op', () => {
   const dir = fixture010();
   const r = run(dir);
   assert.strictEqual(r.code, 0, r.out);
   const ids = [...r.out.matchAll(/^\[migrated\] ([\w-]+)/gm)].map((m) => m[1]);
-  assert.strictEqual(ids[ids.length - 1], 'qa-records-and-workflow', `m12 runs last: ${ids.join(', ')}`);
+  assert.strictEqual(ids[ids.length - 1], 'claude-md-layout-block', `m13 runs last: ${ids.join(', ')}`);
+  assert.strictEqual(ids[ids.length - 2], 'qa-records-and-workflow', `m12 right before it: ${ids.join(', ')}`);
   const order = fs.readdirSync(path.join(__dirname, 'migrations')).filter((f) => /^\d{2}-.*\.js$/.test(f)).sort()
     .map((f) => require(path.join(__dirname, 'migrations', f)).id);
-  assert.strictEqual(order[order.length - 1], 'qa-records-and-workflow');
-  assert.strictEqual(order.length, 12, 'twelve migrations, 01→12');
+  assert.strictEqual(order[order.length - 1], 'claude-md-layout-block');
+  assert.strictEqual(order[order.length - 2], 'qa-records-and-workflow');
+  assert.strictEqual(order.length, 13, 'thirteen migrations, 01→13');
   const pos = ids.map((id) => order.indexOf(id));
   assert.deepStrictEqual(pos, [...pos].sort((a, b) => a - b), 'applied in file order');
   const cfg = readJson(dir, 'config/project.json');
@@ -1109,6 +1114,417 @@ test('fresh vs migrated (×3: none, ADO, Jira): identical new config keys; no QA
       assert.ok(!exists(dir, QA_FOLDER), `${label}: QA watchlist files are created on first use only — same on both sides`);
     }
   }
+});
+
+// The agent scratch location (.agentex/scratch/) reaches existing projects through
+// m05's state detection — no new migration; on a stamped project it arrives with
+// the next version bump.
+const GI_BEFORE_SCRATCH = 'node_modules/\n.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n.agentex/cache/\nmy-notes/\n';
+
+test('m05: a project stamped at an older version gains ONLY .agentex/scratch/, order kept, re-run unchanged', () => {
+  const dir = proj();
+  runInit(dir);
+  addFiles(dir, { '.gitignore': GI_BEFORE_SCRATCH, '.agentex/version.json': JSON.stringify({ version: '0.23.0' }) + '\n' });
+  gitInit(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] gitignore-secrets — \.gitignore — \.agentex\/scratch\/ appended/);
+  const gi = readText(dir, '.gitignore');
+  assert.ok(gi.startsWith(GI_BEFORE_SCRATCH), 'existing lines and their order untouched');
+  assert.deepStrictEqual(gi.slice(GI_BEFORE_SCRATCH.length).split('\n').filter(l => l && !l.startsWith('#')), ['.agentex/scratch/']);
+  commitAll(dir);
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.23.0' }) + '\n');
+  commitAll(dir);
+  run(dir);
+  assert.strictEqual(readText(dir, '.gitignore'), gi, 'second run changes nothing');
+});
+
+test('m05: an equivalent spelling or a deliberate un-ignore of the scratch location is left unchanged', () => {
+  for (const line of ['.agentex/scratch', '!.agentex/scratch/']) {
+    const dir = proj();
+    runInit(dir);
+    addFiles(dir, { '.gitignore': GI_BEFORE_SCRATCH + line + '\n', '.agentex/version.json': JSON.stringify({ version: '0.23.0' }) + '\n' });
+    gitInit(dir);
+    const before = readText(dir, '.gitignore');
+    const r = run(dir);
+    assert.strictEqual(r.code, 0, r.out);
+    assert.ok(!/\[migrated\] gitignore-secrets/.test(r.out), line);
+    assert.strictEqual(readText(dir, '.gitignore'), before, `${line}: byte-identical`);
+  }
+});
+
+// ── optional pre-commit secret-scan hook: an offer or a consented install ─────
+// Runs before the version fast path (so a stamped project gets it), never a
+// migration, never touches the report counters or the stamp.
+const HOOK_FILE = '.git/hooks/pre-commit';
+function stampedCurrent() {
+  const dir = proj();
+  runInit(dir);
+  gitInit(dir);
+  return dir;
+}
+
+test('[hook] offer on a project stamped at the installed version (fast path); stamp unchanged, nothing installed', () => {
+  const dir = stampedCurrent();
+  const stamp = readText(dir, '.agentex/version.json');
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[hook\] offer .*--install-pre-commit-hook/m);
+  assert.match(r.out, /already up to date/i);
+  assert.strictEqual(readText(dir, '.agentex/version.json'), stamp);
+  assert.ok(!exists(dir, HOOK_FILE), 'no flag → never installs');
+});
+
+test('--install-pre-commit-hook on a stamped project → installed, still "already up to date", exit 0', () => {
+  const dir = stampedCurrent();
+  const r = run(dir, '--install-pre-commit-hook');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[hook\] installed \(/m);
+  assert.match(r.out, /already up to date/i);
+  assert.match(readText(dir, HOOK_FILE), /agentex-pre-commit-hook v1/);
+  const again = run(dir, '--install-pre-commit-hook');
+  assert.match(again.out, /^\[hook\] already installed/m);
+  assert.match(run(dir).out, /^\[hook\] installed/m, 'no offer once it is in place');
+});
+
+test('[hook] an existing foreign hook is left untouched, with the docs pointer', () => {
+  const dir = stampedCurrent();
+  addFiles(dir, { [HOOK_FILE]: '#!/bin/sh\necho mine\n' });
+  const r = run(dir, '--install-pre-commit-hook');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[hook\] existing hook left untouched.*#calling-the-scan-from-an-existing-hook/m);
+  assert.strictEqual(readText(dir, HOOK_FILE), '#!/bin/sh\necho mine\n');
+});
+
+test('[hook] on a migrating project: the consent install never changes [manual] counts or the stamp', () => {
+  const a = fixture010();
+  const b = fixture010();
+  const plain = run(a);
+  const consented = run(b, '--install-pre-commit-hook');
+  assert.strictEqual(plain.code, 0, plain.out);
+  assert.strictEqual(consented.code, plain.code);
+  const strip = (out, dir) => out.split('\n').filter(l => !l.startsWith('[hook]')).join('\n').split(dir).join('<dir>');
+  assert.strictEqual(strip(consented.out, b), strip(plain.out, a), 'identical report apart from the [hook] line');
+  assert.strictEqual(readJson(b, '.agentex/version.json').version, INSTALLED);
+  assert.ok(exists(b, HOOK_FILE) && !exists(a, HOOK_FILE));
+});
+
+// ── m13: the AgenTeX layout block in CLAUDE.md (project-layout-contract R6) ────
+const layout = require('./lib/layout.js');
+const M13 = require('./migrations/13-claude-md-layout-block.js');
+const { CLAUDE_MD_BULLET } = require('./lib/scaffold.js');
+const BLOCK = (eol = '\n') => layout.renderBlock({ eol });
+const USER_MD = '# My project\n\n- my own rule — قاعدة\n';
+
+// A project on the previous release's conventions: a fresh scaffold, CLAUDE.md replaced by
+// `claudeMd` (null = no file), stamped at an older version (0.24.0), committed.
+function previousRelease(claudeMd) {
+  const dir = proj();
+  runInit(dir);
+  if (claudeMd === null) fs.rmSync(path.join(dir, 'CLAUDE.md'));
+  else fs.writeFileSync(path.join(dir, 'CLAUDE.md'), claudeMd);
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.24.0' }, null, 2) + '\n');
+  gitInit(dir);
+  return dir;
+}
+const claudeBytes = (dir) => fs.readFileSync(path.join(dir, 'CLAUDE.md'));
+const m13ctx = (dir) => {
+  const lines = [];
+  return { projectRoot: dir, lines, report: {
+    migrated: (id, d) => lines.push(`[migrated] ${id} — ${d}`), flag: (m) => lines.push(`[flag] ${m}`),
+    manual: (m) => lines.push(`[manual] ${m}`), ok: (m) => lines.push(`[ok] ${m}`) } };
+};
+
+test('m13: detect is true without the block; apply appends it; a second detect is false', () => {
+  const dir = proj({ 'CLAUDE.md': USER_MD });
+  const ctx = m13ctx(dir);
+  assert.strictEqual(M13.detect(ctx), true);
+  M13.apply(ctx);
+  assert.deepStrictEqual(ctx.lines, ['[migrated] claude-md-layout-block — CLAUDE.md += AgenTeX layout block']);
+  assert.strictEqual(readText(dir, 'CLAUDE.md'), `${USER_MD}\n${BLOCK()}\n`);
+  assert.strictEqual(M13.detect(ctx), false);
+  assert.strictEqual(M13.detect(m13ctx(proj())), true, 'no CLAUDE.md at all');
+});
+
+test('m13: a stale pristine block is refreshed in place; detect is false afterwards', () => {
+  const stale = layout.renderBlock({ routes: layout.ROUTES.slice(0, -1) });
+  const dir = proj({ 'CLAUDE.md': `${USER_MD}\n${stale}\n- after\n` });
+  const ctx = m13ctx(dir);
+  assert.strictEqual(M13.detect(ctx), true);
+  M13.apply(ctx);
+  assert.deepStrictEqual(ctx.lines, ['[migrated] claude-md-layout-block — CLAUDE.md — AgenTeX layout block refreshed']);
+  assert.strictEqual(readText(dir, 'CLAUDE.md'), `${USER_MD}\n${BLOCK()}\n- after\n`);
+  assert.strictEqual(M13.detect(ctx), false);
+});
+
+test('m13 through the engine: the existing executions/ bullet stays byte-identical and in place; [flag]-free', () => {
+  const start = `${USER_MD}\n${CLAUDE_MD_BULLET}`;
+  const dir = previousRelease(start);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[migrated\] claude-md-layout-block — CLAUDE\.md \+= AgenTeX layout block$/m);
+  assert.ok(!/\[migrated\] claude-md-bullet/.test(r.out), 'm06 has nothing to do');
+  const out = claudeBytes(dir);
+  assert.ok(out.subarray(0, Buffer.byteLength(start)).equals(Buffer.from(start)), 'every byte before the block, bullet included');
+  assert.strictEqual(out.toString(), `${start}\n${BLOCK()}\n`);
+  const text = out.toString();
+  assert.strictEqual(text.split('test-run artifacts').length - 1, 1, 'the executions/ guidance appears once');
+  assert.ok(!/\[flag\]/.test(r.out));
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED);
+});
+
+test('m13 through the engine: a pristine block rendered without the plugin-learnings and promote rows is refreshed; bytes outside the block are unchanged', () => {
+  const without = layout.renderBlock({ routes: layout.ROUTES.filter((r) => r.id !== 'plugin-learnings' && r.id !== 'promote') });
+  assert.ok(!without.includes('plugin-learnings.md') && !without.includes('[agentex:promote]'), 'the fixture really lacks both rows');
+  const before = `${USER_MD}\n${CLAUDE_MD_BULLET}\n`; const after = '\n- my later rule\n';
+  const dir = previousRelease(`${before}${without}${after}`);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] claude-md-layout-block — CLAUDE\.md — AgenTeX layout block refreshed/);
+  assert.ok(!/\[flag\] CLAUDE\.md/.test(r.out), 'a pristine block is refreshed, never flagged');
+  const out = claudeBytes(dir).toString();
+  assert.ok(out.startsWith(before) && out.endsWith(after), 'every byte outside the block unchanged');
+  assert.strictEqual(out, `${before}${BLOCK()}${after}`);
+  assert.ok(out.includes('.agentex/plugin-learnings.md') && out.includes('[agentex:promote]'), 'the block now carries both rows');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED);
+  assert.ok(!exists(dir, '.agentex/plugin-learnings.md'), 'the migration never creates the learnings file');
+});
+
+test('m13: an edited block → [flag] naming the file and the fix, zero bytes changed, the stamp still moves', () => {
+  const edited = BLOCK().replace('Keep your own rules', 'Keep MY own rules');
+  const start = `${USER_MD}\n${edited}\n`;
+  const dir = previousRelease(start);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(r.out.includes(`[flag] ${layout.EDITED_FLAG}`), r.out);
+  assert.ok(!/\[manual\]/.test(r.out), 'a flag, never a manual item');
+  assert.match(r.out, /\[migrated\] claude-md-bullet/, 'the bullet is still added — outside the block');
+  assert.ok(claudeBytes(dir).subarray(0, Buffer.byteLength(start)).equals(Buffer.from(start)), 'the edited block is never touched');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'a flag never withholds the stamp');
+});
+
+test('m13: broken markers → [flag], zero writes', () => {
+  const start = `${USER_MD}\n${BLOCK()}\n${BLOCK()}\n${CLAUDE_MD_BULLET}`;
+  const dir = previousRelease(start);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(r.out.includes(`[flag] ${layout.MALFORMED_FLAG}`), r.out);
+  assert.strictEqual(readText(dir, 'CLAUDE.md'), start);
+});
+
+test('m06 + m13 through the engine: a dangling CLAUDE.md link → one [flag] each, zero writes, the stamp still moves', () => {
+  const dir = previousRelease(USER_MD);
+  fs.rmSync(path.join(dir, 'CLAUDE.md'));
+  try { fs.symlinkSync('docs/AGENTS.md', path.join(dir, 'CLAUDE.md')); } catch { console.log('  (skipped: no symlinks here)'); return; }
+  commitAll(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  const flags = r.out.split('\n').filter((l) => l.startsWith('[flag] CLAUDE.md is a symlink to docs/AGENTS.md, which does not exist'));
+  assert.strictEqual(flags.length, 2, r.out);
+  assert.ok(flags[0].includes('the executions/ guidance was not written') && flags[1].includes('the AgenTeX block was not written'), r.out);
+  assert.ok(!/\[migrated\] claude-md-(bullet|layout-block)/.test(r.out), r.out);
+  assert.strictEqual(fs.readlinkSync(path.join(dir, 'CLAUDE.md')), 'docs/AGENTS.md', 'the link is untouched');
+  assert.ok(!fs.existsSync(path.join(dir, 'docs')), 'no target (or its folder) was created');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'a flag never withholds the stamp');
+});
+
+test('m13: a project with no CLAUDE.md gets one with the executions/ bullet and the block', () => {
+  const dir = previousRelease(null);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.strictEqual(readText(dir, 'CLAUDE.md'), `${CLAUDE_MD_BULLET}\n${BLOCK()}\n`);
+});
+
+test('m13: config, environments, specs and .env are never opened for writing (byte-identical)', () => {
+  const dir = previousRelease(USER_MD);
+  const before = snapshot(dir);
+  assert.strictEqual(run(dir).code, 0);
+  const after = snapshot(dir);
+  for (const prefix of ['config/', 'environments/', 'test/', 'integration/', '.env']) {
+    assert.deepStrictEqual(subset(after, prefix), subset(before, prefix), prefix);
+  }
+});
+
+// R6.3: fresh /init-test and a migrated project end with the same CLAUDE.md bytes.
+test('fresh == migrated: the same CLAUDE.md bytes for none / user text / bullet already (LF and CRLF)', () => {
+  const cases = [
+    ['no CLAUDE.md', null],
+    ['user text, no bullet', USER_MD],
+    ['bullet already', `${USER_MD}\n${CLAUDE_MD_BULLET}`],
+    ['user text, no bullet (CRLF)', USER_MD.replace(/\n/g, '\r\n')],
+    ['bullet already (CRLF)', `${USER_MD}\n${CLAUDE_MD_BULLET}`.replace(/\n/g, '\r\n')],
+  ];
+  for (const [label, start] of cases) {
+    const fresh = proj(start === null ? {} : { 'CLAUDE.md': start });
+    runInit(fresh);
+    const migrated = previousRelease(start);
+    const r = run(migrated);
+    assert.strictEqual(r.code, 0, `${label}: ${r.out}`);
+    assert.ok(claudeBytes(migrated).equals(claudeBytes(fresh)), `${label}: byte-equal\nfresh:\n${claudeBytes(fresh)}\nmigrated:\n${claudeBytes(migrated)}`);
+    assert.strictEqual(layout.parseBlock(claudeBytes(fresh)).state, 'current', label);
+  }
+});
+
+test('m13 on the 01→13 chain from a pre-git-ready legacy project: the block arrives, the bullet once', () => {
+  const dir = fixture010();
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  const text = readText(dir, 'CLAUDE.md');
+  assert.ok(text.startsWith('# My project\n\nSome user guidance.\n'), 'user lines first, untouched');
+  assert.strictEqual(layout.parseBlock(Buffer.from(text)).state, 'current');
+  assert.strictEqual(text.split('test-run artifacts').length - 1, 1);
+});
+
+// R1.6 extension point: a row added to the plugin's table (a test-only route injected by a
+// --require preload, standing in for field-feedback-loop) reaches an existing project
+// through /update-agentex; the text outside the block is unchanged.
+test('an extra ROUTES row reaches an existing project through the engine; bytes outside the block unchanged', () => {
+  const before = `${USER_MD}\n${CLAUDE_MD_BULLET}\n`;
+  const after = '\n- a rule after the block\n';
+  const dir = previousRelease(`${before}${BLOCK()}${after}`);
+  const seamDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-seam-'));
+  const seam = path.join(seamDir, 'extra-route.js');
+  fs.writeFileSync(seam, `require(${JSON.stringify(path.join(__dirname, 'lib', 'layout.js'))}).ROUTES.push(` +
+    `{ id: 'test-extra', write: 'A test-only extra row', to: '\`extra/\`', owns: ['extra/'] });\n`);
+  const out = execFileSync(process.execPath, ['--require', seam, MIGRATE, dir], { encoding: 'utf8' });
+  ALL_OUTPUT.push(out);
+  assert.match(out, /^\[migrated\] claude-md-layout-block — CLAUDE\.md — AgenTeX layout block refreshed$/m);
+  const text = readText(dir, 'CLAUDE.md');
+  assert.ok(text.startsWith(before) && text.endsWith(after), 'outside the markers: byte-identical');
+  assert.ok(text.includes('| A test-only extra row | `extra/` |'));
+});
+
+// ── stray-files check: a report on every run, or the consented moves ─────────
+// Runs right after the [hook] slot, before the version fast path; never touches the report
+// counters or the stamp.
+test('[stray] report on a project stamped at the installed version (fast path): paths listed, stamp unchanged, zero writes', () => {
+  const dir = stampedCurrent();
+  addFiles(dir, { 'probe-login.mjs': 'x\n', 'ado_dump.json': '{}\n' });
+  commitAll(dir);
+  addFiles(dir, { 'grid-out.txt': 'x\n' });
+  const stamp = readText(dir, '.agentex/version.json');
+  const before = snapshot(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[stray\] 3 files outside the project layout \(paths only; nothing was moved\)$/m);
+  assert.match(r.out, /^\[stray\]     probe-login\.mjs \(tracked\)$/m);
+  assert.match(r.out, /^\[stray\] plan [0-9a-f]{12} — ask the user once; only on an explicit yes, re-run with --move-strays=[0-9a-f]{12}$/m);
+  assert.match(r.out, /already up to date/i);
+  assert.ok(r.out.indexOf('[stray]') < r.out.indexOf('already up to date'), 'before the fast path');
+  assert.strictEqual(readText(dir, '.agentex/version.json'), stamp);
+  assert.deepStrictEqual(snapshot(dir), before, 'report-only: zero writes');
+});
+
+test('[stray] none on a fresh scaffold', () => {
+  const r = run(stampedCurrent());
+  assert.match(r.out, /^\[stray\] none — every file is where the layout puts it$/m);
+});
+
+test('[stray] on a migrating project: strays never change the [manual] counts, the summary or the stamp', () => {
+  const a = fixture010();
+  const b = fixture010();
+  addFiles(b, { 'probe-x.mjs': 'x\n', 'explore-y.mjs': 'y\n' });
+  const plain = run(a);
+  const withStrays = run(b);
+  assert.strictEqual(withStrays.code, plain.code, withStrays.out);
+  const strip = (out, dir) => out.split('\n').filter(l => !l.startsWith('[stray]')).join('\n').split(dir).join('<dir>');
+  assert.strictEqual(strip(withStrays.out, b), strip(plain.out, a), 'identical report apart from the [stray] lines');
+  assert.match(withStrays.out, /^\[stray\]     probe-x\.mjs$/m);
+  assert.strictEqual(readJson(b, '.agentex/version.json').version, INSTALLED);
+  assert.ok(exists(b, 'probe-x.mjs') && exists(b, 'explore-y.mjs'), 'nothing moved without the flag');
+});
+
+const planOf = (out) => (out.match(/^\[stray\] plan ([0-9a-f]{12})/m) || [])[1];
+
+test('--move-strays=<plan> on a stamped project: moves exactly the listed set, then "already up to date", exit 0', () => {
+  const dir = stampedCurrent();
+  addFiles(dir, { 'probe-login.mjs': 'p\n' });
+  commitAll(dir);
+  addFiles(dir, { 'grid-out.txt': 'g\n' });
+  const plan = planOf(run(dir).out);
+  assert.ok(plan, 'the report carries a plan');
+  const stamp = readText(dir, '.agentex/version.json');
+  const r = run(dir, `--move-strays=${plan}`);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[stray\] moved probe-login\.mjs → \.agentex\/scratch\/strays\/\d{8}-\d{6}\/probe-login\.mjs$/m);
+  assert.match(r.out, /^\[stray\] 2 moved \(1 tracked: commit their removal\), 0 added to knowledge\/ with INDEX\.md lines$/m);
+  assert.match(r.out, /already up to date/i);
+  assert.ok(!exists(dir, 'probe-login.mjs') && !exists(dir, 'grid-out.txt'));
+  assert.strictEqual(readText(dir, '.agentex/version.json'), stamp, 'the stamp is untouched');
+  assert.match(run(dir).out, /^\[stray\] none/m, 'a later run reports nothing');
+});
+
+test('--move-strays with a stale plan moves nothing and prints the new plan', () => {
+  const dir = stampedCurrent();
+  addFiles(dir, { 'probe-a.mjs': 'a\n' });
+  const plan = planOf(run(dir).out);
+  addFiles(dir, { 'probe-b.mjs': 'b\n' });
+  const r = run(dir, `--move-strays=${plan}`);
+  assert.match(r.out, /^\[stray\] the set changed since the report — nothing moved; new plan [0-9a-f]{12}/m);
+  assert.ok(exists(dir, 'probe-a.mjs') && exists(dir, 'probe-b.mjs'));
+});
+
+test('--move-strays on a project with a pending migration: a tracked move prints the one preceding step, then the clean-tree guard aborts', () => {
+  const dir = fixture010();
+  assert.strictEqual(run(dir).code, 0);
+  commitAll(dir);
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.24.0' }) + '\n');
+  addFiles(dir, { 'probe-old.mjs': 'x\n' });
+  commitAll(dir);
+  const plan = planOf(run(dir).out);
+  commitAll(dir); // the migration's stamp refresh from the report run
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.24.0' }) + '\n');
+  commitAll(dir);
+  const r = run(dir, `--move-strays=${plan}`);
+  assert.match(r.out, /^\[stray\] moved probe-old\.mjs → /m);
+  assert.match(r.out, /^\[stray\] moved 1 file; commit the moves, then re-run \/update-agentex to finish the migration$/m);
+  assert.strictEqual(r.code, 2, r.out);
+  assert.match(r.out, /\[abort\] working tree has uncommitted changes/);
+  assert.ok(!exists(dir, 'probe-old.mjs'), 'the yes was not lost: the moves happened');
+});
+
+// ── config/estimation.json — created only by an approved estimation run ──────
+// No migration and no scaffold step creates it; once it exists, /update-agentex
+// and an /init-test re-run leave it byte-identical (invariant 11).
+const ESTIMATION = 'config/estimation.json';
+const ESTIMATION_BYTES = '{\n  "schemaVersion": 1,\n  "tasks": [\n    { "name": "Requirement Review", "enabled": true, "minHours": 0.5, "maxHours": 2 }\n  ],\n' +
+  '  "factors": { "Scenarios / ACs": 1 },\n  "source": { "kind": "history", "sprints": 2, "note": "hand-edited" }\n}\n';
+
+test('estimation file: a legacy-era project migrates with no config/estimation.json created', () => {
+  const dir = fixture010();
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\]/);
+  assert.ok(!exists(dir, ESTIMATION), 'no migration creates the estimation file');
+});
+
+test('estimation file: a project on the previous release\'s conventions migrates with no config/estimation.json created', () => {
+  const dir = proj();
+  runInit(dir);
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.22.0' }, null, 2) + '\n');
+  gitInit(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.ok(!exists(dir, ESTIMATION), 'neither a fresh scaffold nor a migration creates it');
+});
+
+test('estimation file: an existing config/estimation.json is byte-identical across /update-agentex and an /init-test re-run', () => {
+  const dir = fixture010();
+  addFiles(dir, { [ESTIMATION]: ESTIMATION_BYTES });
+  commitAll(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.strictEqual(readText(dir, ESTIMATION), ESTIMATION_BYTES, 'migrate leaves it byte-identical');
+  commitAll(dir);
+  runInit(dir);
+  assert.strictEqual(readText(dir, ESTIMATION), ESTIMATION_BYTES, 'an /init-test re-run leaves it byte-identical');
+  const fresh = proj({ [ESTIMATION]: ESTIMATION_BYTES });
+  runInit(fresh);
+  gitInit(fresh);
+  fs.writeFileSync(path.join(fresh, '.agentex', 'version.json'), JSON.stringify({ version: '0.22.0' }, null, 2) + '\n');
+  commitAll(fresh);
+  assert.strictEqual(run(fresh).code, 0);
+  assert.strictEqual(readText(fresh, ESTIMATION), ESTIMATION_BYTES);
 });
 
 // ── secrecy ───────────────────────────────────────────────────────────────────

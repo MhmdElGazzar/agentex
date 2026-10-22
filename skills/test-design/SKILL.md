@@ -4,13 +4,11 @@ description: >
   Designs test cases for User Stories on the configured tracker — Azure DevOps or Jira Cloud:
   analyze a story's acceptance criteria into test conditions, map them to test case titles,
   create the test artifacts (ADO Test Cases with structured steps, or the Jira issue type the
-  user chooses — Jira has no native Test Case type) and link them to the parent story —
-  validated first, then ONE consolidated approval, through bundled REST scripts (no Azure CLI,
-  no acli). Use this skill whenever the user wants to:
-  - Analyze a user story and identify test conditions (what to test)
+  user chooses — Jira has no native Test Case type) and link them to the parent story, behind
+  ONE consolidated approval. Use this skill whenever the user wants to:
+  - Analyze a user story and identify test conditions
   - Map AC scenarios to test case titles using a naming convention
   - Create test cases in ADO with proper steps, or design test cases for a Jira story
-  - Link test cases to their parent story
   - Review whether a story's ACs are fully covered by test cases
   Trigger on phrases like: "create test cases for story", "design tests for", "design test
   cases for a Jira story", "what test cases do I need", "analyze story for testing", "map ACs
@@ -192,10 +190,12 @@ the map, a persona missing because the conventions file is incomplete, no assign
 is asked in ONE AskUserQuestion **before** validation, never as a series of asks. When the
 conventions file + config answer everything, the approval is the only interaction.
 
-1. Build the spec (`storyId`, `assignee`, `cases` with structured steps), write it to the
-   **OS temp dir**, and dry-run:
+1. Build the spec (`storyId`, `assignee`, `cases` with structured steps), write it to
+   `.agentex/scratch/cases.json` — intermediate files go **only** in `.agentex/scratch/`
+   (create the folder if it is missing; it is gitignored agent scratch), never anywhere else
+   in the project (`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`) — and dry-run:
    ```bash
-   node …/create-cases.js --spec "$TMP/cases.json" [--allow-duplicate]
+   node …/create-cases.js --spec ".agentex/scratch/cases.json" [--allow-duplicate]
    ```
    Exit 2 = blocked: surface the reasons (duplicate Test Case IDs, bad steps, stale-cache
    options with a `--refresh-fields` offer), correct for the run, re-run — a failure-path

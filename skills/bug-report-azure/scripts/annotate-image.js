@@ -4,7 +4,8 @@
 // correct for comparison, and a dark-red one-line summary banner above the image. The
 // agent supplies only boxes + text (SKILL.md Phase A step 3); this script owns the look.
 //
-// Renders through the project's own playwright-cli (<cwd>/node_modules/@playwright/cli,
+// Renders through the project's own playwright-cli (node_modules/@playwright/cli in the cwd
+// or the nearest parent folder that has it,
 // run as `node <bin>`: no npx — which would fetch the deprecated `playwright-cli` package
 // when it is missing — and no shell, so no cmd quoting) in its own -s= session:
 // open -> run-code -> close. run-code serves the screenshot through page.route and loads
@@ -16,9 +17,15 @@
 // Usage: node annotate-image.js --spec <file>.json
 //   { "image": "<png|jpg>", "banner": "<the bug's one-line summary>",
 //     "boxes": [{ "x", "y", "width", "height", "label", "ok"?: true }] }
-//   Box values are % of the image (the model sees large screenshots downscaled) and are
-//   clamped into it. ok:true = green (correct), default red (the defect); the script
-//   appends the mark.
+//   Box values are % of the image (the model sees large screenshots downscaled); a box
+//   overhanging an edge is clipped to its visible part, one entirely outside is bad-spec.
+//   ok:true = green (correct), default red (the defect); the script appends the mark.
+// Limits:
+//   - `image` resolves against the cwd (the project root), NOT the spec's folder; a path
+//     that does not resolve is image-invalid (exit 2).
+//   - PNG and JPEG only (check-image.js decides; content wins over the extension).
+//   - Chromium caps one capture at ~16,384 px tall (banner included): a taller screenshot
+//     fails as render-failed (exit 1), and the raw file is attached alone.
 // Writes <specDir>/<specStem>.annotated.png: never the source, and a re-render replaces it.
 //
 // Output: ONE JSON line. Exit codes:
@@ -51,6 +58,7 @@ function specProblems(spec) {
   else spec.boxes.forEach((b, i) => {
     const nums = b && ['x', 'y', 'width', 'height'].every((k) => Number.isFinite(b[k]));
     if (!nums || b.width <= 0 || b.height <= 0) problems.push(`boxes[${i}]: x, y, width, height must be numbers (% of the image), width/height > 0`);
+    else if (b.x >= 100 || b.y >= 100 || b.x + b.width <= 0 || b.y + b.height <= 0) problems.push(`boxes[${i}] lies entirely outside the image`);
     if (!b || typeof b.label !== 'string' || !b.label.trim()) problems.push(`boxes[${i}]: label must be a non-empty string`);
   });
   return problems;
@@ -59,9 +67,10 @@ function specProblems(spec) {
 // The overlay page. The viewport is set to the image width, so 1vw = 1% of the image.
 function overlayHtml(spec) {
   const boxes = spec.boxes.map((raw) => {
-    const x = Math.min(Math.max(raw.x, 0), 99);
-    const y = Math.min(Math.max(raw.y, 0), 99);
-    const b = { ...raw, x, y, width: Math.min(raw.width, 100 - x), height: Math.min(raw.height, 100 - y) };
+    // Clip to the visible part: an overhanging box keeps its on-image edges, never moves.
+    const x0 = Math.max(raw.x, 0), y0 = Math.max(raw.y, 0);
+    const x1 = Math.min(raw.x + raw.width, 100), y1 = Math.min(raw.y + raw.height, 100);
+    const b = { ...raw, x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
     const color = b.ok ? GREEN : RED;
     const right = b.x + b.width / 2 > 50; // right half: hang the label off the box's right edge
     const place = [
@@ -82,15 +91,25 @@ function overlayHtml(spec) {
     + `<div id="i"><img src="http://agentex.invalid/i">${boxes}</div></div>`;
 }
 
-// The project's own @playwright/cli, or null when it is not installed there.
+// The project's own @playwright/cli bin: <cwd>/node_modules first, then each parent folder's
+// (a hoisted install, or a run from a subfolder), the same walk as test-execution's
+// preflight.js probePlaywrightPackage. null when none is installed.
+function findCliBin(cwd) {
+  for (let d = path.resolve(cwd); ; d = path.dirname(d)) {
+    const dir = path.join(d, 'node_modules', '@playwright', 'cli');
+    let bin;
+    try { bin = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).bin; } catch { bin = null; }
+    const rel = typeof bin === 'string' ? bin : bin && bin['playwright-cli'];
+    if (rel && fs.existsSync(path.join(dir, rel))) return path.join(dir, rel);
+    if (path.dirname(d) === d) return null;
+  }
+}
+
 function projectCli(cwd) {
-  const dir = path.join(cwd, 'node_modules', '@playwright', 'cli');
-  let bin;
-  try { bin = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).bin; } catch { return null; }
-  const rel = typeof bin === 'string' ? bin : bin && bin['playwright-cli'];
-  if (!rel || !fs.existsSync(path.join(dir, rel))) return null;
+  const bin = findCliBin(cwd);
+  if (!bin) return null;
   return (args, { timeoutMs }) => {
-    const r = spawnSync(process.execPath, [path.join(dir, rel), ...args], {
+    const r = spawnSync(process.execPath, [bin, ...args], {
       cwd, encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     });
     return { status: r.status, output: [r.stdout, r.stderr, r.error && r.error.message].filter(Boolean).join('\n') };
@@ -121,7 +140,7 @@ function run(argv, { cwd = process.cwd(), runCli } = {}) {
 
   const cli = runCli || projectCli(cwd);
   if (!cli) {
-    return fail(1, 'playwright-cli-unavailable', `@playwright/cli is not in ${path.join(cwd, 'node_modules')}: not rendered, attach the raw screenshot`);
+    return fail(1, 'playwright-cli-unavailable', `@playwright/cli is not in node_modules of ${path.resolve(cwd)} or any parent folder: not rendered, attach the raw screenshot`);
   }
 
   fs.rmSync(out, { force: true }); // a stale render can never pass for this one

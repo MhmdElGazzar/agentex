@@ -20,7 +20,9 @@ id exits 1 naming the actual type; ask the user for a valid story id.
 
 ## The spec file (agent judgment in, script mechanics out)
 
-The agent writes a spec JSON to the **OS temp dir** (never into the consumer's repo) and runs
+The agent writes a spec JSON to `.agentex/scratch/cases.json` (only into `.agentex/scratch/`:
+never anywhere else in the project; create the folder if it is missing; see
+`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`) and runs
 the dry run; step *content* is judgment, XML/quoting/IDs are the script's problem:
 
 ```json
@@ -45,9 +47,9 @@ the dry run; step *content* is judgment, XML/quoting/IDs are the script's proble
 
 ```bash
 # Dry run (default — the validation gate; writes NOTHING):
-node …/create-cases.js --spec "$TMP/cases.json" [--allow-duplicate] [--refresh-fields]
+node …/create-cases.js --spec ".agentex/scratch/cases.json" [--allow-duplicate] [--refresh-fields]
 # Only after the user's ONE approval of the consolidated screen:
-node …/create-cases.js --spec "$TMP/cases.json" --execute
+node …/create-cases.js --spec ".agentex/scratch/cases.json" --execute
 ```
 
 ## Steps XML (built by the script — never write it by hand)

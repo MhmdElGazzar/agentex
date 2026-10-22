@@ -1,0 +1,40 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Pet Store"
+  },
+  "servers": [
+    {
+      "url": "https://p.example.test"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "b": {
+        "type": "http",
+        "scheme": "basic"
+      },
+      "k": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-K"
+      },
+      "t": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "paths": {
+    "/a": {
+      "get": {
+        "operationId": "a",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    }
+  }
+}

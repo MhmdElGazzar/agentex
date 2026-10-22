@@ -1,0 +1,13 @@
+{
+  "name": "legacy-suite",
+  "cases": [
+    {
+      "name": "listitems-happy-path",
+      "entry": "legacy.listitems",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    }
+  ]
+}

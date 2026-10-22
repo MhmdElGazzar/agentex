@@ -1,0 +1,83 @@
+{
+  "result": "FAIL",
+  "total": 13,
+  "passed": 6,
+  "failed": 2,
+  "blocked": 5,
+  "cases": [
+    {
+      "name": "get-200",
+      "entry": "legacy.get-item",
+      "result": "PASS",
+      "status": 200
+    },
+    {
+      "name": "get-equals-pass",
+      "entry": "legacy.get-item",
+      "result": "PASS",
+      "status": 200
+    },
+    {
+      "name": "get-equals-fail",
+      "entry": "legacy.get-item",
+      "result": "FAIL",
+      "status": 200
+    },
+    {
+      "name": "get-404",
+      "entry": "legacy.get-item",
+      "result": "PASS",
+      "status": 404
+    },
+    {
+      "name": "get-wrong-status",
+      "entry": "legacy.get-item",
+      "result": "FAIL",
+      "status": 404
+    },
+    {
+      "name": "list-query",
+      "entry": "legacy.list-items",
+      "result": "PASS",
+      "status": 200
+    },
+    {
+      "name": "add-skipped",
+      "entry": "legacy.add-item",
+      "result": "BLOCKED",
+      "skipped": true
+    },
+    {
+      "name": "add-runs",
+      "entry": "legacy.add-item",
+      "result": "PASS",
+      "status": 201
+    },
+    {
+      "name": "no-expect",
+      "entry": "legacy.get-item",
+      "result": "BLOCKED"
+    },
+    {
+      "name": "unknown-entry",
+      "entry": "legacy.nope",
+      "result": "BLOCKED"
+    },
+    {
+      "name": "(unnamed)",
+      "entry": "legacy.get-item",
+      "result": "BLOCKED"
+    },
+    {
+      "name": "missing-param",
+      "entry": "legacy.get-item",
+      "result": "BLOCKED"
+    },
+    {
+      "name": "other-ok",
+      "entry": "legacy.list-items",
+      "result": "PASS",
+      "status": 200
+    }
+  ]
+}

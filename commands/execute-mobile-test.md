@@ -8,9 +8,10 @@ Target / scope: $ARGUMENTS
 
 **Suite folder (if named in the arguments):**
 - The arguments may name a suite folder, e.g. `suite2/`, `test/mobile-suite2/`, or "run
-  suite2". Resolve a bare name like `suite2/` to `./test/mobile-suite1/` (first suite) or
-  `./test/mobile-<name>/` for anything else named. Run ONLY the spec files in that folder (one
-  `mobile-qa-executor` / device session per file in parallel mode).
+  suite2". Resolve `suiteN` / `suiteN/` to `./test/mobile-suiteN/` (so `suite1` is
+  `./test/mobile-suite1/`); a full path like `test/mobile-suite2/` is used as given. Run ONLY
+  the spec files in that folder (one `mobile-qa-executor` / device session per file in
+  parallel mode).
 - If the named suite folder doesn't exist yet, create it and seed it with a starter spec
   copied from `${CLAUDE_PLUGIN_ROOT}/test/mobile-suite1/`, tell the user to adapt it, then
   continue.

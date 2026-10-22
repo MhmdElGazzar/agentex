@@ -48,32 +48,70 @@ Fill them in:
 | `figma.fileKey` / `.token` | Figma design source for `ui-check:` steps (see [ui-check.md](./ui-check.md)) — the file key from your Figma URL, plus the token as `{ "envSecret": "FIGMA_TOKEN" }`. Environment-independent: the design is the same truth for qa/uat/live. |
 | `viewports` | Optional named-viewport overrides for `ui-check:` steps, e.g. `{ "mobile": "414x896" }` (plugin defaults: desktop `1440x900`, tablet `768x1024`, mobile `390x844`). Read if present — no scaffold needed. |
 | `login.mode` | How a run gets in: `"session"` = reuse the login `/optimize-login` saved (`test/.auth/<app>-<env>-state.json`); `"fresh"` = drive the login UI every run. Absent or unreadable → `fresh` (nothing to reuse, and a run never creates a saved session you did not ask for). Projects scaffolded by an older wizard say `"per-test"` — the same as `"fresh"`, and nothing rewrites it. |
-| `testingTasks` | The `[Testing]` tasks for a story, one entry per stage: `requirementReview`, `testCreation`, `testExecution`, `bugRetest`, `automation`, each `{ "stage", "title", "enabled" }`. Scaffolded with the five standard titles, all enabled. List only what you change, for example `[{ "stage": "automation", "enabled": false }]`. The stages you leave out keep their defaults, and a title must start with `[Testing] `. |
 | `testDesign` | `approval`: `"consolidated"` (one approval for the whole run, the default) or `"per-story"`; `independentCoverageCheck`: `false` by default. |
-| `estimation` | `modelPath` / `historyPath`: project-relative files for QA effort estimation, under `.agentex/` by default. |
 | `qaRecords` | Where the **QA watchlist** lives: one file per kind (`pendingQuestions`, `pendingRechecks`, `envIssues`, `deferredConditions`). By default these are Markdown files in a `qa-watchlist/` folder at the project root. Each file is created the first time something is recorded, never by `/init-test`. **Commit them**: they hold decisions. Paths must be project-relative and end in `.md` or `.jsonl`. See [qa-records.md](../references/tracker/qa-records.md). |
 | `azure.workflow` / `jira.workflow` | Your tracker's state names for the `[Testing]` lifecycle (`devDoneStates`, `inTestState`, `qaStates`, `terminalStates`, `taskActiveState`, `taskClosedState`, `testCaseReadyState`, `closeOut.state` / `.assignee`, …), inside the **configured** tracker's block only. Every state is empty by default. An empty state means that step is not configured: the agent says so and skips it, and never guesses a state. See [task-lifecycle.md](../references/tracker/task-lifecycle.md). |
 | `azure.reproSummaryRow` / `jira.reproSummaryRow` | Optional: `false` drops the summary row from a filed bug's repro steps. Absent means `true`. Not scaffolded. |
 | `ci` | Optional CI gate policy (see [ci-quality-gate.md](./ci-quality-gate.md)), read if present — no scaffold needed: `{ "warningsFailGate": true, "retries": 3, "timeoutMinutes": 60, "flakyFailsGate": false }` (the built-in defaults). `warningsFailGate` — warnings fail the gate (exit 1); `retries` — automatic retries for BLOCKED outcomes only; `timeoutMinutes` — per-attempt wall-clock budget; `flakyFailsGate` — FLAKY concludes BLOCKED (exit 2, never auto-retried). `ci_gate.js` CLI flags override per pipeline (flags > config > defaults). |
 
-The plugin-owned blocks above (`testingTasks`, `testDesign`, `estimation`, `qaRecords`,
-`<tracker>.workflow`, `<tracker>.reproSummaryRow`) are read with their real types and merged
+The plugin-owned blocks above (`testDesign`, `qaRecords`, `<tracker>.workflow`,
+`<tracker>.reproSummaryRow`) are read with their real types and merged
 key by key over the defaults. A malformed value is a config error (exit 2) that names the
 key and the accepted values. An unknown key inside one of these blocks is an error too, so
 a typo can't silently keep a default. `/init-test` and the setup wizard write the blocks for
 a new project, and `/update-agentex` adds any that are missing to an existing one. Neither
-ever rewrites a block you already have.
+ever rewrites a block you already have. The `[Testing]` task list is not one of them: it
+lives in `config/estimation.json` `tasks[]` (below), its one source.
+
+## `config/estimation.json`
+
+Your team's estimation method for `/estimate-sprint` and `/estimate-story`: which `[Testing]`
+tasks every story gets and the range of hours each one takes. It is the one source of the
+`[Testing]` task list (no file → the five starter tasks). It belongs to you and is
+**committed** with the project (it holds no secret). It does not exist until the first
+estimation run proposes it — from the Original Estimates of your team's last closed sprints,
+or as labelled starter defaults — and you approve that run.
+
+| Key | Purpose |
+|---|---|
+| `schemaVersion` | Always `1`. |
+| `tasks[]` | `{ "name", "enabled", "minHours", "maxHours" }` per task, in creation order. Titles become `[Testing] <name>`; only enabled tasks are created; each task's hours fall within its min and max. |
+| `factors` | `{ "<factor>": <weight> }` — what each story is rated on (0–4). A weight of 0 keeps a factor on the screen without moving the hours; at least one weight must be positive. |
+| `source` | Where the numbers came from: `kind` (`history` or `starter-defaults`), `sprints` (how many past sprints the proposal asked for), the sprint names, tasks counted/skipped, the date. A record — editing it changes nothing. |
+
+**Validation.** An invalid file stops the run before anything is read or estimated, naming the
+file, each problem and its entry — for example JSON that can't be parsed, `minHours` greater
+than `maxHours`, a missing / non-numeric / non-positive min or max, no enabled task, two tasks
+with the same name (case and spaces ignored), no factor with a positive weight, a
+`source.sprints` that isn't a positive whole number, an unknown key, or an unknown
+`schemaVersion`. AgenTeX never repairs, reformats or replaces the file — not on a run, not
+on `/init-test`, not on `/update-agentex`.
+
+**Rebuilding.** Once the file exists, past sprints are never read again. To re-propose it from
+your board, delete or move it; the next estimation run proposes a new one.
 
 ## `environments/<env>.json`
 
 | Key | Purpose |
 |---|---|
 | `portalUrl` | The target under test (required). |
-| `defaults` | Non-secret static test values: `otp`, `password` (shared test credential), `captcha`, plus any project-specific keys. |
+| `defaults` | Static test values: `otp`, `captcha` and project-specific keys. `password`, the shared test credential, is a secret field: the wizard writes `{ "envSecret": "DEFAULT_PASSWORD" }` and puts the value in `.env`. A plain string still works and the scan warns on it. |
 | `users` | Test accounts keyed by a descriptive handle (`valid_user`, `expired_user`, …) that specs refer to ("login as expired_user"). Fields free-form: `phone`, `role`, `idNumber`, `password`, `notes`, … A user without `password` uses `defaults.password`. |
 | `db` | `server`, `port`, `name`, `user`, `password` — for cataloged `db:` steps. |
 | `api` | `baseUrl`, `token` — for cataloged `api:` steps. |
-| `mobile` | `platformName`, `automationName`, `app` (or `appPackage`+`appActivity` / `bundleId`), `deviceName`, `platformVersion`, optional `udid` — the Appium target for [mobile testing](./mobile-testing.md). Optional; browser-only projects can omit it entirely. |
+| `nonProduction` | Optional, `true` only. Marks the environment as safe for the suite wizard to create missing test data through the UI (after your one consent on the exact list). Anything else (absent, `false`, the string `"true"`) means no data is ever created there. Add it by hand; the setup wizard keeps it on re-save. |
+| `mobile` | `platformName`, `automationName`, `app` (or `appPackage`+`appActivity` / `bundleId`), `deviceName`, `platformVersion`, optional `udid` — the Appium target for [mobile testing](./mobile-testing.md). **Opt-in**: the scaffolded sample has no `mobile` block; add one only if you test a native app (example below). |
+
+An opt-in `mobile` block (Android emulator, local `.apk`):
+
+```json
+"mobile": {
+  "platformName": "Android",
+  "automationName": "UiAutomator2",
+  "app": "/absolute/path/to/app.apk",
+  "deviceName": "emulator-5554"
+}
+```
 
 Selecting the environment at run time: "run on uat" / `env: uat` in a spec →
 `environments/uat.json`; otherwise `defaultEnvironment`. Naming an environment
@@ -126,8 +164,13 @@ Plugin manifests can't ship permission rules. Copy the `permissions` block from
 run actually issues — `playwright-cli` and the plugin's bundled `node` scripts (which now
 carry every tracker flow: bug filing, estimation, test design, test-plan updates — no `az`
 prompt can occur there) — puts `curl` / `sqlcmd` and the destructive `az` operations
-behind a prompt, gates the read-only `adb`/`xcrun simctl` commands the same way, prompts before destructive `adb`/`xcrun` actions (uninstall, reboot, erase), and denies reads of `.env`/key material plus edits to your
-application's source.
+behind a prompt, pre-approves the read-only `adb`/`xcrun simctl` commands and
+`npx appium --version` / `server` / `driver list`, prompts before destructive or
+code-running device actions (`adb` uninstall / reboot / `pm clear` / `logcat -c`,
+`xcrun simctl` erase / uninstall / `spawn`, `npx appium driver|plugin install`), and denies
+reads of `.env`/key material plus edits to your application's source. Claude Code checks
+`deny` first, then `ask`, then `allow`, so an `ask` entry carves a prompt out of a broader
+`allow` entry.
 
 Two of those entries need your attention rather than a blind copy, and the file's
 `//notes` say so as well:

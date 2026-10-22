@@ -13,8 +13,11 @@ quick tour.
 | [API & DB Steps](./api-db-steps.md) | Catalog-only `api:` / `db:` steps inside test scenarios. |
 | [Ask the Knowledge Base](./ask-kb.md) | `kb:` steps and the `/ask-kb` command (advisory only). |
 | [Optimize Login](./optimize-login.md) | Pay a web app's login cost once per session instead of once per test. |
-| [Azure DevOps QA](./azure-devops.md) | `/estimate-story`, `/design-test`, `bug-report-azure` bug filing, and Azure resource access. |
+| [Azure DevOps QA](./azure-devops.md) | `/estimate-story`, `/estimate-sprint`, `/design-test`, `bug-report-azure` bug filing, and Azure resource access. |
 | [Jira QA](./jira.md) | The same tracker flows on Jira Cloud — setup, per-flow behavior, and the honest capability gaps. |
 | [Interactive HTML Report](./extent-report.md) | The standalone `extent-report.html` dashboard. |
 | [CI Quality Gate](./ci-quality-gate.md) | Invoke runs from your CI/CD pipeline: the `ci_gate.js` entry point, exit-code semantics (0/1/2), the public verdict JSON contract, pipeline templates, advisory vs blocking modes. |
 | [Configuration](./configuration.md) | Environment variables, permissions, and secret handling. |
+| [Putting your project in git](./putting-your-project-in-git.md) | What to commit and what stays local, setting a remote safely, the secret scan, the optional pre-commit hook, and fixing findings. |
+| [Project layout](./project-layout.md) | Where everything the agent writes goes: the AgenTeX block in `CLAUDE.md`, `knowledge/`, the QA watchlist, scratch, and the stray-file check in `/update-agentex`. |
+| [Field feedback](./field-feedback.md) | How AgenTeX records gaps in itself in `.agentex/plugin-learnings.md`, `/update-agentex feedback` (a sanitized export you review and send by hand), and retiring learnings a new version covers. |

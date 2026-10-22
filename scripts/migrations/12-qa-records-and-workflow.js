@@ -1,19 +1,20 @@
 'use strict';
-// m12 qa-records-and-workflow — skill consolidation (1.0.0) made four config
+// m12 qa-records-and-workflow — skill consolidation (1.0.0) made two config
 // blocks plugin-owned and typed (read through project_config.js getStructured):
-// testingTasks, testDesign, estimation and qaRecords at the top level of
-// config/project.json, plus a `workflow` block inside the CONFIGURED tracker's
-// provider block (azure.workflow or jira.workflow). The template ships the four
-// top-level blocks and the wizard's save seeds the provider's workflow; this
-// migration backfills both into existing projects.
+// testDesign and qaRecords at the top level of config/project.json, plus a
+// `workflow` block inside the CONFIGURED tracker's provider block
+// (azure.workflow or jira.workflow). The template ships the two top-level
+// blocks and the wizard's save seeds the provider's workflow; this migration
+// backfills both into existing projects. The [Testing] task list is not one of
+// them: config/estimation.json `tasks[]` (0.24) is its one source.
 //
 // It goes through withPluginConfigBlocks() — the SAME function the wizard's
 // save calls — so a migrated project and a fresh one end with identical blocks.
 // Semantics-preserving by construction: the defaults reproduce today's
-// behaviour (the five [Testing] tasks, consolidated approval, workflow states
-// EMPTY so no lifecycle step ever guesses a state). Additive + idempotent, à la
+// behaviour (consolidated approval, workflow states EMPTY so no lifecycle step
+// ever guesses a state). Additive + idempotent, à la
 // m09/m11:
-//   - an existing block is never rewritten (a customized testingTasks or
+//   - an existing block is never rewritten (a customized testDesign or
 //     workflow wins, parsed-equal, key order kept);
 //   - a provider block is never created: a Jira or tracker-less project gets no
 //     azure.workflow; with TWO provider blocks neither is touched and a [flag]
@@ -27,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const { withPluginConfigBlocks } = require('../lib/project_config.js');
 
-const TOP_LEVEL = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+const TOP_LEVEL = ['testDesign', 'qaRecords'];
 const PROVIDERS = ['azure', 'jira'];
 
 function projectConfigPath(ctx) { return path.join(ctx.projectRoot, 'config', 'project.json'); }
@@ -54,7 +55,7 @@ function pending(cfg) {
 
 module.exports = {
   id: 'qa-records-and-workflow',
-  title: 'Add the plugin-owned config blocks (testingTasks, testDesign, estimation, qaRecords) and the configured tracker\'s workflow block to config/project.json',
+  title: 'Add the plugin-owned config blocks (testDesign, qaRecords) and the configured tracker\'s workflow block to config/project.json',
 
   detect(ctx) {
     const cfg = readConfig(ctx);

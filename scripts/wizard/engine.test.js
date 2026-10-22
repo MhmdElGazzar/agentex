@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { extractFromText, validateConfigs, buildConfigs, mergeExtracted, validate, DEFAULT_ENV_NAME,
         planSave, buildEnvUsers, BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS,
+        LEGACY_DEFAULTS_FIELDS, LEGACY_HINT_CORRECTIONS,
         validateFieldDescriptors } = require('./engine.js');
 const { STRUCTURED_DEFAULTS: SD, withPluginConfigBlocks } = require('../lib/project_config.js');
 
@@ -551,14 +552,53 @@ test('built-in field arrays: engine and template project.json agree exactly', ()
   assert.deepStrictEqual(BUILTIN_DEFAULTS_FIELDS.map(f => f.key), ['password', 'otp']);
 });
 
-test('built-ins and template carry the corrected tanween (سرًّا حقيقيًا)', () => {
-  // m11 bakes these strings into every consumer project — the wrong form
-  // (tanween on the alif) must never ship in a synced home.
-  const all = JSON.stringify(BUILTIN_DEFAULTS_FIELDS) + fs.readFileSync(
-    path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8');
-  assert.ok(!all.includes('سراً') && !all.includes('حقيقياً'),
+// Decision A-2: the shared test password is a secret field. No built-in, template
+// or browser-copy hint may call it "not a real secret" or say it is written as-is.
+test('A-2: no built-in, template or legacy hint says "not a real secret" / "written as-is", in either language', () => {
+  const ui = fs.readFileSync(path.join(__dirname, 'ui.html'), 'utf8');
+  // the browser copy of both descriptor sets — the correction map after them carries the
+  // old shipped hints as lookup KEYS by design (display-time correction), so it is excluded
+  const browserCopy = ui.slice(ui.indexOf('const BUILTIN_DEFAULTS_FIELDS'), ui.indexOf('const LEGACY_HINT_CORRECTIONS'));
+  assert.ok(browserCopy.includes('LEGACY_DEFAULTS_FIELDS'), 'the slice spans both browser-copy sets');
+  const all = JSON.stringify(BUILTIN_DEFAULTS_FIELDS) + JSON.stringify(LEGACY_DEFAULTS_FIELDS) + browserCopy +
+    fs.readFileSync(path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8');
+  for (const bad of ['not a real secret', 'ليست سرًّا', 'written as-is', 'تُكتب كما هي']) {
+    assert.ok(!all.includes(bad), `"${bad}" must not ship`);
+  }
+  assert.ok(!all.includes('سراً') && !all.includes('حقيقياً') && !all.includes('عادياً') && !all.includes('بدلاً'),
     'التنوين على الحرف قبل الألف، مش على الألف');
-  assert.ok(JSON.stringify(BUILTIN_DEFAULTS_FIELDS).includes('سرًّا'), 'the corrected form is present');
+});
+
+test('A-2: the built-in password descriptor is secret: true with no shipped default', () => {
+  const pw = BUILTIN_DEFAULTS_FIELDS.find(f => f.key === 'password');
+  assert.strictEqual(pw.secret, true);
+  assert.ok(!('default' in pw), 'no plugin-shipped password value (RD-11)');
+  assert.match(pw.hintEn, /kept in \.env only/);
+  assert.deepStrictEqual(BUILTIN_DEFAULTS_FIELDS.find(f => f.key === 'otp'),
+    { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' }, 'otp unchanged');
+});
+
+test('A-2: LEGACY_DEFAULTS_FIELDS is the pre-A-2 shape except the corrected plain-field hint', () => {
+  const pw = LEGACY_DEFAULTS_FIELDS.find(f => f.key === 'password');
+  assert.deepStrictEqual({ ...pw, hint: undefined, hintEn: undefined },
+    { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234', hint: undefined, hintEn: undefined });
+  assert.ok(!pw.secret, 'plain, as the wizard always wrote it');
+  assert.strictEqual(pw.hintEn, 'The shared test-account password, stored as plain text in each environment file. ' +
+    'To keep it in .env instead, mark this field secret in the field editor.');
+  assert.deepStrictEqual(LEGACY_DEFAULTS_FIELDS.find(f => f.key === 'otp'), BUILTIN_DEFAULTS_FIELDS.find(f => f.key === 'otp'));
+  assert.ok(Object.isFrozen(LEGACY_DEFAULTS_FIELDS), 'frozen: a migration backfills exactly this, forever');
+  // the display-time correction maps both shipped legacy hints to the plain-field wording
+  assert.strictEqual(LEGACY_HINT_CORRECTIONS['The shared test-account password — written as-is into the environment file (not a real secret)'], pw.hintEn);
+  assert.strictEqual(LEGACY_HINT_CORRECTIONS['كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)'], pw.hint);
+});
+
+test('A-2: buildConfigs with defaults.passwordEnvVar writes { envSecret }; without it, no defaults.password', () => {
+  const withName = buildConfigs({ name: 'd', 'defaults.passwordEnvVar': 'DEFAULT_PASSWORD' }, []);
+  assert.deepStrictEqual(withName.envConfig.defaults, { password: { envSecret: 'DEFAULT_PASSWORD' }, otp: '0000' });
+  const typedName = buildConfigs({ name: 'd', 'defaults.passwordEnvVar': 'QA_SHARED_PW' }, []);
+  assert.deepStrictEqual(typedName.envConfig.defaults.password, { envSecret: 'QA_SHARED_PW' }, 'a name the user types wins');
+  const blank = buildConfigs({ name: 'd', 'defaults.password': 'typed-into-a-plain-slot' }, []);
+  assert.ok(!('password' in blank.envConfig.defaults), 'no literal, no placeholder (RD-11)');
 });
 
 test('schema.json no longer hardcodes the field sets — rendering is schema-driven', () => {
@@ -614,7 +654,9 @@ test('buildConfigs without arrays falls back to the built-ins — historical beh
   const { projectConfig, envConfig } = buildConfigs(
     { name: 'd', users: [{ handle: 'u', phone: '1', custom: 'x' }] }, []);
   assert.deepStrictEqual(envConfig.users.u, { phone: '1' }, 'non-schema key still dropped');
-  assert.deepStrictEqual(envConfig.defaults, { otp: '0000', password: 'Test@1234' });
+  // A-2 / RD-11: the built-in password is secret with no shipped value — a run
+  // without a name writes no defaults.password (it used to write the placeholder).
+  assert.deepStrictEqual(envConfig.defaults, { otp: '0000' });
   assert.deepStrictEqual(projectConfig.userFields, BUILTIN_USER_FIELDS);
   assert.deepStrictEqual(projectConfig.defaultsFields, BUILTIN_DEFAULTS_FIELDS);
 });
@@ -751,7 +793,7 @@ test('buildConfigs without a tracker answer keeps the historical answer-emptines
 // buildConfigs mirrors the server's save: it passes the project config through
 // withPluginConfigBlocks, so the engine and the server agree. The seeded keys
 // are scaffolding (like userFields), not answers — no wizard field asks them.
-const PLUGIN_BLOCKS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+const PLUGIN_BLOCKS = ['testDesign', 'qaRecords'];
 
 test('buildConfigs seeds the plugin blocks; ONLY the chosen provider gets a workflow (Q12)', () => {
   const base = { name: 'demo', 'azure.org': 'exampleorg', 'azure.project': 'Sample Project', 'jira.site': 'example', 'jira.project': 'PROJ' };

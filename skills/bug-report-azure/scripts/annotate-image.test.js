@@ -118,7 +118,7 @@ test('renders: success judged by the output PNG, not the exit crash; one session
     'open + run-code share one 90 s deadline, close gets 15 s');
 });
 
-test('the overlay escapes every text, marks red ✗ / green ✓, and clamps boxes into the image', () => {
+test('the overlay escapes every text, marks red ✗ / green ✓, and clips boxes to the image', () => {
   const spec = writeSpec('bug-2-shot.json', { ...GOOD, boxes: [...GOOD.boxes, { x: -5, y: 95, width: 120, height: 20, label: 'edge' }] });
   const { cli, calls } = stubCli({ out: path.join(TMP, 'bug-2-shot.annotated.png'), png: makePng(W, H + 40) });
   assert.strictEqual(run(['--spec', spec], { cwd: TMP, runCli: cli }).code, 0);
@@ -126,7 +126,34 @@ test('the overlay escapes every text, marks red ✗ / green ✓, and clamps boxe
   assert.ok(code.includes('&lt;b&gt;$0.00&lt;/b&gt;') && !code.includes('<b>$0.00'), 'banner escaped');
   assert.ok(code.includes('Discount &lt;ok&gt; applied ✓') && code.includes('$0.00\\" ✗'), 'labels escaped + marked');
   assert.ok(code.includes('#16a34a') && code.includes('#dc2626') && code.includes('dir='));
-  assert.ok(code.includes('left:0%;top:95%;width:100%;height:5%'), 'clamped into the image');
+  assert.ok(code.includes('left:0%;top:95%;width:100%;height:5%'), 'clipped to the image');
+});
+
+test('a box partly outside the image is CLIPPED to its visible part, never moved', () => {
+  const boxes = [
+    { x: -30, y: -10, width: 50, height: 30, label: 'top-left overhang' },
+    { x: 90, y: 80, width: 30, height: 40, label: 'bottom-right overhang' },
+  ];
+  const spec = writeSpec('bug-7-shot.json', { ...GOOD, boxes });
+  const { cli, calls } = stubCli({ out: path.join(TMP, 'bug-7-shot.annotated.png'), png: makePng(W, H + 40) });
+  assert.strictEqual(run(['--spec', spec], { cwd: TMP, runCli: cli }).code, 0);
+  const code = calls[1].args[2];
+  assert.ok(code.includes('left:0%;top:0%;width:20%;height:20%'), 'top-left overhang keeps only its visible 20%x20%');
+  assert.ok(code.includes('left:90%;top:80%;width:10%;height:20%'), 'bottom-right overhang keeps only its visible part');
+});
+
+test('a box entirely outside the image is BLOCKED (bad-spec), never drawn as an edge sliver', () => {
+  const box = { width: 20, height: 20, label: 'off-image' };
+  const outside = [
+    { ...box, x: 150, y: 150 }, { ...box, x: 100, y: 10 }, { ...box, x: 10, y: 100 },
+    { ...box, x: -20, y: 10 }, { ...box, x: 10, y: -30 },
+  ];
+  outside.forEach((b, i) => {
+    const r = spawnRun(['--spec', writeSpec(`bad-outside-${i}.json`, { ...GOOD, boxes: [GOOD.boxes[0], b] })]);
+    assert.strictEqual(r.status, 2, JSON.stringify(r.out));
+    assert.strictEqual(r.out.error.reason, 'bad-spec');
+    assert.match(r.out.error.message, /boxes\[1\] lies entirely outside the image/);
+  });
 });
 
 test('a wrong-size or missing output FAILS even when the CLI exits 0 — and is removed', () => {
@@ -199,6 +226,32 @@ test('no @playwright/cli in the project: exit 1, one JSON line, and no install o
   assert.strictEqual(r.lines.length, 1);
   assert.strictEqual(r.out.error.reason, 'playwright-cli-unavailable');
   assert.doesNotMatch(r.out.error.message, /npm|install/i, 'filing never turns into an install');
+});
+
+test('finds @playwright/cli in a PARENT folder\'s node_modules (hoisted install, run from a subfolder)', () => {
+  const proj = path.join(TMP, 'proj');
+  const sub = path.join(proj, 'executions', 'run-1');
+  const pkg = path.join(proj, 'node_modules', '@playwright', 'cli');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.mkdirSync(pkg, { recursive: true });
+  const tall = path.join(TMP, 'tall-fixture.png');
+  fs.writeFileSync(tall, makePng(W, H + 40));
+  const log = path.join(TMP, 'fake-cli.log');
+  fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@playwright/cli', bin: { 'playwright-cli': 'cli.js' } }));
+  // A fake CLI: logs each subcommand; run-code "renders" by copying a taller PNG to the
+  // output path named in the run-code source.
+  const fake = (log, tall) => {
+    const fs = require('node:fs');
+    const [, , , sub, code] = process.argv;
+    fs.appendFileSync(log, `${sub}\n`);
+    if (sub === 'run-code') fs.copyFileSync(tall, JSON.parse(/path: ("[^"]*\.annotated\.png")/.exec(code)[1]));
+  };
+  fs.writeFileSync(path.join(pkg, 'cli.js'), `(${fake})(${JSON.stringify(log)}, ${JSON.stringify(tall)});`);
+  fs.writeFileSync(path.join(sub, 'bug-8-shot.json'), JSON.stringify(GOOD));
+  const r = spawnRun(['--spec', 'bug-8-shot.json'], sub);
+  assert.strictEqual(r.status, 0, JSON.stringify(r.out));
+  assert.deepStrictEqual([r.out.width, r.out.height], [W, H + 40]);
+  assert.deepStrictEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['open', 'run-code', 'close']);
 });
 
 test('never force-exits (Windows/Node 24 libuv crash): no process.exit( in the source', () => {

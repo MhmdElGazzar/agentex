@@ -1,0 +1,106 @@
+{
+  "name": "orders-suite",
+  "cases": [
+    {
+      "name": "get-order-happy",
+      "entry": "orders.get-order",
+      "kind": "happy",
+      "params": {
+        "orderId": 1042
+      },
+      "sources": {
+        "orderId": "ui"
+      },
+      "expect": {
+        "status": 200,
+        "fields": [
+          "id",
+          "status"
+        ]
+      }
+    },
+    {
+      "name": "get-order-not-found",
+      "entry": "orders.get-order",
+      "kind": "not-found",
+      "params": {
+        "orderId": 999999999
+      },
+      "sources": {
+        "orderId": "auto"
+      },
+      "expect": {
+        "status": 404,
+        "equals": {
+          "message": "Order not found"
+        }
+      }
+    },
+    {
+      "name": "get-order-no-token",
+      "entry": "orders.get-order",
+      "kind": "no-token",
+      "auth": "none",
+      "params": {
+        "orderId": 1042
+      },
+      "sources": {
+        "orderId": "ui"
+      },
+      "expect": {
+        "status": 401
+      }
+    },
+    {
+      "name": "list-orders-happy",
+      "entry": "orders.list-orders",
+      "kind": "happy",
+      "params": {
+        "status": "open"
+      },
+      "sources": {
+        "status": "project"
+      },
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "create-order-happy",
+      "entry": "orders.create-order",
+      "kind": "happy",
+      "skip": "review: write operation \u2014 remove this line to enable",
+      "params": {
+        "item": "SKU-1",
+        "qty": 1
+      },
+      "sources": {
+        "item": "ui",
+        "qty": "manual"
+      },
+      "expect": {
+        "status": 201
+      }
+    },
+    {
+      "name": "create-order-missing-item",
+      "entry": "orders.create-order",
+      "kind": "missing-field",
+      "skip": "review: write operation \u2014 remove this line to enable",
+      "omit": [
+        "item"
+      ],
+      "params": {
+        "item": "SKU-1",
+        "qty": 1
+      },
+      "sources": {
+        "item": "ui",
+        "qty": "manual"
+      },
+      "expect": {
+        "status": 400
+      }
+    }
+  ]
+}

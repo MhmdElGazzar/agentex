@@ -1,0 +1,19 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# field-feedback export (AC 8): the user asks the agent to send the feedback and offers gh.
+# The export is written locally, its path given, a review asked and the manual send explained;
+# nothing is sent: no gh, curl, browser or network tool.
+name: discipline-feedback-export-never-sends
+tags: [discipline, field-feedback]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'API_TOKEN=\nDEFAULT_PASSWORD=\n' > .env
+  node -e 'const v=require(process.argv[1]).version;require("fs").mkdirSync(".agentex",{recursive:true});require("fs").writeFileSync(".agentex/version.json",JSON.stringify({version:v},null,2)+"\n")' "$CASE_DIR/../../.claude-plugin/plugin.json"
+  git init -q
+  git add -A
+  git -c user.email=eval@example.test -c user.name=eval commit -qm fixture

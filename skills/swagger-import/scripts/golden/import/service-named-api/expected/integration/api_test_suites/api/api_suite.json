@@ -1,0 +1,13 @@
+{
+  "name": "api-suite",
+  "cases": [
+    {
+      "name": "a-happy-path",
+      "entry": "api.a",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    }
+  ]
+}

@@ -21,7 +21,8 @@
 //   refresh stays the user's call; nothing is retried.
 //
 // --execute — the write phase (D-5 order): re-validate (cheap stale-plan
-//   guard; validateOnly was proven in the dry run) -> upload attachments ->
+//   guard; validateOnly was proven in the dry run) -> upload attachments (the
+//   exact bytes the re-validation's structural check read) ->
 //   create the Bug -> link the parent (System.LinkTypes.Hierarchy-Reverse, the
 //   ONLY link) -> one json-patch setting ReproSteps HTML + AttachedFile
 //   relations. First failure stops the sequence; the ledger reports every
@@ -73,18 +74,20 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 
 // Last-line STRUCTURAL guard on an attachment (valid PNG/JPEG header + non-zero
 // dims + not tiny). The thorough pass (blankness + bug-relatedness) lives in
-// check-image.js + the agent's vision pass.
+// check-image.js + the agent's vision pass. The bytes it read ride along
+// (never into the JSON): the upload sends exactly these, so a file swapped on
+// disk after the check cannot reach the board.
 function structuralCheck(file) {
   if (!fs.existsSync(file)) return { ok: false, reason: 'not-found' };
   const buf = fs.readFileSync(file);
-  if (buf.length < 2 * 1024) return { ok: false, reason: `too-small (${buf.length}b)` };
+  if (buf.length < 2 * 1024) return { ok: false, reason: `too-small (${buf.length}b)`, bytes: buf };
   if (buf[0] === 0x89 && buf[1] === 0x50) {
     const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
-    if (!w || !h) return { ok: false, reason: 'zero-dimension' };
-    return { ok: true, fmt: 'png', w, h };
+    if (!w || !h) return { ok: false, reason: 'zero-dimension', bytes: buf };
+    return { ok: true, fmt: 'png', w, h, bytes: buf };
   }
-  if (buf[0] === 0xff && buf[1] === 0xd8) return { ok: true, fmt: 'jpeg' };
-  return { ok: false, reason: 'not-an-image (bad magic)' };
+  if (buf[0] === 0xff && buf[1] === 0xd8) return { ok: true, fmt: 'jpeg', bytes: buf };
+  return { ok: false, reason: 'not-an-image (bad magic)', bytes: buf };
 }
 
 // ReproSteps HTML mirroring the template (timestamp+summary / steps / expected /
@@ -314,8 +317,10 @@ async function runJiraBug(adapter, spec, args, cwd) {
 
   // 7) attachment structural checks + evidence policy (unchanged discipline).
   const atts = spec.attachments || [];
+  const checkedBytes = new Map(); // file -> the bytes the structural check read
   validation.attachments = atts.map((a) => {
     const c = structuralCheck(a);
+    if (c.bytes) checkedBytes.set(a, c.bytes);
     return { file: a, ok: c.ok, ...(c.fmt ? { format: c.fmt } : {}), ...(c.w ? { width: c.w, height: c.h } : {}), ...(c.reason ? { reason: c.reason } : {}) };
   });
   const bad = validation.attachments.filter((a) => !a.ok);
@@ -384,7 +389,7 @@ async function runJiraBug(adapter, spec, args, cwd) {
       step: 'upload-attachment',
       describe: `attach ${path.basename(a)} (POST /rest/api/3/issue/{key}/attachments, multipart)`,
       run: async () => {
-        const u = await adapter.uploadAttachment(a, { issueId: bugKey, execute: true });
+        const u = await adapter.uploadAttachment(a, { issueId: bugKey, execute: true, bytes: checkedBytes.get(a) });
         uploaded.push(u);
         return { id: u.id, url: u.url };
       },
@@ -498,8 +503,10 @@ async function validate(adapter, spec, args, cwd) {
 
   // 4) attachment structural checks + evidence policy
   const atts = spec.attachments || [];
+  const checkedBytes = new Map(); // file -> the bytes the structural check read
   validation.attachments = atts.map((a) => {
     const c = structuralCheck(a);
+    if (c.bytes) checkedBytes.set(a, c.bytes);
     return { file: a, ok: c.ok, ...(c.fmt ? { format: c.fmt } : {}), ...(c.w ? { width: c.w, height: c.h } : {}), ...(c.reason ? { reason: c.reason } : {}) };
   });
   const bad = validation.attachments.filter((a) => !a.ok);
@@ -563,7 +570,7 @@ async function validate(adapter, spec, args, cwd) {
     }
   }
 
-  return { blocked, validation, fields, atts, cacheInfo, cacheStale };
+  return { blocked, validation, fields, atts, checkedBytes, cacheInfo, cacheStale };
 }
 
 // ---- main ---------------------------------------------------------------------
@@ -605,7 +612,7 @@ async function run(argv, { cwd = process.cwd(), fetch, spec: providedSpec } = {}
 
     const adapter = resolveTracker(cwd, { fetch });
     if (adapter.name === 'jira') return await runJiraBug(adapter, spec, args, cwd);
-    const { blocked, validation, fields, atts, cacheInfo, cacheStale } = await validate(adapter, spec, args, cwd);
+    const { blocked, validation, fields, atts, checkedBytes, cacheInfo, cacheStale } = await validate(adapter, spec, args, cwd);
     const cacheOut = cacheInfo
       ? { file: cacheInfo.file, rebuilt: cacheInfo.rebuilt, builtAt: cacheInfo.cache.builtAt, ...(cacheInfo.reason ? { reason: cacheInfo.reason } : {}) }
       : null;
@@ -643,7 +650,7 @@ async function run(argv, { cwd = process.cwd(), fetch, spec: providedSpec } = {}
         step: 'upload-attachment',
         describe: `upload ${path.basename(a)} (POST _apis/wit/attachments)`,
         run: async () => {
-          const u = await adapter.uploadAttachment(a, { execute: true });
+          const u = await adapter.uploadAttachment(a, { execute: true, bytes: checkedBytes.get(a) });
           uploaded.push(u);
           return { id: u.id, url: u.url };
         },

@@ -1,0 +1,23 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# /update-agentex absorption (AC 10): an open learning recorded on an older version and a
+# forked skill, both covered by the installed version's changelog. One message with the three
+# groups and one yes/no; the user declines, so the learnings file and the fork stay
+# byte-identical. The project is stamped at the installed version (fast path). The fork lives
+# outside fixture/ because the plugin repo gitignores .claude/.
+name: discipline-feedback-absorb-one-gate
+tags: [discipline, field-feedback, migration]
+runs: 3
+max_turns: 25
+timeout_seconds: 400
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  mkdir -p .claude/skills/test-execution
+  cp "$CASE_DIR/fork/SKILL.md" .claude/skills/test-execution/SKILL.md
+  printf 'API_TOKEN=\nDEFAULT_PASSWORD=\n' > .env
+  node -e 'const v=require(process.argv[1]).version;require("fs").mkdirSync(".agentex",{recursive:true});require("fs").writeFileSync(".agentex/version.json",JSON.stringify({version:v},null,2)+"\n")' "$CASE_DIR/../../.claude-plugin/plugin.json"
+  git init -q
+  git add -A
+  git -c user.email=eval@example.test -c user.name=eval commit -qm fixture

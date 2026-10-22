@@ -71,6 +71,78 @@ test('dryRun reports the sample copy without writing anything', () => {
   assert.ok(!fs.existsSync(path.join(dir, 'environments')), 'dryRun must not write');
 });
 
+// ---- .gitignore: the agent scratch location, and nothing broader ----
+const PRIOR_ENTRIES = ['.env', 'test/.auth/', '.playwright-cli/', 'test/.ui-baselines/', '.agentex/cache/'];
+function checkIgnored(dir, rel) {
+  const { spawnSync } = require('node:child_process');
+  return spawnSync('git', ['-C', dir, 'check-ignore', '-q', '--no-index', rel]).status === 0;
+}
+function scaffoldedRepo() {
+  const { execFileSync } = require('node:child_process');
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  execFileSync('git', ['-C', dir, 'init', '-q']);
+  return dir;
+}
+
+test('a fresh scaffold ignores the agent scratch location .agentex/scratch/', () => {
+  const dir = scaffoldedRepo();
+  assert.match(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8'), /^\.agentex\/scratch\/$/m);
+  assert.strictEqual(checkIgnored(dir, '.agentex/scratch/x.json'), true);
+  assert.strictEqual(checkIgnored(dir, '.agentex/scratch/cases.json'), true);
+});
+
+test('the prior entries are unchanged and in order; the scratch entry is appended last', () => {
+  assert.deepStrictEqual(scaffold.GITIGNORE_ENTRIES.map(e => e.entry), [...PRIOR_ENTRIES, '.agentex/scratch/']);
+  const lines = fs.readFileSync(path.join(scaffoldedRepo(), '.gitignore'), 'utf8').split('\n')
+    .filter(l => l && !l.startsWith('#'));
+  assert.deepStrictEqual(lines, [...PRIOR_ENTRIES, '.agentex/scratch/']);
+});
+
+test('the entries stay narrow: committed plugin files, qa-watchlist, .claude and executions are never ignored', () => {
+  const dir = scaffoldedRepo();
+  for (const rel of ['.agentex/version.json', '.agentex/test-template.md', '.agentex/task-estimation.json',
+    '.agentex/estimation-history.jsonl', 'qa-watchlist/a.md', '.claude/settings.json', 'executions/', 'executions/x/report.md',
+    // knowledge/ is committed (project-layout-contract R2.5)
+    'knowledge/INDEX.md', 'knowledge/business-rules.md', 'knowledge/app-map.md', 'knowledge/gotchas.md']) {
+    assert.strictEqual(checkIgnored(dir, rel), false, `${rel} must not be ignored`);
+  }
+  const entries = scaffold.GITIGNORE_ENTRIES.map(e => e.entry);
+  for (const whole of ['.agentex/', '.agentex', '.claude/', '.claude', '/.agentex/', '/.claude/']) {
+    assert.ok(!entries.includes(whole), `no entry ignores ${whole} as a whole`);
+  }
+  for (const harness of ['.claude/worktrees/', '.claude/settings.local.json']) {
+    assert.ok(!entries.includes(harness), `${harness} is a docs recommendation, not a scaffold entry`);
+  }
+});
+
+// ---- CLAUDE.md: the AgenTeX layout block (scripts/lib/layout.js) ----
+test('a fresh scaffold has exactly one AgenTeX layout block, current, after the executions/ bullet', () => {
+  const layout = require('./layout.js');
+  const dir = proj();
+  const actions = scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  const text = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+  assert.strictEqual(text.split(layout.BEGIN_PREFIX).length - 1, 1, 'one begin marker');
+  assert.strictEqual(text.split(layout.END_MARKER).length - 1, 1, 'one end marker');
+  assert.strictEqual(layout.parseBlock(Buffer.from(text)).state, 'current');
+  assert.ok(text.startsWith(scaffold.CLAUDE_MD_BULLET), 'the bullet first, as before');
+  assert.strictEqual(text, `${scaffold.CLAUDE_MD_BULLET}\n${layout.renderBlock()}\n`);
+  assert.ok(actions.some((a) => a.path === 'CLAUDE.md' && a.state === 'created'));
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), text, 're-run: one block, byte-identical');
+  assert.ok(!fs.existsSync(path.join(dir, 'knowledge')), 'knowledge/ is created on first write, never scaffolded');
+});
+
+test('the scratch entry: an equivalent spelling or a deliberate un-ignore counts as covered', () => {
+  for (const line of ['.agentex/scratch', '/.agentex/scratch/', '.agentex/', '!.agentex/scratch/', '!/.agentex/scratch']) {
+    const dir = proj({ '.gitignore': `${PRIOR_ENTRIES.join('\n')}\n${line}\n` });
+    assert.deepStrictEqual(scaffold.gitignoreMissing(dir), [], line);
+    const before = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8');
+    scaffold.ensureGitignore(dir);
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8'), before, `${line}: byte-identical`);
+  }
+});
+
 // ---- pristine sample-environment detection ----
 // The shape the qa-era scaffold shipped (plugin <= 0.16.x, templates/environments/qa.json).
 const QA_ERA_SAMPLE = {
@@ -90,6 +162,27 @@ const QA_ERA_SAMPLE = {
 test('isPristineSampleEnv: current template and the historical qa-era shape are pristine', () => {
   assert.strictEqual(scaffold.isPristineSampleEnv(TEMPLATE_ENV, PLUGIN_ROOT), true);
   assert.strictEqual(scaffold.isPristineSampleEnv(QA_ERA_SAMPLE, PLUGIN_ROOT), true);
+});
+
+// The shape main shipped briefly after PR #24 (mobile testing): the sample qc.json carried a
+// placeholder `mobile` block. Projects scaffolded then still have it, untouched.
+const WITH_MOBILE_PLACEHOLDER_SAMPLE = {
+  ...QA_ERA_SAMPLE,
+  mobile: {
+    platformName: 'Android', automationName: 'UiAutomator2',
+    app: '/absolute/path/to/app.apk', deviceName: 'emulator-5554',
+  },
+};
+
+test('the sample environment has no mobile block: mobile is opt-in', () => {
+  assert.ok(!('mobile' in TEMPLATE_ENV), 'templates/environments/qc.json must not scaffold a mobile block');
+});
+
+test('isPristineSampleEnv: the with-mobile-placeholder sample shipped after PR #24 is still pristine', () => {
+  assert.strictEqual(scaffold.isPristineSampleEnv(WITH_MOBILE_PLACEHOLDER_SAMPLE, PLUGIN_ROOT), true);
+  const touched = JSON.parse(JSON.stringify(WITH_MOBILE_PLACEHOLDER_SAMPLE));
+  touched.mobile.app = '/Users/me/real.apk';
+  assert.strictEqual(scaffold.isPristineSampleEnv(touched, PLUGIN_ROOT), false);
 });
 
 test('isPristineSampleEnv: structural comparison — key order and whitespace do not matter', () => {
@@ -158,15 +251,181 @@ test('the scaffold creates no QA watchlist file or folder (they are created lazi
   assert.ok(!actions.some((a) => QA_PATHS.some((p) => a.path.startsWith(path.posix.dirname(p)))));
 });
 
-test('the scaffolded config/project.json carries the four plugin blocks, equal to STRUCTURED_DEFAULTS; no provider block', () => {
+test('the scaffolded config/project.json carries the two plugin blocks, equal to STRUCTURED_DEFAULTS; no provider block', () => {
   const dir = proj();
   scaffold.scaffoldProject(dir, PLUGIN_ROOT);
   const cfg = readJson(dir, 'config/project.json');
-  for (const k of ['testingTasks', 'testDesign', 'estimation', 'qaRecords']) {
+  for (const k of ['testDesign', 'qaRecords']) {
     assert.deepStrictEqual(cfg[k], STRUCTURED_DEFAULTS[k], `${k} equals the default`);
+  }
+  for (const k of ['testingTasks', 'estimation']) {
+    assert.ok(!(k in cfg), `no ${k} block (decision #13: config/estimation.json is the one task-list source)`);
   }
   assert.ok(!('azure' in cfg) && !('jira' in cfg), 'the template carries no provider block (the wizard writes the chosen one)');
   assert.ok(!('workflow' in cfg) && !('reproSummaryRow' in cfg), 'provider-block keys are never top-level');
+});
+
+// ---- Decision A-2: the shared test password is a secret in every shipped template ----
+const TEMPLATE_PROJECT = JSON.parse(
+  fs.readFileSync(path.join(PLUGIN_ROOT, 'templates', 'config', 'project.json'), 'utf8'));
+// The project template shipped before A-2 (plain password descriptor with a default).
+const PRE_A2_PROJECT_TEMPLATE = {
+  ...JSON.parse(JSON.stringify(TEMPLATE_PROJECT)),
+  defaultsFields: [
+    { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+      hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+      hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+    { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+  ],
+};
+
+test('A-2: the sample environment references DEFAULT_PASSWORD — no plugin template ships a password value', () => {
+  assert.deepStrictEqual(TEMPLATE_ENV.defaults, { otp: '0000', password: { envSecret: 'DEFAULT_PASSWORD' } });
+  assert.ok(!JSON.stringify(TEMPLATE_PROJECT).includes('Test@1234'), 'the project template carries no password value');
+  assert.ok(!JSON.stringify(TEMPLATE_ENV).includes('Test@1234'));
+});
+
+test('A-2: the pre-A-2 sample environment still counts as pristine (historical shape 1)', () => {
+  assert.strictEqual(scaffold.isPristineSampleEnv(QA_ERA_SAMPLE, PLUGIN_ROOT), true);
+  assert.strictEqual(scaffold.isPristineSampleEnv(TEMPLATE_ENV, PLUGIN_ROOT), true);
+});
+
+test('A-2: isPristineProjectConfig accepts the current and the pre-A-2 template, nothing user-touched', () => {
+  assert.strictEqual(scaffold.isPristineProjectConfig(TEMPLATE_PROJECT, PLUGIN_ROOT), true);
+  assert.strictEqual(scaffold.isPristineProjectConfig(PRE_A2_PROJECT_TEMPLATE, PLUGIN_ROOT), true);
+  const touched = JSON.parse(JSON.stringify(PRE_A2_PROJECT_TEMPLATE));
+  touched.name = 'my-real-project';
+  assert.strictEqual(scaffold.isPristineProjectConfig(touched, PLUGIN_ROOT), false);
+  assert.strictEqual(scaffold.isPristineProjectConfig(null, PLUGIN_ROOT), false);
+});
+
+test('A-2: the scaffolded keys-only .env lists DEFAULT_PASSWORD with an empty value', () => {
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  assert.match(fs.readFileSync(path.join(dir, '.env'), 'utf8'), /^DEFAULT_PASSWORD=$/m);
+});
+
+test('A-2: a freshly scaffolded, git add-ed project scans with no plain-string warning and no leak', () => {
+  const { execFileSync, spawnSync } = require('node:child_process');
+  const dir = scaffoldedRepo();
+  execFileSync('git', ['-C', dir, 'add', '-A']);
+  const r = spawnSync(process.execPath, [path.join(PLUGIN_ROOT, 'scripts', 'secret_scan.js'), '--staged'],
+    { cwd: dir, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } });
+  const out = JSON.parse(r.stdout);
+  assert.strictEqual(r.status, 0, r.stdout);
+  assert.deepStrictEqual(out.findings, [], 'zero findings from the plugin\'s own files');
+  assert.strictEqual(out.result, 'CLEAN');
+});
+
+// ---- pristine project config across the plugin-block seeding (SCF R6/R7) ----
+// The template gained the two plugin-owned blocks; migration 12 and the wizard
+// save add them (at their defaults) to an older scaffold. Neither makes an
+// untouched scaffold the user's: an older shipped shape is pristine with or
+// without the seeded defaults; a customized block is the user's.
+const PLUGIN_BLOCK_KEYS = ['testDesign', 'qaRecords'];
+const withoutPluginBlocks = (cfg) => Object.fromEntries(Object.entries(cfg).filter(([k]) => !PLUGIN_BLOCK_KEYS.includes(k)));
+
+test('pristine: the template shipped before the plugin blocks (0.25) is pristine, bare or after m12/wizard seeding', () => {
+  const { withPluginConfigBlocks } = require('./project_config.js');
+  const before = withoutPluginBlocks(TEMPLATE_PROJECT);
+  assert.strictEqual(scaffold.isPristineProjectConfig(before, PLUGIN_ROOT), true, 'the outgoing shape is a historical shape');
+  assert.strictEqual(scaffold.isPristineProjectConfig(withPluginConfigBlocks(before), PLUGIN_ROOT), true, 'seeded = the current template');
+  const preA2 = withoutPluginBlocks(PRE_A2_PROJECT_TEMPLATE);
+  assert.strictEqual(scaffold.isPristineProjectConfig(preA2, PLUGIN_ROOT), true);
+  assert.strictEqual(scaffold.isPristineProjectConfig(withPluginConfigBlocks(preA2), PLUGIN_ROOT), true, 'an older scaffold after m12 is still scaffolding');
+});
+
+test('pristine: a customized plugin block, or a provider block, makes the config the user\'s', () => {
+  const custom = JSON.parse(JSON.stringify(TEMPLATE_PROJECT));
+  custom.testDesign = { approval: 'per-story' };
+  assert.strictEqual(scaffold.isPristineProjectConfig(custom, PLUGIN_ROOT), false);
+  const partial = withoutPluginBlocks(TEMPLATE_PROJECT);
+  partial.qaRecords = { pendingQuestions: 'notes/questions.md' };
+  assert.strictEqual(scaffold.isPristineProjectConfig(partial, PLUGIN_ROOT), false);
+  const tracked = { ...JSON.parse(JSON.stringify(TEMPLATE_PROJECT)), azure: { org: 'exampleorg', project: 'Sample Project' } };
+  assert.strictEqual(scaffold.isPristineProjectConfig(tracked, PLUGIN_ROOT), false);
+});
+
+// ---- config/estimation.json: the user's file, committed, never scaffolded ----
+const ESTIMATION = 'config/estimation.json';
+const ESTIMATION_BYTES = '{\n  "schemaVersion": 1,\n  "tasks": [ { "name": "Exploratory Pass", "enabled": true, "minHours": 1, "maxHours": 3 } ],\n  "factors": { "Scope": 1 }\n}\n';
+
+test('a fresh scaffold creates no config/estimation.json (only an approved estimation run does)', () => {
+  const dir = proj();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  assert.ok(fs.existsSync(path.join(dir, 'config', 'project.json')), 'the scaffold ran');
+  assert.ok(!fs.existsSync(path.join(dir, ESTIMATION)));
+});
+
+test('a scaffold re-run leaves an existing config/estimation.json byte-identical', () => {
+  const dir = proj({ [ESTIMATION]: ESTIMATION_BYTES });
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  scaffold.ensureGitignore(dir);
+  scaffold.ensureClaudeMdBullet(dir);
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  assert.strictEqual(fs.readFileSync(path.join(dir, ESTIMATION), 'utf8'), ESTIMATION_BYTES);
+});
+
+test('the scaffold\'s .gitignore does not ignore config/estimation.json or config/ (the file is committed)', () => {
+  const { execFileSync } = require('node:child_process');
+  const dir = proj({ [ESTIMATION]: ESTIMATION_BYTES });
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  scaffold.ensureGitignore(dir);
+  const lines = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8').split(/\r?\n/).map((l) => l.trim());
+  for (const pattern of ['config/', 'config', '/config/', '/config', 'config/estimation.json', '*.json', 'config/*']) {
+    assert.ok(!lines.includes(pattern), `.gitignore must not carry ${pattern}`);
+  }
+  execFileSync('git', ['-C', dir, 'init', '-q']);
+  for (const rel of [ESTIMATION, 'config/project.json']) {
+    let ignored = true;
+    try { execFileSync('git', ['-C', dir, 'check-ignore', '-q', rel]); } catch (e) { ignored = e.status !== 1; }
+    assert.strictEqual(ignored, false, `${rel} must not be ignored by git`);
+  }
+});
+
+// ---- CLAUDE.md as a symlink: the executions/ bullet has the layout block's guard ----
+// Where the OS cannot create symlinks (Windows without the privilege), these cases skip.
+const CAN_SYMLINK = (() => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-sc-link-'));
+  try { fs.symlinkSync('target', path.join(d, 'link')); return true; } catch { return false; }
+})();
+function linkTest(name, fn) {
+  if (CAN_SYMLINK) test(name, fn);
+  else console.log(`  skip - ${name} (this OS cannot create symlinks here)`);
+}
+
+linkTest('ensureClaudeMdBullet: a symlinked CLAUDE.md gets the bullet in its target; the link stays a link', () => {
+  const dir = proj({ 'AGENTS.md': '# Agents\n' });
+  fs.symlinkSync('AGENTS.md', path.join(dir, 'CLAUDE.md'));
+  const r = scaffold.ensureClaudeMdBullet(dir);
+  assert.strictEqual(r.kind, 'created');
+  assert.ok(fs.lstatSync(path.join(dir, 'CLAUDE.md')).isSymbolicLink(), 'still a symlink');
+  assert.strictEqual(fs.readlinkSync(path.join(dir, 'CLAUDE.md')), 'AGENTS.md');
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), `# Agents\n\n${scaffold.CLAUDE_MD_BULLET}`);
+  assert.strictEqual(scaffold.ensureClaudeMdBullet(dir).kind, 'skipped', 'read through the link on the next run');
+});
+
+linkTest('ensureClaudeMdBullet: a dangling CLAUDE.md link → [flag] naming the target, zero writes, never a throw', () => {
+  for (const target of ['AGENTS.md', 'shared/AGENTS.md']) {
+    const dir = proj();
+    fs.symlinkSync(target, path.join(dir, 'CLAUDE.md'));
+    for (const dryRun of [true, false]) {
+      const r = scaffold.ensureClaudeMdBullet(dir, { dryRun });
+      assert.strictEqual(r.kind, 'flag', `${target} dryRun=${dryRun}`);
+      assert.strictEqual(r.state, 'dangling');
+      assert.strictEqual(r.message, `CLAUDE.md is a symlink to ${target}, which does not exist, so the executions/ guidance was not written — create the target file (or replace the link with a file), then re-run /update-agentex (docs/project-layout.md#the-agentex-block-in-claudemd)`);
+      assert.strictEqual(fs.readlinkSync(path.join(dir, 'CLAUDE.md')), target, 'the link is untouched');
+      assert.ok(!fs.existsSync(path.join(dir, target)), 'no target was created');
+    }
+  }
+});
+
+linkTest('scaffoldProject (/init-test): a dangling CLAUDE.md link → two [flag] actions, no target created', () => {
+  const dir = proj();
+  fs.symlinkSync('AGENTS.md', path.join(dir, 'CLAUDE.md'));
+  const flags = scaffold.scaffoldProject(dir, PLUGIN_ROOT).filter((a) => a.kind === 'flag');
+  assert.deepStrictEqual(flags.map((a) => a.state), ['dangling', 'dangling']);
+  assert.ok(!fs.existsSync(path.join(dir, 'AGENTS.md')), 'no target was created');
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

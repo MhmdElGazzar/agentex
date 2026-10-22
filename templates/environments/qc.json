@@ -2,7 +2,7 @@
   "portalUrl": "https://example.com",
   "defaults": {
     "otp": "0000",
-    "password": "Test@1234"
+    "password": { "envSecret": "DEFAULT_PASSWORD" }
   },
   "users": {
     "valid_user": { "phone": "0550000001", "role": "customer" },
@@ -18,11 +18,5 @@
   "api": {
     "baseUrl": "https://jsonplaceholder.typicode.com",
     "token": { "envSecret": "API_TOKEN" }
-  },
-  "mobile": {
-    "platformName": "Android",
-    "automationName": "UiAutomator2",
-    "app": "/absolute/path/to/app.apk",
-    "deviceName": "emulator-5554"
   }
 }

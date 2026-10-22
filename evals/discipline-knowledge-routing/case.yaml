@@ -1,0 +1,17 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# The project-layout routing rule: a settled fact goes to knowledge/ (read INDEX.md first),
+# appended with its source and date, announced in one line; existing entries untouched.
+name: discipline-knowledge-routing
+tags: [discipline, project-layout, knowledge]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'AZURE_PAT=EVAL_SENTINEL_PAT_k8m3\nAPI_TOKEN=\nDEFAULT_PASSWORD=\n' > .env
+  git init -q
+  git add -A
+  git -c user.email=eval@example.test -c user.name=eval commit -qm fixture

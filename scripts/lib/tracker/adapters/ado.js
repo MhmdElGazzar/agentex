@@ -13,6 +13,10 @@
 // inverted). It enters memory once and reaches ONLY the Authorization header —
 // never a return value, an error, a log line, argv, or a dry-run descriptor
 // (those print `authorization: <Basic ***, not printed>`, PR #16's wording).
+// Belt and braces on the error path: a provider or proxy can echo request
+// material back, so every TrackerError diagnostic is scrubbed of the PAT in all
+// the forms it can travel in before it leaves request() (see scrub() below).
+// Successful responses are returned untouched.
 //
 // CONFIG (invariants 7/10): org/project/apiVersion come from the consumer's
 // config/project.json `azure` block with legacy AZURE_* .env keys as fallback
@@ -23,6 +27,12 @@
 // NOTHING and returns the full request descriptor (method, url, redacted
 // headers, body summary) for the consolidated pre-approval screen. Nothing here
 // retries or cleans up — that discipline lives in ledger.js.
+//
+// IDS: every call that SENDS a request takes work-item, plan, suite, run and
+// test-case IDs in canonical decimal form only (requireId below), so an id can
+// never carry a path segment or query string into a request URL. Dry runs are
+// deliberately not checked: a plan names IDs that an earlier write in the same
+// plan will create, and the flows pass stand-ins for them.
 const fs = require('node:fs');
 const path = require('node:path');
 const pc = require(path.join(__dirname, '..', '..', 'project_config.js'));
@@ -33,8 +43,9 @@ const { htmlToText } = require('../plaintext.js');
 
 const PAT_ENV_NAMES = ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT'];
 const DEFAULT_TIMEOUT_MS = 30_000; // same bound as the catalog runners
+const BATCH_CHUNK = 200;             // wit/workitemsbatch accepts at most 200 ids per call
 const REDACTED_AUTH = '<Basic ***, not printed>';
-const BATCH_CHUNK = 200;                 // wit/workitemsbatch accepts at most 200 ids per call
+const REDACTED = '<redacted>'; // what scrub() leaves where a PAT form was
 const COMMENTS_API_VERSION = '7.1-preview.4';
 const ITERATION_TIMEFRAMES = ['current', 'future', 'past', 'all'];
 const PLAN_PAGE_CAP = 50;                // listPlans pages before it reports truncated
@@ -59,6 +70,32 @@ function assertCiWritesAllowed(op) {
   }
 }
 
+// A canonical ID is a positive safe integer, or its plain decimal spelling: no
+// sign, no leading zero, no whitespace, no '#', no exponent or fraction.
+function isCanonicalId(id) {
+  if (typeof id === 'number') return Number.isSafeInteger(id) && id > 0;
+  return typeof id === 'string' && /^[1-9][0-9]*$/.test(id) && Number.isSafeInteger(Number(id));
+}
+
+// Called on every path that sends a request, before anything is sent: reads
+// and execute paths only — never on an execute:false descriptor, where
+// the bug flow's stand-ins ('{new-bug-id}', 'NEW', '<bugId>', ...) must keep
+// planning exactly as they always have. Exit 2: refused, nothing was sent.
+function requireId(op, label, id) {
+  if (isCanonicalId(id)) return;
+  const shown = typeof id === 'string' ? JSON.stringify(id)
+    : (id !== null && typeof id === 'object') ? 'an object' : String(id);
+  throw configError(`${op} needs a positive canonical decimal ${label} (got ${shown}) — refused before any request`);
+}
+
+// Relation targets ride inside the json-patch body as a composed URL; one given
+// by url (an attachment) is the server's own and is passed through.
+function requireRelationTargets(op, { relations, addRelations } = {}) {
+  for (const rel of relations || addRelations || []) {
+    if (!rel.url) requireId(op, 'relation target id', rel.targetId);
+  }
+}
+
 // azure block key first, legacy AZURE_* env second; empty/missing => null.
 function pick(cwd, az, key, envName) {
   const j = az[key];
@@ -69,10 +106,22 @@ function pick(cwd, az, key, envName) {
 
 // `azure.org` accepts both spellings, explicitly: a full URL is used as-is
 // (trailing slashes stripped); a bare org name becomes https://dev.azure.com/<org>.
-// No other guessing.
+// No other guessing. Every request URL and dry-run descriptor is composed by
+// appending to this base, so it must be a plain one: credentials, a query
+// string or a fragment are refused at config time. The refusal never echoes
+// the value — it may hold a credential.
 function normalizeOrg(org) {
   const trimmed = String(org).trim().replace(/\/+$/, '');
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  const base = /^https?:\/\//i.test(trimmed) ? trimmed : `https://dev.azure.com/${trimmed}`;
+  const hint = 'use the bare org name or its https://dev.azure.com/<org> (or on-prem collection) URL';
+  let parsed;
+  try { parsed = new URL(base); } catch {
+    throw configError(`azure.org is not a valid organization name or http(s) URL — ${hint}`);
+  }
+  if (parsed.username || parsed.password || /[?#]/.test(base)) {
+    throw configError(`azure.org must not carry credentials, a query string or a fragment — ${hint}`);
+  }
+  return base;
 }
 
 // Resolve the consumer's non-secret ADO settings (invariant 7). Missing
@@ -144,7 +193,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
   const doFetch = fetchImpl || globalThis.fetch;
   const projSeg = encodeURIComponent(cfg.project);
 
-  let patState = null; // { header, resolvedName } — resolved lazily, once
+  let patState = null; // { header, resolvedName, secretForms } — resolved lazily, once
   function auth(op, url) {
     if (!patState) {
       let resolvedName = null; let pat = null;
@@ -157,12 +206,36 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
           `No Azure DevOps PAT found — looked for ${PAT_ENV_NAMES.join(', ')} in the environment and in .env. ` +
           'Add AZURE_PAT to the project\'s .env (the /init-test wizard writes it).');
       }
+      const encoded = Buffer.from(':' + pat).toString('base64');
       patState = {
-        header: 'Basic ' + Buffer.from(':' + pat).toString('base64'),
+        header: 'Basic ' + encoded,
         resolvedName,
+        // Every spelling the PAT can take in an echoed diagnostic: the Basic
+        // header, its base64(':'+PAT) payload, the raw value, URL-encoded and
+        // JSON-escaped. Longest first, so the header goes as one piece.
+        secretForms: [...new Set(['Basic ' + encoded, encoded, pat, encodeURIComponent(pat), JSON.stringify(pat).slice(1, -1)])]
+          .sort((a, b) => b.length - a.length),
       };
     }
     return patState;
+  }
+
+  // Error-path scrub — used ONLY where a TrackerError is built, never on a
+  // successful response. Before any PAT is resolved there is nothing to scrub.
+  function scrub(text) {
+    let out = String(text);
+    for (const form of (patState ? patState.secretForms : [])) out = out.replaceAll(form, REDACTED);
+    return out;
+  }
+  // Structured error bodies are scrubbed value by value (keys included), so a
+  // PAT the raw text hid behind JSON \u escapes is caught once it is parsed.
+  function scrubDeep(value) {
+    if (typeof value === 'string') return scrub(value);
+    if (Array.isArray(value)) return value.map(scrubDeep);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([k, v]) => [scrub(k), scrubDeep(v)]));
+    }
+    return value;
   }
 
   function url(route, params = {}, { project = true, apiVersion = cfg.apiVersion } = {}) {
@@ -188,14 +261,30 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const msg = e && (e.name === 'TimeoutError' || e.name === 'AbortError')
         ? `request timed out after ${timeoutMs}ms`
         : (e && e.message) || String(e);
-      throw new TrackerError({ op, url: requestUrl, serverMessage: msg });
+      throw new TrackerError({ op, url: scrub(requestUrl), serverMessage: scrub(msg) });
     }
-    const text = await res.text();
+    let text;
+    try {
+      text = await res.text();
+    } catch (e) {
+      // A body that cannot be read is an error path too: wrapped and scrubbed,
+      // never a raw stream error.
+      throw new TrackerError({
+        op, status: res.ok ? undefined : res.status, url: scrub(requestUrl),
+        serverMessage: scrub(`the response body could not be read: ${(e && e.message) || String(e)}`),
+      });
+    }
     if (!res.ok) {
-      let serverMessage = null;
-      try { serverMessage = JSON.parse(text).message || null; } catch { /* not json */ }
+      // A JSON body is scrubbed as parsed values and re-serialized; anything
+      // else is scrubbed as raw text.
+      let serverMessage = null; let body;
+      try {
+        const parsed = scrubDeep(JSON.parse(text));
+        serverMessage = (parsed && parsed.message) || null;
+        body = JSON.stringify(parsed);
+      } catch { body = scrub(text); }
       const err = new TrackerError({
-        op, status: res.status, url: requestUrl, serverMessage, body: text.slice(0, 500),
+        op, status: res.status, url: scrub(requestUrl), serverMessage, body: body.slice(0, 500),
         credentialHint: res.status === 401 || res.status === 403
           ? { tried: [...PAT_ENV_NAMES], resolved: resolvedName }
           : undefined,
@@ -285,6 +374,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // opts.fields (array) adds a fields= param; ADO rejects fields together
     // with $expand, so that pair is refused before any request.
     async getWorkItem(id, { expand, fields } = {}) {
+      requireId('getWorkItem', 'work-item id', id);
       if (fields && fields.length && expand) {
         throw configError('getWorkItem: fields and expand cannot be combined (Azure DevOps rejects the pair) — ask for specific fields OR expand, not both');
       }
@@ -321,6 +411,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // Follows the x-ms-continuationtoken response header (additive: the first
     // request URL is unchanged; a response without the header is the last page).
     async listSuites(planId) {
+      requireId('listSuites', 'plan id', planId);
       const out = [];
       let token = null;
       const seen = new Set();
@@ -330,7 +421,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         out.push(...((body && body.value) || []));
         token = header('x-ms-continuationtoken');
         if (!token) return out;
-        if (seen.has(token)) throw new TrackerError({ op: 'listSuites', url: u, serverMessage: `the service repeated continuation token "${token}" — stopping rather than looping` });
+        if (seen.has(token)) throw new TrackerError({ op: 'listSuites', url: scrub(u), serverMessage: scrub(`the service repeated continuation token "${token}" — stopping rather than looping`) });
         seen.add(token);
       }
     },
@@ -347,31 +438,76 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         plans.push(...((body && body.value) || []));
         const next = header('x-ms-continuationtoken');
         if (!next) return { plans, truncated: false };
-        if (next === token) throw new TrackerError({ op: 'listPlans', url: u, serverMessage: `the service repeated continuation token "${next}" — stopping rather than looping` });
+        if (next === token) throw new TrackerError({ op: 'listPlans', url: scrub(u), serverMessage: scrub(`the service repeated continuation token "${next}" — stopping rather than looping`) });
         token = next;
       }
       return { plans, truncated: true };
     },
 
     async getPlan(planId) {
+      requireId('getPlan', 'plan id', planId);
       return request('getPlan', 'GET', url(`testplan/plans/${planId}`));
     },
 
     async listSuiteCases(planId, suiteId) {
+      requireId('listSuiteCases', 'plan id', planId);
+      requireId('listSuiteCases', 'suite id', suiteId);
       const res = await request('listSuiteCases', 'GET', url(`testplan/Plans/${planId}/Suites/${suiteId}/TestCase`));
       return (res && res.value) || [];
     },
 
     // Per-suite point lookup on purpose — the global ?testCaseId shortcut 404s on many orgs.
     async getPoint(planId, suiteId, testCaseId) {
+      requireId('getPoint', 'plan id', planId);
+      requireId('getPoint', 'suite id', suiteId);
+      requireId('getPoint', 'test case id', testCaseId);
       const u = url(`testplan/Plans/${planId}/Suites/${suiteId}/TestPoint`, { testCaseId });
       const res = await request('getPoint', 'GET', u);
       return ((res && res.value) || [])[0] || null;
     },
 
     async listRunResults(runId) {
+      requireId('listRunResults', 'run id', runId);
       const res = await request('listRunResults', 'GET', url(`test/Runs/${runId}/results`));
       return (res && res.value) || [];
+    },
+
+    // Batch read: POST wit/workitemsbatch, chunks of BATCH_CHUNK, errorPolicy
+    // 'omit'. The service may answer in any order, so INPUT order is restored.
+    //   { items: [raw work item…], missing: [id…] }
+    async getWorkItems(ids, { fields } = {}) {
+      const wanted = intIds(ids, 'getWorkItems');
+      const byId = new Map();
+      for (let i = 0; i < wanted.length; i += BATCH_CHUNK) {
+        const chunk = wanted.slice(i, i + BATCH_CHUNK);
+        const body = { ids: chunk, ...(fields && fields.length ? { fields: [...fields] } : {}), errorPolicy: 'omit' };
+        const res = await request('getWorkItems', 'POST', url('wit/workitemsbatch'), { body: JSON.stringify(body), contentType: 'application/json' });
+        for (const wi of (res && res.value) || []) if (wi && wi.id !== undefined && wi.id !== null) byId.set(Number(wi.id), wi);
+      }
+      return {
+        items: wanted.filter((id) => byId.has(id)).map((id) => byId.get(id)),
+        missing: wanted.filter((id) => !byId.has(id)),
+      };
+    },
+
+    // The team's iterations: ONE GET {project}/{team}/_apis/work/teamsettings/iterations,
+    // unfiltered on the wire — the docs support only $timeframe=current
+    // server-side. opts.timeframe ('current' | 'future' | 'past' | 'all', default
+    // 'all') filters the returned timeFrame client-side; the default returns
+    // every iteration. No team → exit 2, ZERO requests; an unknown timeframe →
+    // exit 2, ZERO requests.
+    //   [{ id, name, path, startDate, finishDate, timeFrame }]
+    async listIterations({ team, timeframe = 'all' } = {}) {
+      if (!team) throw configError('No team resolved — iterations are team settings. Pass --team "<name>" or set azure.team in config/project.json.');
+      if (!ITERATION_TIMEFRAMES.includes(timeframe)) throw configError(`unknown timeframe ${JSON.stringify(timeframe)} — accepted: ${ITERATION_TIMEFRAMES.join(', ')}`);
+      const u = `${cfg.base}/${projSeg}/${encodeURIComponent(team)}/_apis/work/teamsettings/iterations?api-version=${encodeURIComponent(cfg.apiVersion)}`;
+      const res = await request('listIterations', 'GET', u);
+      return ((res && res.value) || [])
+        .map((it) => {
+          const a = it.attributes || {};
+          return { id: it.id, name: it.name, path: it.path || null, startDate: a.startDate || null, finishDate: a.finishDate || null, timeFrame: a.timeFrame || null };
+        })
+        .filter((it) => timeframe === 'all' || it.timeFrame === timeframe);
     },
 
     // ── NEUTRAL READS (additive, flow-free) ───────────────────────────────────
@@ -431,29 +567,12 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
     // ── NEUTRAL READS for the tracker CLI (skill-consolidation-foundation) ───
 
-    // Batch read: POST wit/workitemsbatch, chunks of 200, errorPolicy 'omit'.
-    // Returns { items: [raw work item…] in INPUT order, missing: [id…] } — an id
-    // the service does not return is listed, never dropped.
-    async getWorkItems(ids, { fields } = {}) {
-      const wanted = intIds(ids, 'getWorkItems');
-      const byId = new Map();
-      for (let i = 0; i < wanted.length; i += BATCH_CHUNK) {
-        const chunk = wanted.slice(i, i + BATCH_CHUNK);
-        const body = { ids: chunk, ...(fields && fields.length ? { fields: [...fields] } : {}), errorPolicy: 'omit' };
-        const res = await request('getWorkItems', 'POST', url('wit/workitemsbatch'), { body: JSON.stringify(body), contentType: 'application/json' });
-        for (const wi of (res && res.value) || []) if (wi && wi.id !== undefined) byId.set(Number(wi.id), wi);
-      }
-      return {
-        items: wanted.filter((id) => byId.has(id)).map((id) => byId.get(id)),
-        missing: wanted.filter((id) => !byId.has(id)),
-      };
-    },
-
     // Comment thread, oldest first: GET wit/workItems/{id}/comments (comments
     // API 7.1-preview.4, order=asc), following continuationToken. Comment HTML
     // becomes plain text (plaintext.htmlToText).
     //   [{ id, author, date, text, user: { id, displayName, email } }]
     async listComments(id) {
+      requireId('listComments', 'work-item id', id);
       const out = [];
       let token = null;
       const seen = new Set();
@@ -469,31 +588,15 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         }
         token = res && res.continuationToken;
         if (!token) return out;
-        if (seen.has(token)) throw new TrackerError({ op: 'listComments', url: u, serverMessage: `the service repeated continuation token "${token}" — stopping rather than looping` });
+        if (seen.has(token)) throw new TrackerError({ op: 'listComments', url: scrub(u), serverMessage: scrub(`the service repeated continuation token "${token}" — stopping rather than looping`) });
         seen.add(token);
       }
-    },
-
-    // The team's iterations: ONE GET {project}/{team}/_apis/work/teamsettings/iterations,
-    // filtered client-side on attributes.timeFrame. No team -> exit 2 naming
-    // the setting, ZERO requests.
-    //   [{ id, name, path, startDate, finishDate, timeFrame }]
-    async listIterations({ team, timeframe = 'all' } = {}) {
-      if (!team) throw configError('No team resolved — iterations are team settings. Pass --team "<name>" or set azure.team in config/project.json.');
-      if (!ITERATION_TIMEFRAMES.includes(timeframe)) throw configError(`unknown timeframe ${JSON.stringify(timeframe)} — accepted: ${ITERATION_TIMEFRAMES.join(', ')}`);
-      const u = `${cfg.base}/${projSeg}/${encodeURIComponent(team)}/_apis/work/teamsettings/iterations?api-version=${encodeURIComponent(cfg.apiVersion)}`;
-      const res = await request('listIterations', 'GET', u);
-      return ((res && res.value) || [])
-        .map((it) => {
-          const a = it.attributes || {};
-          return { id: it.id, name: it.name, path: it.path || null, startDate: a.startDate || null, finishDate: a.finishDate || null, timeFrame: a.timeFrame || null };
-        })
-        .filter((it) => timeframe === 'all' || it.timeFrame === timeframe);
     },
 
     // Child refs of many parents in ONE project-scoped WIQL — a constant request
     // count however many children there are (listChildren stays per-child).
     async listChildRefs(parentIds) {
+      for (const id of [].concat(parentIds)) requireId('listChildRefs', 'parent work-item id', id);
       const ids = intIds(parentIds, 'listChildRefs');
       if (!ids.length) return [];
       const res = await this.query(
@@ -520,7 +623,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       } catch (e) {
         if (e instanceof TrackerError && (e.status === 401 || e.status === 403)) {
           throw new TrackerError({
-            op: 'findIdentity', status: e.status, url: u, credentialHint: e.credentialHint,
+            op: 'findIdentity', status: e.status, url: e.url, credentialHint: e.credentialHint,
             serverMessage: 'the identity search was refused — the PAT needs the Identity (Read) scope to resolve a mention by email',
           });
         }
@@ -533,12 +636,79 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       }));
     },
 
+    // PastSprints — the team's last `count` past iterations, newest first.
+    //   { ok: false, condition: 'team-required', data: {} } — no team, ZERO requests
+    //   { ok: true, sprints: [{ id, name, path, finishDate }], found } — ONE GET
+    //     (listIterations), kept where timeFrame is 'past', sorted by finishDate
+    //     desc (ties: startDate desc, then name), sliced to count; found = all past.
+    async listPastSprints({ team, count } = {}) {
+      if (!team) return { ok: false, condition: 'team-required', data: {} };
+      const t = (d) => (d ? Date.parse(d) || 0 : 0);
+      const past = (await this.listIterations({ team }))
+        .filter((it) => it.timeFrame === 'past')
+        .sort((a, b) => (t(b.finishDate) - t(a.finishDate)) || (t(b.startDate) - t(a.startDate)) ||
+          (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      return {
+        ok: true,
+        found: past.length,
+        sprints: past.slice(0, count).map((it) => ({ id: it.id, name: it.name, path: it.path, finishDate: it.finishDate })),
+      };
+    },
+
+    // ChildEstimates — the stories of type opts.storyType in those sprints and
+    // ALL their children with the Original Estimate (and nothing else that
+    // carries hours). ZERO requests when sprints is empty. Typical cost: the
+    // story WIQL, the story titles (workitemsbatch), one child WIQL per 200
+    // stories, the children (workitemsbatch).
+    //   { stories: [{ id, seq, title, url }],
+    //     children: [{ id, seq, title, parentId, hours: number > 0 | null }], truncated: false }
+    async listChildEstimates({ sprints = [], storyType } = {}) {
+      const none = { stories: [], children: [], truncated: false };
+      const paths = sprints.map((sp) => sp.path).filter(Boolean);
+      if (!paths.length) return none;
+      if (!storyType) throw new Error('listChildEstimates needs opts.storyType (the work item type that counts as a story)');
+      const rowsOf = (res) => (Array.isArray(res) ? res : (res && res.workItems) || []).map((w) => w.id).filter((id) => id !== undefined && id !== null);
+      const storyIds = rowsOf(await this.query(
+        `SELECT [System.Id] FROM workitems WHERE [System.TeamProject]='${wiqlEsc(cfg.project)}'` +
+        ` AND [System.WorkItemType]='${wiqlEsc(storyType)}'` +
+        ` AND [System.IterationPath] IN (${paths.map((pth) => `'${wiqlEsc(pth)}'`).join(', ')}) ORDER BY [System.Id]`));
+      if (!storyIds.length) return none;
+      const storyItems = (await this.getWorkItems(storyIds, { fields: ['System.Id', 'System.Title'] })).items;
+      const childIds = [];
+      for (let i = 0; i < storyIds.length; i += BATCH_CHUNK) {
+        const chunk = intIds(storyIds.slice(i, i + BATCH_CHUNK), 'listChildEstimates');
+        childIds.push(...rowsOf(await this.query(
+          `SELECT [System.Id] FROM workitems WHERE [System.TeamProject]='${wiqlEsc(cfg.project)}'` +
+          ` AND [System.Parent] IN (${chunk.join(', ')}) ORDER BY [System.Id]`)));
+      }
+      const childItems = childIds.length
+        ? (await this.getWorkItems(childIds, { fields: ['System.Id', 'System.Title', 'System.Parent', 'Microsoft.VSTS.Scheduling.OriginalEstimate'] })).items
+        : [];
+      const hoursOf = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null);
+      return {
+        stories: storyItems.map((w) => {
+          const f = w.fields || {};
+          return { id: w.id, seq: Number(w.id), title: f['System.Title'] || null, url: webUrl(w.id) };
+        }),
+        children: childItems.map((w) => {
+          const f = w.fields || {};
+          return {
+            id: w.id, seq: Number(w.id), title: f['System.Title'] || '',
+            parentId: f['System.Parent'] ?? null,
+            hours: hoursOf(f['Microsoft.VSTS.Scheduling.OriginalEstimate']),
+          };
+        }),
+        truncated: false,
+      };
+    },
+
     // ── WRITES (each takes {execute}; execute:false returns the descriptor) ──
     async createWorkItem(type, payload, { validateOnly = false, execute = false } = {}) {
       const u = url(`wit/workitems/$${encodeURIComponent(type)}`, validateOnly ? { validateOnly: 'true' } : {});
       const ops = toPatchOps(payload);
       if (!execute) return descriptor('createWorkItem', 'POST', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
       assertCiWritesAllowed('createWorkItem');
+      requireRelationTargets('createWorkItem', payload);
       const res = await request('createWorkItem', 'POST', u, {
         body: JSON.stringify(ops), contentType: 'application/json-patch+json',
       });
@@ -551,6 +721,8 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const ops = toPatchOps(payload);
       if (!execute) return descriptor('updateWorkItem', 'PATCH', u, { body: summarizeOps(ops), contentType: 'application/json-patch+json' });
       assertCiWritesAllowed('updateWorkItem');
+      requireId('updateWorkItem', 'work-item id', id);
+      requireRelationTargets('updateWorkItem', payload);
       const res = await request('updateWorkItem', 'PATCH', u, {
         body: JSON.stringify(ops), contentType: 'application/json-patch+json',
       });
@@ -567,6 +739,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const body = { text: String(html) };
       if (!execute) return descriptor('addComment', 'POST', u, { body, contentType: 'application/json' });
       assertCiWritesAllowed('addComment');
+      requireId('addComment', 'work-item id', id);
       const res = await request('addComment', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: res && res.id, workItemId: (res && res.workItemId) ?? Number(id) };
     },
@@ -575,20 +748,27 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return this.updateWorkItem(id, { addRelations: [{ rel: relType, targetId, ...(attributes ? { attributes } : {}) }] }, { execute });
     },
 
-    async uploadAttachment(filePath, { fileName, execute = false } = {}) {
+    // opts.bytes: the caller's already-checked buffer (create-bug.js passes
+    // what its structural check read), so the upload is exactly the validated
+    // bytes even if the file changes on disk in between. Without it the file
+    // is read here, as before.
+    async uploadAttachment(filePath, { fileName, execute = false, bytes } = {}) {
+      if (bytes !== undefined && bytes !== null && !(bytes instanceof Uint8Array)) {
+        throw configError('uploadAttachment opts.bytes must be a Buffer/Uint8Array when given');
+      }
       const name = fileName || path.basename(filePath);
       const u = url('wit/attachments', { fileName: name });
       if (!execute) {
-        let size = null;
-        try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ }
+        let size = bytes ? bytes.length : null;
+        if (size === null) { try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ } }
         return descriptor('uploadAttachment', 'POST', u, {
           body: `<raw bytes of ${name}${size !== null ? `, ${size} bytes` : ''}>`,
           contentType: 'application/octet-stream',
         });
       }
       assertCiWritesAllowed('uploadAttachment');
-      const bytes = fs.readFileSync(filePath);
-      const res = await request('uploadAttachment', 'POST', u, { body: bytes, contentType: 'application/octet-stream' });
+      const body = bytes || fs.readFileSync(filePath);
+      const res = await request('uploadAttachment', 'POST', u, { body, contentType: 'application/octet-stream' });
       return { name, id: res && res.id, url: res && res.url };
     },
 
@@ -608,6 +788,9 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         return descriptor('addCaseToSuite', 'POST', url(`test/Plans/${planId}/suites/${suiteId}/testcases/${ids.join(',')}`));
       }
       assertCiWritesAllowed('addCaseToSuite');
+      requireId('addCaseToSuite', 'plan id', planId);
+      requireId('addCaseToSuite', 'suite id', suiteId);
+      for (const id of ids) requireId('addCaseToSuite', 'test case id', id);
       const before = await memberIds();
       const toAdd = ids.filter((id) => !before.has(id));
       const alreadyPresent = ids.filter((id) => before.has(id));
@@ -650,6 +833,9 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       };
       if (!execute) return descriptor('createSuite', 'POST', u, { body, contentType: 'application/json' });
       assertCiWritesAllowed('createSuite');
+      requireId('createSuite', 'plan id', planId);
+      requireId('createSuite', 'parent suite id', parent);
+      if (type === 'requirement') requireId('createSuite', 'requirement id', requirementId);
       const res = await request('createSuite', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: res && res.id, name: res && res.name, suiteType: res && res.suiteType };
     },
@@ -661,11 +847,14 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // is). Fails closed: after the DELETE the suite is re-read (testplan
     // route), and any id still a member throws.
     async removeCaseFromSuite(planId, suiteId, caseIds, { execute = false } = {}) {
-      const ids = intIds(caseIds, 'removeCaseFromSuite');
       const route = `testplan/Plans/${planId}/Suites/${suiteId}/TestCase`;
       const del = (list) => url(route, { testCaseIds: list.join(',') });
-      if (!execute) return descriptor('removeCaseFromSuite', 'DELETE', del(ids));
+      if (!execute) return descriptor('removeCaseFromSuite', 'DELETE', del(intIds(caseIds, 'removeCaseFromSuite')));
       assertCiWritesAllowed('removeCaseFromSuite');
+      requireId('removeCaseFromSuite', 'plan id', planId);
+      requireId('removeCaseFromSuite', 'suite id', suiteId);
+      for (const id of [].concat(caseIds)) requireId('removeCaseFromSuite', 'test case id', id);
+      const ids = intIds(caseIds, 'removeCaseFromSuite');
       const memberIds = async () => {
         const res = await request('removeCaseFromSuite', 'GET', url(route));
         return new Set(((res && res.value) || []).map((e) => Number((e.workItem || e).id)));
@@ -679,7 +868,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         const still = toRemove.filter((id) => after.has(id));
         if (still.length) {
           throw new TrackerError({
-            op: 'removeCaseFromSuite', url: u,
+            op: 'removeCaseFromSuite', url: scrub(u),
             serverMessage: `the request succeeded but test case(s) ${still.join(', ')} are still in suite ${suiteId} on re-read`,
           });
         }
@@ -699,6 +888,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`test/Runs/${runId}/results`);
       if (!execute) return descriptor('updateRunResults', 'PATCH', u, { body: results, contentType: 'application/json' });
       assertCiWritesAllowed('updateRunResults');
+      requireId('updateRunResults', 'run id', runId);
       await request('updateRunResults', 'PATCH', u, { body: JSON.stringify(results), contentType: 'application/json' });
       return { id: runId };
     },
@@ -707,6 +897,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`test/runs/${runId}`);
       if (!execute) return descriptor('updateRun', 'PATCH', u, { body, contentType: 'application/json' });
       assertCiWritesAllowed('updateRun');
+      requireId('updateRun', 'run id', runId);
       const res = await request('updateRun', 'PATCH', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: (res && res.id) ?? runId, state: res && res.state };
     },
@@ -715,8 +906,10 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // destroy is STRUCTURALLY impossible here: no destroy option exists in the
     // signature, none is ever emitted, and the id is validated to a positive
     // integer before the URL is composed — nothing can smuggle a query string
-    // through it. Backs the capability flag deleteWorkItem: 'partial' (ADO has
-    // no standard delete for test artifacts such as Test Cases).
+    // through it (the execute path additionally takes only the canonical
+    // spelling, like every other request). Backs the capability flag
+    // deleteWorkItem: 'partial' (ADO has no standard delete for test artifacts
+    // such as Test Cases).
     async deleteWorkItem(id, { execute = false } = {}) {
       const n = Number(id);
       if (!Number.isInteger(n) || n <= 0) {
@@ -725,6 +918,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const u = url(`wit/workitems/${n}`);
       if (!execute) return descriptor('deleteWorkItem', 'DELETE', u);
       assertCiWritesAllowed('deleteWorkItem');
+      requireId('deleteWorkItem', 'work-item id', id);
       const res = await request('deleteWorkItem', 'DELETE', u);
       return { id: (res && res.id) ?? n };
     },

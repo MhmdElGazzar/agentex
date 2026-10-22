@@ -206,6 +206,48 @@ const isWrite = (c) =>
     assert.strictEqual(f.calls.filter(isWrite).length, 0);
   });
 
+  await test('fail dry run still plans with a stand-in for a bug that does not exist yet (NEW, <bugId>, new-bug-id, {new-bug-id})', async () => {
+    // bug-report-azure dry-runs `fail` BEFORE the Bug is created, so --bug carries
+    // whatever stand-in the agent chose; the adapter checks no id on a dry run.
+    for (const bug of ['NEW', '<bugId>', 'new-bug-id', '{new-bug-id}']) {
+      const f = fakeFetch(failRoutes());
+      const { code, out } = await run(['fail', '--plan', '3', '--testcase', '77', '--bug', bug], { cwd: proj(), fetch: f });
+      assert.strictEqual(code, 0, `${bug}: ${JSON.stringify(out)}`);
+      const link = out.plan.find((p) => p.step === 'link-tested-by');
+      assert.ok(link.describe.includes(`Bug #${bug}`), link.describe);
+      assert.strictEqual(f.calls.filter(isWrite).length, 0, `${bug}: dry run writes nothing`);
+    }
+  });
+
+  await test('a malformed plan or test-case id is refused before any request (exit 2), dry run included', async () => {
+    for (const argv of [
+      ['find-case', '--plan', '3', '--testcase', '#77'],
+      ['fail', '--plan', '03', '--testcase', '77', '--bug', '4711'],
+      ['list-suites', '--plan', '3 '],
+    ]) {
+      const f = fakeFetch(failRoutes());
+      const { code, out } = await run(argv, { cwd: proj(), fetch: f });
+      assert.strictEqual(code, 2, `${argv.join(' ')}: ${JSON.stringify(out)}`);
+      assert.match(out.error.message, /positive canonical decimal/);
+      assert.strictEqual(f.calls.length, 0, `${argv.join(' ')}: nothing was sent`);
+    }
+  });
+
+  await test('record / ensure-suite: a malformed plan or parent id is refused before any request (exit 2, one JSON line)', async () => {
+    for (const argv of [
+      ['record', '--plan', '03', '--testcase', '77', '--outcome', 'Passed'],
+      ['record', '--plan', '+3', '--testcase', '77', '--outcome', 'Failed', '--bug', '4711'],
+      ['ensure-suite', '--plan', '3 ', '--type', 'static', '--name', 'Smoke'],
+      ['ensure-suite', '--plan', '3', '--type', 'static', '--name', 'Smoke', '--parent', '0x4'],
+    ]) {
+      const f = fakeFetch(failRoutes());
+      const { code, out } = await run(argv, { cwd: proj(), fetch: f });
+      assert.strictEqual(code, 2, `${argv.join(' ')}: ${JSON.stringify(out)}`);
+      assert.match(out.error.message, /positive canonical decimal/);
+      assert.strictEqual(f.calls.length, 0, `${argv.join(' ')}: nothing was sent`);
+    }
+  });
+
   await test('fail: no test point for the TC in the plan blocks with exit 2', async () => {
     const f = fakeFetch([
       { match: '/testplan/Plans/3/suites', json: SUITES },

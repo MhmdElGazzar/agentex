@@ -51,7 +51,13 @@
 //        be exit 2, never 0 or 1.
 //  4. Retry ONLY a BLOCKED attempt (owner decision 8) — never exit 0/1, and
 //     never a BLOCKED whose only reason is `unstable` (Flake doctrine: retrying
-//     to clear instability is the silent-retry anti-pattern one level up).
+//     to clear instability is the silent-retry anti-pattern one level up), never a
+//     BLOCKED carrying `preflight-driver` (a mobile spec in scope: no retry can change
+//     that), and never an attempt whose reasons are ALL `retryable:false` — which
+//     includes the two causes the gate names when a session leaves no verdict:
+//     session-error/not-authenticated (the runner has no auth) and no-verdict/tool-denied
+//     (the CI settings deny a tool). classifySession() reads them from the session's own
+//     result JSON; anything unrecognised stays no-verdict/unknown and is retried.
 //     Fixed 30s pause between attempts (AGENTEX_CI_RETRY_DELAY_MS is a
 //     fixture-only test seam).
 //  5. Conclude: first non-BLOCKED attempt (or the last) is final. Write the
@@ -152,7 +158,8 @@ function killTree(child) {
 // Run a child, stream its output to stderr (stdout stays ours alone), resolve on close.
 function run(command, { cwd, env, budgetMs }) {
   return new Promise((resolve) => {
-    const child = spawn(command, { shell: true, cwd, env, detached: process.platform !== 'win32' });
+    // stdin closed: a headless claude otherwise waits 3s for piped input on every attempt
+    const child = spawn(command, { shell: true, cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     let out = ''; let timedOut = false;
     child.stdout.on('data', (d) => { out += d; process.stderr.write(d); });
     child.stderr.on('data', (d) => process.stderr.write(d));
@@ -215,6 +222,52 @@ const nowStamp = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
 };
 
+// Name why a session left no verdict, from the session's own `--output-format json` result
+// (the last JSON line with type:"result"). Pure; never echoes the session's `result` text or
+// any `tool_input` — only fixed wording and tool NAMES reach the reason. Anything not
+// recognised is cause:"unknown" (never guessed) and keeps today's retry behaviour.
+const AUTH_SIGNATURE = /not logged in|invalid api key|please run \/login/i;
+const MAX_TOOLS = 10;
+const NO_VERDICT_DETAIL = 'the session did not conclude deterministically (missing, unparseable, or ambiguous verdict artifact) — fail-closed';
+
+function classifySession(out) {
+  const unknown = { code: 'no-verdict', cause: 'unknown', detail: NO_VERDICT_DETAIL };
+  let res = null;
+  const lines = String(out || '').split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0 && !res; i--) {
+    const l = lines[i].trim();
+    if (!l.startsWith('{')) continue;
+    try { const o = JSON.parse(l); if (o && o.type === 'result') res = o; } catch { /* not JSON */ }
+  }
+  if (!res) return unknown;
+  if (res.is_error === true && (res.api_error_status === 401 || (typeof res.result === 'string' && AUTH_SIGNATURE.test(res.result)))) {
+    return {
+      code: 'session-error', cause: 'not-authenticated', retryable: false,
+      detail: 'the headless session is not authenticated (no valid API key or login on this runner) — set ANTHROPIC_API_KEY on the gate step',
+    };
+  }
+  if (Array.isArray(res.permission_denials) && res.permission_denials.length > 0) {
+    const tools = [];
+    for (const d of res.permission_denials) {
+      const name = d && d.tool_name;
+      if (typeof name === 'string' && /^[A-Za-z0-9_.:-]{1,80}$/.test(name) && !tools.includes(name)) tools.push(name);
+    }
+    return {
+      code: 'no-verdict', cause: 'tool-denied', tools: tools.slice(0, MAX_TOOLS), retryable: false,
+      detail: 'the session ended without a verdict after the CI settings denied the tool(s) listed in "tools" — allow them in ci-settings.json (see --settings)',
+    };
+  }
+  return unknown;
+}
+
+// One human line per named cause: the cause, the fix, and that the attempt is not retried.
+function causeLogLine(r) {
+  if (r.cause === 'not-authenticated') {
+    return 'session is not authenticated (not-authenticated) — set ANTHROPIC_API_KEY on the gate step; not retried';
+  }
+  return `the CI settings denied tool(s) ${r.tools.join(', ') || '(unnamed)'} (tool-denied) — allow the runner's tool in ci-settings.json (see --settings); not retried`;
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
@@ -262,11 +315,19 @@ async function main() {
         '--output-format', 'json',
       ].join(' ');
       log(`attempt ${n}/${maxAttempts} — spawning headless session: ${prompt}`);
-      const session = await run(command, {
-        cwd,
-        env: { ...process.env, AGENTEX_CI: '1', AGENTEX_VERDICT_PATH: handshakePath, AGENTEX_CI_POLICY: JSON.stringify(policy) },
-        budgetMs,
-      });
+      // fill_secret.js writes its 0600 code file under this per-attempt dir; removing it after the
+      // attempt covers a fill that the budget kill (SIGKILL) interrupted.
+      const fillTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ci-fill-'));
+      let session;
+      try {
+        session = await run(command, {
+          cwd,
+          env: { ...process.env, AGENTEX_CI: '1', AGENTEX_VERDICT_PATH: handshakePath, AGENTEX_CI_POLICY: JSON.stringify(policy), AGENTEX_FILL_TMP: fillTmp },
+          budgetMs,
+        });
+      } finally {
+        try { fs.rmSync(fillTmp, { recursive: true, force: true }); } catch { /* best effort */ }
+      }
       if (session.timedOut) {
         attempts.push({
           attempt: n, verdict: null, runDir: null,
@@ -277,10 +338,10 @@ async function main() {
         if (verdict) {
           attempts.push({ attempt: n, verdict, reasons: verdict.blockedReasons || [], runDir: verdict.runDir || null });
         } else {
-          attempts.push({
-            attempt: n, verdict: null, runDir: null,
-            reasons: [{ code: 'no-verdict', detail: 'the session did not conclude deterministically (missing, unparseable, or ambiguous verdict artifact) — fail-closed' + (session.error ? `; session error: ${session.error}` : '') }],
-          });
+          const reason = classifySession(session.out);
+          if (reason.cause === 'unknown' && session.error) reason.detail += `; session error: ${session.error}`;
+          if (reason.cause !== 'unknown') log(causeLogLine(reason));
+          attempts.push({ attempt: n, verdict: null, runDir: null, reasons: [reason], causeLogged: reason.cause !== 'unknown' });
         }
       }
     }
@@ -289,8 +350,16 @@ async function main() {
     const outcome = last.verdict ? last.verdict.verdict : 'BLOCKED';
     if (outcome !== 'BLOCKED') break; // exit 0/1 is never retried
     const codes = last.reasons.map((r) => r.code);
+    if (codes.includes('preflight-driver')) {
+      log('BLOCKED by preflight-driver (a spec this gate does not run, e.g. Drivers: mobile) — deterministic, never auto-retried');
+      break;
+    }
     if (codes.length > 0 && codes.every((c) => c === 'unstable')) {
       log('BLOCKED for `unstable` only — never auto-retried (Flake doctrine)');
+      break;
+    }
+    if (last.reasons.length > 0 && last.reasons.every((r) => r.retryable === false)) {
+      if (!last.causeLogged) log(`BLOCKED with non-retryable reason(s) (${codes.join(', ')}) — not retried`);
       break;
     }
     if (n < maxAttempts) { log(`attempt ${n} BLOCKED (${codes.join(', ') || 'no reason'}) — retrying in ${RETRY_DELAY_MS}ms`); await sleep(RETRY_DELAY_MS); }
@@ -342,6 +411,8 @@ async function main() {
   console.log(line);
   process.exitCode = final.exitCode;
 }
+
+module.exports = { classifySession };
 
 if (require.main === module) {
   main().catch((e) => {

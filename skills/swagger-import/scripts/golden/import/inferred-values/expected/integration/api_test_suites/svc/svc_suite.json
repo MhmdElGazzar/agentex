@@ -1,0 +1,19 @@
+{
+  "name": "svc-suite",
+  "cases": [
+    {
+      "name": "getpet-happy-path",
+      "entry": "svc.getpet",
+      "params": {
+        "id": 1,
+        "tag": "dog"
+      },
+      "expect": {
+        "status": 200
+      },
+      "review": [
+        "param \"id\" = 1 is inferred (the spec gives no example/default) — replace it with a value that exists in your target"
+      ]
+    }
+  ]
+}

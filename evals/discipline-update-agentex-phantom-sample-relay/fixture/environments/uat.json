@@ -1,0 +1,11 @@
+{
+  "portalUrl": "https://uat-shop.example.test",
+  "defaults": {
+    "otp": "1234",
+    "password": { "envSecret": "DEFAULT_PASSWORD" }
+  },
+  "users": {
+    "valid_user": { "phone": "0551112233", "role": "customer" },
+    "expired_user": { "phone": "0551112244", "notes": "account expired on purpose" }
+  }
+}

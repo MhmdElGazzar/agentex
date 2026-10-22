@@ -5,7 +5,8 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const http = require('node:http');
+const { spawnSync, spawn } = require('node:child_process');
 
 const IMPORTER = path.join(__dirname, 'import_swagger.js');
 let passed = 0; const failures = [];
@@ -34,6 +35,29 @@ const SWAGGER2 = {
   paths: { '/items': { get: { operationId: 'listItems', responses: { 200: { description: 'ok' } } } } },
 };
 const write = (dir, name, obj) => { const f = path.join(dir, name); fs.writeFileSync(f, typeof obj === 'string' ? obj : JSON.stringify(obj)); return f; };
+const importOne = (spec, name = 'svc') => {
+  const dir = tmp(); const f = write(dir, 'spec.json', spec);
+  const r = run(dir, [f, '--name', name]);
+  const base = path.join(dir, 'integration/api_test_suites', name);
+  const read = (suffix) => (fs.existsSync(path.join(base, `${name}_${suffix}.json`)) ? JSON.parse(fs.readFileSync(path.join(base, `${name}_${suffix}.json`), 'utf8')) : null);
+  return { ...r, dir, cat: read('api'), suite: read('suite') };
+};
+
+test('in: query params are written to the request "query" list; path params are not', () => {
+  const { code, out, cat } = importOne({
+    openapi: '3.0.0', info: { title: 'Q' }, servers: [{ url: 'https://q.example.com' }],
+    paths: { '/pets/{id}': { get: { operationId: 'getPet', parameters: [
+      { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+      { name: 'verbose', in: 'query', schema: { type: 'boolean' } },
+    ], responses: { 200: { description: 'ok' } } } },
+    '/pets': { post: { operationId: 'addPet', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' } } } } } }, responses: { 201: { description: 'ok' } } } } },
+  });
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  const get = cat.requests.find(r => r.name === 'getpet');
+  assert.deepStrictEqual(get.query, ['verbose']);
+  assert.deepStrictEqual(get.params, ['id', 'verbose']);
+  assert.strictEqual(cat.requests.find(r => r.name === 'addpet').query, undefined);
+});
 
 test('OpenAPI 3 -> catalog + suite written, apiKey header auth, $ref body resolved', () => {
   const dir = tmp(); const spec = write(dir, 'spec.json', OPENAPI3);
@@ -62,6 +86,31 @@ test('Swagger 2.0 -> base URL built from schemes + host + basePath, kept out of 
   assert.strictEqual(out.envVarsToSet.LEGACY_BASE_URL, 'https://legacy.example.com/api');
 });
 
+test('generated catalog carries "target": "catalog" (its own base URL + auth, never the environment api block)', () => {
+  for (const [spec, name] of [[OPENAPI3, 'petstore'], [SWAGGER2, 'legacy']]) {
+    const dir = tmp(); const f = write(dir, 'spec.json', spec);
+    const { code, out } = run(dir, [f, '--name', name]);
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    const cat = JSON.parse(fs.readFileSync(path.resolve(dir, out.catalogPath), 'utf8'));
+    assert.strictEqual(cat.target, 'catalog', name);
+  }
+});
+
+test('envVarsToSet: credential placeholders say "<set in .env>", never "shell"', () => {
+  const BASIC = { ...SWAGGER2, info: { title: 'Basic' }, securityDefinitions: { b: { type: 'basic' } } };
+  const seen = {};
+  for (const [spec, name] of [[OPENAPI3, 'petstore'], [BASIC, 'basicsvc']]) {
+    const dir = tmp(); const f = write(dir, 'spec.json', spec);
+    const { code, out } = run(dir, [f, '--name', name]);
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.doesNotMatch(JSON.stringify(out.envVarsToSet), /shell/i);
+    Object.assign(seen, out.envVarsToSet);
+  }
+  assert.strictEqual(seen.PETSTORE_TOKEN, '<set in .env>');
+  assert.strictEqual(seen.BASICSVC_USER, '<set in .env>');
+  assert.strictEqual(seen.BASICSVC_PASS, '<set in .env>');
+});
+
 test('never overwrites an existing import -> BLOCKED, file untouched', () => {
   const dir = tmp(); const spec = write(dir, 'spec.json', SWAGGER2);
   assert.strictEqual(run(dir, [spec, '--name', 'legacy']).code, 0);
@@ -82,5 +131,167 @@ test('non-JSON, unrecognised spec, missing file, no args -> BLOCKED', () => {
   assert.strictEqual(run(dir, []).code, 2);
 });
 
-console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
-process.exitCode = failures.length ? 1 : 0;
+const WRITE_SKIP = 'review: write operation — remove this line to enable';
+const CRUD = {
+  openapi: '3.0.0', info: { title: 'Crud' }, servers: [{ url: 'https://c.example.com' }],
+  paths: {
+    '/pets/{id}': {
+      get: { operationId: 'getPet', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { 200: { description: 'ok' }, 404: { description: 'nf' } } },
+      delete: { operationId: 'deletePet', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { 204: { description: 'ok' }, 404: { description: 'nf' } } },
+      put: { operationId: 'putPet', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' } } } } } }, responses: { 200: { description: 'ok' } } },
+    },
+    '/pets': { post: { operationId: 'addPet', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' } } } } } }, responses: { 201: { description: 'ok' } } },
+      patch: { operationId: 'patchPets', responses: { 200: { description: 'ok' } } } },
+  },
+};
+
+test('every generated write-method case is written disabled with the review skip line; GET cases are not', () => {
+  const { code, out, suite } = importOne(CRUD);
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  for (const c of suite.cases) {
+    const isGet = c.entry.endsWith('.getpet');
+    if (isGet) assert.strictEqual(c.skip, undefined, c.name);
+    else assert.strictEqual(c.skip, WRITE_SKIP, c.name);
+  }
+  assert.ok(suite.cases.some(c => /deletepet/.test(c.name)));
+});
+
+test('review notes are written into the generated request and case objects', () => {
+  const { cat, suite } = importOne(CRUD);
+  const put = cat.requests.find(r => r.name === 'putpet');
+  assert.ok(Array.isArray(put.review) && put.review.some(n => /request body generated/.test(n)), JSON.stringify(put));
+  const err = suite.cases.find(c => c.name === 'getpet-error-case');
+  assert.ok(Array.isArray(err.review) && err.review.some(n => /placeholder param value/.test(n)), JSON.stringify(err));
+});
+
+const spec3 = (extra) => ({ openapi: '3.0.0', info: { title: 'Pet Store' }, servers: [{ url: 'https://p.example.com' }], ...extra });
+const getOp = (operationId, more = {}) => ({ get: { operationId, responses: { 200: { description: 'ok' } }, ...more } });
+
+test('duplicate generated request names are de-duplicated with -2, -3 and flagged', () => {
+  const { code, out, cat, suite } = importOne(spec3({ paths: {
+    '/a': getOp('listThings'), '/b': getOp('listThings'), '/c': getOp('listThings'),
+  } }));
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  assert.deepStrictEqual(cat.requests.map(r => r.name), ['listthings', 'listthings-2', 'listthings-3']);
+  assert.ok(cat.requests[1].review.some(n => /duplicate/i.test(n)), JSON.stringify(cat.requests[1]));
+  assert.strictEqual(new Set(suite.cases.map(c => c.name)).size, suite.cases.length);
+});
+
+test('env-var prefix defaults to the service name, not API', () => {
+  const dir = tmp(); const f = write(dir, 'spec.json', spec3({ paths: { '/a': getOp('a') } }));
+  const { code, out } = run(dir, [f]);
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  const cat = JSON.parse(fs.readFileSync(path.join(dir, 'integration/api_test_suites/pet-store/pet-store_api.json'), 'utf8'));
+  assert.strictEqual(cat.baseUrl, '${PET_STORE_BASE_URL}');
+  assert.ok('PET_STORE_BASE_URL' in out.envVarsToSet);
+});
+
+test('a service named "api" never gets the project\'s own API_ prefix', () => {
+  const dir = tmp(); const f = write(dir, 'spec.json', spec3({ paths: { '/a': getOp('a') } }));
+  const { code, out } = run(dir, [f, '--name', 'api']);
+  assert.strictEqual(code, 0, JSON.stringify(out));
+  const cat = JSON.parse(fs.readFileSync(path.join(dir, 'integration/api_test_suites/api/api_api.json'), 'utf8'));
+  assert.strictEqual(cat.baseUrl, '${API_SERVICE_BASE_URL}');
+  assert.ok(!('API_BASE_URL' in out.envVarsToSet) && !('API_TOKEN' in out.envVarsToSet), JSON.stringify(out.envVarsToSet));
+});
+
+test('auth preference is bearer > apiKey(header) > basic regardless of declaration order', () => {
+  const schemes = (o) => importOne(spec3({ components: { securitySchemes: o }, paths: { '/a': getOp('a') } })).cat.auth.type;
+  assert.strictEqual(schemes({ b: { type: 'http', scheme: 'basic' }, k: { type: 'apiKey', in: 'header', name: 'X-K' }, t: { type: 'http', scheme: 'bearer' } }), 'bearer');
+  assert.strictEqual(schemes({ b: { type: 'http', scheme: 'basic' }, k: { type: 'apiKey', in: 'header', name: 'X-K' } }), 'apiKey');
+});
+
+test('apiKey header scheme without a header name is not used and is flagged', () => {
+  const { cat, out } = importOne(spec3({ components: { securitySchemes: { k: { type: 'apiKey', in: 'header' } } }, paths: { '/a': getOp('a') } }));
+  assert.strictEqual(cat.auth.type, 'none');
+  assert.ok(out.review.some(n => /name/.test(n) && /k/.test(n)), JSON.stringify(out.review));
+});
+
+test('inferred happy-path param values are flagged in the case; documented examples are not', () => {
+  const { suite } = importOne(spec3({ paths: { '/pets/{id}': getOp('getPet', { parameters: [
+    { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+    { name: 'tag', in: 'query', schema: { type: 'string', example: 'dog' } },
+  ] }) } }));
+  const happy = suite.cases.find(c => c.name === 'getpet-happy-path');
+  assert.ok(happy.review && happy.review.some(n => /"id"/.test(n) && /inferred/.test(n)), JSON.stringify(happy));
+  assert.ok(!happy.review.some(n => /"tag"/.test(n)), JSON.stringify(happy));
+});
+
+test('an invented expect.status 200 (no 2xx documented) is flagged in the case', () => {
+  const { suite } = importOne(spec3({ paths: { '/a': { get: { operationId: 'a', responses: { default: { description: 'x' } } } } } }));
+  const happy = suite.cases[0];
+  assert.strictEqual(happy.expect.status, 200);
+  assert.ok(happy.review && happy.review.some(n => /2xx/.test(n)), JSON.stringify(happy));
+});
+
+test('a non-JSON request body is dropped and flagged on the request', () => {
+  const { cat } = importOne(spec3({ paths: { '/a': { post: { operationId: 'up', requestBody: { content: { 'application/xml': { schema: { type: 'object' } } } }, responses: { 200: { description: 'ok' } } } } } }));
+  const r = cat.requests[0];
+  assert.strictEqual(r.body, undefined);
+  assert.ok(r.review && r.review.some(n => /application\/xml/.test(n) && /dropped/.test(n)), JSON.stringify(r));
+});
+
+test('envVarsToSet points secrets at the project .env, never "shell only"', () => {
+  const { out } = importOne(spec3({ components: { securitySchemes: { b: { type: 'http', scheme: 'basic' } } }, paths: { '/a': getOp('a') } }), 'shop');
+  for (const k of ['SHOP_USER', 'SHOP_PASS']) {
+    assert.match(out.envVarsToSet[k], /\.env/, k);
+    assert.doesNotMatch(out.envVarsToSet[k], /shell|never in/i, k);
+  }
+  const bearer = importOne(spec3({ components: { securitySchemes: { t: { type: 'http', scheme: 'bearer' } } }, paths: { '/a': getOp('a') } }), 'shop').out;
+  assert.match(bearer.envVarsToSet.SHOP_TOKEN, /\.env/);
+  assert.doesNotMatch(bearer.envVarsToSet.SHOP_TOKEN, /shell|never in/i);
+});
+
+// Golden: stdout + both written files, byte for byte, as main's importer produced them before
+// the spec model was extracted into swagger_model.js (golden/import/<case>/expected/).
+const GOLDEN = path.join(__dirname, 'golden', 'import');
+function walkFiles(d, base = d) {
+  let r = [];
+  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+    const f = path.join(d, e.name);
+    if (e.isDirectory()) r = r.concat(walkFiles(f, base)); else r.push(path.relative(base, f).split(path.sep).join('/'));
+  }
+  return r.sort();
+}
+for (const c of fs.readdirSync(GOLDEN).sort()) {
+  test(`golden: ${c} — stdout, catalog and suite byte-identical to the pre-refactor importer`, () => {
+    const dir = tmp();
+    fs.copyFileSync(path.join(GOLDEN, c, 'spec.json'), path.join(dir, 'spec.json'));
+    const args = JSON.parse(fs.readFileSync(path.join(GOLDEN, c, 'args.json'), 'utf8'));
+    const p = spawnSync(process.execPath, [IMPORTER, 'spec.json', ...args], { cwd: dir, encoding: 'utf8' });
+    const exp = path.join(GOLDEN, c, 'expected');
+    // Windows writes path.join separators into the stdout paths; the bytes are otherwise identical.
+    const stdout = process.platform === 'win32' ? p.stdout.replace(/\\\\/g, '/') : p.stdout;
+    assert.strictEqual(stdout, fs.readFileSync(path.join(exp, 'stdout.txt'), 'utf8'));
+    assert.strictEqual(String(p.status), fs.readFileSync(path.join(exp, 'exit.txt'), 'utf8').trim());
+    const want = walkFiles(path.join(exp, 'integration'));
+    const integ = path.join(dir, 'integration');
+    assert.deepStrictEqual(fs.existsSync(integ) ? walkFiles(integ) : [], want);
+    for (const rel of want) assert.strictEqual(fs.readFileSync(path.join(integ, rel), 'utf8'), fs.readFileSync(path.join(exp, 'integration', rel), 'utf8'), rel);
+  });
+}
+
+// async: the importer fetches from a local server, so it must not be spawned synchronously
+(async () => {
+  await new Promise(resolve => {
+    const srv = http.createServer((req, res) => { res.writeHead(404); res.end(JSON.stringify(spec3({ paths: { '/a': getOp('a') } }))); });
+    srv.listen(0, '127.0.0.1', () => {
+      const dir = tmp();
+      const p = spawn(process.execPath, [IMPORTER, `http://127.0.0.1:${srv.address().port}/spec.json`, '--name', 'x'], { cwd: dir });
+      let o = '';
+      p.stdout.on('data', d => (o += d));
+      p.on('close', code => {
+        srv.close();
+        test('spec URL answering non-2xx -> BLOCKED with the status', () => {
+          const out = JSON.parse(o.trim().split('\n').pop() || '{}');
+          assert.strictEqual(code, 2, o);
+          assert.match(out.reason, /404/);
+          assert.ok(!fs.existsSync(path.join(dir, 'integration')));
+        });
+        resolve();
+      });
+    });
+  });
+  console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
+  process.exitCode = failures.length ? 1 : 0;
+})();

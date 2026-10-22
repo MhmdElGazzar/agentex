@@ -1,0 +1,550 @@
+{
+  "proposalVersion": 1,
+  "kind": "history",
+  "createdOn": "2026-10-18",
+  "provenance": {
+    "sprintsRequested": 2,
+    "sprintsRead": [
+      "Sprint 42",
+      "Sprint 41"
+    ],
+    "storiesRead": 12,
+    "tasksCounted": 47,
+    "tasksSkipped": 3,
+    "namesWithoutEstimates": [],
+    "truncated": false,
+    "reason": null,
+    "reasonMessage": null
+  },
+  "threshold": {
+    "ratio": 3,
+    "minSample": 3
+  },
+  "groups": [
+    {
+      "key": "requirement review",
+      "name": "Requirement Review",
+      "stories": 12,
+      "points": [
+        {
+          "ref": 4501,
+          "hours": 1,
+          "story": {
+            "ref": 4401,
+            "title": "Contact preferences",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4401"
+          }
+        },
+        {
+          "ref": 4507,
+          "hours": 0.5,
+          "story": {
+            "ref": 4402,
+            "title": "Checkout address form",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4402"
+          }
+        },
+        {
+          "ref": 4513,
+          "hours": 1,
+          "story": {
+            "ref": 4403,
+            "title": "Order history filters",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4403"
+          }
+        },
+        {
+          "ref": 4519,
+          "hours": 1,
+          "story": {
+            "ref": 4404,
+            "title": "Saved payment cards",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4404"
+          }
+        },
+        {
+          "ref": 4525,
+          "hours": 2,
+          "story": {
+            "ref": 4405,
+            "title": "Delivery slot picker",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4405"
+          }
+        },
+        {
+          "ref": 4531,
+          "hours": 1,
+          "story": {
+            "ref": 4406,
+            "title": "Profile photo upload",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4406"
+          }
+        },
+        {
+          "ref": 4537,
+          "hours": 0.5,
+          "story": {
+            "ref": 4407,
+            "title": "Password reset email",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4407"
+          }
+        },
+        {
+          "ref": 4543,
+          "hours": 1,
+          "story": {
+            "ref": 4408,
+            "title": "Newsletter opt-in",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4408"
+          }
+        },
+        {
+          "ref": 4549,
+          "hours": 1.5,
+          "story": {
+            "ref": 4409,
+            "title": "Invoice download",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4409"
+          }
+        },
+        {
+          "ref": 4553,
+          "hours": 1,
+          "story": {
+            "ref": 4410,
+            "title": "Gift card balance",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4410"
+          }
+        },
+        {
+          "ref": 4557,
+          "hours": 2,
+          "story": {
+            "ref": 4411,
+            "title": "Store locator",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4411"
+          }
+        },
+        {
+          "ref": 4560,
+          "hours": 1,
+          "story": {
+            "ref": 4412,
+            "title": "Return request form",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4412"
+          }
+        }
+      ]
+    },
+    {
+      "key": "test creation",
+      "name": "Test Creation",
+      "stories": 10,
+      "points": [
+        {
+          "ref": 4502,
+          "hours": 2,
+          "story": {
+            "ref": 4401,
+            "title": "Contact preferences",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4401"
+          }
+        },
+        {
+          "ref": 4508,
+          "hours": 3,
+          "story": {
+            "ref": 4402,
+            "title": "Checkout address form",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4402"
+          }
+        },
+        {
+          "ref": 4514,
+          "hours": 2,
+          "story": {
+            "ref": 4403,
+            "title": "Order history filters",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4403"
+          }
+        },
+        {
+          "ref": 4520,
+          "hours": 0.25,
+          "story": {
+            "ref": 4404,
+            "title": "Saved payment cards",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4404"
+          }
+        },
+        {
+          "ref": 4526,
+          "hours": 4,
+          "story": {
+            "ref": 4405,
+            "title": "Delivery slot picker",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4405"
+          }
+        },
+        {
+          "ref": 4532,
+          "hours": 2,
+          "story": {
+            "ref": 4406,
+            "title": "Profile photo upload",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4406"
+          }
+        },
+        {
+          "ref": 4538,
+          "hours": 1.5,
+          "story": {
+            "ref": 4407,
+            "title": "Password reset email",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4407"
+          }
+        },
+        {
+          "ref": 4544,
+          "hours": 3,
+          "story": {
+            "ref": 4408,
+            "title": "Newsletter opt-in",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4408"
+          }
+        },
+        {
+          "ref": 4550,
+          "hours": 2,
+          "story": {
+            "ref": 4409,
+            "title": "Invoice download",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4409"
+          }
+        },
+        {
+          "ref": 4554,
+          "hours": 2,
+          "story": {
+            "ref": 4410,
+            "title": "Gift card balance",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4410"
+          }
+        }
+      ]
+    },
+    {
+      "key": "test execution",
+      "name": "Test Execution",
+      "stories": 12,
+      "points": [
+        {
+          "ref": 4503,
+          "hours": 2,
+          "story": {
+            "ref": 4401,
+            "title": "Contact preferences",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4401"
+          }
+        },
+        {
+          "ref": 4509,
+          "hours": 12,
+          "story": {
+            "ref": 4402,
+            "title": "Checkout address form",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4402"
+          }
+        },
+        {
+          "ref": 4515,
+          "hours": 1,
+          "story": {
+            "ref": 4403,
+            "title": "Order history filters",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4403"
+          }
+        },
+        {
+          "ref": 4521,
+          "hours": 2,
+          "story": {
+            "ref": 4404,
+            "title": "Saved payment cards",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4404"
+          }
+        },
+        {
+          "ref": 4527,
+          "hours": 3,
+          "story": {
+            "ref": 4405,
+            "title": "Delivery slot picker",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4405"
+          }
+        },
+        {
+          "ref": 4533,
+          "hours": 2,
+          "story": {
+            "ref": 4406,
+            "title": "Profile photo upload",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4406"
+          }
+        },
+        {
+          "ref": 4539,
+          "hours": 3,
+          "story": {
+            "ref": 4407,
+            "title": "Password reset email",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4407"
+          }
+        },
+        {
+          "ref": 4545,
+          "hours": 1.5,
+          "story": {
+            "ref": 4408,
+            "title": "Newsletter opt-in",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4408"
+          }
+        },
+        {
+          "ref": 4551,
+          "hours": 2,
+          "story": {
+            "ref": 4409,
+            "title": "Invoice download",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4409"
+          }
+        },
+        {
+          "ref": 4555,
+          "hours": 3,
+          "story": {
+            "ref": 4410,
+            "title": "Gift card balance",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4410"
+          }
+        },
+        {
+          "ref": 4558,
+          "hours": 1,
+          "story": {
+            "ref": 4411,
+            "title": "Store locator",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4411"
+          }
+        },
+        {
+          "ref": 4561,
+          "hours": 2,
+          "story": {
+            "ref": 4412,
+            "title": "Return request form",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4412"
+          }
+        }
+      ]
+    },
+    {
+      "key": "bug review and retest",
+      "name": "Bug Review and Retest",
+      "stories": 8,
+      "points": [
+        {
+          "ref": 4504,
+          "hours": 1,
+          "story": {
+            "ref": 4401,
+            "title": "Contact preferences",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4401"
+          }
+        },
+        {
+          "ref": 4510,
+          "hours": 0.5,
+          "story": {
+            "ref": 4402,
+            "title": "Checkout address form",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4402"
+          }
+        },
+        {
+          "ref": 4516,
+          "hours": 1,
+          "story": {
+            "ref": 4403,
+            "title": "Order history filters",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4403"
+          }
+        },
+        {
+          "ref": 4522,
+          "hours": 1,
+          "story": {
+            "ref": 4404,
+            "title": "Saved payment cards",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4404"
+          }
+        },
+        {
+          "ref": 4528,
+          "hours": 2,
+          "story": {
+            "ref": 4405,
+            "title": "Delivery slot picker",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4405"
+          }
+        },
+        {
+          "ref": 4534,
+          "hours": 1,
+          "story": {
+            "ref": 4406,
+            "title": "Profile photo upload",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4406"
+          }
+        },
+        {
+          "ref": 4540,
+          "hours": 1,
+          "story": {
+            "ref": 4407,
+            "title": "Password reset email",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4407"
+          }
+        },
+        {
+          "ref": 4546,
+          "hours": 0.5,
+          "story": {
+            "ref": 4408,
+            "title": "Newsletter opt-in",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4408"
+          }
+        }
+      ]
+    },
+    {
+      "key": "automation",
+      "name": "Automation",
+      "stories": 5,
+      "points": [
+        {
+          "ref": 4505,
+          "hours": 2,
+          "story": {
+            "ref": 4401,
+            "title": "Contact preferences",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4401"
+          }
+        },
+        {
+          "ref": 4511,
+          "hours": 3,
+          "story": {
+            "ref": 4402,
+            "title": "Checkout address form",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4402"
+          }
+        },
+        {
+          "ref": 4523,
+          "hours": 1,
+          "story": {
+            "ref": 4404,
+            "title": "Saved payment cards",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4404"
+          }
+        },
+        {
+          "ref": 4535,
+          "hours": 2,
+          "story": {
+            "ref": 4406,
+            "title": "Profile photo upload",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4406"
+          }
+        },
+        {
+          "ref": 4541,
+          "hours": 2,
+          "story": {
+            "ref": 4407,
+            "title": "Password reset email",
+            "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/4407"
+          }
+        }
+      ]
+    }
+  ],
+  "factors": {
+    "Scenarios / ACs": 1,
+    "UI elements": 1,
+    "Validations": 1,
+    "Conditions / logic": 1,
+    "Error messages": 1,
+    "API integrations": 1,
+    "Translations": 1,
+    "Edge cases": 1
+  },
+  "content": {
+    "schemaVersion": 1,
+    "tasks": [
+      {
+        "name": "Requirement Review",
+        "enabled": true,
+        "minHours": 0.5,
+        "maxHours": 2
+      },
+      {
+        "name": "Test Creation",
+        "enabled": true,
+        "minHours": 1.5,
+        "maxHours": 4
+      },
+      {
+        "name": "Test Execution",
+        "enabled": true,
+        "minHours": 1,
+        "maxHours": 3
+      },
+      {
+        "name": "Bug Review and Retest",
+        "enabled": true,
+        "minHours": 0.5,
+        "maxHours": 2
+      },
+      {
+        "name": "Automation",
+        "enabled": true,
+        "minHours": 1,
+        "maxHours": 3
+      }
+    ],
+    "factors": {
+      "Scenarios / ACs": 1,
+      "UI elements": 1,
+      "Validations": 1,
+      "Conditions / logic": 1,
+      "Error messages": 1,
+      "API integrations": 1,
+      "Translations": 1,
+      "Edge cases": 1
+    },
+    "source": {
+      "kind": "history",
+      "sprints": 2,
+      "sprintsRead": [
+        "Sprint 42",
+        "Sprint 41"
+      ],
+      "tasksCounted": 47,
+      "tasksSkipped": 3,
+      "createdOn": "2026-10-18",
+      "note": "Where these numbers came from. Editing this block changes nothing; delete or move this file and the next estimation run proposes a new one from your board."
+    }
+  }
+}

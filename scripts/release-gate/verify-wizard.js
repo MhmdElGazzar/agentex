@@ -6,7 +6,9 @@
 // answers in environments/<envName>.json, every envKey secret ONLY in .env
 // (and absent from both JSON files). The mapping is read from the wizard's own
 // schema (scripts/wizard/schema.json — read-only here), so this verifier can
-// never drift from what the wizard claims to do.
+// never drift from what the wizard claims to do. defaults.* answers follow the
+// project's defaultsFields descriptors (the engine's built-ins when absent): a
+// secret descriptor gets the same only-in-.env rule as a schema secret.
 //
 // Usage: node verify-wizard.js <throwaway-dir> --answers <answers.json> [--schema <schema.json>]
 //   answers.json: the flat answers the persona typed, keyed by field key
@@ -16,6 +18,13 @@
 // Exit codes: 0 clean · 1 findings · 2 usage/config error.
 const fs = require('node:fs');
 const path = require('node:path');
+const { parseEnvValue } = require(path.join(__dirname, '..', 'lib', 'project_config.js'));
+const { BUILTIN_DEFAULTS_FIELDS } = require(path.join(__dirname, '..', 'wizard', 'engine.js'));
+
+// The wizard's prefill convention for a secret default's env-var name
+// (ui.html suggestDefaultsSecretName / envVarSuffix).
+const envVarSuffix = (name) => String(name || '').toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+const suggestDefaultsSecretName = (key) => `DEFAULT_${envVarSuffix(key)}`;
 
 function usageError(message) {
   const e = new Error(message);
@@ -37,10 +46,9 @@ function readJson(file) {
   catch { return null; }
 }
 
+// The shared per-line .env parser: an empty `KEY=` is unset, never the next line.
 function envHasLine(envText, name, value) {
-  const re = new RegExp('^' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*=\\s*(.+)$', 'm');
-  const m = envText.match(re);
-  return !!m && m[1].trim().replace(/^["']|["']$/g, '') === String(value);
+  return parseEnvValue(envText, name) === String(value);
 }
 
 function verifyWizard({ dir, answersFile, schemaPath } = {}) {
@@ -85,6 +93,22 @@ function verifyWizard({ dir, answersFile, schemaPath } = {}) {
     }
   }
 
+  // defaults.<key> descriptors: the project's own schema, else the engine's built-ins.
+  const defaultsFields = project && Array.isArray(project.defaultsFields) ? project.defaultsFields : BUILTIN_DEFAULTS_FIELDS;
+  const secretDefaults = new Set(defaultsFields.filter((f) => f && f.secret === true).map((f) => f.key));
+
+  // A secret VALUE: only ever in .env under envVarName, never on any JSON surface.
+  const checkSecretValue = (key, value, envVarName) => {
+    if (!envHasLine(envText, envVarName, value)) {
+      findings.push(`${key}: secret not found in .env under ${envVarName} (value not shown)`);
+    }
+    for (const [label, text] of jsonSurfaces) {
+      if (text.includes(String(value))) {
+        findings.push(`${key}: secret value leaked into ${label} (must live only in .env; value not shown)`);
+      }
+    }
+  };
+
   const targetOf = (step) => (step.target === 'config/project.json'
     ? { obj: project, label: 'config/project.json' }
     : { obj: environment, label: `environments/${envName}.json` });
@@ -123,14 +147,7 @@ function verifyWizard({ dir, answersFile, schemaPath } = {}) {
       // A secret VALUE: only ever in .env, under its documented env-var name.
       checked++;
       const envVarName = (hit.field.envKeyFrom ? answers[hit.field.envKeyFrom] : null) || hit.field.envKey;
-      if (!envHasLine(envText, envVarName, value)) {
-        findings.push(`${key}: secret not found in .env under ${envVarName} (value not shown)`);
-      }
-      for (const [label, text] of jsonSurfaces) {
-        if (text.includes(String(value))) {
-          findings.push(`${key}: secret value leaked into ${label} (must live only in .env; value not shown)`);
-        }
-      }
+      checkSecretValue(key, value, envVarName);
       continue;
     }
 
@@ -144,6 +161,20 @@ function verifyWizard({ dir, answersFile, schemaPath } = {}) {
     }
 
     // Not a schema field — the defaults section is descriptor-driven (defaults.*).
+    if (key.startsWith('defaults.') && secretDefaults.has(key.slice('defaults.'.length))) {
+      // A secret default's VALUE (decision #6): .env under defaults.<key>EnvVar or the
+      // DEFAULT_<KEY> convention; the environment file holds { envSecret: NAME } or nothing.
+      checked++;
+      const fieldKey = key.slice('defaults.'.length);
+      const envVarName = String(answers[`${key}EnvVar`] || '').trim() || suggestDefaultsSecretName(fieldKey);
+      checkSecretValue(key, value, envVarName);
+      const stored = environment && environment.defaults && typeof environment.defaults === 'object'
+        ? environment.defaults[fieldKey] : undefined;
+      if (stored !== undefined && !(stored && typeof stored === 'object' && stored.envSecret === envVarName)) {
+        findings.push(`${key}: environments/${envName}.json → ${key} must be { "envSecret": "${envVarName}" } or absent (stored value not shown)`);
+      }
+      continue;
+    }
     if (key.startsWith('defaults.')) {
       checked++;
       const isEnvVarName = key.endsWith('EnvVar');

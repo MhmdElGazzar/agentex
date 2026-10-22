@@ -14,7 +14,7 @@ const path   = require('path');
 const { execSync } = require('child_process');
 
 const { buildConfigs, validate, planSave, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
-const { isPristineSampleEnv } = require('../lib/scaffold.js');
+const { isPristineSampleEnv, isPristineProjectConfig } = require('../lib/scaffold.js');
 const { withPluginConfigBlocks } = require('../lib/project_config.js');
 const { isDeepStrictEqual } = require('util');
 
@@ -49,10 +49,6 @@ if (!FORCE && projectRoot === pluginRoot) {
 
 // ── Schema ────────────────────────────────────────────────────────────────
 const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-
-// Shipped project template — a config/project.json still structurally equal to
-// it is scaffolding, not the user's configuration.
-const projectTemplate = safeReadJSON(path.join(pluginRoot, 'templates', 'config', 'project.json'));
 
 // ── Server ────────────────────────────────────────────────────────────────
 let server;
@@ -121,8 +117,9 @@ server = http.createServer((req, res) => {
     // nothing would let the wizard quietly overwrite whatever it couldn't read.
     const unreadable = [];
     if (existingProj === null && fs.existsSync(projCfgPath)) unreadable.push('config/project.json');
-    const projectPristine = existingProj !== null && projectTemplate !== null &&
-      isDeepStrictEqual(existingProj, projectTemplate);
+    // Pristine = structurally a project template this plugin ever shipped (current
+    // or historical) — untouched scaffolding, never "your existing configuration".
+    const projectPristine = existingProj !== null && isPristineProjectConfig(existingProj, pluginRoot);
     const envDir = path.join(projectRoot, 'environments');
     const environments = {};
     const pristineSamples = [];
@@ -217,8 +214,8 @@ server = http.createServer((req, res) => {
 
         // Write config/project.json — seeded first with the plugin-owned
         // blocks (skill-consolidation-foundation R7 / S9): each ABSENT
-        // top-level block (testingTasks, testDesign, estimation, qaRecords) and
-        // the ONE configured provider block's empty `workflow`, through the
+        // top-level block (testDesign, qaRecords) and the ONE configured
+        // provider block's empty `workflow`, through the
         // same function migration 12 uses, so fresh and migrated projects
         // converge. Plugin scaffolding, not answers: never shown as wizard
         // fields; never creates a provider block, never touches a second one,
@@ -388,7 +385,11 @@ function writeSecrets(envPath, secrets) {
 
   for (const [key, value] of Object.entries(secrets)) {
     if (!value) continue; // skip empty secrets
-    const idx = lines.findIndex(l => l.match(new RegExp(`^${key}\\s*=`)));
+    // Same line shape the readers (project_config.parseEnvValue) honour —
+    // indented / `export KEY=` lines are replaced in place, never shadowed.
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const keyRe = new RegExp('^[ \\t]*(?:export[ \\t]+)?' + escaped + '[ \\t]*=');
+    const idx = lines.findIndex(l => keyRe.test(l));
     const line = `${key}=${value}`;
     if (idx >= 0) lines[idx] = line;
     else lines.push(line);

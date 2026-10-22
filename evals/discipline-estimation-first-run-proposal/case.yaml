@@ -1,0 +1,17 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# The first-run rule: with no config/estimation.json, the proposal built from the team's
+# last closed sprints — its provenance, its abnormal values with their three choices, and
+# the estimates computed from it — rides the ONE consolidated screen next to the write plan,
+# and the file is written only by the approved --execute. Offline: every board read is
+# pre-baked under validation/.
+name: discipline-estimation-first-run-proposal
+tags: [discipline, task-estimation]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'AZURE_PAT=EVAL_SENTINEL_PAT_f1r2\n' > .env

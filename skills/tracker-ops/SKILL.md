@@ -47,7 +47,12 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.js <subcommand> …
 into the tracker's real mention (an ADO mention anchor, a Jira mention node) or refuses with
 exit 2 and the candidates — it never posts a bare `@name`.
 
-One JSON line out, exit 0/1/2. Spec and text files go to the OS temp dir, never committed.
+One JSON line out, exit 0/1/2. Every file argument (`--out`, `--spec`, `--ids-file`,
+`--body-file`, `--discussion-file`) is a path under `.agentex/scratch/tracker/` in the project
+root, for example `--out .agentex/scratch/tracker/1204-comments.json`. Create the folder if it
+is missing; it is gitignored agent scratch. Never write such a file anywhere else in the
+project, and never in a system temp location
+(`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`).
 
 ## The one gate
 
@@ -68,7 +73,8 @@ One JSON line out, exit 0/1/2. Spec and text files go to the OS temp dir, never 
 
 ## Rules
 
-- **Text you will analyse goes through `--out <file>` and Read — never through a pipe.**
+- **Text you will analyse goes through `--out .agentex/scratch/tracker/<name>.json` and Read — never
+  through a pipe.**
   Piping a description, acceptance criteria or a comment thread through another command can
   drop non-ASCII characters; the file holds the exact UTF-8 bytes the tracker sent.
 - **Remaining work is refused on ADO** (the server rejects it — TF401320; the script refuses

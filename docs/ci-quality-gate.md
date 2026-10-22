@@ -92,7 +92,7 @@ Field by field:
 | `durationMs` | int | Wall-clock duration of the whole gate invocation (all attempts). |
 | `runDir` | string | The final attempt's run folder, relative to the project root. |
 | `reportPath` | string | The human report (`report.md`) inside `runDir`. May not exist when the run died before REPORT — the partial artifacts in `runDir` are still preserved. |
-| `blockedReasons` | array | `{ code, detail }` entries from the vocabulary below; `[]` unless the verdict is BLOCKED. The `unstable` reason additionally carries `retryable: false`. Never a secret value; for `needs-user` the detail is the question only, never an answer. |
+| `blockedReasons` | array | `{ code, detail }` entries from the vocabulary below; `[]` unless the verdict is BLOCKED. Optional additive fields: `retryable: false` marks a reason the gate never retries (`unstable`, and the two named causes below); `cause` (`not-authenticated` \| `tool-denied` \| `unknown`) says why a session left no verdict; `tools` lists the denied tool names (deduplicated, first-seen order, at most 10) when `cause` is `tool-denied`. Never a secret value; for `needs-user` the detail is the question only, never an answer. The `detail` of a `cause` reason is fixed wording: it never echoes the session's own output or a tool's input. |
 | `attempt` | int | The 1-based number of the final attempt. |
 | `maxAttempts` | int | `1 + retries` policy. |
 | `retries` | int | Retries actually performed (attempts − 1). |
@@ -112,9 +112,19 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
 ### Reason-code vocabulary
 
 `usage` · `preflight-tools` · `preflight-target` · `preflight-environment` ·
-`preflight-secrets` · `preflight-browser` · `preflight-plugin-version` · `needs-user` ·
-`interaction-required` · `captcha-or-otp` · `blocked-scenarios` · `view-mismatch` ·
+`preflight-secrets` · `preflight-browser` · `preflight-plugin-version` · `preflight-driver` · `needs-user` ·
+`interaction-required` · `captcha-or-otp` · `secret-unavailable` · `blocked-scenarios` · `view-mismatch` ·
 `incomplete` · `timeout` · `no-verdict` · `session-error` · `unstable` · `ci-mode`
+
+When the session ends without a verdict, the gate names the cause on the reason itself,
+with no `schemaVersion` bump (the codes above are unchanged, so a pipeline that matches
+`no-verdict` keeps working):
+
+| Reason | Means | Retried |
+|---|---|---|
+| `{ code: "session-error", cause: "not-authenticated", retryable: false }` | The session could not log in (e.g. "Not logged in", "Invalid API key", or API status 401). | No |
+| `{ code: "no-verdict", cause: "tool-denied", tools: [...], retryable: false }` | The CI settings denied one or more tools the session tried to use. | No |
+| `{ code: "no-verdict", cause: "unknown" }` | Anything else: no output, unparseable output, or an error the gate does not recognise (rate limit, credit, 5xx). The cause is never guessed. | Yes |
 
 ### Verdict mapping (fixed order)
 
@@ -124,8 +134,8 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
    `warningsFailGate: false`).
 3. Any environment/indeterminate contribution → **BLOCKED / 2** with named reasons:
    blocked scenarios, ui-check view mismatches, not-run scenarios, and run-level
-   conditions (`needs-user`, `interaction-required`, `captcha-or-otp`, `timeout`,
-   `session-error`).
+   conditions (`needs-user`, `interaction-required`, `captcha-or-otp`,
+   `secret-unavailable`, `timeout`, `session-error`).
 4. `flakyFailsGate` and `counts.flaky > 0` → **BLOCKED / 2**, reason `unstable`,
    marked non-retryable.
 5. Otherwise → **PASS / 0**. `naDescoped` never gates; flaky without the policy never
@@ -139,9 +149,31 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
   fixed 30-second pause; the CI preflight re-runs first (token-free — a flapping target
   heals without burning a session). Still BLOCKED after the budget → concludes BLOCKED
   with `retries` and `attemptHistory` visible in the verdict.
-- **The `unstable` carve-out:** a BLOCKED whose *only* reason is `unstable`
-  (`flakyFailsGate` tripped) is **never auto-retried** — re-running to clear instability
-  is exactly the silent-retry anti-pattern the Flake doctrine prohibits, one level up.
+- **No retry when every reason is `retryable: false`.** Re-running cannot change these
+  attempts, so the gate concludes BLOCKED (exit 2) after the one attempt, with the named
+  reason. Three cases carry the flag:
+  - **`unstable`** (`flakyFailsGate` tripped): re-running to clear instability is exactly
+    the silent-retry anti-pattern the Flake doctrine prohibits, one level up.
+  - **`session-error` / `not-authenticated`:** the runner has no Claude auth source.
+  - **`no-verdict` / `tool-denied`:** the CI settings deny a tool the run needs; the next
+    session would be denied the same tool.
+
+  A `preflight-driver` BLOCKED is never retried either (it is deterministic). A
+  `no-verdict` with `cause: "unknown"` is retried as before.
+- **How the gate names a missing verdict.** When the session closes, a valid verdict file
+  always wins: a PASS or FAIL stays as written (exit 0 or 1, never retried), even if the
+  session also reported denied tools, and a BLOCKED verdict keeps its own reasons. Only when no valid verdict exists does the gate read
+  the session's own result JSON, in this order:
+  1. Result not parseable (or empty) → `no-verdict`, `cause: "unknown"`.
+  2. An error with a login signature → `session-error`, `cause: "not-authenticated"`.
+  3. Any permission denials → `no-verdict`, `cause: "tool-denied"`, `tools` = the tool
+     names only.
+  4. Anything else → `no-verdict`, `cause: "unknown"`.
+
+  For a named cause the gate prints one stderr line that names the cause and the fix, and
+  says the attempt is not retried. Not authenticated: set `ANTHROPIC_API_KEY` (or your
+  auth source) on the gate step. Tool denied: the runner's tool is not allowed by
+  `ci-settings.json`. An unknown cause prints the usual retry line.
 - **`flakyFailsGate` defaults to `false`:** FLAKY stays a visible finding in `counts`
   (and in the reports) without failing the gate. Enable it to conclude BLOCKED (exit 2 —
   instability is environment-flavored, never a product verdict).
@@ -152,7 +184,7 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
 
 ## CI preflight
 
-Every attempt starts with `ci_preflight.js` — six gating checks, one JSON line, exit 0
+Every attempt starts with `ci_preflight.js` — seven gating checks, one JSON line, exit 0
 or exit 2 with named reasons (unlike the interactive `preflight.js`, which is
 informational):
 
@@ -161,9 +193,10 @@ informational):
 | node + playwright-cli usable (judged by output — the known benign exit-crash on Windows/Node 24 never gates) | `preflight-tools` |
 | Target reachable (any HTTP response counts — a 500 is the app's problem to fail scenarios on) | `preflight-target` |
 | Environment resolves (named file exists / `defaultEnvironment` / legacy `QA_TARGET_URL`; never a silent fallback) | `preflight-environment` |
-| Secrets present **by name** — every `{ "envSecret": "NAME" }` referenced by the active environment, `config/project.json`, and `integration/` catalogs resolves; missing NAMES are listed, values never appear | `preflight-secrets` |
+| Secrets present **by name** — every `{ "envSecret": "NAME" }` referenced by the active environment, `config/project.json`, and `integration/` catalogs resolves to a non-empty value (an empty or whitespace value counts as missing); missing NAMES are listed, values never appear. `sources` reports where each came from (`process-env` or `dotenv`); a name found only in `.env` gets a stderr note, never a gate | `preflight-secrets` |
 | A Playwright browser binary is installed | `preflight-browser` |
 | Plugin manifest readable; plugin↔project version drift is *reported*, not gate-closing | `preflight-plugin-version` |
+| No spec in scope declares `Drivers: mobile` — mobile specs run via `/execute-mobile-test`, never in a browser; never retried | `preflight-driver` |
 
 ## The `ci` config block
 
@@ -191,7 +224,10 @@ Usable from any CI system, without either shipped template.
 4. The browser driver, inside the project:
    `npm install -D @playwright/cli && npx playwright-cli install-browser chromium`.
 5. Every `{ "envSecret": "NAME" }` your environment files reference, injected as env
-   vars by the secret store (a checked-in `.env` is never needed).
+   vars by the secret store (a checked-in `.env` is never needed). A local `.env` works for
+   a trial run on your own machine, because the bundled scripts read it; preflight then
+   notes on stderr which names came only from `.env`. A CI runner has no `.env`, so in a
+   pipeline every name must come from the secret store.
 
 **The invocation** (from the AgenTeX project root):
 
@@ -210,6 +246,31 @@ node "<plugin-root>/skills/test-execution/scripts/ci_gate.js" --suite test/suite
   `extent-report.html`, screenshots, `verdict.json`. **Never publish `test/.auth/`**
   (see Security).
 
+### Password-gated logins
+
+Most enterprise logins need a secret password, and some need an OTP or another secret
+field later in the flow. The whole path, by name only:
+
+1. **Reference it by name.** In `environments/<env>.json`, write the field as
+   `{ "envSecret": "QA_PASSWORD" }`, never the value.
+2. **Inject it from the secret store.** Map the secret to that name in the gate step's
+   `env:` block (GitHub Actions `env: QA_PASSWORD: ${{ secrets.QA_PASSWORD }}`, Azure
+   Pipelines `env: QA_PASSWORD: $(QA_PASSWORD)`). Preflight gates on it being present and
+   non-empty (`preflight-secrets`).
+3. **The plugin types it.** The headless session never sees the value. It calls
+   browser-driver's bundled `fill_secret.js` with the NAME and the field's ref. The
+   script reads the value from its own environment and types it into the field through
+   a temp file that is deleted right away. It submits in the same call and then clears
+   the field, so a snapshot or screenshot taken afterwards does not show it. Four paths
+   are closed by the agent's rules, not by code: the page echoing the value back, console
+   logs, request bodies, and traces or video. The agent never captures any of them across
+   a secret fill. The shipped `ci-settings.json` already allows the call (`Bash(node:*)`).
+4. **Never printed.** The value never appears on a command line, in tool output, in
+   `executions/`, or in the verdict. Only the NAME can appear. If the variable is
+   missing or empty when the field is filled, the scenario is BLOCKED with the run
+   reason `secret-unavailable:<NAME>` (exit 2). A real captcha, or an OTP nobody can
+   supply, is still `captcha-or-otp`.
+
 Inside the gate, the headless session runs as
 `claude --bare -p "/agentex:execute-test ci <scope> [on <env>]" --plugin-dir
 <plugin-root> --add-dir <plugin-root> --settings <ci-settings.json> --permission-mode
@@ -220,11 +281,22 @@ installed — the settings allowlist reads only the consumer project, and the se
 read e.g. `references/procedures/ci-run.md` to conclude deterministically;
 the shipped `templates/ci/ci-settings.json` is a deny-by-default allowlist — under
 `dontAsk`, anything not allowed is denied, and a denied tool degrades to BLOCKED
-`no-verdict` (exit 2), never a wrong PASS/FAIL. A non-bare session that inherits the
-runner's own `~/.claude` also works as a documented fallback, at the cost of
+`no-verdict` (exit 2), never a wrong PASS/FAIL. The reason then carries
+`cause: "tool-denied"` and `tools` (the denied tool names, e.g. `["PowerShell", "Read"]`),
+and the gate does not retry it: add a matching allow rule to your `ci-settings.json` (or
+run on a runner whose shell the settings already allow) and re-run. A non-bare session
+that inherits the runner's own `~/.claude` also works as a documented fallback, at the cost of
 runner-to-runner determinism. Note that claude's own process exit code reflects session
 completion, not the run verdict — only `ci_gate.js`'s exit code and the verdict JSON are
 the contract.
+
+**Windows runners.** On Windows the headless session runs shell commands through the
+PowerShell tool, not Bash. The shipped `ci-settings.json` carries both rule sets side by
+side: every `Bash(...)` rule has a `PowerShell(...)` twin, and the deny set also names
+the PowerShell spellings of the denied commands (`Remove-Item` and its aliases,
+`Invoke-WebRequest`, `Invoke-RestMethod`). The runner's shell tool decides which set
+applies, so the same template works on Linux and Windows runners with no override. If
+you copy the template and change a shell rule, change its twin too.
 
 ## Advisory vs blocking
 
@@ -254,7 +326,9 @@ Actions:
   file later.
 - **Captcha / unobtainable OTP → BLOCKED** (`captcha-or-otp`), never defeated. A fixed
   test-environment captcha or OTP whose value comes from the spec or environment
-  `defaults` is typed normally.
+  `defaults` is typed normally. A password or OTP declared as `{ "envSecret" }` is not a
+  gate either: `fill_secret.js` types it (see Password-gated logins), and a missing or
+  empty variable is `secret-unavailable`, never `captcha-or-otp`.
 - **Mode parity:** a CI run produces the same artifacts as an interactive parallel run —
   `report.md`, `extent-report.html` (always generated in CI), screenshots, logs,
   `bugs/` — plus `verdict.json`.
@@ -264,6 +338,8 @@ Actions:
 - **Secrets by env-var name only.** Preflight reports missing secret *names*; the
   verdict JSON carries counts, paths, and names only. Nothing in the contract can carry
   a secret value. CI logs are long-lived — this is structural, not best-effort.
+  Browser fields that need a secret are typed by `fill_secret.js`, which reads the value
+  itself and never prints it.
 - **`test/.auth/` is secret-grade.** A saved login session (`login.mode: "session"`,
   written by `/optimize-login`) is a credential equivalent. Never publish it as a
   pipeline artifact (the templates publish `executions/` only, and the shipped

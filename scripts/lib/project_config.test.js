@@ -37,6 +37,78 @@ test('readEnvVar prefers process.env over .env', () => {
   finally { delete process.env.X_TEST_VAR; }
 });
 
+// ---- readEnvVar: line-parser edge cases (security: an empty key must never
+// read the NEXT line — that would send a neighbouring secret to another host) ----
+test('readEnvVar: empty key followed by another key → null, never the next line', () => {
+  const dir = proj({ '.env': 'API_TOKEN=\nOTHER_SECRET=s3cr3t\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'OTHER_SECRET'), 's3cr3t');
+});
+test('readEnvVar: fresh /init-test scaffold (keys only) → every key null', () => {
+  const dir = proj({ '.env': '# Jira\nJIRA_EMAIL=\nJIRA_API_TOKEN=\n\nAPI_TOKEN=\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'JIRA_EMAIL'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'JIRA_API_TOKEN'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), null);
+});
+test('readEnvVar: empty key followed by a comment / blank lines → null', () => {
+  const dir = proj({ '.env': 'API_TOKEN=\n# Bearer token for x\n\nB=1\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), null);
+  const dir2 = proj({ '.env': 'API_TOKEN=   \n\n\nB=1\n' });
+  assert.strictEqual(pc.readEnvVar(dir2, 'API_TOKEN'), null);
+});
+test('readEnvVar: empty key at EOF (with and without trailing newline) → null', () => {
+  assert.strictEqual(pc.readEnvVar(proj({ '.env': 'A=1\nAPI_TOKEN=' }), 'API_TOKEN'), null);
+  assert.strictEqual(pc.readEnvVar(proj({ '.env': 'A=1\nAPI_TOKEN=\n' }), 'API_TOKEN'), null);
+});
+test('readEnvVar: empty quoted value → null', () => {
+  const dir = proj({ '.env': 'A=""\nB=\'\'\nC=x\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'A'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'B'), null);
+});
+test('readEnvVar: `export KEY=v` and leading whitespace are honoured', () => {
+  const dir = proj({ '.env': 'export API_TOKEN=tok-1\n   INDENTED=v2\n\texport TABBED = v3\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), 'tok-1');
+  assert.strictEqual(pc.readEnvVar(dir, 'INDENTED'), 'v2');
+  assert.strictEqual(pc.readEnvVar(dir, 'TABBED'), 'v3');
+});
+test('readEnvVar: quotes — one matching pair stripped, inner content kept verbatim', () => {
+  const dir = proj({ '.env': [
+    'DQ="a b # c"', "SQ='x=y'", 'MIXED="abc\'', 'INNER=it\'s', 'KEEPSP=" padded "', 'HASH=pa#ss',
+  ].join('\n') + '\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'DQ'), 'a b # c');
+  assert.strictEqual(pc.readEnvVar(dir, 'SQ'), 'x=y');
+  assert.strictEqual(pc.readEnvVar(dir, 'MIXED'), '"abc\'', 'mismatched quotes are not a pair');
+  assert.strictEqual(pc.readEnvVar(dir, 'INNER'), "it's");
+  assert.strictEqual(pc.readEnvVar(dir, 'KEEPSP'), ' padded ');
+  assert.strictEqual(pc.readEnvVar(dir, 'HASH'), 'pa#ss', '# inside a secret is data, not a comment');
+});
+test('readEnvVar: CRLF line endings — value never ends with \\r; empty CRLF key → null', () => {
+  const dir = proj({ '.env': 'API_TOKEN=\r\nOTHER=s3cr3t\r\nQ="quoted"\r\nLAST=v\r\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'OTHER'), 's3cr3t');
+  assert.strictEqual(pc.readEnvVar(dir, 'Q'), 'quoted');
+  assert.strictEqual(pc.readEnvVar(dir, 'LAST'), 'v');
+});
+test('readEnvVar: name is matched literally (regex metachars escaped)', () => {
+  const dir = proj({ '.env': 'AXB=wrong\nA.B=right\nTOKEN_EXTRA=nope\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'A.B'), 'right');
+  assert.strictEqual(pc.readEnvVar(dir, 'A+B'), null);
+  assert.strictEqual(pc.readEnvVar(dir, '.*'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'TOKEN'), null, 'a name is not a prefix match');
+});
+test('readEnvVar: empty process.env value falls through to .env', () => {
+  const dir = proj({ '.env': 'X_EMPTY_PROC=fromfile\n' });
+  process.env.X_EMPTY_PROC = '';
+  try { assert.strictEqual(pc.readEnvVar(dir, 'X_EMPTY_PROC'), 'fromfile'); }
+  finally { delete process.env.X_EMPTY_PROC; }
+});
+test('parseEnvValue: pure text parser shared by the other .env readers', () => {
+  assert.strictEqual(typeof pc.parseEnvValue, 'function');
+  assert.strictEqual(pc.parseEnvValue('A=\nB=2\n', 'A'), null);
+  assert.strictEqual(pc.parseEnvValue('A=1\r\n', 'A'), '1');
+  assert.strictEqual(pc.parseEnvValue('', 'A'), null);
+});
+
 // ---- loadProjectConfig ----
 test('loadProjectConfig returns {} when file is absent', () => {
   assert.deepStrictEqual(pc.loadProjectConfig(proj()), {});
@@ -151,13 +223,9 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
 
 test('getStructured with no config at all: every default, typed; no tracker -> workflow null', () => {
   const got = getStructured(proj());
-  assert.deepStrictEqual(Object.keys(got), ['testingTasks', 'workflow', 'reproSummaryRow', 'testDesign', 'estimation', 'qaRecords']);
-  assert.strictEqual(got.testingTasks.length, 5);
-  assert.deepStrictEqual(got.testingTasks.map((t) => t.stage), ['requirementReview', 'testCreation', 'testExecution', 'bugRetest', 'automation']);
-  assert.ok(got.testingTasks.every((t) => t.enabled === true && t.title.startsWith('[Testing] ')));
+  assert.deepStrictEqual(Object.keys(got), ['workflow', 'reproSummaryRow', 'testDesign', 'qaRecords']);
   assert.strictEqual(got.reproSummaryRow, true);
   assert.deepStrictEqual(got.testDesign, { approval: 'consolidated', independentCoverageCheck: false });
-  assert.deepStrictEqual(got.estimation, D.estimation);
   assert.deepStrictEqual(got.qaRecords, D.qaRecords);
   assert.strictEqual(got.workflow, null);
   assert.deepStrictEqual(getStructured(proj(), 'qaRecords'), D.qaRecords);
@@ -192,6 +260,17 @@ test('STRUCTURED_DEFAULTS.qaRecords follows owner decision #6: the qa-watchlist/
   });
 });
 
+// Owner decision #13 (2026-10-22, "Drop"): since 0.24 config/estimation.json
+// `tasks[]` is the one source of the [Testing] task list (estimation_config.js),
+// so the structured config carries no testingTasks and no estimation block.
+test('decision #13: no testingTasks / estimation in the structured config — config/estimation.json is the one source', () => {
+  for (const k of ['testingTasks', 'estimation']) {
+    assert.ok(!(k in D), `STRUCTURED_DEFAULTS has no ${k}`);
+    assert.ok(configError(() => getStructured(proj(), k)) instanceof ConfigError, `getStructured refuses ${k}`);
+    assert.ok(!(k in withPluginConfigBlocks({ name: 'x' })), `nothing seeds ${k}`);
+  }
+});
+
 test('STRUCTURED_DEFAULTS.workflow is EMPTY (assumption A-1, owner answer #5)', () => {
   assert.deepStrictEqual(D.workflow, {
     devDoneStates: [], devActiveStates: [], inTestState: '', qaStates: [], terminalStates: [],
@@ -202,8 +281,7 @@ test('STRUCTURED_DEFAULTS.workflow is EMPTY (assumption A-1, owner answer #5)', 
 
 test('the getter returns copies: mutating a result never moves the defaults', () => {
   const got = getStructured(proj());
-  got.testingTasks[0].enabled = false; got.qaRecords.envIssues = 'x.md'; got.testDesign.approval = 'per-story';
-  assert.strictEqual(D.testingTasks[0].enabled, true);
+  got.qaRecords.envIssues = 'x.md'; got.testDesign.approval = 'per-story';
   assert.notStrictEqual(D.qaRecords.envIssues, 'x.md');
   assert.strictEqual(D.testDesign.approval, 'consolidated');
 });
@@ -214,7 +292,7 @@ test('types are kept: arrays, nested objects and booleans are never stringified'
   assert.strictEqual(got.reproSummaryRow, false);
   assert.deepStrictEqual(got.workflow.qaStates, ['QA', 'Verify']);
   assert.strictEqual(got.testDesign.independentCoverageCheck, true);
-  assert.strictEqual(typeof got.testingTasks[0].enabled, 'boolean');
+  assert.strictEqual(typeof got.testDesign.independentCoverageCheck, 'boolean');
 });
 
 test('reproSummaryRow: JSON boolean or exactly "true"/"false"; from the configured provider block; absent -> true', () => {
@@ -230,20 +308,9 @@ test('reproSummaryRow: JSON boolean or exactly "true"/"false"; from the configur
 test('per-key merge: setting only testDesign.approval keeps every other default', () => {
   const got = getStructured(cfgDir({ testDesign: { approval: 'per-story' } }));
   assert.deepStrictEqual(got.testDesign, { approval: 'per-story', independentCoverageCheck: false });
-  assert.deepStrictEqual(got.estimation, D.estimation);
   assert.deepStrictEqual(got.qaRecords, D.qaRecords);
-  const est = getStructured(cfgDir({ estimation: { historyPath: 'data/history.jsonl' } }), 'estimation');
-  assert.deepStrictEqual(est, { ...D.estimation, historyPath: 'data/history.jsonl' });
   const qa = getStructured(cfgDir({ qaRecords: { envIssues: 'notes/env.jsonl' } }), 'qaRecords');
   assert.deepStrictEqual(qa, { ...D.qaRecords, envIssues: 'notes/env.jsonl' }, 'one override, three defaults; .jsonl accepted for teams that override');
-});
-
-test('testingTasks merge BY STAGE: one entry disables one task and keeps four; canonical order always', () => {
-  const got = getStructured(cfgDir({ testingTasks: [{ stage: 'automation', enabled: false }, { stage: 'requirementReview', title: '[Testing] Requirement Analysis' }] }), 'testingTasks');
-  assert.deepStrictEqual(got.map((t) => t.stage), D.testingTasks.map((t) => t.stage));
-  assert.deepStrictEqual(got[4], { ...D.testingTasks[4], enabled: false });
-  assert.deepStrictEqual(got[0], { ...D.testingTasks[0], title: '[Testing] Requirement Analysis' });
-  assert.deepStrictEqual(got.slice(1, 4), D.testingTasks.slice(1, 4));
 });
 
 test('workflow: from azure.workflow vs jira.workflow, same shape; deep merge incl. closeOut; arrays replace wholesale', () => {
@@ -263,30 +330,13 @@ test('workflow: from azure.workflow vs jira.workflow, same shape; deep merge inc
 
 test('validation: wrong type at each block exits 2 naming the key path and the accepted shape', () => {
   for (const [config, key, re] of [
-    [{ testingTasks: {} }, 'testingTasks', /testingTasks.*array/],
     [{ testDesign: [] }, 'testDesign', /testDesign.*object/],
-    [{ estimation: 'x' }, 'estimation', /estimation.*object/],
     [{ qaRecords: null }, 'qaRecords', /qaRecords.*object/],
     [{ azure: { ...AZ, workflow: 'x' } }, 'workflow', /azure\.workflow.*object/],
-    [{ testingTasks: ['automation'] }, 'testingTasks', /testingTasks\[0\].*object/],
   ]) {
     const e = configError(() => getStructured(cfgDir(config), key));
     assert.ok(e instanceof ConfigError, key); assert.strictEqual(e.exitCode, 2); assert.match(e.message, re);
   }
-});
-
-test('validation: unknown stage, duplicate stage, bad title prefix, non-boolean enabled', () => {
-  const stages = D.testingTasks.map((t) => t.stage).join(', ');
-  let e = configError(() => getStructured(cfgDir({ testingTasks: [{ stage: 'smokeTest' }] }), 'testingTasks'));
-  assert.match(e.message, /testingTasks\[0\]\.stage/); assert.match(e.message, /smokeTest/); assert.ok(e.message.includes(stages), 'names the accepted stages');
-  e = configError(() => getStructured(cfgDir({ testingTasks: [{ stage: 'automation' }, { stage: 'automation', enabled: false }] }), 'testingTasks'));
-  assert.match(e.message, /testingTasks\[1\]\.stage.*duplicate/i);
-  e = configError(() => getStructured(cfgDir({ testingTasks: [{ stage: 'automation', title: 'Automation' }] }), 'testingTasks'));
-  assert.match(e.message, /testingTasks\[0\]\.title/); assert.match(e.message, /\[Testing\] /);
-  e = configError(() => getStructured(cfgDir({ testingTasks: [{ stage: 'automation', enabled: 'no' }] }), 'testingTasks'));
-  assert.match(e.message, /testingTasks\[0\]\.enabled.*true or false/);
-  e = configError(() => getStructured(cfgDir({ testingTasks: [{ enabled: false }] }), 'testingTasks'));
-  assert.match(e.message, /testingTasks\[0\]\.stage/);
 });
 
 test('validation: approval mode, coverage-check type, paths, extensions, workflow lists', () => {
@@ -294,8 +344,8 @@ test('validation: approval mode, coverage-check type, paths, extensions, workflo
   assert.match(e.message, /testDesign\.approval/); assert.match(e.message, /consolidated/); assert.match(e.message, /per-story/);
   e = configError(() => getStructured(cfgDir({ testDesign: { independentCoverageCheck: 'false' } }), 'testDesign'));
   assert.match(e.message, /testDesign\.independentCoverageCheck.*true or false/);
-  e = configError(() => getStructured(cfgDir({ estimation: { modelPath: '/etc/model.json' } }), 'estimation'));
-  assert.match(e.message, /estimation\.modelPath.*relative/);
+  e = configError(() => getStructured(cfgDir({ qaRecords: { envIssues: '/etc/env.md' } }), 'qaRecords'));
+  assert.match(e.message, /qaRecords\.envIssues.*relative/);
   e = configError(() => getStructured(cfgDir({ qaRecords: { envIssues: '../outside/env.md' } }), 'qaRecords'));
   assert.match(e.message, /qaRecords\.envIssues.*\.\./);
   e = configError(() => getStructured(cfgDir({ qaRecords: { envIssues: 'records/env.txt' } }), 'qaRecords'));
@@ -315,11 +365,9 @@ test('validation: approval mode, coverage-check type, paths, extensions, workflo
 test('validation: unknown keys in every plugin-owned block are a ConfigError naming the known keys (S13)', () => {
   for (const [config, key, re] of [
     [{ testDesign: { aproval: 'per-story' } }, 'testDesign', /testDesign\.aproval.*approval, independentCoverageCheck/],
-    [{ estimation: { model: 'x.json' } }, 'estimation', /estimation\.model\b.*modelPath, historyPath/],
     [{ qaRecords: { questions: 'q.md' } }, 'qaRecords', /qaRecords\.questions.*pendingQuestions, pendingRechecks, envIssues, deferredConditions/],
     [{ azure: { ...AZ, workflow: { doneStates: [] } } }, 'workflow', /azure\.workflow\.doneStates.*devDoneStates/],
     [{ azure: { ...AZ, workflow: { closeOut: { owner: 'x' } } } }, 'workflow', /azure\.workflow\.closeOut\.owner.*state, assignee/],
-    [{ testingTasks: [{ stage: 'automation', hours: 2 }] }, 'testingTasks', /testingTasks\[0\]\.hours.*stage, title, enabled/],
   ]) {
     const e = configError(() => getStructured(cfgDir(config), key));
     assert.ok(e instanceof ConfigError, JSON.stringify(config)); assert.match(e.message, re);
@@ -338,19 +386,6 @@ test('existing azure/jira keys are not validated more strictly (only the new nes
   assert.deepStrictEqual(getStructured(dir, 'workflow'), D.workflow);
 });
 
-test('pin: the testingTasks default mirrors task-estimation SKILL.md "Task template" (titles and order)', () => {
-  const md = fs.readFileSync(path.join(__dirname, '..', '..', 'skills', 'task-estimation', 'SKILL.md'), 'utf8');
-  const section = md.split(/^## Task template\s*$/m)[1].split(/^## /m)[0];
-  const titles = [...section.matchAll(/^\|\s*`(\[Testing\][^`]*)`\s*\|/gm)].map((m) => m[1]);
-  assert.deepStrictEqual(titles, D.testingTasks.map((t) => t.title));
-});
-
-test('pin: rules.js TITLE_PREFIX is the prefix the getter enforces', () => {
-  const rules = fs.readFileSync(path.join(__dirname, '..', '..', 'skills', 'task-estimation', 'scripts', 'strategies', 'rules.js'), 'utf8');
-  assert.match(rules, /const TITLE_PREFIX = '\[Testing\] ';/);
-  assert.ok(D.testingTasks.every((t) => t.title.startsWith('[Testing] ')));
-});
-
 // The only files allowed to MIRROR the default paths — each because a reader
 // (or the scaffold) must see them — and the test that compares each mirror with
 // STRUCTURED_DEFAULTS.qaRecords, so a rename that misses a mirror fails there.
@@ -361,7 +396,7 @@ const QA_PATH_MIRRORS = {
 
 test('pin: templates/config/project.json\'s plugin blocks equal STRUCTURED_DEFAULTS (fresh /init-test = the defaults)', () => {
   const tpl = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'templates', 'config', 'project.json'), 'utf8'));
-  for (const k of ['testingTasks', 'testDesign', 'estimation', 'qaRecords']) assert.deepStrictEqual(tpl[k], D[k], k);
+  for (const k of ['testDesign', 'qaRecords']) assert.deepStrictEqual(tpl[k], D[k], k);
   assert.deepStrictEqual(withPluginConfigBlocks(tpl), tpl, 'nothing left for the wizard save or m12 to seed on a fresh scaffold');
 });
 
@@ -411,15 +446,15 @@ test('detectTrackerBlock agrees with resolveTracker on six fixtures', () => {
 // ---- withPluginConfigBlocks: the one function the wizard save and m12 share ----
 test('withPluginConfigBlocks adds the absent top-level blocks and the ONE provider\'s workflow; never rewrites', () => {
   const fresh = withPluginConfigBlocks({ name: 'x', azure: { ...AZ } });
-  assert.deepStrictEqual(Object.keys(fresh), ['name', 'azure', 'testingTasks', 'testDesign', 'estimation', 'qaRecords']);
-  assert.deepStrictEqual(fresh.testingTasks, D.testingTasks);
+  assert.deepStrictEqual(Object.keys(fresh), ['name', 'azure', 'testDesign', 'qaRecords']);
+  assert.deepStrictEqual(fresh.testDesign, D.testDesign);
   assert.deepStrictEqual(fresh.qaRecords, D.qaRecords);
   assert.deepStrictEqual(fresh.azure, { ...AZ, workflow: D.workflow });
   assert.ok(!('reproSummaryRow' in fresh.azure), 'reproSummaryRow is never written');
-  const custom = { jira: { ...JI, workflow: { inTestState: 'In QA' } }, testingTasks: [{ stage: 'automation', enabled: false }] };
+  const custom = { jira: { ...JI, workflow: { inTestState: 'In QA' } }, testDesign: { approval: 'per-story' } };
   const out = withPluginConfigBlocks(clone(custom));
   assert.deepStrictEqual(out.jira, custom.jira, 'an existing workflow is never rewritten');
-  assert.deepStrictEqual(out.testingTasks, custom.testingTasks, 'an existing block is never rewritten');
+  assert.deepStrictEqual(out.testDesign, custom.testDesign, 'an existing block is never rewritten');
   assert.ok(!('azure' in out), 'never creates a provider block');
   const none = withPluginConfigBlocks({ name: 'x' });
   assert.ok(!('azure' in none) && !('jira' in none), 'no tracker -> no provider key');
@@ -431,8 +466,8 @@ test('withPluginConfigBlocks adds the absent top-level blocks and the ONE provid
   const src = { azure: { ...AZ } };
   withPluginConfigBlocks(src);
   assert.deepStrictEqual(src, { azure: { ...AZ } }, 'the input object is not mutated');
-  fresh.testingTasks[0].enabled = false;
-  assert.strictEqual(D.testingTasks[0].enabled, true, 'blocks are copies of the defaults');
+  fresh.testDesign.approval = 'per-story';
+  assert.strictEqual(D.testDesign.approval, 'consolidated', 'blocks are copies of the defaults');
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

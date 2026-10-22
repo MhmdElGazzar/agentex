@@ -49,8 +49,25 @@ WHERE TO SAVE EVIDENCE (your session slice only)
     npx playwright-cli -s={{SESSION}} console error > {{SESSION_DIR}}/logs/s1-console.log
   Save network / run-code captures the same way.
 
-TEST_DATA is your test input (users, default OTP/password). A `{ "envSecret": "NAME" }` value =
-read `NAME` from the project's `.env` at use time; never print or log it.
+TEST_DATA is your test input (users, default OTP/password). A `{ "envSecret": "NAME" }` value is
+never resolved by you:
+- SECRETS: type it ONLY with the bundled script (mechanics in
+  `${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/references/tools/fill-secret.md`; read it first):
+    node ${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/scripts/fill_secret.js --session {{SESSION}} --target <ref> --env-var NAME --env {{ENVIRONMENT}} --submit
+  (omit `--env` when ENVIRONMENT is empty). Never resolve, read, echo, or pass the value
+  yourself, and never try another way (`fill`, `type`, `run-code`, `$NAME`, reading `.env`).
+  A refused command is not a puzzle to solve.
+- Snapshot BEFORE filling and fill secrets last. Run no other playwright-cli command between
+  the first secret fill and the submit (a snapshot shows input values in clear, passwords
+  included, and every action writes one to `.playwright-cli/`): submit in the last call with
+  `--submit` or `--submit-target <pre-fill ref>`; it clears every secret field still filled.
+- Segmented boxes (OTP digits): one call with one `--target` per box, in order.
+- If the submitting call never ran (an earlier call BLOCKED), take no `snapshot`, `eval` or
+  `screenshot` of that page: note "evidence withheld: secret field still filled". This is the
+  one exception to screenshotting every scenario.
+- `secret-unavailable` → the scenario is BLOCKED (report the NAME to the orchestrator, never a
+  value; it keeps the NAME out of `run-summary.json` and `extent-report.html`), never FAIL,
+  never `captcha-or-otp`. In `api:`/`db:` steps the runners resolve secrets themselves.
 
 INTEGRATION STEPS (`api:` / `db:` in the spec)
 - `api:` steps → the **api-integration** skill; `db:` steps → the **db-integration** skill
@@ -131,6 +148,18 @@ EXECUTION RULES
   through the UI only if the resume reports RESUME_FAIL. Verify you are in by a landmark
   element, never by the URL.
 - Never read or print secrets.
+- If you work around an AgenTeX skill, command or script, write your own helper
+  script for something AgenTeX should do, or find an AgenTeX skill copied into `.claude/skills/`,
+  record it with `node ${CLAUDE_PLUGIN_ROOT}/scripts/field_feedback.js capture --mode parallel
+  --session {{SESSION}} …` (text as JSON on stdin, env-var names only), then continue. Never ask.
+  The `…` is `--trigger workaround|self-written-script|forked-skill` and `--affected <the
+  AgenTeX skill or command name, or unknown>`, plus `--script <path>` or `--fork <path>`
+  (project-relative); the text goes in through a quoted heredoc:
+    node ${CLAUDE_PLUGIN_ROOT}/scripts/field_feedback.js capture --trigger workaround --affected <name> --mode parallel --session {{SESSION}} <<'EOF'
+    {"problem": "<what the plugin could not do>", "workaround": "<what you did instead>"}
+    EOF
+  Exit 0 → keep the `id` from its JSON line for your LEARNINGS line. Exit 1 or 2 → keep a
+  one-line capture-failed note with the reason. Either way, continue the run.
 
 WHEN A SCENARIO FAILS: DEFECT OR FLAKE
 - Default: ONE attempt per scenario. A scenario that passed is never re-run "to be sure".
@@ -186,6 +215,8 @@ OUTPUT (your final message only — it is consumed by the orchestrator, not a hu
 - BUG EVIDENCE: an explicit list of evidence paths (screenshots under SESSION_DIR/screenshots/,
   runner logs under SESSION_DIR/logs/) that prove each defect, so the orchestrator can copy them
   into the run's bugs/ folder.
+- LEARNINGS: `LEARNINGS: <id>, …`, one id per AgenTeX learning you recorded (omit the line
+  when there are none), plus one note per failed capture ("capture failed: <reason>").
 - A final one-line tally: "<n> pass / <m> fail / <b> blocked, <k> defects" (append
   ", <j> needs-user" when any ui-check question was deferred, and ", <f> flaky" when any
   scenario only passed on a retry). A FLAKY or BLOCKED scenario is in neither the pass nor

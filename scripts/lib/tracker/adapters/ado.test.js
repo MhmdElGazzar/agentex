@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createAdapter, TrackerError, PAT_ENV_NAMES } = require('./ado.js');
+const { createAdapter, normalizeOrg, TrackerError, PAT_ENV_NAMES } = require('./ado.js');
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -17,8 +17,8 @@ async function test(name, fn) {
 const SENTINEL_PAT = 'SENTINEL-PAT-a1b2c3d4e5f60718293a4b5c6d7e8f90';
 const SENTINEL_B64 = Buffer.from(':' + SENTINEL_PAT).toString('base64');
 
-// The tests own the PAT environment — the machine's real values must not leak in.
-for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AGENTEX_CI']) delete process.env[n];
+// The tests own the PAT and legacy config environment — the machine's real values must not leak in.
+for (const n of ['AZURE_PAT', 'AZURE_DEVOPS_EXT_PAT', 'AZURE_DEVOPS_PAT', 'AZURE_URL', 'AZURE_PROJECT', 'AGENTEX_CI']) delete process.env[n];
 
 // Throwaway consumer project with an azure block + a sentinel PAT in .env.
 function proj({ org = 'exampleorg', project = 'Sample Project', envLines, azureExtra = {} } = {}) {
@@ -219,6 +219,22 @@ const PROJ = 'Sample%20Project';
     assert.strictEqual(Buffer.compare(call.body, fs.readFileSync(png)), 0, 'raw bytes travel as the body');
   });
 
+  await test('uploadAttachment with opts.bytes sends that buffer verbatim — not a re-read of the file', async () => {
+    const dir = proj();
+    const png = path.join(dir, 'shot.png');
+    fs.writeFileSync(png, Buffer.from('what is on disk now'));
+    const checked = Buffer.from([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6]);
+    const f = fakeFetch([{ method: 'POST', match: '/_apis/wit/attachments', json: { id: 'att-2', url: 'https://x/att-2' } }]);
+    const a = createAdapter({ cwd: dir, fetch: f });
+    const d = await a.uploadAttachment(png, { execute: false, bytes: checked });
+    assert.match(d.body, /shot\.png, 8 bytes/, 'the dry-run size is the size that will be sent');
+    await a.uploadAttachment(png, { execute: true, bytes: checked });
+    assert.strictEqual(Buffer.compare(f.calls[0].body, checked), 0, 'the given bytes travel');
+    await assert.rejects(() => a.uploadAttachment(png, { execute: true, bytes: 'not a buffer' }),
+      (e) => e.exitCode === 2 && /opts\.bytes must be a Buffer/.test(e.message));
+    assert.strictEqual(f.calls.length, 1, 'a bad bytes option sends nothing');
+  });
+
   // Suite membership as the legacy GET returns it; flips once the add POST was sent.
   const suiteCases = (present, addedAfterPost = []) => (calls) => {
     const posted = calls.some((c) => c.method === 'POST' && c.url.includes('/testcases/'));
@@ -339,6 +355,119 @@ const PROJ = 'Sample%20Project';
     assert.match(JSON.stringify(descriptors[3].body), /shot\.png/);
   });
 
+  // ── IDs: canonical decimal on every request, unchecked on dry runs ────────
+  // Malformed spellings a caller or an agent could hand over. None may reach the
+  // wire — no leading zero, sign, whitespace, '#', exponent, non-ASCII digits,
+  // unsafe magnitude, injected path/query, or a dry-run stand-in.
+  const BAD_IDS = ['0123', ' 123', '123 ', '123\n', '#123', '+5', '-1', '0', '1.0', '1e2', '0x1f', '١٢٣',
+    '9007199254740993', '77?destroy=true', '77/../78', '', 'NEW', '<bugId>', 'new-bug-id', '{new-bug-id}',
+    0, -1, 1.5, NaN, Infinity, 2 ** 53, null, undefined, true, {}];
+  const EXEC = { execute: true };
+
+  await test('every read and execute path refuses a malformed id (exit 2) and sends ZERO requests', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const routes = (id) => [
+      ['getWorkItem', () => a.getWorkItem(id)],
+      ['getStory', () => a.getStory(id)],
+      ['listSuites', () => a.listSuites(id)],
+      ['listSuiteCases plan', () => a.listSuiteCases(id, 4)],
+      ['listSuiteCases suite', () => a.listSuiteCases(3, id)],
+      ['getPoint plan', () => a.getPoint(id, 4, 77)],
+      ['getPoint suite', () => a.getPoint(3, id, 77)],
+      ['getPoint case', () => a.getPoint(3, 4, id)],
+      ['listRunResults', () => a.listRunResults(id)],
+      ['updateWorkItem', () => a.updateWorkItem(id, { fields: { x: 'y' } }, EXEC)],
+      ['updateWorkItem relation', () => a.updateWorkItem(42, { addRelations: [{ rel: 'r', targetId: id }] }, EXEC)],
+      ['addRelation source', () => a.addRelation(id, 'r', 9, EXEC)],
+      ['addRelation target', () => a.addRelation(42, 'r', id, EXEC)],
+      ['createWorkItem relation', () => a.createWorkItem('Bug', { relations: [{ rel: 'r', targetId: id }] }, EXEC)],
+      ['createWorkItem validateOnly relation', () => a.createWorkItem('Bug', { relations: [{ rel: 'r', targetId: id }] }, { validateOnly: true, execute: true })],
+      ['addCaseToSuite plan', () => a.addCaseToSuite(id, 4, 5, EXEC)],
+      ['addCaseToSuite suite', () => a.addCaseToSuite(3, id, 5, EXEC)],
+      ['addCaseToSuite case', () => a.addCaseToSuite(3, 4, [505, id], EXEC)],
+      ['updateRunResults', () => a.updateRunResults(id, [], EXEC)],
+      ['updateRun', () => a.updateRun(id, { state: 'Completed' }, EXEC)],
+      ['deleteWorkItem', () => a.deleteWorkItem(id, EXEC)],
+    ];
+    for (const id of BAD_IDS) {
+      for (const [name, call] of routes(id)) {
+        await assert.rejects(call, (e) => {
+          assert.strictEqual(e.exitCode, 2, `${name}(${String(id)}): ${e.message}`);
+          // deleteWorkItem's own positive-integer check (unchanged) may fire first.
+          assert.match(e.message, name === 'deleteWorkItem' ? /work-item id/ : /positive canonical decimal/, `${name}(${String(id)})`);
+          return true;
+        }, `${name}(${String(id)}) must be refused`);
+      }
+    }
+    assert.strictEqual(f.calls.length, 0, 'every refusal happened before a request left the machine');
+  });
+
+  await test('canonical IDs reach the wire unchanged — numbers and plain decimal strings alike', async () => {
+    const f = fakeFetch([{ match: '/suites/4/testcases', json: { value: [{ testCase: { id: '505' } }] } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    await a.getWorkItem('123');
+    await a.getWorkItem(9007199254740991); // Number.MAX_SAFE_INTEGER is still an id
+    await a.getPoint('3', '4', '77');
+    await a.addCaseToSuite('3', '4', '505', EXEC);
+    await a.updateRun('88', { state: 'Completed' }, EXEC);
+    await a.deleteWorkItem('77', EXEC);
+    const paths = f.calls.map((c) => c.url.replace(/^.*\/_apis\//, '').replace(/\?.*$/, ''));
+    assert.deepStrictEqual(paths, ['wit/workitems/123', 'wit/workitems/9007199254740991',
+      'testplan/Plans/3/Suites/4/TestPoint', 'test/Plans/3/suites/4/testcases', 'test/runs/88', 'wit/workitems/77']);
+  });
+
+  await test('dry runs check NO id: the bug flow\'s stand-ins plan exactly as before, with no PAT and zero requests', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj({ envLines: '' }), fetch: f });
+    const DRY = { execute: false };
+    for (const id of ['NEW', '<bugId>', 'new-bug-id', '{new-bug-id}', '{run-id}', '{new-tc-id}', ' 77', '0123', '#5']) {
+      const link = await a.addRelation(77, 'Microsoft.VSTS.Common.TestedBy-Reverse', id, DRY); // testplan.js fail --bug <id>
+      assert.ok(link.url.includes('/wit/workitems/77?'), link.url);
+      assert.strictEqual(link.body[0].value.url, `${BASE}/_apis/wit/workItems/${id}`);
+      assert.ok((await a.addRelation(id, 'r', 321, DRY)).url.includes(`/wit/workitems/${id}?`));
+      assert.ok((await a.updateWorkItem(id, { fields: { x: 'y' } }, DRY)).url.includes(`/wit/workitems/${id}?`));
+      const create = await a.createWorkItem('Task', { relations: [{ rel: 'r', targetId: id }] }, DRY);
+      assert.strictEqual(create.body[0].value.url, `${BASE}/_apis/wit/workItems/${id}`);
+      assert.ok((await a.addCaseToSuite(id, id, id, DRY)).url.includes(`/test/Plans/${id}/suites/${id}/testcases/${id}?`));
+      assert.ok((await a.updateRunResults(id, [], DRY)).url.includes(`/test/Runs/${id}/results?`));
+      assert.ok((await a.updateRun(id, {}, DRY)).url.includes(`/test/runs/${id}?`));
+    }
+    // deleteWorkItem's dry run keeps its own long-standing positive-integer check;
+    // only the execute path is stricter.
+    assert.ok((await a.deleteWorkItem(' 77', DRY)).url.includes('/wit/workitems/77?'));
+    await assert.rejects(() => a.deleteWorkItem(' 77', EXEC), /positive canonical decimal work-item id/);
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  // ── azure.org must be a plain base URL ─────────────────────────────────────
+  await test('azure.org carrying credentials, a query string or a fragment is refused at config time — value never echoed', async () => {
+    const refused = [
+      ['https://qa.user:TOPSECRET@dev.azure.com/exampleorg', /credentials/],
+      ['https://TOPSECRET@dev.azure.com/exampleorg', /credentials/],
+      ['https://dev.azure.com/exampleorg?TOPSECRET=1', /query string/],
+      ['https://dev.azure.com/exampleorg?', /query string/],
+      ['https://dev.azure.com/exampleorg#TOPSECRET', /fragment/],
+      ['exampleorg?TOPSECRET', /query string/],
+      ['https://bad host/exampleorg', /not a valid/],
+    ];
+    for (const [org, why] of refused) {
+      assert.throws(() => createAdapter({ cwd: proj({ org }), fetch: fakeFetch([]) }), (e) => {
+        assert.strictEqual(e.exitCode, 2, org);
+        assert.match(e.message, why, org);
+        assert.ok(!e.message.includes('TOPSECRET'), `the org value is never echoed: ${e.message}`);
+        return true;
+      });
+    }
+    // The legacy AZURE_URL fallback goes through the same gate.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ado-'));
+    fs.writeFileSync(path.join(dir, '.env'), `AZURE_URL=https://u:TOPSECRET@dev.azure.com/legacyorg\nAZURE_PROJECT=P\nAZURE_PAT=${SENTINEL_PAT}\n`);
+    assert.throws(() => createAdapter({ cwd: dir, fetch: fakeFetch([]) }), /credentials/);
+    // Plain spellings are unchanged.
+    assert.strictEqual(normalizeOrg('exampleorg'), 'https://dev.azure.com/exampleorg');
+    assert.strictEqual(normalizeOrg(' https://tfs.example.com/Collection/ '), 'https://tfs.example.com/Collection');
+  });
+
   // ── error contract ──────────────────────────────────────────────────────────
   await test('non-2xx: TrackerError with op, status, url and a <=500-char body slice', async () => {
     const long = 'x'.repeat(2000);
@@ -391,6 +520,102 @@ const PROJ = 'Sample%20Project';
     await assert.rejects(() => a.getWorkItem(1), (e) => e instanceof TrackerError && /ENOTFOUND/.test(e.serverMessage));
   });
 
+  // ── error-path scrub: an echoed PAT never survives into a TrackerError ─────
+  // A PAT with characters that encode differently, so the URL-encoded and
+  // JSON-escaped spellings are distinct strings the scrub has to catch.
+  const ODD_PAT = 'odd+pat/with"quote\\slash';
+  const ODD_B64 = Buffer.from(':' + ODD_PAT).toString('base64');
+  const ODD_FORMS = {
+    raw: ODD_PAT,
+    header: `Basic ${ODD_B64}`,
+    base64: ODD_B64,
+    urlEncoded: encodeURIComponent(ODD_PAT),
+    jsonEscaped: JSON.stringify(ODD_PAT).slice(1, -1),
+  };
+  const oddProj = () => proj({ envLines: `AZURE_PAT=${ODD_PAT}\n` });
+  // Every surface a caller can print: message, own props, body, serverMessage.
+  const assertNoPatForm = (e) => {
+    const surfaces = [e.message, e.url, e.body, String(e.serverMessage), JSON.stringify({ ...e })].join('\n');
+    for (const [name, form] of Object.entries(ODD_FORMS)) assert.ok(!surfaces.includes(form), `${name} form leaked: ${surfaces}`);
+  };
+
+  await test('error path: a non-OK text body echoing the PAT in any form is scrubbed (raw, header, base64, URL-encoded, JSON-escaped)', async () => {
+    for (const [name, form] of Object.entries(ODD_FORMS)) {
+      const f = fakeFetch([{ match: '/workitems/1', status: 401, text: `proxy echo: ${form} <end>` }]);
+      await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: f }).getWorkItem(1), (e) => {
+        assert.ok(e instanceof TrackerError, name);
+        assertNoPatForm(e);
+        assert.strictEqual(e.body, 'proxy echo: <redacted> <end>', name);
+        return true;
+      });
+    }
+  });
+
+  await test('error path: a JSON error body is scrubbed value by value — nested, as a key, and behind \\u escapes', async () => {
+    const unicodeEscaped = [...ODD_PAT].map((ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`).join('');
+    const text = `{"message":"rejected ${ODD_FORMS.jsonEscaped}","detail":{"tokens":["${ODD_B64}","Basic ${ODD_B64}"],` +
+      `"${ODD_FORMS.urlEncoded}":"as a key","hidden":"${unicodeEscaped}"}}`;
+    assert.ok(!text.includes(ODD_PAT), 'precondition: the raw text never spells the PAT plainly');
+    const f = fakeFetch([{ method: 'POST', match: '/wiql', status: 400, text }]);
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: f }).query('SELECT 1'), (e) => {
+      assertNoPatForm(e);
+      assert.strictEqual(e.serverMessage, 'rejected <redacted>');
+      assert.deepStrictEqual(JSON.parse(e.body), {
+        message: 'rejected <redacted>',
+        detail: { tokens: ['<redacted>', '<redacted>'], '<redacted>': 'as a key', hidden: '<redacted>' },
+      });
+      return true;
+    });
+  });
+
+  await test('error path: a fetch that throws while quoting the Authorization header is scrubbed', async () => {
+    const leaky = async () => { throw new Error(`proxy refused Authorization: Basic ${ODD_B64} (token ${ODD_PAT})`); };
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: leaky }).getWorkItem(1), (e) => {
+      assert.ok(e instanceof TrackerError);
+      assertNoPatForm(e);
+      assert.strictEqual(e.serverMessage, 'proxy refused Authorization: <redacted> (token <redacted>)');
+      return true;
+    });
+  });
+
+  await test('error path: a request URL carrying a PAT form is scrubbed in the error (url and message)', async () => {
+    // listFields URL-encodes its type into the route — the one caller-shaped path segment.
+    const f = fakeFetch([{ match: '/workitemtypes/', status: 404, text: '' }]);
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: f }).listFields(ODD_PAT), (e) => {
+      assertNoPatForm(e);
+      assert.ok(e.url.includes('/workitemtypes/<redacted>/fields'), e.url);
+      return true;
+    });
+  });
+
+  await test('error path: an unreadable response body becomes a scrubbed TrackerError, never a raw stream error', async () => {
+    const broken = (status) => async () => ({ ok: status < 300, status, text: async () => { throw new Error(`stream reset (token ${ODD_PAT})`); } });
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: broken(502) }).getWorkItem(1), (e) => {
+      assert.ok(e instanceof TrackerError);
+      assert.strictEqual(e.status, 502);
+      assert.match(e.serverMessage, /response body could not be read: stream reset \(token <redacted>\)/);
+      assertNoPatForm(e);
+      return true;
+    });
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: broken(200) }).getWorkItem(1), (e) => {
+      assert.ok(e instanceof TrackerError, 'a 2xx whose body cannot be read is still a failure');
+      assert.strictEqual(e.status, null);
+      assertNoPatForm(e);
+      return true;
+    });
+  });
+
+  await test('success path is untouched: a 2xx body is returned verbatim even when it contains the PAT', async () => {
+    // The scrub is error-path only — a work item that happens to quote the
+    // token is the user's data and comes back byte for byte.
+    const wi = { id: 1, fields: { 'System.Description': `pasted ${SENTINEL_PAT} / Basic ${SENTINEL_B64}` } };
+    const r = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/1', json: wi }]) }).getWorkItem(1);
+    assert.deepStrictEqual(r, wi);
+    const plain = `plain ${SENTINEL_PAT}`;
+    const r2 = await createAdapter({ cwd: proj(), fetch: fakeFetch([{ match: '/workitems/1', text: plain }]) }).getWorkItem(1);
+    assert.strictEqual(r2, plain, 'a non-JSON 2xx body is returned as-is too');
+  });
+
   // ── config resolution (invariant 10) ────────────────────────────────────────
   await test('missing azure.org / azure.project: exit-2 error naming the keys looked for', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ado-'));
@@ -400,6 +625,93 @@ const PROJ = 'Sample%20Project';
       assert.strictEqual(e.exitCode, 2);
       assert.match(e.message, /azure\.project/);
       assert.match(e.message, /AZURE_PROJECT/);
+      return true;
+    });
+  });
+
+  // ── skill-consolidation-foundation ops take main's id guard and error scrub ──
+  // Every new op that sends a request with an id goes through requireId on its
+  // read / execute path (dry runs stay unchecked, as for every other write).
+  await test('SCF ops: every read and execute path refuses a malformed id (exit 2) and sends ZERO requests', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const routes = (id) => [
+      ['getWorkItem fields', () => a.getWorkItem(id, { fields: ['System.Title'] })],
+      ['listComments', () => a.listComments(id)],
+      ['addComment', () => a.addComment(id, 'hi', EXEC)],
+      ['getPlan', () => a.getPlan(id)],
+      ['createSuite plan', () => a.createSuite(id, { type: 'static', name: 'S', parent: 5 }, EXEC)],
+      ['createSuite parent', () => a.createSuite(3, { type: 'static', name: 'S', parent: id }, EXEC)],
+      ['createSuite requirement', () => a.createSuite(3, { type: 'requirement', requirementId: id, parent: 5 }, EXEC)],
+      ['removeCaseFromSuite plan', () => a.removeCaseFromSuite(id, 4, [77], EXEC)],
+      ['removeCaseFromSuite suite', () => a.removeCaseFromSuite(3, id, [77], EXEC)],
+      ['removeCaseFromSuite case', () => a.removeCaseFromSuite(3, 4, [77, id], EXEC)],
+      ['listChildRefs', () => a.listChildRefs([42, id])],
+    ];
+    for (const id of BAD_IDS) {
+      for (const [name, call] of routes(id)) {
+        // An absent parent / name is refused by the op's own usage check first.
+        if (id === undefined || id === null || id === '') continue;
+        await assert.rejects(call, (e) => {
+          assert.strictEqual(e.exitCode, 2, `${name}(${String(id)}): ${e.message}`);
+          // createSuite's own "needs a parent suite id" usage check fires first on a falsy parent.
+          assert.match(e.message, name === 'createSuite parent' && !id ? /needs a parent suite id/ : /positive canonical decimal/, `${name}(${String(id)})`);
+          return true;
+        }, `${name}(${String(id)}) must be refused`);
+      }
+    }
+    assert.strictEqual(f.calls.length, 0, 'every refusal happened before a request left the machine');
+  });
+
+  await test('SCF ops: dry runs check NO id (stand-ins plan as before); canonical ids reach the wire unchanged', async () => {
+    const f = fakeFetch([{ match: '/Suites/4/TestCase', json: { value: [] } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const DRY = { execute: false };
+    assert.ok((await a.addComment('{new-bug-id}', 'hi', DRY)).url.includes('/wit/workItems/{new-bug-id}/comments?'));
+    assert.deepStrictEqual((await a.createSuite('NEW', { type: 'static', name: 'S', parent: '<root>' }, DRY)).body.suiteType, 'staticTestSuite');
+    assert.strictEqual(f.calls.length, 0);
+    await a.listComments('123');
+    await a.getPlan('3');
+    await a.removeCaseFromSuite('3', '4', ['77'], EXEC);
+    const paths = f.calls.map((c) => c.url.replace(/^.*\/_apis\//, '').replace(/\?.*$/, ''));
+    assert.deepStrictEqual(paths, ['wit/workItems/123/comments', 'testplan/plans/3', 'testplan/Plans/3/Suites/4/TestCase']);
+  });
+
+  await test('SCF ops: an error echoing the PAT is scrubbed on every new route (comments, plans, suites, identities, batch)', async () => {
+    for (const [name, call, match, method] of [
+      ['listComments', (a) => a.listComments(1), '/comments', 'GET'],
+      ['addComment', (a) => a.addComment(1, 'hi', EXEC), '/comments', 'POST'],
+      ['listPlans', (a) => a.listPlans(), 'testplan/plans', 'GET'],
+      ['getPlan', (a) => a.getPlan(3), 'testplan/plans/3', 'GET'],
+      ['createPlan', (a) => a.createPlan({ name: 'P' }, EXEC), 'testplan/plans', 'POST'],
+      ['createSuite', (a) => a.createSuite(3, { type: 'static', name: 'S', parent: 5 }, EXEC), 'testplan/Plans/3/suites', 'POST'],
+      ['removeCaseFromSuite', (a) => a.removeCaseFromSuite(3, 4, [77], EXEC), '/TestCase', 'GET'],
+      ['findIdentity', (a) => a.findIdentity('qa.engineer@example.com'), '/_apis/identities', 'GET'],
+      ['getWorkItems', (a) => a.getWorkItems([1, 2]), 'wit/workitemsbatch', 'POST'],
+      ['listChildRefs', (a) => a.listChildRefs([42]), '/wiql', 'POST'],
+    ]) {
+      for (const status of [401, 500]) {
+        const f = fakeFetch([{ method, match, status, text: `proxy echo: ${ODD_FORMS.header} ${ODD_FORMS.raw} <end>` }]);
+        await assert.rejects(() => call(createAdapter({ cwd: oddProj(), fetch: f })), (e) => {
+          assert.ok(e instanceof TrackerError, `${name} ${status}`);
+          assertNoPatForm(e);
+          return true;
+        }, `${name} ${status}`);
+      }
+    }
+  });
+
+  await test('SCF ops: a repeated continuation token / a failed re-read is a TrackerError with no PAT form in it', async () => {
+    const pagedForever = { match: '/comments', json: { comments: [{ id: 1, text: 'x', createdBy: {} }], continuationToken: ODD_FORMS.raw } };
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: fakeFetch([pagedForever]) }).listComments(1), (e) => {
+      assert.ok(e instanceof TrackerError && /repeated continuation token/.test(e.message), e.message);
+      assertNoPatForm(e);
+      return true;
+    });
+    const stillMember = fakeFetch([{ match: '/Suites/4/TestCase', json: { value: [{ workItem: { id: 77 } }] } }]);
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: stillMember }).removeCaseFromSuite(3, 4, [77], EXEC), (e) => {
+      assert.ok(e instanceof TrackerError && /still in suite 4/.test(e.message), e.message);
+      assertNoPatForm(e);
       return true;
     });
   });
@@ -953,6 +1265,198 @@ const PROJ = 'Sample%20Project';
       await assert.rejects(createAdapter({ cwd: proj(), fetch: g }).removeCaseFromSuite(3, 4, [77], { execute: true }), (e) => e.reason === 'ci-mode');
       assert.strictEqual(g.calls.length, 0);
     } finally { delete process.env.AGENTEX_CI; }
+  });
+
+  // ── primitives shared with Phase 0 (listIterations, getWorkItems) ──────────
+  await test('listIterations({team}): ONE GET {project}/{team}/_apis/work/teamsettings/iterations, team URL-encoded; neutral shape, unfiltered', async () => {
+    const f = fakeFetch([{ match: '/_apis/work/teamsettings/iterations', json: { value: [
+      { id: 'g1', name: 'Sprint 41', path: 'Sample Project\\Sprint 41', attributes: { startDate: '2026-09-01T00:00:00Z', finishDate: '2026-09-14T00:00:00Z', timeFrame: 'past' } },
+      { id: 'g2', name: 'Sprint 43', path: 'Sample Project\\Sprint 43', attributes: { timeFrame: 'current' } },
+    ] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listIterations({ team: 'QA & Team A' });
+    assert.strictEqual(f.calls.length, 1);
+    assert.strictEqual(f.calls[0].method, 'GET');
+    assert.strictEqual(f.calls[0].url, `${BASE}/${PROJ}/QA%20%26%20Team%20A/_apis/work/teamsettings/iterations?api-version=7.1`);
+    assert.ok(!f.calls[0].url.includes('timeframe'), 'no $timeframe filter is relied on (only Current is supported server-side)');
+    assert.deepStrictEqual(r, [
+      { id: 'g1', name: 'Sprint 41', path: 'Sample Project\\Sprint 41', startDate: '2026-09-01T00:00:00Z', finishDate: '2026-09-14T00:00:00Z', timeFrame: 'past' },
+      { id: 'g2', name: 'Sprint 43', path: 'Sample Project\\Sprint 43', startDate: null, finishDate: null, timeFrame: 'current' },
+    ]);
+  });
+
+  await test('listIterations: no team refuses (exit 2) with ZERO requests', async () => {
+    const f = fakeFetch([]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listIterations({}), (e) => e.exitCode === 2 && /team/i.test(e.message));
+    assert.strictEqual(f.calls.length, 0);
+  });
+
+  await test('getWorkItems(ids, {fields}): POST wit/workitemsbatch, chunks of 200 — 1/200/201/450 ids → 1/1/2/3 requests, input order kept', async () => {
+    for (const [n, requests] of [[1, 1], [200, 1], [201, 2], [450, 3]]) {
+      const ids = Array.from({ length: n }, (_, i) => 1000 + n - i); // descending input
+      const f = fakeFetch([{ method: 'POST', match: '/_apis/wit/workitemsbatch', json: (calls) => {
+        const body = JSON.parse(calls[calls.length - 1].body);
+        return { value: [...body.ids].sort((a, b) => a - b).map((id) => ({ id, fields: { 'System.Id': id } })) }; // service order differs
+      } }]);
+      const r = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems(ids, { fields: ['System.Id', 'System.Title'] });
+      assert.strictEqual(f.calls.length, requests, `${n} ids`);
+      assert.deepStrictEqual(r.items.map((w) => w.id), ids, 'input order restored');
+      assert.deepStrictEqual(r.missing, []);
+      for (const c of f.calls) {
+        assert.strictEqual(c.method, 'POST');
+        assert.strictEqual(c.url, `${BASE}/${PROJ}/_apis/wit/workitemsbatch?api-version=7.1`);
+        const body = JSON.parse(c.body);
+        assert.deepStrictEqual(body.fields, ['System.Id', 'System.Title']);
+        assert.strictEqual(body.errorPolicy, 'omit');
+        assert.ok(body.ids.length <= 200);
+      }
+    }
+  });
+
+  await test('getWorkItems: ids the service omits are listed in missing; zero ids send nothing; bad ids refuse', async () => {
+    const f = fakeFetch([{ method: 'POST', match: '/workitemsbatch', json: { value: [{ id: 7, fields: {} }] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).getWorkItems([7, 8], { fields: ['System.Id'] });
+    assert.deepStrictEqual(r.items.map((w) => w.id), [7]);
+    assert.deepStrictEqual(r.missing, [8]);
+    const f0 = fakeFetch([]);
+    assert.deepStrictEqual(await createAdapter({ cwd: proj(), fetch: f0 }).getWorkItems([], { fields: ['System.Id'] }), { items: [], missing: [] });
+    assert.strictEqual(f0.calls.length, 0);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f0 }).getWorkItems(['x']), (e) => e.exitCode === 2);
+  });
+
+  // ── neutral history reads (first-run estimation proposal) ────────────────
+  // The field guard: no history request ever carries a time-spent, remaining,
+  // worklog or description field — only the Original Estimate is read.
+  const FORBIDDEN = /CompletedWork|RemainingWork|timespent|timeestimate|timetracking|aggregatetimespent|worklog|description|renderedFields/i;
+  const assertFieldGuard = (calls) => {
+    assert.ok(calls.length > 0, 'requests were sent');
+    for (const c of calls) {
+      assert.ok(!FORBIDDEN.test(c.url), `forbidden field in URL ${c.url}`);
+      assert.ok(!FORBIDDEN.test(String(c.body || '')), `forbidden field in body ${c.body}`);
+    }
+  };
+  const ITER = (id, name, timeFrame, startDate, finishDate) => ({ id, name, path: `Sample Project\\${name}`, attributes: { timeFrame, startDate, finishDate } });
+
+  await test('listPastSprints: no team → team-required with ZERO requests (flow-free)', async () => {
+    const f = fakeFetch([]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listPastSprints({ team: null, count: 2 });
+    assert.deepStrictEqual(r, { ok: false, condition: 'team-required', data: {} });
+    assert.strictEqual(f.calls.length, 0);
+    assertFlowFree(r);
+  });
+
+  await test('listPastSprints: ONE iterations GET; keeps timeFrame past, newest finishDate first (ties: startDate, then name), takes count', async () => {
+    const f = fakeFetch([{ match: '/work/teamsettings/iterations', json: { value: [
+      ITER('a', 'Sprint 40', 'past', '2026-08-18', '2026-08-31'),
+      ITER('b', 'Sprint 43', 'current', '2026-10-13', '2026-10-26'),
+      ITER('c', 'Sprint 42', 'past', '2026-09-15', '2026-09-28'),
+      ITER('d', 'Sprint 41b', 'past', '2026-09-02', '2026-09-28'),
+      ITER('e', 'Sprint 44', 'future', '2026-10-27', '2026-11-09'),
+      ITER('f', 'Sprint 41a', 'past', '2026-09-02', '2026-09-28'),
+    ] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listPastSprints({ team: 'Sample Team', count: 3 });
+    assert.strictEqual(f.calls.length, 1);
+    assert.deepStrictEqual(r, { ok: true, found: 4, sprints: [
+      { id: 'c', name: 'Sprint 42', path: 'Sample Project\\Sprint 42', finishDate: '2026-09-28' },
+      { id: 'f', name: 'Sprint 41a', path: 'Sample Project\\Sprint 41a', finishDate: '2026-09-28' },
+      { id: 'd', name: 'Sprint 41b', path: 'Sample Project\\Sprint 41b', finishDate: '2026-09-28' },
+    ] });
+    assertFlowFree(r);
+  });
+
+  await test('listPastSprints: fewer past iterations than asked → the ones that exist; none → an empty list', async () => {
+    const f = fakeFetch([{ match: '/work/teamsettings/iterations', json: { value: [ITER('a', 'Sprint 1', 'past', '2026-01-01', '2026-01-14')] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listPastSprints({ team: 'T', count: 2 });
+    assert.deepStrictEqual(r.sprints.map((s) => s.name), ['Sprint 1']);
+    assert.strictEqual(r.found, 1);
+    const g = fakeFetch([{ match: '/work/teamsettings/iterations', json: { value: [ITER('b', 'Sprint 2', 'current')] } }]);
+    assert.deepStrictEqual(await createAdapter({ cwd: proj(), fetch: g }).listPastSprints({ team: 'T', count: 2 }), { ok: true, found: 0, sprints: [] });
+  });
+
+  // A history board: stories 2101/2102 in two past sprints, each with children.
+  const historyRoutes = (extra = []) => [
+    ...extra,
+    { method: 'POST', match: '/_apis/wit/wiql', json: (calls) => {
+      const q = JSON.parse(calls[calls.length - 1].body).query;
+      if (q.includes('[System.Parent]')) return { workItems: [{ id: 4511 }, { id: 4512 }, { id: 4520 }, { id: 4521 }] };
+      return { workItems: [{ id: 2101 }, { id: 2102 }] };
+    } },
+    { method: 'POST', match: '/_apis/wit/workitemsbatch', json: (calls) => {
+      const ids = JSON.parse(calls[calls.length - 1].body).ids;
+      const all = {
+        2101: { id: 2101, fields: { 'System.Id': 2101, 'System.Title': 'Contact preferences' } },
+        2102: { id: 2102, fields: { 'System.Id': 2102, 'System.Title': 'Checkout address form' } },
+        4511: { id: 4511, fields: { 'System.Id': 4511, 'System.Title': '[Testing] Test Execution', 'System.Parent': 2101, 'Microsoft.VSTS.Scheduling.OriginalEstimate': 2 } },
+        4512: { id: 4512, fields: { 'System.Id': 4512, 'System.Title': 'Build the form', 'System.Parent': 2102, 'Microsoft.VSTS.Scheduling.OriginalEstimate': 1.234 } },
+        4520: { id: 4520, fields: { 'System.Id': 4520, 'System.Title': '[Testing] Test Execution', 'System.Parent': 2102, 'Microsoft.VSTS.Scheduling.OriginalEstimate': 0 } },
+        4521: { id: 4521, fields: { 'System.Id': 4521, 'System.Title': '[Testing] Requirement Review', 'System.Parent': 2102 } },
+      };
+      return { value: ids.map((id) => all[id]).filter(Boolean) };
+    } },
+  ];
+  const PAST = [{ id: 'c', name: 'Sprint 42', path: "Sample Project\\Sprint 42" }, { id: 'a', name: "Sprint 41's", path: "Sample Project\\Sprint 41's" }];
+
+  await test('listChildEstimates: the exact request sequence and texts — story WIQL, story titles, child WIQL, child estimates', async () => {
+    const f = fakeFetch(historyRoutes());
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listChildEstimates({ sprints: PAST, storyType: 'User Story' });
+    assert.deepStrictEqual(f.calls.map((c) => `${c.method} ${c.url.replace(`${BASE}/${PROJ}/_apis/`, '')}`), [
+      'POST wit/wiql?api-version=7.1',
+      'POST wit/workitemsbatch?api-version=7.1',
+      'POST wit/wiql?api-version=7.1',
+      'POST wit/workitemsbatch?api-version=7.1',
+    ]);
+    assert.strictEqual(JSON.parse(f.calls[0].body).query,
+      "SELECT [System.Id] FROM workitems WHERE [System.TeamProject]='Sample Project' AND [System.WorkItemType]='User Story'" +
+      " AND [System.IterationPath] IN ('Sample Project\\Sprint 42', 'Sample Project\\Sprint 41''s') ORDER BY [System.Id]");
+    assert.deepStrictEqual(JSON.parse(f.calls[1].body), { ids: [2101, 2102], fields: ['System.Id', 'System.Title'], errorPolicy: 'omit' });
+    assert.strictEqual(JSON.parse(f.calls[2].body).query,
+      "SELECT [System.Id] FROM workitems WHERE [System.TeamProject]='Sample Project' AND [System.Parent] IN (2101, 2102) ORDER BY [System.Id]");
+    assert.deepStrictEqual(JSON.parse(f.calls[3].body), {
+      ids: [4511, 4512, 4520, 4521],
+      fields: ['System.Id', 'System.Title', 'System.Parent', 'Microsoft.VSTS.Scheduling.OriginalEstimate'], errorPolicy: 'omit',
+    });
+    assert.deepStrictEqual(r, {
+      stories: [
+        { id: 2101, seq: 2101, title: 'Contact preferences', url: `${BASE}/${PROJ}/_workitems/edit/2101` },
+        { id: 2102, seq: 2102, title: 'Checkout address form', url: `${BASE}/${PROJ}/_workitems/edit/2102` },
+      ],
+      children: [
+        { id: 4511, seq: 4511, title: '[Testing] Test Execution', parentId: 2101, hours: 2 },
+        { id: 4512, seq: 4512, title: 'Build the form', parentId: 2102, hours: 1.23 },
+        { id: 4520, seq: 4520, title: '[Testing] Test Execution', parentId: 2102, hours: null },
+        { id: 4521, seq: 4521, title: '[Testing] Requirement Review', parentId: 2102, hours: null },
+      ],
+      truncated: false,
+    });
+    assertFlowFree(r);
+    assertFieldGuard(f.calls);
+  });
+
+  await test('listChildEstimates: ZERO requests for no sprints; a sprint set with no stories stops after the story WIQL', async () => {
+    const f = fakeFetch([]);
+    assert.deepStrictEqual(await createAdapter({ cwd: proj(), fetch: f }).listChildEstimates({ sprints: [], storyType: 'User Story' }),
+      { stories: [], children: [], truncated: false });
+    assert.strictEqual(f.calls.length, 0);
+    const g = fakeFetch([{ method: 'POST', match: '/wiql', json: { workItems: [] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: g }).listChildEstimates({ sprints: PAST, storyType: 'User Story' });
+    assert.deepStrictEqual(r, { stories: [], children: [], truncated: false });
+    assert.strictEqual(g.calls.length, 1);
+  });
+
+  await test('listChildEstimates: the child WIQL runs per 200-story chunk (201 stories → 2 child queries)', async () => {
+    const storyIds = Array.from({ length: 201 }, (_, i) => 3000 + i);
+    const f = fakeFetch([
+      { method: 'POST', match: '/_apis/wit/wiql', json: (calls) => {
+        const q = JSON.parse(calls[calls.length - 1].body).query;
+        return q.includes('[System.Parent]') ? { workItems: [] } : { workItems: storyIds.map((id) => ({ id })) };
+      } },
+      { method: 'POST', match: '/workitemsbatch', json: (calls) => ({ value: JSON.parse(calls[calls.length - 1].body).ids.map((id) => ({ id, fields: { 'System.Title': `S${id}` } })) }) },
+    ]);
+    await createAdapter({ cwd: proj(), fetch: f }).listChildEstimates({ sprints: PAST, storyType: 'User Story' });
+    const childQueries = f.calls.filter((c) => c.url.includes('/wiql') && JSON.parse(c.body).query.includes('[System.Parent]'));
+    assert.strictEqual(childQueries.length, 2);
+    assert.ok(JSON.parse(childQueries[0].body).query.includes('IN (3000, 3001,'), 'chunk 1 starts at the first story');
+    assert.ok(JSON.parse(childQueries[1].body).query.includes('IN (3200)'), 'chunk 2 holds the 201st');
+    assertFieldGuard(f.calls);
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

@@ -84,11 +84,188 @@ const ui = new Function(script + `
   fieldAddShapeConflict, renameOntoConflicts, renameFieldAdopting,
   get overwrittenUserKeysV(){return overwrittenUserKeys}, get overwrittenDefaultsKeysV(){return overwrittenDefaultsKeys},
   get builtinUserFields(){return BUILTIN_USER_FIELDS}, get builtinDefaultsFields(){return BUILTIN_DEFAULTS_FIELDS},
+  get legacyDefaultsFields(){return LEGACY_DEFAULTS_FIELDS}, get legacyHintCorrections(){return LEGACY_HINT_CORRECTIONS},
   setEnvDisk: (name, diskName) => { envs[name].existsOnDisk = true; envs[name].diskName = diskName; envs[name].dirty = false; },
   setLoadedFrom: (name, v) => { envs[name].loadedFrom = v; },
   L, loc, setLang, toggleLang, KNOWN_LANGS,
   get LANG(){return LANG}, get screen(){return screen}, LANG_KEY,
 };`)();
+
+// ── Decision A-2 harness: LOCAL-mode boots through the real loadExistingConfig ──
+// Each boot evaluates a fresh copy of the page script with its own token; the
+// fetch stub answers /api/schema and /api/config per token, so several boots
+// never see each other's disk state. createElement is swapped for recording
+// elements while a boot is driven, so input handlers can be fired and the
+// rendered HTML read back.
+const bootCfgs = {};
+let bootSeq = 0;
+global.fetch = (url, opts = {}) => {
+  const cfg = bootCfgs[(opts.headers || {})['X-Wizard-Token']];
+  if (!cfg) return Promise.reject(new Error('no network in tests'));
+  const body = String(url).endsWith('/api/schema') ? require('./schema.json') : String(url).endsWith('/api/config') ? cfg : {};
+  return Promise.resolve({ ok: true, json: () => Promise.resolve(JSON.parse(JSON.stringify(body))) });
+};
+const created = [];
+function richEl() {
+  const el = elStub();
+  const kids = {}; const handlers = {};
+  el.querySelector = (sel) => (kids[sel] = kids[sel] || richEl());
+  el.addEventListener = (type, fn) => { (handlers[type] = handlers[type] || []).push(fn); };
+  el.fire = (type) => { for (const fn of handlers[type] || []) fn(); };
+  el.appendChild = (c) => { (el.children = el.children || []).push(c); return c; };
+  created.push(el);
+  return el;
+}
+const toastEl = recordingStub();
+function bootLocal(cfg) {
+  const token = `a2-boot-${++bootSeq}`;
+  bootCfgs[token] = { samplePristine: false, sampleName: null, pristineSamples: [], projectPristine: false, unreadable: [], environments: {}, ...cfg };
+  const prev = { mode: window.WIZARD_MODE, token: window.WIZARD_TOKEN, getEl: document.getElementById };
+  window.WIZARD_MODE = 'local'; window.WIZARD_TOKEN = token;
+  toastEl.textContent = '';
+  document.getElementById = (id) => (id === 'toast' ? toastEl : prev.getEl(id));
+  const inst = new Function(script + `
+;return {
+  get envs(){return envs}, get envOrder(){return envOrder}, get activeEnv(){return activeEnv}, get answers(){return answers},
+  get defaultsFieldsV(){return defaultsFieldsSession},
+  buildEnvConfig, buildProjectConfig, buildSecretsPayload, snapshotActiveEnv, buildDefaultsSecretField,
+  renderDefaultsSection, toggleFieldSecret, plainLiteralsKept, shownHint, switchEnv,
+};`)();
+  window.WIZARD_MODE = prev.mode; window.WIZARD_TOKEN = prev.token;
+  return new Promise(r => setTimeout(() => { document.getElementById = prev.getEl; r({ inst, toast: toastEl.textContent }); }, 20));
+}
+function withRichDom(fn) {
+  const prev = document.createElement;
+  document.createElement = richEl;
+  created.length = 0;
+  try { return fn(); } finally { document.createElement = prev; }
+}
+const OLD_HINT_EN = 'The shared test-account password — written as-is into the environment file (not a real secret)';
+const OLD_HINT_AR = 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)';
+const PRE_A2_TEMPLATE = {
+  name: 'my-project', defaultEnvironment: 'qc', kb: { baseUrl: '', project: '' },
+  figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } }, login: { mode: 'session' },
+  userFields: require('./engine.js').BUILTIN_USER_FIELDS,
+  defaultsFields: [
+    { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234', hint: OLD_HINT_AR, hintEn: OLD_HINT_EN },
+    { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+  ],
+};
+const LITERAL = 'Pil0t#literal-pw';
+const diskEnv = (pw) => ({ portalUrl: 'https://qa.example.test', defaults: { password: pw, otp: '1111' },
+  users: { valid_user: { phone: '0550000009' } }, customTop: 'kept' });
+
+async function runA2Tests() {
+  await (async () => {
+    const { inst } = await bootLocal({ projectConfig: null, environments: {} });
+    test('A-2 fresh project: typing the password fills DEFAULT_PASSWORD; JSON gets { envSecret }, the value goes to .env only', () => {
+      const pw = inst.defaultsFieldsV.find(f => f.key === 'password');
+      assert.strictEqual(pw.secret, true, 'a fresh project gets the secret built-in');
+      withRichDom(() => {
+        const div = inst.buildDefaultsSecretField(pw);
+        const val = div.querySelector('.df-val');
+        val.value = LITERAL; val.fire('input');
+        assert.strictEqual(div.querySelector('.df-name').value, 'DEFAULT_PASSWORD');
+      });
+      inst.snapshotActiveEnv();
+      const env = inst.buildEnvConfig(inst.activeEnv);
+      assert.deepStrictEqual(env.defaults.password, { envSecret: 'DEFAULT_PASSWORD' });
+      assert.strictEqual(inst.buildSecretsPayload().DEFAULT_PASSWORD, LITERAL);
+      assert.ok(!JSON.stringify(env).includes(LITERAL) && !JSON.stringify(inst.buildProjectConfig()).includes(LITERAL),
+        'the value appears in no JSON file');
+    });
+  })();
+
+  await (async () => {
+    const { inst } = await bootLocal({ projectConfig: null, environments: {} });
+    test('A-2 fresh project, password left blank: no defaults.password key, no placeholder', () => {
+      inst.snapshotActiveEnv();
+      assert.ok(!('password' in inst.buildEnvConfig(inst.activeEnv).defaults));
+    });
+  })();
+
+  await (async () => {
+    const proj = { name: 'pilot', defaultEnvironment: 'qa',
+      defaultsFields: [{ key: 'password', label: 'pw', default: 'Test@1234', hint: OLD_HINT_AR, hintEn: OLD_HINT_EN }, { key: 'otp', label: 'otp' }] };
+    const { inst, toast } = await bootLocal({ projectConfig: proj, environments: { qa: diskEnv(LITERAL) }, defaultEnvironment: 'qa' });
+    test('A-2 existing project with its own plain descriptor + a literal: prefilled, kept byte-identical, descriptor unchanged', () => {
+      assert.ok(toast.includes('existing') || toast.includes('الحالية'), 'loaded as the user\'s configuration');
+      assert.strictEqual(inst.answers['defaults.password'], LITERAL, 'the literal is prefilled');
+      inst.snapshotActiveEnv();
+      assert.strictEqual(inst.buildEnvConfig('qa').defaults.password, LITERAL, 'a no-op save keeps it');
+      assert.deepStrictEqual(inst.buildProjectConfig().defaultsFields, proj.defaultsFields, 'own descriptor (and its stored hint) unchanged');
+    });
+    test('A-2 hint display correction: the legacy shipped hint is SHOWN corrected, the stored text is kept', () => {
+      const pw = inst.defaultsFieldsV.find(f => f.key === 'password');
+      assert.strictEqual(pw.hintEn, OLD_HINT_EN, 'the session descriptor keeps the stored text');
+      const shown = inst.shownHint(pw);
+      assert.ok(!shown.hintEn.includes('not a real secret') && !shown.hint.includes('ليست سرًّا'));
+      assert.match(shown.hintEn, /stored as plain text/);
+      const html = withRichDom(() => { inst.renderDefaultsSection(); return created.map(e => e.innerHTML).join('\n'); });
+      assert.ok(!html.includes('not a real secret') && !html.includes('ليست سرًّا'), 'never rendered');
+      assert.ok(html.includes('مخزّنة نصًّا عاديًا'), 'the corrected wording is rendered');
+      assert.strictEqual(inst.buildProjectConfig().defaultsFields[0].hint, OLD_HINT_AR, 'the save writes the stored hint back');
+    });
+    test('A-2 the consented plain → secret toggle still clears the literal (existing behaviour, not the guard)', () => {
+      inst.toggleFieldSecret('defaults', 'password');
+      inst.snapshotActiveEnv();
+      assert.ok(!('password' in inst.buildEnvConfig('qa').defaults), 'cleared after the toggle the user confirmed');
+    });
+  })();
+
+  await (async () => {
+    const proj = { name: 'legacy', defaultEnvironment: 'qa' };   // predates the field schema
+    const { inst } = await bootLocal({ projectConfig: proj, environments: { qa: diskEnv(LITERAL) }, defaultEnvironment: 'qa' });
+    test('A-2 loaded project without defaultsFields: the legacy PLAIN descriptor, the literal prefilled and kept', () => {
+      const pw = inst.defaultsFieldsV.find(f => f.key === 'password');
+      assert.ok(!pw.secret, 'legacy plain descriptor, not the new secret built-in');
+      assert.strictEqual(pw.default, 'Test@1234');
+      assert.strictEqual(inst.answers['defaults.password'], LITERAL);
+      inst.snapshotActiveEnv();
+      assert.strictEqual(inst.buildEnvConfig('qa').defaults.password, LITERAL);
+    });
+  })();
+
+  for (const [label, proj] of [
+    ['a secret descriptor in the project\'s own schema', { name: 'p', defaultEnvironment: 'qa',
+      defaultsFields: [{ key: 'password', label: 'pw', secret: true }, { key: 'otp', label: 'otp' }] }],
+    ['the new built-ins over hand-written environment files (no project.json)', null],
+  ]) {
+    const { inst } = await bootLocal({ projectConfig: proj, environments: { qa: diskEnv(LITERAL) }, defaultEnvironment: 'qa' });
+    test(`A-2 guard — ${label}: the plain literal is kept byte-identical, the field and the review say so`, () => {
+      assert.strictEqual(inst.defaultsFieldsV.find(f => f.key === 'password').secret, true);
+      assert.strictEqual(inst.answers['defaults.passwordEnvVar'], undefined, 'name slot empty (the literal is not a name)');
+      inst.snapshotActiveEnv();
+      const env = inst.buildEnvConfig('qa');
+      assert.strictEqual(env.defaults.password, LITERAL, 'never dropped or reset');
+      assert.strictEqual(env.customTop, 'kept');
+      assert.deepStrictEqual(inst.plainLiteralsKept(), [{ env: 'qa', key: 'password' }], 'listed on the review step');
+      const html = withRichDom(() => inst.buildDefaultsSecretField(inst.defaultsFieldsV.find(f => f.key === 'password')).innerHTML);
+      assert.match(html, /still holds this value as plain text|لسه شايل القيمة دي كنص عادي/);
+      assert.ok(!html.includes(LITERAL), 'the note never shows the value');
+    });
+    test(`A-2 guard — ${label}: typing a value is the explicit act that moves it to .env`, () => {
+      withRichDom(() => {
+        const div = inst.buildDefaultsSecretField(inst.defaultsFieldsV.find(f => f.key === 'password'));
+        const val = div.querySelector('.df-val'); val.value = 'moved-value'; val.fire('input');
+      });
+      inst.snapshotActiveEnv();
+      assert.deepStrictEqual(inst.buildEnvConfig('qa').defaults.password, { envSecret: 'DEFAULT_PASSWORD' });
+      assert.strictEqual(inst.buildSecretsPayload().DEFAULT_PASSWORD, 'moved-value');
+      assert.deepStrictEqual(inst.plainLiteralsKept(), []);
+    });
+  }
+
+  await (async () => {
+    const { inst, toast } = await bootLocal({ projectConfig: PRE_A2_TEMPLATE, projectPristine: true,
+      environments: {}, pristineSamples: ['qc'], samplePristine: true, sampleName: 'qc', defaultEnvironment: 'qc' });
+    test('A-2 a pristine OLD-template project seeds the current built-ins and shows no "loaded your configuration" toast', () => {
+      assert.strictEqual(inst.defaultsFieldsV.find(f => f.key === 'password').secret, true);
+      assert.ok(!('default' in inst.defaultsFieldsV.find(f => f.key === 'password')));
+      assert.strictEqual(toast, '', 'untouched scaffolding is not "your existing configuration"');
+    });
+  })();
+}
 
 // init() is async (web mode: no network) — assert after it settles.
 setTimeout(() => {
@@ -424,6 +601,8 @@ setTimeout(() => {
     assert.deepStrictEqual(ui.builtinUserFields, engine.BUILTIN_USER_FIELDS,
       'key-list equality is not enough — labels/hints/placeholders must not drift');
     assert.deepStrictEqual(ui.builtinDefaultsFields, engine.BUILTIN_DEFAULTS_FIELDS);
+    assert.deepStrictEqual(ui.legacyDefaultsFields, engine.LEGACY_DEFAULTS_FIELDS, 'the frozen pre-A-2 set too');
+    assert.deepStrictEqual(ui.legacyHintCorrections, engine.LEGACY_HINT_CORRECTIONS, 'and the display-time hint corrections');
   });
 
   // ── Hint escaping (release-gate defect W1) ────────────────────────────────
@@ -522,12 +701,10 @@ setTimeout(() => {
   // touches only the four managed keys — so the plugin blocks and a nested
   // <provider>.workflow survive a wizard re-run deep-equal. (The server seeds
   // what is ABSENT; it never overwrites what this function keeps.)
-  test('a re-run over a project carrying every plugin block keeps them deep-equal (customized testingTasks, azure.workflow)', () => {
+  test('a re-run over a project carrying every plugin block keeps them deep-equal (customized testDesign, azure.workflow)', () => {
     const savedExisting = ui.existingProjectV;
     const blocks = {
-      testingTasks: [{ stage: 'automation', enabled: false }, { stage: 'testCreation', title: '[Testing] Test Design' }],
       testDesign: { approval: 'per-story', independentCoverageCheck: true },
-      estimation: { modelPath: 'qa/model.json', historyPath: 'qa/history.jsonl' },
       qaRecords: { envIssues: 'notes/env.jsonl' },
     };
     const azWorkflow = { inTestState: 'In QA', devDoneStates: ['Dev Complete'], closeOut: { state: 'Accepted', assignee: '' } };
@@ -759,6 +936,8 @@ setTimeout(() => {
     assert.ok(html.includes('padding-inline-start:24px'), 'the copy-options block indents from the reading edge');
   });
 
-  console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
-  process.exitCode = failures.length ? 1 : 0;
+  runA2Tests().catch(e => { failures.push('A-2 harness'); console.error(`  FAIL - A-2 harness: ${e.stack}`); }).then(() => {
+    console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
+    process.exitCode = failures.length ? 1 : 0;
+  });
 }, 50);

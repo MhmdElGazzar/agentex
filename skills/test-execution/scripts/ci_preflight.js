@@ -30,12 +30,20 @@
 //   preflight-secrets         every { envSecret: NAME } referenced by the active
 //                             environment, config/project.json and integration/
 //                             catalogs resolves via process.env or .env — missing
-//                             NAMES are listed; a VALUE is never printed
+//                             NAMES are listed; a VALUE is never printed. An empty or
+//                             whitespace value counts as missing (also listed under
+//                             `empty`). `sources` says where each value came from
+//                             (process-env | dotenv); dotenv-only names get one stderr
+//                             note (a CI runner has no .env) — report-only, never a gate
 //   preflight-browser         (browser only) a Playwright browser binary is present on disk
 //                             (deterministic filesystem check, no exit codes)
 //   preflight-plugin-version  plugin manifest + project stamp reported; gates ONLY
 //                             on an unreadable plugin manifest — version drift is
 //                             report-only (drift: true), never gate-closing
+//   preflight-driver          the run needs a driver test-execution does not run:
+//                             `mobile` (Drivers: mobile) — those specs run via
+//                             /execute-mobile-test, never in a browser. Deterministic:
+//                             ci_gate.js never retries it.
 //
 // Secrets discipline: names only, never values. Diagnostics go to stderr; stdout
 // carries exactly one JSON line. exitCode + event-loop drain — never process.exit
@@ -46,6 +54,7 @@ const { probe, probePlaywrightCli } = require(path.join(__dirname, 'preflight.js
 const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 
 const TARGET_TIMEOUT_MS = 10_000;
+const MOBILE_BLOCK_DETAIL = 'the scope includes mobile specs (Drivers: mobile) — mobile specs run via /execute-mobile-test, never in a browser; narrow the CI scope to browser/api/db specs (e.g. --suite test/suite1/)';
 
 function parseArgs(argv) {
   const out = {};
@@ -122,10 +131,18 @@ async function checkApiTarget(cwd, environment) {
   return probeUrl(api.baseUrl);
 }
 
+// The scaffold ships `figma: { fileKey: "", token: { envSecret } }` for projects that may use
+// ui-check later. With no fileKey Figma is not configured, so its token is not a required secret.
+function withoutUnusedFigma(config) {
+  if (!config || typeof config !== 'object' || !config.figma || String(config.figma.fileKey || '').trim()) return config;
+  const { figma, ...rest } = config;
+  return rest;
+}
+
 function checkSecrets(cwd, environment) {
   const names = new Set();
   if (environment.ok && environment.env) collectEnvSecretNames(environment.env, names);
-  collectEnvSecretNames(pc.loadProjectConfig(cwd), names);
+  collectEnvSecretNames(withoutUnusedFigma(pc.loadProjectConfig(cwd)), names);
   const intDir = path.join(cwd, 'integration');
   if (fs.existsSync(intDir)) {
     for (const f of fs.readdirSync(intDir).filter((f) => f.endsWith('.json'))) {
@@ -135,8 +152,24 @@ function checkSecrets(cwd, environment) {
     }
   }
   const required = [...names].sort();
-  const missing = required.filter((n) => pc.readEnvVar(cwd, n) === null);
-  return { ok: missing.length === 0, required, missing };
+  // Where each value comes from: the process env reaches the headless session; a value
+  // found only in .env works for a local trial (the bundled scripts read .env) but a real
+  // runner has no .env. An empty or whitespace-only value counts as missing.
+  const sources = {};
+  const empty = [];
+  const missing = [];
+  for (const n of required) {
+    if (String(process.env[n] || '').trim()) { sources[n] = 'process-env'; continue; }
+    const v = pc.readEnvVar(cwd, n);
+    if (v !== null && String(v).trim()) { sources[n] = 'dotenv'; continue; }
+    if (v !== null || process.env[n] !== undefined) empty.push(n);
+    missing.push(n);
+  }
+  const dotenvOnly = required.filter((n) => sources[n] === 'dotenv');
+  if (dotenvOnly.length) {
+    process.stderr.write(`ci_preflight: ${dotenvOnly.join(', ')} found only in .env — the bundled scripts read it, so this run works locally; a CI runner normally has no .env: inject it via the secret store (the gate step's env: block)\n`);
+  }
+  return { ok: missing.length === 0, required, missing, empty, sources };
 }
 
 const SKIPPED = { ok: null, skipped: 'not needed by this run' };
@@ -207,9 +240,11 @@ async function main() {
   if (!target.ok) blockedReasons.push({ code: 'preflight-target', detail: target.url ? `${target.url}: ${target.error}` : target.error });
   if (apiTarget.ok === false) blockedReasons.push({ code: 'preflight-target', detail: `api ${apiTarget.url ? `${apiTarget.url}: ${apiTarget.error}` : apiTarget.error}` });
   if (!environment.ok) blockedReasons.push({ code: 'preflight-environment', detail: environment.error });
-  if (!secrets.ok) blockedReasons.push({ code: 'preflight-secrets', detail: `missing secret values for: ${secrets.missing.join(', ')} — provide them by NAME via the CI secret store or .env` });
+  if (!secrets.ok) blockedReasons.push({ code: 'preflight-secrets', detail: `missing secret values for: ${secrets.missing.join(', ')}${secrets.empty.length ? ` (set but empty: ${secrets.empty.join(', ')})` : ''} — provide them by NAME via the CI secret store or .env` });
   if (!browser.ok) blockedReasons.push({ code: 'preflight-browser', detail: browser.error });
   if (!pluginVersion.ok) blockedReasons.push({ code: 'preflight-plugin-version', detail: pluginVersion.error });
+  // A mobile spec is not a test-execution spec: it must never run in a browser.
+  if (needs.has('mobile')) blockedReasons.push({ code: 'preflight-driver', detail: MOBILE_BLOCK_DETAIL });
 
   const view = (c) => ({ ok: c.ok, ...(c.url ? { url: c.url } : {}), ...(c.status !== undefined ? { status: c.status } : {}), ...(c.error ? { error: c.error } : {}), ...(c.skipped ? { skipped: c.skipped } : {}) });
   const out = {
@@ -238,4 +273,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { collectEnvSecretNames };
+module.exports = { collectEnvSecretNames, withoutUnusedFigma };

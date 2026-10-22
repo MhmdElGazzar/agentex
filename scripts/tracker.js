@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // tracker.js — the plugin's ONE tracker CLI (moved from skills/tracker-ops/scripts/
 // in skill-consolidation-foundation WP-2; tracker-ops and later skills call it
-// via ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.js): show / search / create / update /
+// as scripts/tracker.js under the plugin root): show / search / create / update /
 // transition / comment / link on WHICHEVER tracker the project configures
 // (azure or jira block — resolved by scripts/lib/tracker/, never per-run).
 // Everything goes through the tracker layer's REST adapters over Node's

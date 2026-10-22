@@ -1,0 +1,6 @@
+{
+  "portalUrl": "https://qa-shop.example.test",
+  "defaults": { "otp": "0000", "password": { "envSecret": "DEFAULT_PASSWORD" } },
+  "users": { "valid_user": { "phone": "0550000001" } },
+  "api": { "baseUrl": "https://api.qa-shop.example.test", "token": { "envSecret": "API_TOKEN" } }
+}

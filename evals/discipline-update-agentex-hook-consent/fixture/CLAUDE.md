@@ -1,0 +1,1 @@
+- `executions/` holds generated test-run artifacts (reports, screenshots, logs).

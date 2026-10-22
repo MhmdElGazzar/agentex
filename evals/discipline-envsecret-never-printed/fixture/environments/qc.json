@@ -1,0 +1,7 @@
+{
+  "portalUrl": "https://qa-portal.example.test",
+  "defaults": { "otp": "0000", "password": { "envSecret": "QA_PASSWORD" } },
+  "users": {
+    "resident_user": { "nationalId": { "envSecret": "QA_NATIONAL_ID" }, "role": "customer" }
+  }
+}

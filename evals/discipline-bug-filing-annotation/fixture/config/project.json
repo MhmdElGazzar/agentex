@@ -1,0 +1,12 @@
+{
+  "name": "demo-shop",
+  "defaultEnvironment": "qa",
+  "azure": {
+    "org": "exampleorg",
+    "project": "Sample Project",
+    "team": "Sample Team",
+    "assignee": "qa.engineer@example.com",
+    "environment": "QA",
+    "apiVersion": "7.1"
+  }
+}

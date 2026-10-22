@@ -153,12 +153,14 @@ deltas, all owned by `create-bug.js`:
      is flagged (Phase-B bundle), never silently attached.
    - Annotate (never blocks, never asks): for each screenshot you will attach, write
      `{"image", "banner", "boxes": [{"x", "y", "width", "height", "label", "ok"?}]}` beside
-     the bug spec (e.g. `bug-1-<shot>.json`; box values in % of the image). `banner` is the
+     the bug spec in `.agentex/scratch/bugs/<run-folder>/` (e.g. `bug-1-<shot>.json`; box
+     values in % of the image). `banner` is the
      bug's summary; one red box goes on the defect, labelled from expected/actual
      (`Expected "X" — actual "Y"`); optionally one `"ok": true` green box on something
      correct. Use only the summary/expected/actual and on-screen text — invent nothing. Run
-     `node annotate-image.js --spec <file>.json`, Read the image it names, and fix a
-     misplaced box at most twice. Attach its `annotated` path **followed by** the raw file
+     `node annotate-image.js --spec .agentex/scratch/bugs/<run-folder>/bug-1-<shot>.json`, Read the
+     image it names, and fix a misplaced box at most twice. Attach its `annotated` path
+     **followed by** the raw file
      (`attachments: [annotated, raw]`) — the overlay can hide what is under it, so the raw
      capture always travels with it; the ATTACH list shows both and the text the copy burns
      in. On a non-zero exit, or a box still off after two fixes, attach the raw screenshot
@@ -193,9 +195,10 @@ has exactly one interaction: the approval.
 
 ### Phase C — validate, one screen, one approval, write
 
-1. **Dry-run validation** (build one spec JSON per issue — shape below):
+1. **Dry-run validation** (build one spec JSON per issue — shape below — at
+   `.agentex/scratch/bugs/<run-folder>/bug-<n>.json`):
    ```
-   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json
+   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec .agentex/scratch/bugs/<run-folder>/bug-<n>.json
    ```
    This runs the whole gate: parent is a User Story, duplicate check (fails closed),
    cache-based picklist validation, attachment structural re-check, and a server-side
@@ -206,11 +209,12 @@ has exactly one interaction: the approval.
 2. **Render THE consolidated screen** from the plan JSON — one message covering:
    template choice · parent story (id, title, state — validated) · severity + priority
    with the one-line reasoning · assignee · test-case decision · the ATTACH/REJECT list
-   with reasons · **the exact write plan** (every intended write, in order, with its
+   with reasons (per annotated copy: the banner + labels it burns in, or the one-line
+   reason it is raw-only) · **the exact write plan** (every intended write, in order, with its
    target route) · the explicit note that **nothing has been written yet**.
 3. **One approval.** On the user's "yes":
    ```
-   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json --execute
+   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec .agentex/scratch/bugs/<run-folder>/bug-<n>.json --execute
    node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js create-case --plan <plan> --suite <suite> --title "<t>" --execute   # only if chosen
    node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js fail --plan <plan> --testcase <tc> --bug <bugId> --execute          # only if chosen
    ```
@@ -257,4 +261,7 @@ has exactly one interaction: the approval.
 
 ## Notes
 
-- Keep spec files out of committed state (write them to a temp/execution folder).
+- Bug specs and annotation specs are scratch: write them only under
+  `.agentex/scratch/bugs/<run-folder>/` (the run folder's name; create it if missing), never
+  anywhere else (`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`). The annotated copies
+  land beside their spec; the raw screenshots stay in the run's `executions/` folder.

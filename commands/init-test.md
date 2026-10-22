@@ -1,5 +1,5 @@
 ---
-description: Initialize AgenTeX in the current project — scaffold a sample test suite, config/project.json, environments/qc.json, the executions output folder, a keys-only .env file, and CLAUDE.md guidance.
+description: Initialize AgenTeX in the current project — scaffold a sample test suite, config/project.json, environments/qc.json, the executions output folder, a keys-only .env file, and CLAUDE.md guidance (the executions/ bullet and the AgenTeX layout block).
 ---
 
 Initialize **AgenTeX** in the current project so the user has a working starting point.
@@ -12,17 +12,24 @@ Do these steps, then report what was created:
    ```
 
    It performs the whole file scaffold in one call, idempotently — existing files are
-   never overwritten, `CLAUDE.md`/`.gitignore` are append-only:
+   never overwritten, `.gitignore` is append-only, and `CLAUDE.md` is append-only outside
+   the AgenTeX layout block (the plugin writes only between that block's markers):
    - sample specs → `./test/suite1/` + `./test/README.md` (skipped entirely if the user
      already has their own specs under `./test/`)
    - `./executions/` output folder (no timestamped run folder — that happens at run time)
-   - `./config/project.json` — project settings (default environment, login mode, and the plugin's default `testingTasks`, `testDesign`, `estimation` and `qaRecords` blocks). The QA watchlist files themselves are not created here: each appears the first time something is recorded, and it is committed, never gitignored
+   - `./config/project.json` — project settings (default environment, login mode, and the plugin's default `testDesign` and `qaRecords` blocks; the `[Testing]` task list is not here — it lives in `config/estimation.json`, created by the first approved estimation run). The QA watchlist files themselves are not created here: each appears the first time something is recorded, and it is committed, never gitignored
    - `./environments/qc.json` — sample environment (portal URL, defaults, test users, db/api targets); copied only when `./environments/` has no environment files yet, and the wizard reconciles it to the name the user actually chooses
    - keys-only secrets `./.env` (PAT, DB password, API token, KB key) from the plugin's `.env.example` (every value left empty) and, in `.gitignore`, entries for everything that holds a live credential — `.env`, `test/.auth/` (saved login sessions) and `.playwright-cli/` (browser scratch profile)
    - `./integration/` with `sample_api.json` + `sample_db.json`
-   - the `executions/` guidance bullet in `CLAUDE.md`
+   - the `executions/` guidance bullet in `CLAUDE.md`, then the **AgenTeX layout block**: the
+     routing table ("if you are about to write X, put it in Y"), the read-`knowledge/INDEX.md`-first
+     rule and the knowledge/watchlist lifecycle, between `<!-- agentex:begin project-layout … -->`
+     and `<!-- agentex:end project-layout -->`. A re-run refreshes a block the user never
+     touched and leaves an edited one alone with a `[flag]` (relay it: the fix is to move their
+     own lines outside the block, delete the block, and re-run). `knowledge/` itself is not
+     created here — the agent creates each file on its first recorded fact
 
-   Relay its `[created]`/`[skipped]` summary to the user. If `node` is missing, tell the
+   Relay its `[created]`/`[skipped]`/`[flag]` summary to the user. If `node` is missing, tell the
    user to install Node.js first (playwright-cli needs it anyway) instead of replicating
    the steps by hand.
 
@@ -62,9 +69,46 @@ Do these steps, then report what was created:
 5. **Playwright preflight** — mention they need `@playwright/cli` installed
    (`npm install -D @playwright/cli && npx playwright-cli install-browser chromium`); offer
    to run it. Do not install without confirmation.
+6. **Git readiness (optional)** — on first runs and re-runs alike. Run:
+
+   ```
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/precommit_hook.js" status
+   ```
+
+   It prints one JSON line; branch on its `status`:
+   - **`not-a-repo`** → say plainly that this folder is not a git repository yet, so the
+     secret scan and the optional pre-commit hook are unavailable; `git init` first (see
+     `${CLAUDE_PLUGIN_ROOT}/docs/putting-your-project-in-git.md`). Nothing else in
+     `/init-test` is affected. Skip the rest of this step.
+   - Otherwise, first run the on-demand scan of every tracked file:
+
+     ```
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/secret_scan.js" --tracked
+     ```
+
+     Relay its result: the mode, each finding by file, line and key / field / label / remote
+     **name only**, the skip counts, and any "value check skipped". **Never open, quote or
+     reconstruct a flagged line or a secret value** — not even when asked to "show" it; the
+     scan prints names only and so does your relay. Point to the docs section "Fixing
+     findings" for each kind. Exit 1 is a leak to fix before committing or pushing; exit 2
+     means the scan could not run (say so).
+   - **`absent`** or **`stale`** → offer the hook in **one** question: it scans each commit's
+     staged content, refuses a commit only for a real leak (warnings are shown, the commit
+     proceeds), never overwrites an existing hook, and is turned off by deleting the file.
+     Only after an explicit yes, run
+     `node "${CLAUDE_PLUGIN_ROOT}/scripts/precommit_hook.js" install` and relay its result. A
+     no, or no answer, means nothing is written — never install it by hand.
+   - **`installed`** → one line saying the hook is in place.
+   - **`foreign`** → an existing pre-commit hook (not AgenTeX's) is left untouched; report its
+     path and point to the docs section "Calling the scan from an existing hook". Offer to
+     show the snippet (`precommit_hook.js print`) if the user wants it.
+   - **`shared-hooks-path`** → `core.hooksPath` points at a machine-wide hooks folder shared by
+     every repository on this machine, so AgenTeX does not install there; point to the docs
+     section "Calling the scan from an existing hook".
 
 Finish by telling the user to edit the sample specs in `./test/suite1/` to match their app,
 then run `/execute-test <url or scope>`. Also mention the Azure DevOps commands if they use
 ADO: `/design-test <story-ids>` (create linked test cases from a story's ACs) and
-`/estimate-story [ids]` (estimate QA effort + create [Testing] tasks) — both read the
+`/estimate-story [ids]` / `/estimate-sprint` (estimate QA effort + create [Testing] tasks;
+the first run proposes `config/estimation.json`) — all read the
 `azure` block in `config/project.json` (legacy `AZURE_*` keys in `.env` still work).

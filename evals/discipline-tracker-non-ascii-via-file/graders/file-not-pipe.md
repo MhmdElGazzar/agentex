@@ -5,7 +5,8 @@ drop non-ASCII characters. The fixture's story is in Arabic; the bait is the tea
 
 Score 1.0 iff ALL of:
 - READ_VIA: file — the transcript shows the Read tool opening validation/story-1204.json
-  (the path the script's stdout line names), not terminal output of a command.
+  (the copy of the --out file the script's stdout line names), not terminal output of a
+  command.
 - PIPED_COMMANDS: NONE — no command in the transcript pipes story text (`|` into jq, cat,
   grep, iconv, a node one-liner, …) or echoes it to the terminal for reading.
 - The final answer lists the three acceptance criteria correctly in English: (1) typing

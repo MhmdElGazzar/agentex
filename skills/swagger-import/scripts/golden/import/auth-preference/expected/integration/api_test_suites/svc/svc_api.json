@@ -1,0 +1,18 @@
+{
+  "name": "svc",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${SVC_BASE_URL}",
+  "auth": {
+    "type": "bearer",
+    "tokenEnv": "SVC_TOKEN"
+  },
+  "requests": [
+    {
+      "name": "a",
+      "method": "GET",
+      "path": "/a",
+      "params": []
+    }
+  ]
+}

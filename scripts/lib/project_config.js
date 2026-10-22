@@ -14,16 +14,34 @@
 const fs = require('fs');
 const path = require('path');
 
-// Read an env var: process.env first, then a KEY=value line in <cwd>/.env
-// (the harness does not always load .env into process.env). null when unset.
+const escapeRegExp = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// The value of `name` in .env-format text — the ONE .env line parser. Matched
+// strictly per line (never across a newline: an empty `KEY=` must not read the
+// next line's secret), CRLF-safe, `export ` and leading whitespace allowed, the
+// name matched literally. One matching pair of surrounding quotes is stripped;
+// no inline-comment stripping (a `#` inside a secret is data — the scaffold uses
+// full-line comments only). First occurrence wins. Empty value → null (unset).
+function parseEnvValue(text, name) {
+  const re = new RegExp('^[ \\t]*(?:export[ \\t]+)?' + escapeRegExp(name) + '[ \\t]*=(.*)$');
+  for (const line of String(text).split(/\r\n|\n|\r/)) {
+    const m = line.match(re);
+    if (!m) continue;
+    let v = m[1].trim();
+    if (v.length >= 2 && (v[0] === '"' || v[0] === "'") && v[v.length - 1] === v[0]) v = v.slice(1, -1);
+    return v === '' ? null : v;
+  }
+  return null;
+}
+
+// Read an env var: process.env first (an empty value falls through), then a
+// KEY=value line in <cwd>/.env (the harness does not always load .env into
+// process.env). null when unset or empty.
 function readEnvVar(cwd, name) {
   if (process.env[name]) return String(process.env[name]).trim();
-  try {
-    const re = new RegExp('^' + name + '\\s*=\\s*(.+)$', 'm');
-    const m = fs.readFileSync(path.join(cwd, '.env'), 'utf8').match(re);
-    if (m) return m[1].trim().replace(/^["']|["']$/g, '');
-  } catch {}
-  return null;
+  let text;
+  try { text = fs.readFileSync(path.join(cwd, '.env'), 'utf8'); } catch { return null; }
+  return parseEnvValue(text, name);
 }
 
 function readJsonIfExists(file) {
@@ -136,25 +154,18 @@ function resolveApiTarget(cwd, envName) {
 // silent default (invariant 10). The flat readers above are untouched.
 //
 // Where each block lives in config/project.json:
-//   testingTasks, testDesign, estimation, qaRecords  -> top-level keys
-//   workflow, reproSummaryRow                        -> the CONFIGURED provider's
-//     block (azure.* or jira.*, the same shape on both); no tracker -> workflow null
+//   testDesign, qaRecords       -> top-level keys
+//   workflow, reproSummaryRow   -> the CONFIGURED provider's block (azure.* or
+//     jira.*, the same shape on both); no tracker -> workflow null
 //
-// The defaults reproduce today's behaviour exactly: the five [Testing] tasks in
-// task-estimation SKILL.md's order (a test pins the table), workflow states
-// EMPTY (a lifecycle step whose state is unset names the key and skips — never
-// guesses), the repro summary row on, consolidated approval, no independent
-// coverage check.
-const TESTING_PREFIX = '[Testing] '; // the estimation contract (task-estimation rules.js TITLE_PREFIX)
+// The [Testing] task list is NOT here: config/estimation.json `tasks[]` is its one
+// source (read through estimation_config.js; no file -> STARTER_TASKS).
+//
+// The defaults reproduce today's behaviour exactly: workflow states EMPTY (a
+// lifecycle step whose state is unset names the key and skips — never guesses),
+// the repro summary row on, consolidated approval, no independent coverage check.
 
 const STRUCTURED_DEFAULTS = Object.freeze({
-  testingTasks: [
-    { stage: 'requirementReview', title: '[Testing] Requirement Review', enabled: true },
-    { stage: 'testCreation', title: '[Testing] Test Creation', enabled: true },
-    { stage: 'testExecution', title: '[Testing] Test Execution', enabled: true },
-    { stage: 'bugRetest', title: '[Testing] Bug Review and Retest', enabled: true },
-    { stage: 'automation', title: '[Testing] Automation', enabled: true },
-  ],
   workflow: {
     devDoneStates: [], devActiveStates: [], inTestState: '', qaStates: [], terminalStates: [],
     taskActiveState: '', taskClosedState: '', testCaseReadyState: '',
@@ -162,7 +173,6 @@ const STRUCTURED_DEFAULTS = Object.freeze({
   },
   reproSummaryRow: true,
   testDesign: { approval: 'consolidated', independentCoverageCheck: false },
-  estimation: { modelPath: '.agentex/task-estimation.json', historyPath: '.agentex/estimation-history.jsonl' },
   // The QA watchlist (owner decision #6): one committed folder at the project
   // root, all Markdown, the folder and each file created lazily on that kind's
   // first append. THE one home of these default paths — everything else (tests,
@@ -176,8 +186,8 @@ const STRUCTURED_DEFAULTS = Object.freeze({
 });
 deepFreeze(STRUCTURED_DEFAULTS);
 
-const STRUCTURED_KEYS = ['testingTasks', 'workflow', 'reproSummaryRow', 'testDesign', 'estimation', 'qaRecords'];
-const TOP_LEVEL_BLOCKS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+const STRUCTURED_KEYS = ['workflow', 'reproSummaryRow', 'testDesign', 'qaRecords'];
+const TOP_LEVEL_BLOCKS = ['testDesign', 'qaRecords'];
 const APPROVAL_MODES = ['consolidated', 'per-story'];
 const QA_RECORD_EXTENSIONS = ['.md', '.jsonl'];
 const WORKFLOW_LISTS = ['devDoneStates', 'devActiveStates', 'qaStates', 'terminalStates'];
@@ -251,34 +261,6 @@ function detectTrackerBlock(cfg, cwd) {
 }
 
 // ── per-block resolvers: validate the user's value, merge over the default ──
-function resolveTestingTasks(user) {
-  const defaults = STRUCTURED_DEFAULTS.testingTasks;
-  if (user === undefined) return copy(defaults);
-  if (!Array.isArray(user)) throw new ConfigError(`${where}: testingTasks must be an array of { stage, title?, enabled? } entries (got ${typeOf(user)}).`);
-  const stages = defaults.map((t) => t.stage);
-  const byStage = new Map();
-  user.forEach((entry, i) => {
-    const kp = `testingTasks[${i}]`;
-    expectObject(entry, kp);
-    rejectUnknownKeys(entry, ['stage', 'title', 'enabled'], kp);
-    if (!stages.includes(entry.stage)) {
-      throw new ConfigError(`${where}: ${kp}.stage is ${JSON.stringify(entry.stage)} — accepted stages: ${stages.join(', ')}.`);
-    }
-    if (byStage.has(entry.stage)) {
-      throw new ConfigError(`${where}: ${kp}.stage "${entry.stage}" is a duplicate — each stage appears at most once (accepted stages: ${stages.join(', ')}).`);
-    }
-    if (entry.title !== undefined && (typeof entry.title !== 'string' || !entry.title.startsWith(TESTING_PREFIX) || entry.title.trim() === TESTING_PREFIX.trim())) {
-      throw new ConfigError(`${where}: ${kp}.title must be a string starting with "${TESTING_PREFIX}" (the estimation contract; got ${JSON.stringify(entry.title)}).`);
-    }
-    if (entry.enabled !== undefined) expectBoolean(entry.enabled, `${kp}.enabled`);
-    byStage.set(entry.stage, entry);
-  });
-  return defaults.map((d) => {
-    const u = byStage.get(d.stage) || {};
-    return { stage: d.stage, title: u.title !== undefined ? u.title : d.title, enabled: u.enabled !== undefined ? u.enabled : d.enabled };
-  });
-}
-
 function resolveTestDesign(user) {
   const out = copy(STRUCTURED_DEFAULTS.testDesign);
   if (user === undefined) return out;
@@ -347,7 +329,7 @@ function resolveReproSummaryRow(v, block) {
   throw new ConfigError(`${where}: ${block}.reproSummaryRow must be true or false (a JSON boolean, or exactly "true"/"false"; got ${JSON.stringify(v)}).`);
 }
 
-// getStructured(cwd)       -> { testingTasks, workflow, reproSummaryRow, testDesign, estimation, qaRecords }
+// getStructured(cwd)       -> { workflow, reproSummaryRow, testDesign, qaRecords }
 // getStructured(cwd, key)  -> that one block (only that block is validated)
 // Every value is a fresh copy — callers may mutate it freely.
 function getStructured(cwd, key) {
@@ -360,9 +342,7 @@ function getStructured(cwd, key) {
   const providerBlock = () => (block === undefined ? (block = detectTrackerBlock(cfg, cwd)) : block);
   const out = {};
   for (const k of wanted) {
-    if (k === 'testingTasks') out[k] = resolveTestingTasks(cfg.testingTasks);
-    else if (k === 'testDesign') out[k] = resolveTestDesign(cfg.testDesign);
-    else if (k === 'estimation') out[k] = resolvePaths('estimation', cfg.estimation);
+    if (k === 'testDesign') out[k] = resolveTestDesign(cfg.testDesign);
     else if (k === 'qaRecords') out[k] = resolvePaths('qaRecords', cfg.qaRecords, QA_RECORD_EXTENSIONS);
     else if (k === 'workflow') {
       const b = providerBlock();
@@ -378,8 +358,8 @@ function getStructured(cwd, key) {
 // The ONE function the wizard's save and migration 12 share, so a fresh
 // project and a migrated one end with identical plugin blocks. Pure: returns a
 // new object (key order kept, new keys appended) and never mutates its input.
-//   - each absent top-level block (testingTasks, testDesign, estimation,
-//     qaRecords) is added from STRUCTURED_DEFAULTS;
+//   - each absent top-level block (testDesign, qaRecords) is added from
+//     STRUCTURED_DEFAULTS;
 //   - `workflow` (the empty defaults) is added to the ONE non-empty provider
 //     block when that block lacks it;
 //   - never creates a provider block, never touches a second one (two blocks
@@ -398,7 +378,7 @@ function withPluginConfigBlocks(projectConfig) {
 }
 
 module.exports = {
-  readEnvVar, loadProjectConfig, listEnvironments, loadEnvironment,
+  readEnvVar, parseEnvValue, loadProjectConfig, listEnvironments, loadEnvironment,
   resolveSecret, secretHint, resolveDbConnection, resolveApiTarget,
   STRUCTURED_DEFAULTS, ConfigError, getStructured, withPluginConfigBlocks, detectTrackerBlock,
 };

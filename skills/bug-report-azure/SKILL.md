@@ -23,10 +23,16 @@ Use only this agent-facing operation for the filing flow:
 
 ```text
 node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js context --parent <story-id> --emit-intent
-node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js context --intent <intent.json> [--duplicate-view all] [--refresh-bugs]
-node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js prepare --intent <intent.json> --duplicate-review <review-id> --plan <new-plan.json>
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js context --intent .agentex/scratch/bugs/<run-folder>/bug-<n>.intent.json [--duplicate-view all] [--refresh-bugs]
+node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js prepare --intent .agentex/scratch/bugs/<run-folder>/bug-<n>.intent.json --duplicate-review <review-id> --plan .agentex/scratch/bugs/<run-folder>/bug-<n>.plan-<k>.json
 node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/bug-report.js execute --plan <prepare.planFile>
 ```
+
+Intent, annotation and plan files are scratch: write them only under
+`.agentex/scratch/bugs/<run-folder>/` (the run folder's name; create it if missing), never
+anywhere else (`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`). Each `prepare` takes a
+plan path that does not exist yet (`<k>` counts the prepares for that Bug). The annotated
+copies land beside their spec; the raw screenshots stay in the run's `executions/` folder.
 
 Do not read project secrets, inspect raw template fields, compose Azure requests, or call
 the low-level bug/test-plan scripts during normal filing. The local evidence helpers are
@@ -95,14 +101,16 @@ by `prepare`; `likely-blank` is a warning for your visual judgment, not an autom
 
 Annotate each screenshot you will attach (never blocks, never asks). Write
 `{"image", "banner", "boxes": [{"x", "y", "width", "height", "label", "ok"?}]}` beside the
-intent (e.g. `bug-1-<shot>.json`; box values in % of the image). `banner` is the Bug's
+intent in `.agentex/scratch/bugs/<run-folder>/` (e.g. `bug-1-<shot>.json`; box values in %
+of the image). `banner` is the Bug's
 summary; one red box goes on the defect, labelled from expected/actual
 (`Expected "X" — actual "Y"`); optionally one `"ok": true` green box on something correct.
 Use only the summary/expected/actual and on-screen text — invent nothing. Run
-`node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/annotate-image.js --spec <file>.json`,
+`node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/annotate-image.js --spec .agentex/scratch/bugs/<run-folder>/bug-1-<shot>.json`,
 Read the image it names, and fix a misplaced box at most twice. In the intent's attach list,
 put its `annotated` path **followed by** the raw file — the overlay can hide what is under
-it, so the raw capture always travels with it, and the approval screen shows both. On a
+it, so the raw capture always travels with it, and the approval screen shows both, with the
+banner and labels the copy burns in. On a
 non-zero exit, or a box still off after two fixes, attach the raw screenshot alone and give
 a one-line reason on the approval screen: never install, never ask, never seek a separate OK.
 
@@ -168,7 +176,7 @@ example functional, UI, or data). If the match is ambiguous, ask; never invent a
 ### 4. Review duplicates and complete any deferred bundled input
 
 Fill the scaffold's evidence-derived title, summary, steps, expected result, and actual
-result, then run `context --intent <intent.json>`. The top-level `duplicateCandidates` is the
+result, then run `context --intent` on the intent file. The top-level `duplicateCandidates` is the
 intent-ranked list for semantic review and retains each candidate's ID, title, state, and
 reproduction summary. `duplicateReview` reports the review ID, strategy/view, default size,
 total/shown/omitted counts, truncation, exact-title pin count, and shortlist IDs.
@@ -272,7 +280,8 @@ Render each successful result's `approval` object, including:
 - template and parent identity;
 - classification plus its rationale, assignee, and resolved placement;
 - reproduction content;
-- ATTACH/REJECT evidence with reasons/warnings;
+- ATTACH/REJECT evidence with reasons/warnings (per annotated copy: the banner and labels
+  it burns in, or the one-line reason it is raw-only);
 - the compact duplicate-review receipt and decision, plus any project-wide exact-title
   exception candidates (never the full parent candidate list), and any project-wide
   candidate the user should weigh, named with its parent story;

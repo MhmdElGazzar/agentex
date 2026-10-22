@@ -29,6 +29,18 @@
 //   validate(adapter, spec, args, cwd)        reads + local checks only, ZERO
 //     -> Validation                           writes; findings in this
 //                                             provider's exact order
+//   pastTestingTasks(adapter, args, {count})  the first-run history read: resolves
+//     -> { history } | { stop: { code, out } } its options (team / board), calls
+//                                             adapter.listPastSprints +
+//                                             listChildEstimates (Original
+//                                             Estimate only), keeps the [Testing]
+//                                             children (rules.historyPoints),
+//                                             names the reason (rules.historyReason)
+//                                             and words it — and every stop — in
+//                                             this provider's terms; ZERO writes
+//     history: { sprintsRequested, sprints: [{ id, name }] (newest first),
+//                storiesRead, points: [{ ref, title, hours, seq, parent }],
+//                truncated, reason, reasonMessage }
 //
 //   Validation — every key REQUIRED; the spine asserts it and has NO defaults:
 //     blocked: Blocked[]   validation: object (incl. perStory[])
@@ -43,7 +55,7 @@
 // never a fallback to another provider's behavior (invariant 10).
 
 const REQUIRED_MEMBERS = ['provider', 'parseIds', 'openStoriesRead', 'currentSprint',
-  'readStory', 'testingChildren', 'storyRow', 'validate'];
+  'readStory', 'testingChildren', 'storyRow', 'validate', 'pastTestingTasks'];
 
 // The fail-closed lookup itself is the shared scripts/lib/tracker/registry.js
 // (extracted when the tracker CLI became its second consumer); this module

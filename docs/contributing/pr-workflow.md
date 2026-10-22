@@ -13,9 +13,12 @@ common reason a PR needs a revision.
 3. **Run script tests** for anything you touched or added — see [Testing](./testing.md).
 4. **Update docs** — a new skill needs a row in `docs/README.md`'s table (and the root
    `README.md` feature table if it's user-facing).
-5. **Add a `CHANGELOG.md` entry** under `[Unreleased]` (`### Added` / `### Changed` /
-   `### Fixed` as appropriate) — see the example in
-   [Adding a Skill](./adding-a-skill.md#8-wire-it-up).
+5. **Add a changelog fragment** `changelog.d/<slug>.md` instead of editing `CHANGELOG.md`
+   (every branch editing that file conflicts on every merge). A fragment holds only
+   `### Added` / `### Changed` / `### Fixed` sections, each followed by `- ` bullets — see the
+   example in [Adding a Skill](./adding-a-skill.md#8-wire-it-up) for the wording. Check it with
+   `node scripts/dev/changelog.js --check`; the maintainer folds the fragments into
+   `CHANGELOG.md` at release with `node scripts/dev/changelog.js --assemble <X.Y.Z>`.
 6. **Open the PR** against `main`, describing what changed and why.
 
 ## What gets checked on review
@@ -26,10 +29,15 @@ common reason a PR needs a revision.
 - New scripts have a passing `.test.js` covering success/`FAIL`/`BLOCKED`
 - `SKILL.md` stays judgment-only; mechanics belong in `references/`
 - Naming follows the noun-skill / verb-command convention
-- Docs and `CHANGELOG.md` are updated
+- Docs are updated and the change has a `changelog.d/` fragment
 
 ## After merge
 
 The maintainer commits releases straight to `main` and bumps the version in
 `.claude-plugin/plugin.json` + `CHANGELOG.md`; the `elgazzar-plugins` marketplace listing is
 re-synced on each release. You don't need to do either of these in your PR.
+
+Every push to `main` also rebuilds one generated branch per host: `store` (the Claude plugin
+directory), `copilot`, `devin` and `codex`. Write `main` the Claude way and never commit to a
+generated branch by hand; see [Host Branches](./host-branches.md) for what the converters do
+and what can make a host build fail.

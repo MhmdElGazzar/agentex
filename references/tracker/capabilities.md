@@ -39,8 +39,9 @@ Notes:
 - **Remaining work on ADO.** `tracker.js update` refuses a spec that sets
   `Microsoft.VSTS.Scheduling.RemainingWork` (ADO rejects it server-side, TF401320) — exit 2
   before any request. On Jira a remaining-estimate update is legitimate and is not refused.
-- **Text you will analyse** goes through `--out <file>` (UTF-8) and is read from the file —
-  never through a pipe, which can drop non-ASCII characters.
+- **Text you will analyse** goes through `--out .agentex/scratch/tracker/<name>.json` (UTF-8)
+  and is read from the file — never through a pipe, which can drop non-ASCII characters. Such
+  files live only under `.agentex/scratch/` ([project-layout.md](../project-layout.md)).
 - **Truncation.** `truncated: true` on a search means "at the cap; more may exist" — narrow
   the query, never read it as "that's all".
 - Provider details live in `ado-boards.md` and `jira-boards.md` beside this file.
