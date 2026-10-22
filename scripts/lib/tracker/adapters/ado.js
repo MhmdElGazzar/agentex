@@ -572,6 +572,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // becomes plain text (plaintext.htmlToText).
     //   [{ id, author, date, text, user: { id, displayName, email } }]
     async listComments(id) {
+      requireId('listComments', 'work-item id', id);
       const out = [];
       let token = null;
       const seen = new Set();
@@ -587,7 +588,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         }
         token = res && res.continuationToken;
         if (!token) return out;
-        if (seen.has(token)) throw new TrackerError({ op: 'listComments', url: u, serverMessage: `the service repeated continuation token "${token}" — stopping rather than looping` });
+        if (seen.has(token)) throw new TrackerError({ op: 'listComments', url: scrub(u), serverMessage: scrub(`the service repeated continuation token "${token}" — stopping rather than looping`) });
         seen.add(token);
       }
     },
@@ -595,6 +596,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // Child refs of many parents in ONE project-scoped WIQL — a constant request
     // count however many children there are (listChildren stays per-child).
     async listChildRefs(parentIds) {
+      for (const id of [].concat(parentIds)) requireId('listChildRefs', 'parent work-item id', id);
       const ids = intIds(parentIds, 'listChildRefs');
       if (!ids.length) return [];
       const res = await this.query(
@@ -621,7 +623,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       } catch (e) {
         if (e instanceof TrackerError && (e.status === 401 || e.status === 403)) {
           throw new TrackerError({
-            op: 'findIdentity', status: e.status, url: u, credentialHint: e.credentialHint,
+            op: 'findIdentity', status: e.status, url: e.url, credentialHint: e.credentialHint,
             serverMessage: 'the identity search was refused — the PAT needs the Identity (Read) scope to resolve a mention by email',
           });
         }
@@ -737,6 +739,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       const body = { text: String(html) };
       if (!execute) return descriptor('addComment', 'POST', u, { body, contentType: 'application/json' });
       assertCiWritesAllowed('addComment');
+      requireId('addComment', 'work-item id', id);
       const res = await request('addComment', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: res && res.id, workItemId: (res && res.workItemId) ?? Number(id) };
     },
@@ -830,6 +833,9 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       };
       if (!execute) return descriptor('createSuite', 'POST', u, { body, contentType: 'application/json' });
       assertCiWritesAllowed('createSuite');
+      requireId('createSuite', 'plan id', planId);
+      requireId('createSuite', 'parent suite id', parent);
+      if (type === 'requirement') requireId('createSuite', 'requirement id', requirementId);
       const res = await request('createSuite', 'POST', u, { body: JSON.stringify(body), contentType: 'application/json' });
       return { id: res && res.id, name: res && res.name, suiteType: res && res.suiteType };
     },
@@ -841,11 +847,14 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // is). Fails closed: after the DELETE the suite is re-read (testplan
     // route), and any id still a member throws.
     async removeCaseFromSuite(planId, suiteId, caseIds, { execute = false } = {}) {
-      const ids = intIds(caseIds, 'removeCaseFromSuite');
       const route = `testplan/Plans/${planId}/Suites/${suiteId}/TestCase`;
       const del = (list) => url(route, { testCaseIds: list.join(',') });
-      if (!execute) return descriptor('removeCaseFromSuite', 'DELETE', del(ids));
+      if (!execute) return descriptor('removeCaseFromSuite', 'DELETE', del(intIds(caseIds, 'removeCaseFromSuite')));
       assertCiWritesAllowed('removeCaseFromSuite');
+      requireId('removeCaseFromSuite', 'plan id', planId);
+      requireId('removeCaseFromSuite', 'suite id', suiteId);
+      for (const id of [].concat(caseIds)) requireId('removeCaseFromSuite', 'test case id', id);
+      const ids = intIds(caseIds, 'removeCaseFromSuite');
       const memberIds = async () => {
         const res = await request('removeCaseFromSuite', 'GET', url(route));
         return new Set(((res && res.value) || []).map((e) => Number((e.workItem || e).id)));
@@ -859,7 +868,7 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         const still = toRemove.filter((id) => after.has(id));
         if (still.length) {
           throw new TrackerError({
-            op: 'removeCaseFromSuite', url: u,
+            op: 'removeCaseFromSuite', url: scrub(u),
             serverMessage: `the request succeeded but test case(s) ${still.join(', ')} are still in suite ${suiteId} on re-read`,
           });
         }

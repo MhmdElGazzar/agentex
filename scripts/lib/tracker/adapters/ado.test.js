@@ -629,6 +629,93 @@ const PROJ = 'Sample%20Project';
     });
   });
 
+  // ── skill-consolidation-foundation ops take main's id guard and error scrub ──
+  // Every new op that sends a request with an id goes through requireId on its
+  // read / execute path (dry runs stay unchecked, as for every other write).
+  await test('SCF ops: every read and execute path refuses a malformed id (exit 2) and sends ZERO requests', async () => {
+    const f = fakeFetch([]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const routes = (id) => [
+      ['getWorkItem fields', () => a.getWorkItem(id, { fields: ['System.Title'] })],
+      ['listComments', () => a.listComments(id)],
+      ['addComment', () => a.addComment(id, 'hi', EXEC)],
+      ['getPlan', () => a.getPlan(id)],
+      ['createSuite plan', () => a.createSuite(id, { type: 'static', name: 'S', parent: 5 }, EXEC)],
+      ['createSuite parent', () => a.createSuite(3, { type: 'static', name: 'S', parent: id }, EXEC)],
+      ['createSuite requirement', () => a.createSuite(3, { type: 'requirement', requirementId: id, parent: 5 }, EXEC)],
+      ['removeCaseFromSuite plan', () => a.removeCaseFromSuite(id, 4, [77], EXEC)],
+      ['removeCaseFromSuite suite', () => a.removeCaseFromSuite(3, id, [77], EXEC)],
+      ['removeCaseFromSuite case', () => a.removeCaseFromSuite(3, 4, [77, id], EXEC)],
+      ['listChildRefs', () => a.listChildRefs([42, id])],
+    ];
+    for (const id of BAD_IDS) {
+      for (const [name, call] of routes(id)) {
+        // An absent parent / name is refused by the op's own usage check first.
+        if (id === undefined || id === null || id === '') continue;
+        await assert.rejects(call, (e) => {
+          assert.strictEqual(e.exitCode, 2, `${name}(${String(id)}): ${e.message}`);
+          // createSuite's own "needs a parent suite id" usage check fires first on a falsy parent.
+          assert.match(e.message, name === 'createSuite parent' && !id ? /needs a parent suite id/ : /positive canonical decimal/, `${name}(${String(id)})`);
+          return true;
+        }, `${name}(${String(id)}) must be refused`);
+      }
+    }
+    assert.strictEqual(f.calls.length, 0, 'every refusal happened before a request left the machine');
+  });
+
+  await test('SCF ops: dry runs check NO id (stand-ins plan as before); canonical ids reach the wire unchanged', async () => {
+    const f = fakeFetch([{ match: '/Suites/4/TestCase', json: { value: [] } }]);
+    const a = createAdapter({ cwd: proj(), fetch: f });
+    const DRY = { execute: false };
+    assert.ok((await a.addComment('{new-bug-id}', 'hi', DRY)).url.includes('/wit/workItems/{new-bug-id}/comments?'));
+    assert.deepStrictEqual((await a.createSuite('NEW', { type: 'static', name: 'S', parent: '<root>' }, DRY)).body.suiteType, 'staticTestSuite');
+    assert.strictEqual(f.calls.length, 0);
+    await a.listComments('123');
+    await a.getPlan('3');
+    await a.removeCaseFromSuite('3', '4', ['77'], EXEC);
+    const paths = f.calls.map((c) => c.url.replace(/^.*\/_apis\//, '').replace(/\?.*$/, ''));
+    assert.deepStrictEqual(paths, ['wit/workItems/123/comments', 'testplan/plans/3', 'testplan/Plans/3/Suites/4/TestCase']);
+  });
+
+  await test('SCF ops: an error echoing the PAT is scrubbed on every new route (comments, plans, suites, identities, batch)', async () => {
+    for (const [name, call, match, method] of [
+      ['listComments', (a) => a.listComments(1), '/comments', 'GET'],
+      ['addComment', (a) => a.addComment(1, 'hi', EXEC), '/comments', 'POST'],
+      ['listPlans', (a) => a.listPlans(), 'testplan/plans', 'GET'],
+      ['getPlan', (a) => a.getPlan(3), 'testplan/plans/3', 'GET'],
+      ['createPlan', (a) => a.createPlan({ name: 'P' }, EXEC), 'testplan/plans', 'POST'],
+      ['createSuite', (a) => a.createSuite(3, { type: 'static', name: 'S', parent: 5 }, EXEC), 'testplan/Plans/3/suites', 'POST'],
+      ['removeCaseFromSuite', (a) => a.removeCaseFromSuite(3, 4, [77], EXEC), '/TestCase', 'GET'],
+      ['findIdentity', (a) => a.findIdentity('qa.engineer@example.com'), '/_apis/identities', 'GET'],
+      ['getWorkItems', (a) => a.getWorkItems([1, 2]), 'wit/workitemsbatch', 'POST'],
+      ['listChildRefs', (a) => a.listChildRefs([42]), '/wiql', 'POST'],
+    ]) {
+      for (const status of [401, 500]) {
+        const f = fakeFetch([{ method, match, status, text: `proxy echo: ${ODD_FORMS.header} ${ODD_FORMS.raw} <end>` }]);
+        await assert.rejects(() => call(createAdapter({ cwd: oddProj(), fetch: f })), (e) => {
+          assert.ok(e instanceof TrackerError, `${name} ${status}`);
+          assertNoPatForm(e);
+          return true;
+        }, `${name} ${status}`);
+      }
+    }
+  });
+
+  await test('SCF ops: a repeated continuation token / a failed re-read is a TrackerError with no PAT form in it', async () => {
+    const pagedForever = { match: '/comments', json: { comments: [{ id: 1, text: 'x', createdBy: {} }], continuationToken: ODD_FORMS.raw } };
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: fakeFetch([pagedForever]) }).listComments(1), (e) => {
+      assert.ok(e instanceof TrackerError && /repeated continuation token/.test(e.message), e.message);
+      assertNoPatForm(e);
+      return true;
+    });
+    const stillMember = fakeFetch([{ match: '/Suites/4/TestCase', json: { value: [{ workItem: { id: 77 } }] } }]);
+    await assert.rejects(() => createAdapter({ cwd: oddProj(), fetch: stillMember }).removeCaseFromSuite(3, 4, [77], EXEC), (e) => {
+      assert.ok(e instanceof TrackerError && /still in suite 4/.test(e.message), e.message);
+      assertNoPatForm(e);
+      return true;
+    });
+  });
+
   await test('legacy AZURE_* env keys back the azure block (pick pattern)', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ado-'));
     fs.writeFileSync(path.join(dir, '.env'),
