@@ -232,6 +232,9 @@ ran. Fill in `.env` and scan again.
   DevOps area path in `.env`. They are not secrets, so they are not value-checked; move them into
   `config/project.json` or the environment file (`/update-agentex` does this for the keys it
   knows).
+- **Base URLs** — any `.env` key named `*_BASE_URL` (such as the `<NAME>_BASE_URL` that
+  `/import-swagger` asks for) holds a service address, not a secret, so it is not value-checked
+  and can stay in `.env`.
 
 ### Files skipped
 
