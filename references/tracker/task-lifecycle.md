@@ -11,8 +11,10 @@ key**, never a value written into this text: the project decides its own workflo
 
 ## 1. Config keys, never literals
 
-State names and task titles come from `config/project.json`, read through the plugin's
-structured config (`<provider>` is the configured tracker's block: `azure` or `jira`):
+State names come from `config/project.json`, read through the plugin's structured config
+(`<provider>` is the configured tracker's block: `azure` or `jira`). The `[Testing]` tasks
+come from `config/estimation.json` `tasks[]`, their one source (no file → the five starter
+tasks; `${CLAUDE_PLUGIN_ROOT}/scripts/lib/estimation_config.js` reads it):
 
 | Key | Meaning |
 |---|---|
@@ -26,11 +28,11 @@ structured config (`<provider>` is the configured tracker's block: `azure` or `j
 | `<provider>.workflow.testCaseReadyState` | the state of a test case ready to run |
 | `<provider>.workflow.closeOut.state` | the story state to propose when QA is complete |
 | `<provider>.workflow.closeOut.assignee` | who the story goes to when QA is complete |
-| `testingTasks[].{stage,title,enabled}` | the `[Testing]` tasks: their stage, exact title, and whether the project uses them |
+| `tasks[].{name,enabled}` (in `config/estimation.json`) | the `[Testing]` tasks: exact title `[Testing] <name>`, and whether the project uses them |
 
 **An empty value means that step is not configured.** Say so, name the key, and skip the
 step — never guess a state, never fall back to a name that "usually" exists. A disabled
-`testingTasks` stage has no task to move.
+task (`enabled: false`) has no task to move.
 
 ## 2. Stage start
 
@@ -38,8 +40,8 @@ step — never guess a state, never fall back to a name that "usually" exists. A
    stop and report the state you found and the key that lists the accepted ones.
 2. **Move the story** to `inTestState` with `tracker.js transition`.
 3. **Activate the stage's task.** Find the `[Testing]` task among the story's children
-   (`tracker.js relations --id <story> --kind child`) by its exact
-   `testingTasks[<stage>].title`, set it to `taskActiveState`, and assign it.
+   (`tracker.js relations --id <story> --kind child`) by its exact title,
+   `[Testing] <name>` from `tasks[]`, set it to `taskActiveState`, and assign it.
 4. **More than one candidate assignee** (several configured, none given): ask which one —
    never pick.
 5. **One approval for the batch.** Show the story move and the task update together as dry
@@ -74,7 +76,7 @@ If any fails, report which one and leave the stage open.
 
 When every enabled `[Testing]` task is in `taskClosedState`, **propose** moving the story to
 `closeOut.state` and assigning it to `closeOut.assignee`. Consider only the `[Testing]` tasks
-(matched by their `testingTasks` titles) and ignore every other child — development tasks
+(matched by their `tasks[]` titles) and ignore every other child — development tasks
 are not QA's to judge. Propose, show the dry run, and wait for the approval; never apply it
 silently.
 
