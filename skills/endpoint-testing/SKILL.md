@@ -3,7 +3,8 @@ name: endpoint-testing
 description: >
   Run a standalone API test pass over the project's cataloged endpoints ("api-tests"),
   independent of any browser test spec. Use for /test-endpoints, or requests like "run the
-  API tests", "test all endpoints". Distinct from api-integration's `api:` step (a single
+  API tests", "test all endpoints". Also opens the local API suite editor
+  (/test-endpoints --edit) to review, fix and re-run cases, one suite or one case at a time. Distinct from api-integration's `api:` step (a single
   cataloged call made mid-browser-test) — this skill runs the whole set of cases in one pass
   and returns a consolidated report. Execution is catalog+suite-only: only cases defined in
   integration/api_test_suites/**/*_suite.json, referencing entries defined in the sibling
@@ -16,6 +17,14 @@ Runs the full set of API test **cases** (params + expected result per case, poss
 cases per cataloged endpoint) as its own pass, not tied to a browser spec. Read
 **`${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/references/suite-format.md`** before the
 first run in a session — it covers the suite file schema and the runner's contract in full.
+
+## The suite editor (`/test-endpoints --edit`)
+
+A local page over every suite: source badges per value, Needs review / Failing / Skipped
+filters, an edit drawer, Save that never overwrites a change made on disk, and Run all / Run
+this case through `run_suite.js`. It needs no agent. Read
+**`${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/references/suite-editor.md`** before
+launching it or answering a question about it.
 
 ## Relationship to api-integration
 
@@ -57,9 +66,13 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
 A case with no `expect` is BLOCKED ("case has no expect") — a case that asserts nothing never
 PASSes.
 
-Every case in every suite file runs every time — there's no scope/tag selection — except a
-case carrying `"skip": "<reason>"`, which is never executed and is reported BLOCKED with that
-reason quoted. `swagger-import` writes `skip` on every generated write-method case.
+A `/test-endpoints` run covers every case in every suite file — except a case carrying
+`"skip": "<reason>"`, which is never executed and is reported BLOCKED with that reason
+quoted, and a case whose `sources` still marks a value `placeholder`, which is BLOCKED ("needs
+a real value") and never sent. `swagger-import` writes `skip` on every generated write-method
+case. `run_suite.js --suite <file> [--case <n>]` runs one suite or one case (the editor uses
+it); every run also writes `<run-dir>/suite-result.json`. Cases may also carry `auth: "none"`
+(no credential), `omit` and `expect.contains` — see `suite-format.md`.
 
 - **`--env <name>`** picks the environment for the whole run: it is passed to every case's
   `run_api.js` call (omitted = the project's `defaultEnvironment`; an unknown name comes back

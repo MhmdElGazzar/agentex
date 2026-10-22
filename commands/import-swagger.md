@@ -1,10 +1,16 @@
 ---
-description: Generate an API catalog + suite of test cases from a Swagger 2.0 / OpenAPI 3.x JSON document (local file or URL).
+description: Generate an API catalog + suite of test cases from a Swagger 2.0 / OpenAPI 3.x JSON document (local file or URL). --wizard opens the guided page that collects real test data first.
 ---
 
 Use the **swagger-import** skill to import endpoints from a spec.
 
 Arguments: $ARGUMENTS
+
+**Wizard form — `--wizard [source] [--lang=ar|en]`:** open the "New suite from Swagger"
+page instead of importing directly. Follow
+`${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/references/suite-wizard.md` (launch the studio,
+stay attached through its channel, collect test data in step 3). A given source is only
+pre-filled on the page. Everything below is the direct import and is unchanged.
 
 **Parse the arguments:**
 - First token: the spec source.

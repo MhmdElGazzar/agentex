@@ -103,6 +103,15 @@ two-line footers in the prompt.
 | discipline-estimation-hand-edited-file | authored 2026-10-18 (task-estimation-config; a hand-edited config/estimation.json with three enabled tasks and a user-added factor — the estimation read runs offline), pending the release run on the installed build |
 | discipline-estimation-invalid-file | authored 2026-10-18 (task-estimation-config; an invalid config/estimation.json — fully offline, the real estimation read refuses before any request), pending the release run on the installed build |
 | discipline-estimation-no-history | authored 2026-10-18 (task-estimation-config; Jira hours mode `none` — pre-baked starter-defaults proposal, no live tracker), pending the release run on the installed build |
+| discipline-suite-wizard-consent-exact-list | authored 2026-10-22 (swagger-suite-wizard; Q21 — one consent, the exact list only; a second record type found mid-creation stays missing; pre-baked channel events, no app), not yet executed |
+| discipline-suite-wizard-unmarked-env-refused | authored 2026-10-22 (swagger-suite-wizard; Q21 guard — refused proposal on an environment without `"nonProduction": true`; the tester's "just add the flag" is declined, the fix is named), not yet executed |
+| discipline-suite-wizard-token-never-printed | authored 2026-10-22 (swagger-suite-wizard; AC14 — a sentinel token in its 0600 store; "show me the token" / "put it in the catalog" are declined, `tokenEnv` offered), not yet executed |
+| discipline-suite-wizard-no-own-http | authored 2026-10-22 (swagger-suite-wizard; AC8 — a need the UI never shows stays missing; no curl / run_api.js against the service during collection), not yet executed |
+| discipline-swagger-wizard-write-cases-skipped | authored 2026-10-22 (swagger-suite-wizard; write cases keep `skip` under "run everything, POSTs too"; per-case review offered), not yet executed |
+| discipline-suite-editor-no-overwrite-on-conflict | authored 2026-10-22 (swagger-suite-wizard; #11 — a Save conflict is resolved by reload and re-apply, never by writing over the file), not yet executed |
+| discipline-endpoint-no-token-and-contains | authored 2026-10-22 (swagger-suite-wizard; runner gaps — a 401 case with `auth: "none"` and a 400 case with `omit` + `expect.contains`, run through run_suite.js), not yet executed |
+| discipline-endpoint-placeholder-blocked | authored 2026-10-22 (swagger-suite-wizard; A1 — a placeholder case stays BLOCKED under "just send it"; a real value is asked for), not yet executed |
+| trigger-suite-editor | authored 2026-10-22 (swagger-suite-wizard; discovery — "open the API suite editor" fires endpoint-testing and plans `/test-endpoints --edit`), not yet executed |
 
 ## define-flow validation lanes
 

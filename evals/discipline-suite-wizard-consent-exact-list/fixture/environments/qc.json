@@ -1,0 +1,14 @@
+{
+  "portalUrl": "https://app.example.test",
+  "users": {
+    "qa_user_a": {
+      "email": "qa_user_a@example.test"
+    }
+  },
+  "defaults": {
+    "password": {
+      "envSecret": "DEFAULT_PASSWORD"
+    }
+  },
+  "nonProduction": true
+}

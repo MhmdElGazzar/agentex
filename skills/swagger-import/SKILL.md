@@ -3,7 +3,9 @@ name: swagger-import
 description: >
   Generate an API catalog + suite of test cases (integration/api_test_suites/<service>/) from
   a Swagger 2.0 or OpenAPI 3.x JSON document. Use for /import-swagger, or requests like
-  "import this swagger doc", "generate endpoint tests from this OpenAPI spec". Output feeds
+  "import this swagger doc", "generate endpoint tests from this OpenAPI spec", or the guided
+  wizard (/import-swagger --wizard) that collects real test data and previews basic checks
+  (happy path, not found, no token, missing field) before one approval. Output feeds
   directly into the endpoint-testing and api-integration skills — this skill only generates
   config, it never executes requests itself.
 ---
@@ -32,6 +34,15 @@ scheme selection works.
 - Both **Swagger 2.0** and **OpenAPI 3.x** are supported (detected from the doc itself).
 - Postman collections are **not** supported by this skill (separate, not-yet-built work) —
   if asked, say so rather than attempting to reinterpret a Postman export as a Swagger doc.
+
+## The suite wizard (`/import-swagger --wizard`)
+
+A local page walks the tester through spec → endpoints → test data → cases → one approval.
+Step 3 is the agent's: project values first, then the application's own network calls through
+the browser bridge, with one consent on an exact list before creating anything (non-production
+environments only). Read
+**`${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/references/suite-wizard.md`** before launching
+it; it is the whole protocol. The direct import below is unchanged.
 
 ## Running an import
 
