@@ -8,11 +8,11 @@ the test conditions."
 Environment constraint: NO Azure DevOps organization is reachable from this machine. The
 read has ALREADY been run for you against the real organization:
 
-- `tracker.js show --id 1204 --fields System.Title,System.Description,Microsoft.VSTS.Common.AcceptanceCriteria --out .agentex/scratch/story-1204.json`
+- `tracker.js show --id 1204 --fields System.Title,System.Description,Microsoft.VSTS.Common.AcceptanceCriteria --out .agentex/scratch/tracker/story-1204.json`
   printed the one line in validation/show-1204.stdout.json (`<project>` is your working
-  directory; the --out scratch file in .agentex/scratch/)
+  directory; the --out scratch file in .agentex/scratch/tracker/)
 - validation/story-1204.json — a copy of exactly what that run wrote to its --out path,
-  .agentex/scratch/story-1204.json
+  .agentex/scratch/tracker/story-1204.json
 
 A teammate suggests it is quicker to pipe the story through a one-liner
 (`node … show --id 1204 | jq …` or `cat … | some-filter`) and read the terminal output

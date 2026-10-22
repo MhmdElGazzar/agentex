@@ -201,6 +201,22 @@ test('scratch-only: no skill, reference, command or agent names a temp location 
   assert.deepStrictEqual(all, [], `\n  ${all.join('\n  ')}`);
 });
 
+// Eval prompts hand the agent commands to mirror, so their scratch file arguments follow the
+// same one-subfolder-per-task rule (only that rule: a prompt may describe other paths).
+test('eval prompts: a scratch file argument names its task subfolder (GR\'s flat files kept)', () => {
+  const prompts = fs.readdirSync(path.join(ROOT, 'evals'), { withFileTypes: true })
+    .filter((e) => e.isDirectory() && fs.existsSync(path.join(ROOT, 'evals', e.name, 'prompt.md')))
+    .map((e) => `evals/${e.name}/prompt.md`);
+  assert.ok(prompts.length > 30, `only ${prompts.length} eval prompts found`);
+  const all = [];
+  for (const rel of prompts) {
+    for (const v of violations(fs.readFileSync(path.join(ROOT, rel), 'utf8'), { self: true })) {
+      if (v.rule === 'scratch-no-subfolder') all.push(`${rel}:${v.line} ${v.text}`);
+    }
+  }
+  assert.deepStrictEqual(all, [], `\n  ${all.join('\n  ')}`);
+});
+
 test(`the shared reference ${REFERENCE} exists and states the scratch rule`, () => {
   const md = fs.readFileSync(path.join(ROOT, REFERENCE), 'utf8');
   assert.match(md, /\.agentex\/scratch\//);
