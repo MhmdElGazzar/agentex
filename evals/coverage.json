@@ -49,6 +49,7 @@
     "discipline-update-agentex-loud-check-failure": ["commands/update-agentex.md", "scripts/self_update.js"],
     "discipline-update-agentex-loud-pull-failure": ["commands/update-agentex.md", "scripts/self_update.js"],
     "discipline-update-agentex-one-gate-pull": ["commands/update-agentex.md", "scripts/self_update.js"],
+    "discipline-update-agentex-phantom-sample-relay": ["commands/update-agentex.md", "scripts/migrate.js", "scripts/migrations"],
     "discipline-update-agentex-relay": ["commands/update-agentex.md", "scripts/migrate.js", "scripts/migrations", "templates"],
     "discipline-update-agentex-stop-after-pull": ["commands/update-agentex.md", "scripts/self_update.js"],
     "negative-ask-kb-uninvited": ["skills/ask-kb", "commands/ask-kb.md", "skills/test-execution", "commands/execute-test.md"],
