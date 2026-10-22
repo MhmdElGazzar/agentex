@@ -81,7 +81,7 @@
 //   intent 0 of the same plan (exclusive create: a file that appeared is
 //   never replaced, and no task is sent); created.file reports it.
 //
-// Spec JSON shapes (written by the agent to the OS temp dir):
+// Spec JSON shapes (written by the agent to .agentex/scratch/tasks.json):
 //   ratings: { "assignee": "qa.engineer@example.com",
 //              "estimation": { "proposalFile": "<the --out file>", "outlierChoices": {…}, "taskEdits": {…} },
 //              "stories": [ { "id": <story id>, "ratings": { "<factor>": 0..4, … }, "adjust": { "<task>": <hours> | "skip" } } ] }
@@ -144,7 +144,7 @@ function isProposalFile(p) {
   catch { return false; }
 }
 const notAProposal = (p) => `--out ${p} already exists and is not a previous estimation proposal — ` +
-  'it is never replaced; pass a new scratch path in the OS temp dir. Nothing was written.';
+  'it is never replaced; pass a new scratch path in .agentex/scratch/. Nothing was written.';
 function writeProposalFile(p, text) {
   fs.mkdirSync(path.dirname(p), { recursive: true });
   let fd;
@@ -170,7 +170,7 @@ const localDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.
 //   no file               → the configured strategy's history read (the last N
 //                           closed sprints' [Testing] tasks, Original Estimate
 //                           only) → the proposal, written to the --out scratch
-//                           file the agent chose (OS temp) and summarized here
+//                           file the agent chose (.agentex/scratch/) and summarized here
 async function estimationCmd(args, { cwd, fetch, registry, resolveTracker, now }) {
   const file = ec.ESTIMATION_FILE_REL;
   const loaded = ec.loadEstimationConfig(cwd);
@@ -197,7 +197,7 @@ async function estimationCmd(args, { cwd, fetch, registry, resolveTracker, now }
     };
   }
   const usage = (why) => ({ code: 2, out: { ok: false, mode: 'estimation', error: { message: `${why} ${ESTIMATION_USAGE}` } } });
-  if (typeof args.out !== 'string' || !args.out.trim()) return usage('--out <file> is required: a scratch file in the OS temp dir for the proposal.');
+  if (typeof args.out !== 'string' || !args.out.trim()) return usage('--out <file> is required: a scratch file in .agentex/scratch/ for the proposal.');
   let count = ec.DEFAULT_SPRINTS;
   if (args.sprints !== undefined) {
     if (typeof args.sprints !== 'string' || !/^[1-9]\d*$/.test(args.sprints.trim())) {

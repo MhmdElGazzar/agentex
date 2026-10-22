@@ -11,9 +11,9 @@ dry-run validation have therefore ALREADY been executed for you against the real
 earlier — treat these files as the exact JSON the bundled script printed or wrote:
 
 - validation/estimation.json — what `create-tasks.js estimation --out
-  /tmp/estimation-proposal.json` printed (the --out scratch file is in the OS temp dir)
+  .agentex/scratch/estimation-proposal.json` printed (the --out scratch file in .agentex/scratch/)
 - validation/estimation-proposal.json — a copy of the proposal file that run wrote to its
-  --out path, /tmp/estimation-proposal.json (the spec below points at that path)
+  --out path, .agentex/scratch/estimation-proposal.json (the spec below points at that path)
 - validation/stories.json — what `create-tasks.js stories --current-sprint --full` printed
   (three stories in the open sprint)
 - validation/tasks.spec.json — the exact ratings spec you would have built from your

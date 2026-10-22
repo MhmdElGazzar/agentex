@@ -365,6 +365,27 @@ const post = (route, body, headers = {}) =>
       'every pristine sample is enumerated — the review step must list ALL files a save would reconcile');
   });
 
+  await test('A-2: projectPristine is true for the pre-A-2 project template too (historical shape)', async () => {
+    const projPath = path.join(projectDir2, 'config', 'project.json');
+    const current = fs.readFileSync(projPath, 'utf8');
+    const old = JSON.parse(current);
+    old.defaultsFields = [
+      { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+        hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+        hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+      { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+    ];
+    fs.writeFileSync(projPath, JSON.stringify(old, null, 2) + '\n');
+    try {
+      const data = await (await get2('/api/config')).json();
+      assert.strictEqual(data.projectPristine, true, 'an untouched older scaffold is still scaffolding');
+      old.name = 'my-real-project';
+      fs.writeFileSync(projPath, JSON.stringify(old, null, 2) + '\n');
+      const touched = await (await get2('/api/config')).json();
+      assert.strictEqual(touched.projectPristine, false, 'any user value makes it the user\'s');
+    } finally { fs.writeFileSync(projPath, current); }
+  });
+
   await test('a user-touched environment under the default name is prefilled and protected', async () => {
     const envPath = path.join(projectDir2, 'environments', 'qc.json');
     const touched = JSON.parse(fs.readFileSync(envPath, 'utf8'));

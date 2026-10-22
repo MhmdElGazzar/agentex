@@ -727,6 +727,7 @@ test('m10: a claimed file (any value changed) is the user\'s — never flagged',
 // ── m11 user-field-schema — additive built-ins backfill (design #4) ──────────
 const TPL_PROJECT = JSON.parse(fs.readFileSync(
   path.join(PLUGIN_ROOT, 'templates', 'config', 'project.json'), 'utf8'));
+const { LEGACY_DEFAULTS_FIELDS } = require('./wizard/engine.js');
 
 test('m11: pre-field-schema project gains the built-in arrays; environment files byte-identical', () => {
   const dir = repo({
@@ -749,7 +750,11 @@ test('m11: pre-field-schema project gains the built-in arrays; environment files
   const proj = readJson(dir, 'config/project.json');
   assert.deepStrictEqual(proj.userFields, TPL_PROJECT.userFields,
     'built-in userFields backfilled from the template — semantics-preserving');
-  assert.deepStrictEqual(proj.defaultsFields, TPL_PROJECT.defaultsFields);
+  // Decision A-2: the template's password descriptor is secret now, but this
+  // project's environment holds the plain literal the old wizard wrote — m11
+  // backfills the FROZEN legacy plain set, never the current template.
+  assert.deepStrictEqual(proj.defaultsFields, LEGACY_DEFAULTS_FIELDS);
+  assert.ok(!proj.defaultsFields.find(f => f.key === 'password').secret, 'the legacy plain descriptor');
   assert.strictEqual(proj.name, 'pre-fields', 'existing config values untouched');
   const after = snapshot(dir);
   assert.deepStrictEqual(subset(after, 'environments/'), subset(before, 'environments/'),
@@ -796,7 +801,7 @@ test('m11: only the missing array is added when one is already present', () => {
   assert.match(r.out, /\[migrated\] user-field-schema/);
   const proj = readJson(dir, 'config/project.json');
   assert.deepStrictEqual(proj.userFields, customUsers, 'the present array is never rewritten');
-  assert.deepStrictEqual(proj.defaultsFields, TPL_PROJECT.defaultsFields, 'the missing one is backfilled');
+  assert.deepStrictEqual(proj.defaultsFields, LEGACY_DEFAULTS_FIELDS, 'the missing one is backfilled (frozen legacy set, A-2)');
 });
 
 test('m11 + init: fresh scaffold carries the field arrays from the template', () => {
@@ -857,7 +862,7 @@ test('m05: entries already covered under another spelling are not rewritten', ()
 test('m05: the documented commit opt-in (!.agentex/cache/) is never re-ignored over', () => {
   const dir = repo({
     'test/suite1/smoke.md': SPEC_02,
-    '.gitignore': '.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n!.agentex/cache/\n',
+    '.gitignore': '.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n!.agentex/cache/\n.agentex/scratch/\n',
     '.env': 'AZURE_PAT=\n',
   });
   const before = readText(dir, '.gitignore');
@@ -890,6 +895,99 @@ test('m05 + init: fresh scaffold gitignores sessions and scratch, not just .env'
   assert.match(gi, /^\.env$/m);
   assert.match(gi, /^test\/\.auth\/$/m);
   assert.match(gi, /^\.playwright-cli\/$/m);
+});
+
+// The agent scratch location (.agentex/scratch/) reaches existing projects through
+// m05's state detection — no new migration; on a stamped project it arrives with
+// the next version bump.
+const GI_BEFORE_SCRATCH = 'node_modules/\n.env\ntest/.auth/\n.playwright-cli/\ntest/.ui-baselines/\n.agentex/cache/\nmy-notes/\n';
+
+test('m05: a project stamped at an older version gains ONLY .agentex/scratch/, order kept, re-run unchanged', () => {
+  const dir = proj();
+  runInit(dir);
+  addFiles(dir, { '.gitignore': GI_BEFORE_SCRATCH, '.agentex/version.json': JSON.stringify({ version: '0.23.0' }) + '\n' });
+  gitInit(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] gitignore-secrets — \.gitignore — \.agentex\/scratch\/ appended/);
+  const gi = readText(dir, '.gitignore');
+  assert.ok(gi.startsWith(GI_BEFORE_SCRATCH), 'existing lines and their order untouched');
+  assert.deepStrictEqual(gi.slice(GI_BEFORE_SCRATCH.length).split('\n').filter(l => l && !l.startsWith('#')), ['.agentex/scratch/']);
+  commitAll(dir);
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.23.0' }) + '\n');
+  commitAll(dir);
+  run(dir);
+  assert.strictEqual(readText(dir, '.gitignore'), gi, 'second run changes nothing');
+});
+
+test('m05: an equivalent spelling or a deliberate un-ignore of the scratch location is left unchanged', () => {
+  for (const line of ['.agentex/scratch', '!.agentex/scratch/']) {
+    const dir = proj();
+    runInit(dir);
+    addFiles(dir, { '.gitignore': GI_BEFORE_SCRATCH + line + '\n', '.agentex/version.json': JSON.stringify({ version: '0.23.0' }) + '\n' });
+    gitInit(dir);
+    const before = readText(dir, '.gitignore');
+    const r = run(dir);
+    assert.strictEqual(r.code, 0, r.out);
+    assert.ok(!/\[migrated\] gitignore-secrets/.test(r.out), line);
+    assert.strictEqual(readText(dir, '.gitignore'), before, `${line}: byte-identical`);
+  }
+});
+
+// ── optional pre-commit secret-scan hook: an offer or a consented install ─────
+// Runs before the version fast path (so a stamped project gets it), never a
+// migration, never touches the report counters or the stamp.
+const HOOK_FILE = '.git/hooks/pre-commit';
+function stampedCurrent() {
+  const dir = proj();
+  runInit(dir);
+  gitInit(dir);
+  return dir;
+}
+
+test('[hook] offer on a project stamped at the installed version (fast path); stamp unchanged, nothing installed', () => {
+  const dir = stampedCurrent();
+  const stamp = readText(dir, '.agentex/version.json');
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[hook\] offer .*--install-pre-commit-hook/m);
+  assert.match(r.out, /already up to date/i);
+  assert.strictEqual(readText(dir, '.agentex/version.json'), stamp);
+  assert.ok(!exists(dir, HOOK_FILE), 'no flag → never installs');
+});
+
+test('--install-pre-commit-hook on a stamped project → installed, still "already up to date", exit 0', () => {
+  const dir = stampedCurrent();
+  const r = run(dir, '--install-pre-commit-hook');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[hook\] installed \(/m);
+  assert.match(r.out, /already up to date/i);
+  assert.match(readText(dir, HOOK_FILE), /agentex-pre-commit-hook v1/);
+  const again = run(dir, '--install-pre-commit-hook');
+  assert.match(again.out, /^\[hook\] already installed/m);
+  assert.match(run(dir).out, /^\[hook\] installed/m, 'no offer once it is in place');
+});
+
+test('[hook] an existing foreign hook is left untouched, with the docs pointer', () => {
+  const dir = stampedCurrent();
+  addFiles(dir, { [HOOK_FILE]: '#!/bin/sh\necho mine\n' });
+  const r = run(dir, '--install-pre-commit-hook');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[hook\] existing hook left untouched.*#calling-the-scan-from-an-existing-hook/m);
+  assert.strictEqual(readText(dir, HOOK_FILE), '#!/bin/sh\necho mine\n');
+});
+
+test('[hook] on a migrating project: the consent install never changes [manual] counts or the stamp', () => {
+  const a = fixture010();
+  const b = fixture010();
+  const plain = run(a);
+  const consented = run(b, '--install-pre-commit-hook');
+  assert.strictEqual(plain.code, 0, plain.out);
+  assert.strictEqual(consented.code, plain.code);
+  const strip = (out, dir) => out.split('\n').filter(l => !l.startsWith('[hook]')).join('\n').split(dir).join('<dir>');
+  assert.strictEqual(strip(consented.out, b), strip(plain.out, a), 'identical report apart from the [hook] line');
+  assert.strictEqual(readJson(b, '.agentex/version.json').version, INSTALLED);
+  assert.ok(exists(b, HOOK_FILE) && !exists(a, HOOK_FILE));
 });
 
 // ── config/estimation.json — created only by an approved estimation run ──────

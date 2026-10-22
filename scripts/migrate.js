@@ -6,6 +6,8 @@
 // new homes, never reset to samples or placeholders.
 //
 // Usage: node migrate.js [projectDir]   (default: current working directory)
+//        consent flags, passed only after the user's explicit yes: --remove-phantom-sample,
+//        --install-pre-commit-hook (the optional secret-scan hook; offered on every run as a [hook] line)
 //
 // Apply-then-report, no preview gate. A clean git tree is required — git is the
 // rollback; the one gitignored file the engine rewrites (.env) is handled loss-proof
@@ -61,6 +63,16 @@ catch { insideRepo = false; }
 if (!insideRepo) {
   abort('not a git repository (or git is unavailable) — git is the rollback for a migration; run "git init" and commit your project first');
 }
+
+// Optional pre-commit secret-scan hook: an offer or a consented install, never a migration;
+// runs before the version fast path so stamped projects get it; never touches report counters,
+// so it can never withhold the stamp.
+try {
+  const hook = require('./lib/precommit_hook.js');
+  const r = flagArgs.includes('--install-pre-commit-hook')
+    ? hook.install(projectRoot, { pluginRoot }) : hook.status(projectRoot, { pluginRoot });
+  console.log(hook.engineLine(r));
+} catch { console.log('[hook] status unavailable - the migration continues'); }
 
 // ── Version gate fast paths (they write nothing, so they need no clean tree;
 //    the clean-tree guard below protects only actual migration work) ──────────
