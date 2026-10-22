@@ -20,6 +20,7 @@ const S = {
   field: 'EVAL_SENTINEL_SCAN_field_2b6n',
   remote: 'EVAL_SENTINEL_SCAN_remote_8w3t',
   json: 'EVAL_SENTINEL_SCAN_json_4h9p',
+  baseUrl: 'https://EVAL-SENTINEL-SCAN-baseurl-6c1r.example.test/v2',
 };
 const SHORT = '482913';
 const REMOTE_HOST = 'git.example.test';
@@ -237,6 +238,37 @@ test('non-secret config keys are not needles and are named', () => {
   assert.strictEqual(r.status, 0);
   assert.deepStrictEqual(r.json.valueCheck.notChecked.nonSecretKeys, ['AZURE_AREA_PATH', 'QA_URL']);
   assert.match(r.stderr, /non-secret config key/);
+});
+
+test('<NAME>_BASE_URL in .env and its URL in a staged environment file → CLEAN, key named as not value-checked, no "move to config"', () => {
+  const dir = repo({ env: `PETSTORE_BASE_URL=${S.baseUrl}\nAZURE_TEAM=Team A\n` });
+  write(dir, 'environments/qc.json', { name: 'qc', api: { baseUrl: S.baseUrl } });
+  write(dir, 'executions/api-tests/report.md', `# API run\n\nbase: ${S.baseUrl}\n`);
+  git(dir, 'add', '-A');
+  const r = scan(dir, 'staged', { args: ['--hook', '--project', ''] });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(r.json.result, 'CLEAN');
+  assert.deepStrictEqual(r.json.findings, []);
+  assert.deepStrictEqual(r.json.valueCheck.notChecked.baseUrlKeys, ['PETSTORE_BASE_URL']);
+  assert.ok(!r.json.valueCheck.notChecked.nonSecretKeys.includes('PETSTORE_BASE_URL'));
+  const baseLine = r.stderr.split('\n').find(l => l.includes('PETSTORE_BASE_URL'));
+  assert.match(baseLine, /1 base-URL key\(s\) in \.env not value-checked \(not secrets\): PETSTORE_BASE_URL$/);
+  assert.ok(!/move[^\n]*config/.test(baseLine), 'never told to move a base-URL key to config');
+  assert.match(r.stderr, /non-secret config key\(s\)[^\n]*AZURE_TEAM - move them to config/, 'the config-key line keeps its wording');
+});
+
+test('a real secret beside a <NAME>_BASE_URL key still LEAKs; the base URL itself never does', () => {
+  const dir = repo({ env: `PETSTORE_BASE_URL=${S.baseUrl}\nAPI_TOKEN=${S.token}\n` });
+  write(dir, 'environments/qc.json', { api: { baseUrl: S.baseUrl } });
+  write(dir, 'notes.md', `url ${S.baseUrl}\ntoken ${S.token}\n`);
+  git(dir, 'add', '-A');
+  const r = scan(dir, 'staged', { args: ['--hook', '--project', ''] });
+  assert.strictEqual(r.status, 1);
+  assert.deepStrictEqual(r.json.findings, [{ severity: 'leak', kind: 'secret-value', file: 'notes.md', line: 2, key: 'API_TOKEN' }]);
+  assert.match(r.stderr, /commit REFUSED/);
+  const baseLine = r.stderr.split('\n').find(l => l.includes('PETSTORE_BASE_URL'));
+  assert.ok(baseLine, 'the base-URL key is named');
+  assert.ok(!/move[^\n]*config/.test(baseLine));
 });
 
 test('binary (NUL) and oversize (--max-file-bytes) files are skipped and counted; a symlink is not followed', () => {

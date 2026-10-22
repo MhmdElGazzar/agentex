@@ -226,6 +226,9 @@ function summary(r, opts, prefix) {
   if (vc.notChecked.nonSecretKeys.length) {
     L(`  ${vc.notChecked.nonSecretKeys.length} non-secret config key(s) in .env were not value-checked: ${vc.notChecked.nonSecretKeys.join(', ')} - move them to config`);
   }
+  if (vc.notChecked.baseUrlKeys.length) {
+    L(`  ${vc.notChecked.baseUrlKeys.length} base-URL key(s) in .env not value-checked (not secrets): ${vc.notChecked.baseUrlKeys.join(', ')}`);
+  }
   const s = r.counts.skipped;
   if (s.binary || s.oversize || s.symlink || s.submodule) {
     L(`  files skipped: ${s.binary} binary, ${s.oversize} over ${opts.maxFileBytes} bytes, ${s.symlink} symlink, ${s.submodule} submodule`);
