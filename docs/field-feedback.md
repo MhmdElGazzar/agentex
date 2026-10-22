@@ -75,11 +75,13 @@ the new version's changelog and skills.
 
 - When nothing is covered, it says nothing.
 - When some forks only need a look, it lists them to review by hand and asks nothing.
-- Otherwise it shows **one** message in three groups: entries to mark absorbed, forks to retire,
-  and forks to review by hand. One yes or no.
+- Otherwise it shows **one** message with up to three groups (entries to mark absorbed, forks to
+  retire, forks to review by hand; an empty group is left out). One yes or no.
   - **Yes**: the entries are marked `[x]` with `absorbed in v<version>` (only those lines
     change), and the retired forks move to `.agentex/scratch/field-feedback/retired-skills/`
     (moved, never deleted; nothing is overwritten). Commit the result with the migration.
+    If moving a fork fails, the marks already written stay and the agent lists what was
+    applied; nothing is retried.
   - **No**, or no answer: nothing changes, and the same items are offered again next time.
 - If the learnings file or a fork has uncommitted changes, it asks you to commit them first and
   re-run.

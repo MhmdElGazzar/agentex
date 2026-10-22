@@ -82,7 +82,8 @@ flagged.
    attempt the migration by hand — every abort has a user-side fix:
    - *dirty working tree* → ask the user to commit (or remove the colliding
      untracked files) first; git is the rollback mechanism, so a clean starting
-     point is non-negotiable;
+     point is non-negotiable. A first AgenTeX learning leaves
+     `.agentex/plugin-learnings.md` untracked: commit it before updating;
    - *not a git repository* → `git init` + an initial commit, then re-run;
    - *stamp newer than the installed plugin* → the project was set up by a newer
      AgenTeX; the user should update the plugin instead;
@@ -208,9 +209,9 @@ flagged.
 
        - Exit 1 or 2 → one line: the plan was refused, the reason, and that nothing changed.
          Go to step 7.
-       - Exit 0 → **ask once.** Show the JSON's `message` verbatim (its three groups: mark
-         absorbed, retire, review by hand) and ask one yes/no question. No second question,
-         no per-item questions.
+       - Exit 0 → **ask once.** Show the JSON's `message` verbatim (its non-empty groups, in
+         order: mark absorbed, retire, review by hand) and ask one yes/no question. No
+         second question, no per-item questions.
          - **No, no answer, or a partial or conditional answer** → nothing changes (the
            items are offered again on the next run). Go to step 7.
          - **Yes** → run, with the `planSha` from the preview:
@@ -219,9 +220,13 @@ flagged.
            node "${CLAUDE_PLUGIN_ROOT}/scripts/field_feedback.js" absorb-apply --plan .agentex/scratch/field-feedback/absorb-plan.json --expect-sha <planSha>
            ```
 
-           Exit 0 → relay the exact counts per item (`marked`, `retired`, each `results[]`
-           line) and suggest committing them with the migration. Exit 1 or 2 → relay the
-           reason and that nothing was applied; never retry. Go to step 7.
+           - Exit 0 → relay the exact counts per item (`marked`, `retired`, each
+             `results[]` line) and suggest committing them with the migration.
+           - Exit 2 → relay the reason and that nothing was applied.
+           - Exit 1 → relay the reason and every `results[]` line, and say that some items
+             may already be applied (marks are written before forks move).
+
+           Never retry the apply. Go to step 7.
 
    Never edit `.agentex/plugin-learnings.md`, never move, copy or delete a forked skill
    yourself, and never change the plan between the preview and the apply. The script makes
