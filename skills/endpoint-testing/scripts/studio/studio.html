@@ -417,7 +417,8 @@ function openDrawer(c) {
   const skipWhy = el('input', { value: c.skip ? String(c.skip) : '' });
   const last = lastOf(c);
   const logBox = el('pre', { class: 'log mono', hidden: true });
-  d.replaceChildren(
+  // replaceChildren turns a null argument into the text "null": drop the absent rows.
+  d.replaceChildren(...[
     el('div', { class: 'bar' }, el('strong', { class: 'grow', text: c.name }), el('button', { onclick: closeDrawer, text: t('dr.close') })),
     el('h3', { text: t('dr.case') }), el('label', {}, t('dr.name'), ' ', nameIn),
     el('h3', { text: t('dr.auth') }), el('label', {}, authSuite, ' ', t('auth.suite')), ' ', el('label', {}, authNone, ' ', t('auth.none')),
@@ -431,7 +432,7 @@ function openDrawer(c) {
     el('div', { class: 'actions' },
       el('button', { onclick: () => deleteCase(c), text: t('dr.delete') }),
       el('button', { onclick: () => startRun(c.__i), disabled: !c.__i, text: t('dr.runCase') }),
-      el('button', { class: 'primary', onclick: () => applyDrawer(c, { nameIn, authNone, statusIn, fieldsIn, msgPath, msgText, msgMatch, skipOn, skipWhy, form, mc }), text: t('dr.apply') })));
+      el('button', { class: 'primary', onclick: () => applyDrawer(c, { nameIn, authNone, statusIn, fieldsIn, msgPath, msgText, msgMatch, skipOn, skipWhy, form, mc }), text: t('dr.apply') }))].filter(Boolean));
   d.hidden = false;
   if (last && last.log) api('GET', `/api/log?path=${encodeURIComponent(last.log)}`).then(r => { if (r.ok) { logBox.textContent = r.text; logBox.hidden = false; } });
 }
@@ -502,7 +503,7 @@ async function save(acceptFormat) {
     const box = $('edMsg');
     box.replaceChildren(el('div', { class: 'note err' }, t('ed.conflict'),
       el('div', { class: 'muted', text: t('ed.unsavedList') }), el('ul', {}, ED.edits.map(e => el('li', { class: 'mono', text: editSummary(e) }))),
-      el('button', { onclick: () => { ED.edits = []; openSuite(ED.path, true); }, text: t('ed.reload') })));
+      el('button', { onclick: () => { ED.edits = []; box.replaceChildren(); openSuite(ED.path, true); }, text: t('ed.reload') })));
     return false;
   }
   note('edMsg', 'err', t('app.error', { msg: r.message || r.error }));

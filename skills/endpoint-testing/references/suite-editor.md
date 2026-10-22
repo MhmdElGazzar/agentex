@@ -61,7 +61,8 @@ From the project root, in the background:
   `run_suite.js --suite <file> [--case <n>] --env <top-bar env>`.
 - The evidence goes in `executions/execu_<ts>/api-tests/`, as `/test-endpoints` leaves it:
   per-case logs and `suite-result.json`. A deterministic `result.md` reads "Severity: not
-  rated (run from the editor — ask the agent in chat to triage)". If the tester asks, triage
+  rated (run from the editor — ask the agent in chat to triage)" ("run from the suite wizard"
+  when the run came from Approve and run). If the tester asks, triage
   the failures from that folder's logs.
 - With unsaved edits, the page offers "Save and run" or "Cancel": a run always matches the
   file on disk. A file that changed on disk must be reloaded first.

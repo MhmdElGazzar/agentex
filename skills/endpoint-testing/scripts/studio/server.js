@@ -33,6 +33,7 @@ const S = require('./suite_store.js');
 const D = require('./data_store.js');
 const W = require('../write_result.js');
 const pc = require(path.join(__dirname, '..', '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
+const { runStamp } = require(path.join(__dirname, '..', '..', '..', '..', 'scripts', 'lib', 'run_stamp.js'));
 
 const DEFAULT_PORT = 7380;                 // (Q8)
 const IDLE_MS = 120 * 60 * 1000;           // shut down after 120 min without a request (Q8)
@@ -48,7 +49,7 @@ function pidAlive(pid) {
   if (!pid) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 }
-const stamp = (d = new Date()) => d.toISOString().replace(/\.\d+Z$/, '').replace('T', '_').replace(/:/g, '-');
+const stamp = runStamp; // the same local-time name init_run.js gives /test-endpoints runs
 
 function envList(root) {
   let def = null;
@@ -144,7 +145,7 @@ async function createStudio(opts) {
   const studio = { state, route, root, envList: () => envList(root), startRun, sessionFile: sessionFile(root) };
 
   // ---- runs (editor; also "Approve and run now") ----
-  function startRun({ suite, caseN, env }) {
+  function startRun({ suite, caseN, env, origin }) {
     if (state.activeRun) return { status: 409, body: { ok: false, error: 'busy' } };
     let loaded;
     try { loaded = S.load(root, suite); } catch (e) { return { status: 400, body: { ok: false, error: 'bad-suite', message: e.message } }; }
@@ -172,7 +173,7 @@ async function createStudio(opts) {
       try {
         const resFile = path.join(root, runDir, 'suite-result.json');
         run.result = JSON.parse(fs.readFileSync(resFile, 'utf8'));
-        W.writeResult(resFile, path.join(root, runDir, 'result.md'), root);
+        W.writeResult(resFile, path.join(root, runDir, 'result.md'), root, { origin });
       } catch (e) { run.result = { result: 'BLOCKED', reason: `the run left no result: ${e.message}`, cases: [] }; }
       run.status = 'done';
       state.activeRun = null;

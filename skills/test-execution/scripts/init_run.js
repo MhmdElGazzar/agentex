@@ -20,6 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { runStamp } = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'run_stamp.js'));
 
 let labels = ['run'];
 const args = process.argv.slice(2);
@@ -57,7 +58,7 @@ labels = labels.map((l, i) => (labels.indexOf(l) === i ? l : `${l}-${i + 1}`));
 
 const d = new Date();
 const p = n => String(n).padStart(2, '0');
-const ts = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+const ts = runStamp(d);
 
 let runDir = path.join('executions', `execu_${ts}`);
 for (let n = 2; fs.existsSync(runDir); n++) runDir = path.join('executions', `execu_${ts}-${n}`);
