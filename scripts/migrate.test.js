@@ -1273,6 +1273,23 @@ test('m13 through the engine: the existing executions/ bullet stays byte-identic
   assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED);
 });
 
+test('m13 through the engine: a pristine block rendered without the plugin-learnings and promote rows is refreshed; bytes outside the block are unchanged', () => {
+  const without = layout.renderBlock({ routes: layout.ROUTES.filter((r) => r.id !== 'plugin-learnings' && r.id !== 'promote') });
+  assert.ok(!without.includes('plugin-learnings.md') && !without.includes('[agentex:promote]'), 'the fixture really lacks both rows');
+  const before = `${USER_MD}\n${CLAUDE_MD_BULLET}\n`; const after = '\n- my later rule\n';
+  const dir = previousRelease(`${before}${without}${after}`);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[migrated\] claude-md-layout-block — CLAUDE\.md — AgenTeX layout block refreshed/);
+  assert.ok(!/\[flag\] CLAUDE\.md/.test(r.out), 'a pristine block is refreshed, never flagged');
+  const out = claudeBytes(dir).toString();
+  assert.ok(out.startsWith(before) && out.endsWith(after), 'every byte outside the block unchanged');
+  assert.strictEqual(out, `${before}${BLOCK()}${after}`);
+  assert.ok(out.includes('.agentex/plugin-learnings.md') && out.includes('[agentex:promote]'), 'the block now carries both rows');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED);
+  assert.ok(!exists(dir, '.agentex/plugin-learnings.md'), 'the migration never creates the learnings file');
+});
+
 test('m13: an edited block → [flag] naming the file and the fix, zero bytes changed, the stamp still moves', () => {
   const edited = BLOCK().replace('Keep your own rules', 'Keep MY own rules');
   const start = `${USER_MD}\n${edited}\n`;

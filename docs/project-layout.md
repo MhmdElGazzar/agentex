@@ -20,6 +20,7 @@ layout, the block AgenTeX keeps in your `CLAUDE.md`, and the stray-file check th
 │   └── gotchas.md       recurring tool or environment problems, with their workaround
 ├── qa-watchlist/        open items with a trigger (paths set in config/project.json → qaRecords)
 ├── .agentex/            plugin state (version stamp, test template)
+│   ├── plugin-learnings.md   gaps in AgenTeX itself that this project worked around (committed)
 │   ├── scratch/         every temp, probe, dump or intermediate file (gitignored)
 │   └── cache/           tracker field metadata (gitignored)
 └── executions/          run output: reports, screenshots, logs
@@ -72,6 +73,8 @@ The block's routing table, as it ships:
 | Run output: reports, screenshots, logs | `executions/` |
 | Any temp, probe, exploration, dump or intermediate file, including every `--out`, `--spec` and `--*-file` argument and your own helper scripts | `.agentex/scratch/`, one subfolder per task, and nowhere else |
 | A rule about how you should work in this project | `CLAUDE.md`, outside this block |
+| A workaround for a gap in the AgenTeX plugin itself: a plugin skill, command or script failed or could not do the job, the user had to repeat a correction, you wrote a helper script for something AgenTeX should do, or an AgenTeX skill was copied into `.claude/skills/` | One entry in `.agentex/plugin-learnings.md`, appended only through AgenTeX's `field-feedback` skill; never by hand, never edit an existing entry |
+| A project rule you believe the AgenTeX plugin itself should adopt | A `CLAUDE.md` bullet outside this block, tagged `[agentex:promote]` |
 | Anything about this project or its application you want to remember next session | The matching row above (usually `knowledge/`), never your personal memory: no teammate ever sees it. Personal memory is only for the user's own preferences |
 
 ## `knowledge/` and `INDEX.md`

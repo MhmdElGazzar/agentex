@@ -205,6 +205,15 @@ test('root files with no clear destination, and undefined .agentex/ files, are l
   assert.deepStrictEqual(paths(r, 'litter'), ['run.sh'], 'a root agent script is litter');
 });
 
+test('the learnings file is plugin-defined (never a candidate, tracked or not); another undefined .agentex/ file still is', () => {
+  const dir = repo({ tracked: { '.agentex/plugin-learnings.md': '<!-- agentex:plugin-learnings schemaVersion=1 -->\n', '.agentex/foo.md': '# f' } });
+  const r = list(dir);
+  assert.ok(!r.candidates.some((c) => c.path === '.agentex/plugin-learnings.md'), 'the learnings file is not reported');
+  assert.deepStrictEqual(paths(r, 'unplaced'), ['.agentex/foo.md']);
+  const untracked = repo({ untracked: { '.agentex/plugin-learnings.md': 'x\n' } });
+  assert.ok(!list(untracked).candidates.some((c) => c.path === '.agentex/plugin-learnings.md'), 'untracked, still not reported');
+});
+
 test('OS metadata is never listed; symlinks are listed as never moved and never followed; legacy agentex.config.json is not listed', () => {
   const dir = repo({ tracked: { 'agentex.config.json': '{}' }, untracked: { '.DS_Store': 'x', 'docs/Thumbs.db': 'x', 'real/probe-target.mjs': 'x' } });
   fs.symlinkSync('real', path.join(dir, 'linked-dir'));
