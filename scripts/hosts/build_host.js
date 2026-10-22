@@ -41,10 +41,11 @@ const { runGuards } = require('./guards.js');
 // Never shipped by any host: evals, unit tests and their golden fixtures, CI, the
 // line-ending pin (directory validation stops on a root .gitattributes), the host
 // build machinery itself, the maintainer runners (parallel test runner, gate-lane
-// planner) and maintainer dev tooling (scripts/dev).
+// planner), maintainer dev tooling (scripts/dev) and the field-feedback harvest
+// (scripts/harvest: it reads consumer projects, so it never reaches one).
 const COMMON_EXCLUDES = ['evals', '**/*.test.js', 'skills/*/scripts/golden', 'scripts/golden', '.github', '.gitattributes',
   'hosts', 'scripts/hosts', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/dev', 'scripts/lint_plugin.js',
-  'changelog.d'];
+  'scripts/harvest', 'changelog.d'];
 
 // Markers a builder-made commit carries in its message. The legacy line is the
 // pre-hosts store sync (scripts/store/sync_store_branch.js), whose commits `store`

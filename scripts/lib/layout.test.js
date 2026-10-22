@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const layout = require('./layout.js');
 const scaffold = require('./scaffold.js');
 const { STRUCTURED_DEFAULTS } = require('./project_config.js');
@@ -33,20 +34,30 @@ const LF = '\n';
 const CRLF = '\r\n';
 // A pristine block rendered from an older route table — the "stale" shape a release that
 // added a row meets in an existing project.
-const OLD_ROUTES = layout.ROUTES.slice(0, -1);
+const OLD_ROUTES = layout.ROUTES.filter((r) => r.id !== 'plugin-learnings' && r.id !== 'promote');
 const staleBlock = (eol = LF) => layout.renderBlock({ eol, routes: OLD_ROUTES });
 const currentBlock = (eol = LF) => layout.renderBlock({ eol });
 const EXTRA_ROUTE = { id: 'test-extra', write: 'A test-only extra row', to: '`extra/`', owns: ['extra/'] };
 
 // ── render ──────────────────────────────────────────────────────────────────
-test('ROUTES: the ids in order, memory last (owner amendment 2026-10-22)', () => {
+test('ROUTES: the ids in order, memory last (owner amendment 2026-10-22), the plugin-gap rows just before it', () => {
   assert.deepStrictEqual(layout.ROUTES.map((r) => r.id),
-    ['knowledge', 'watchlist', 'specs', 'config', 'runs', 'scratch', 'rules', 'memory']);
+    ['knowledge', 'watchlist', 'specs', 'config', 'runs', 'scratch', 'rules', 'plugin-learnings', 'promote', 'memory']);
   for (const r of layout.ROUTES) {
     assert.ok(typeof r.write === 'string' && r.write && typeof r.to === 'string' && r.to, r.id);
     assert.ok(Array.isArray(r.owns), `${r.id}: owns is an array`);
   }
   assert.deepStrictEqual(layout.ROUTES.find((r) => r.id === 'memory').owns, [], 'memory owns nothing on disk');
+});
+
+test('ROUTES: plugin-learnings owns the learnings file, promote owns nothing; no cell holds a pipe or ${CLAUDE_PLUGIN_ROOT}', () => {
+  assert.deepStrictEqual(layout.ROUTES.find((r) => r.id === 'plugin-learnings').owns, ['.agentex/plugin-learnings.md']);
+  assert.deepStrictEqual(layout.ROUTES.find((r) => r.id === 'promote').owns, []);
+  const rows = layout.renderBody().split('\n');
+  assert.ok(rows.includes('| A project rule you believe the AgenTeX plugin itself should adopt | A `CLAUDE.md` bullet outside this block, tagged `[agentex:promote]` |'));
+  for (const r of layout.ROUTES) assert.ok(!r.write.includes('|') && !r.to.includes('|') && !r.write.includes('CLAUDE_PLUGIN_ROOT') && !r.to.includes('CLAUDE_PLUGIN_ROOT'), r.id);
+  const memory = layout.ROUTES.findIndex((r) => r.id === 'memory');
+  assert.strictEqual(memory, layout.ROUTES.length - 1, 'memory stays last: its "matching row above" covers plugin gaps too');
 });
 
 test('render: the memory row routes lasting facts to the project, never personal memory', () => {
@@ -74,9 +85,12 @@ test('render: never "test-run artifacts", never ${CLAUDE_PLUGIN_ROOT}, never a q
   assert.ok(!block.includes('qa-watchlist'), 'not even the default folder');
 });
 
-test('render: the whole block stays within the 3 KB budget', () => {
+// A tunable default (Q8). 3 KB held until the field-feedback rows (plugin-learnings, promote)
+// were added; the block is loaded every session, so additions stay deliberate.
+const BLOCK_BUDGET_BYTES = 4096;
+test('render: the whole block stays within the 4 KB budget', () => {
   const bytes = Buffer.byteLength(currentBlock(CRLF));
-  assert.ok(bytes <= 3072, `${bytes} bytes`);
+  assert.ok(bytes <= BLOCK_BUDGET_BYTES, `${bytes} bytes`);
 });
 
 test('render: marker lines and hash = sha256/12 of the LF body', () => {
@@ -425,6 +439,14 @@ test('definedPaths: an invalid qaRecords block falls back to the defaults with o
 test('definedPaths: an extra route\'s owns becomes plugin-defined', () => {
   const { paths } = layout.definedPaths(proj(), { routes: [...layout.ROUTES, EXTRA_ROUTE] });
   assert.ok(paths.includes('extra/'));
+});
+
+test('no scaffold .gitignore entry matches the learnings file (it is committed), while scratch stays ignored', () => {
+  const dir = proj({ '.gitignore': `${scaffold.GITIGNORE_ENTRIES.map((e) => e.entry).join('\n')}\n`, '.agentex/plugin-learnings.md': 'x\n', '.agentex/scratch/field-feedback/export-x.md': 'x\n' });
+  const git = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf8' });
+  git('init', '-q');
+  assert.strictEqual(git('check-ignore', '-q', '--', '.agentex/plugin-learnings.md').status, 1, 'the learnings file is not ignored');
+  assert.strictEqual(git('check-ignore', '-q', '--', '.agentex/scratch/field-feedback/export-x.md').status, 0, 'the export folder is ignored');
 });
 
 // ── docs/project-layout.md mirrors the data (R7) ─────────────────────────────

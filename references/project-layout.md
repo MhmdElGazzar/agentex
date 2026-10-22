@@ -20,6 +20,7 @@ executors. This page explains the parts of it that need more than one table row.
 │   └── gotchas.md       recurring tool or environment problems, with their workaround
 ├── qa-watchlist/        open items with a trigger (paths from config/project.json → qaRecords)
 ├── .agentex/            plugin state (version stamp, test template)
+│   ├── plugin-learnings.md   gaps in AgenTeX itself that this project worked around (committed)
 │   ├── scratch/         every temp, probe, dump or intermediate file (gitignored)
 │   └── cache/           tracker field metadata (gitignored)
 └── executions/          run output: reports, screenshots, logs
@@ -69,7 +70,8 @@ observed repeatedly and confirmed by the user. A one-off observation is not sett
   appended with its own source and date; point out the conflict and ask which one stands.
 - **Committed.** `knowledge/` is never gitignored.
 - **Not the plugin's own feedback.** A workaround for an AgenTeX defect is not an application
-  fact and does not belong in `gotchas.md`.
+  fact and does not belong in `gotchas.md`. `knowledge/gotchas.md` holds problems with
+  the app's tools or environment; a gap in AgenTeX itself goes to `.agentex/plugin-learnings.md`.
 
 ## 3. Lifecycle
 
@@ -107,6 +109,7 @@ observed repeatedly and confirmed by the user. A one-off observation is not sett
   | `swagger/` | a fetched API definition staged for the importer |
   | `login/` | the login script and its failure dumps |
   | `define-flow/` | the running draft of a flow definition |
+  | `field-feedback/` | AgenTeX learnings exports, the absorption plan, retired forked skills |
   | `probes/` | any other probe or exploration script, and its output |
 
   Test design and estimation keep their flat files (`cases.json`, `tasks.json`,

@@ -69,6 +69,21 @@ const ROUTES = [
     to: '`CLAUDE.md`, outside this block',
     owns: ['CLAUDE.md'],
   },
+  // Field feedback loop: a gap in the plugin itself goes to the learnings file, through the
+  // `field-feedback` skill only; a project rule the plugin should adopt is tagged. Both sit
+  // before `memory`, whose "matching row above" then covers plugin gaps too.
+  {
+    id: 'plugin-learnings',
+    write: 'A workaround for a gap in the AgenTeX plugin itself: a plugin skill, command or script failed or could not do the job, the user had to repeat a correction, you wrote a helper script for something AgenTeX should do, or an AgenTeX skill was copied into `.claude/skills/`',
+    to: 'One entry in `.agentex/plugin-learnings.md`, appended only through AgenTeX\'s `field-feedback` skill; never by hand, never edit an existing entry',
+    owns: ['.agentex/plugin-learnings.md'],
+  },
+  {
+    id: 'promote',
+    write: 'A project rule you believe the AgenTeX plugin itself should adopt',
+    to: 'A `CLAUDE.md` bullet outside this block, tagged `[agentex:promote]`',
+    owns: [],
+  },
   // Owner amendment 2026-10-22: Claude Code's auto-memory lives per machine, outside the
   // repo, so a lesson saved there never reaches a teammate who pulls. This row closes
   // that leak. Routing only — nothing on disk to own.

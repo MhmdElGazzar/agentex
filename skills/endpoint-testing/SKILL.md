@@ -144,3 +144,7 @@ One log per case under `<RUN_DIR>/logs/<suiteBase>__<index>-<case-name>.log` (un
 case names repeat), plus a final `result.md` written by
 `api-executor` summarizing PASS/FAIL/BLOCKED counts and any failures in the project's
 standard defect format.
+
+When you present the api-executor report, relay one line per id on its `LEARNINGS:` line
+("Recorded an AgenTeX learning `<id>` in `.agentex/plugin-learnings.md`."); no such line →
+nothing to relay. Never ask about them.

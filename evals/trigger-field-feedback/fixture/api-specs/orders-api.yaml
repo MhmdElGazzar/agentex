@@ -1,0 +1,29 @@
+openapi: 3.0.3
+info:
+  title: Orders API
+  version: 1.0.0
+servers:
+  - url: https://api.demo.example
+paths:
+  /orders:
+    get:
+      operationId: listOrders
+      summary: List orders
+      responses:
+        "200":
+          description: OK
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      summary: Get one order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not found

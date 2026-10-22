@@ -13,6 +13,7 @@ Documentation for anyone building or extending the plugin itself — as opposed 
 | [Testing](./testing.md) | Running and writing script tests. |
 | [PR Workflow](./pr-workflow.md) | Fork → branch → PR, what's checked on review. |
 | [Host Branches](./host-branches.md) | How `main` becomes the `store`, `copilot`, `devin` and `codex` branches, and what breaks a host build. |
+| [Field feedback and the harvest](./field-feedback-harvest.md) | The capture, absorb, export and harvest loop, what leaves a machine (nothing automatically), and how to run the maintainer harvest. |
 
 New to Claude Code plugins entirely? Start at [Claude Code 101](./claude-code-101.md). Already
 comfortable with plugins/skills/commands and just want to add something? Jump straight to

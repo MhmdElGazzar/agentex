@@ -87,6 +87,17 @@ test('changelog fragments (changelog.d) are inert — never shipped, so they gat
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan), plan.unmapped], [true, false, [], []]);
 });
 
+test('field-feedback: the consumer scripts, their libraries and the skill map to setup; the maintainer harvest is inert', () => {
+  const plan = gp.planLanes(['scripts/field_feedback.js', 'scripts/lib/learnings.js', 'scripts/lib/plugin_inventory.js', 'scripts/lib/feedback_sanitize.js',
+    'skills/field-feedback/SKILL.md', 'skills/field-feedback/references/capture.md']);
+  assert.deepStrictEqual([plan.docsOnly, plan.full, plan.unmapped, runs(plan)], [false, false, [], ['setup', 'wizard']]);
+  for (const f of ['scripts/field_feedback.js', 'scripts/lib/learnings.js', 'scripts/lib/plugin_inventory.js', 'scripts/lib/feedback_sanitize.js', 'skills/field-feedback/SKILL.md']) {
+    assert.ok(plan.lanes.setup.because.includes(f), `${f} named under setup`);
+  }
+  const harvest = gp.planLanes(['scripts/harvest/harvest.js', 'scripts/harvest/README.md']);
+  assert.deepStrictEqual([harvest.docsOnly, harvest.full, runs(harvest), harvest.unmapped], [true, false, [], []]);
+});
+
 test('an empty diff is docsOnly too — nothing to gate', () => {
   const plan = gp.planLanes([]);
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan)], [true, false, []]);
