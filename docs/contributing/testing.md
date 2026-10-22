@@ -72,8 +72,12 @@ Also `--base <ref>` (default `main`), `--files a,b` (skip the git lookup) and `-
 - **Evals** — from `evals/coverage.json`, which maps each case to the paths it exercises. A
   changed `.js` file also counts for every file that requires or spawns it. A changed
   `description` in any `skills/*/SKILL.md` or `commands/*.md` selects every `trigger-*` and
-  `negative-*` case, since triggering depends on all descriptions together. Evals are only
-  listed, never started — each `claude plugin eval` run is slow and paid.
+  `negative-*` case, since triggering depends on all descriptions together. A coverage pattern
+  that names a **folder** (no file extension, such as `skills/bug-report-azure`) covers the
+  prompts, references and data below it but never its scripts: a changed script, directly or
+  through a file that requires it, selects a case only when a pattern names that script or a file
+  that requires it (a `*.test.js` still counts like any other file). Evals are only listed, never
+  started — each `claude plugin eval` run is slow and paid.
 - **No impact** — anything outside `skills/`, `scripts/`, `commands/`, `agents/`,
   `templates/`, `hosts/`, `references/`, `evals/`, `test/` and `.claude-plugin/` (docs,
   CHANGELOG).
