@@ -1,5 +1,5 @@
 ---
-description: Initialize AgenTeX in the current project — scaffold a sample test suite, config/project.json, environments/qc.json, the executions output folder, a keys-only .env file, and CLAUDE.md guidance.
+description: Initialize AgenTeX in the current project — scaffold a sample test suite, config/project.json, environments/qc.json, the executions output folder, a keys-only .env file, and CLAUDE.md guidance (the executions/ bullet and the AgenTeX layout block).
 ---
 
 Initialize **AgenTeX** in the current project so the user has a working starting point.
@@ -12,7 +12,8 @@ Do these steps, then report what was created:
    ```
 
    It performs the whole file scaffold in one call, idempotently — existing files are
-   never overwritten, `CLAUDE.md`/`.gitignore` are append-only:
+   never overwritten, `.gitignore` is append-only, and `CLAUDE.md` is append-only outside
+   the AgenTeX layout block (the plugin writes only between that block's markers):
    - sample specs → `./test/suite1/` + `./test/README.md` (skipped entirely if the user
      already has their own specs under `./test/`)
    - `./executions/` output folder (no timestamped run folder — that happens at run time)
@@ -20,9 +21,15 @@ Do these steps, then report what was created:
    - `./environments/qc.json` — sample environment (portal URL, defaults, test users, db/api targets); copied only when `./environments/` has no environment files yet, and the wizard reconciles it to the name the user actually chooses
    - keys-only secrets `./.env` (PAT, DB password, API token, KB key) from the plugin's `.env.example` (every value left empty) and, in `.gitignore`, entries for everything that holds a live credential — `.env`, `test/.auth/` (saved login sessions) and `.playwright-cli/` (browser scratch profile)
    - `./integration/` with `sample_api.json` + `sample_db.json`
-   - the `executions/` guidance bullet in `CLAUDE.md`
+   - the `executions/` guidance bullet in `CLAUDE.md`, then the **AgenTeX layout block**: the
+     routing table ("if you are about to write X, put it in Y"), the read-`knowledge/INDEX.md`-first
+     rule and the knowledge/watchlist lifecycle, between `<!-- agentex:begin project-layout … -->`
+     and `<!-- agentex:end project-layout -->`. A re-run refreshes a block the user never
+     touched and leaves an edited one alone with a `[flag]` (relay it: the fix is to move their
+     own lines outside the block, delete the block, and re-run). `knowledge/` itself is not
+     created here — the agent creates each file on its first recorded fact
 
-   Relay its `[created]`/`[skipped]` summary to the user. If `node` is missing, tell the
+   Relay its `[created]`/`[skipped]`/`[flag]` summary to the user. If `node` is missing, tell the
    user to install Node.js first (playwright-cli needs it anyway) instead of replicating
    the steps by hand.
 

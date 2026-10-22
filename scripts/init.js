@@ -1,9 +1,11 @@
 // AgenTeX project scaffolder — the file-scaffolding steps of /init-test in a single call.
 //
 // Usage: node init.js [projectDir]   (default: current working directory)
-// Idempotent and non-destructive: never overwrites an existing file; CLAUDE.md and
-// .gitignore are append-only. Prints one [created]/[skipped] line per action and a
-// final summary. Exit 0 on success, 1 on error.
+// Idempotent and non-destructive: never overwrites an existing file; .gitignore is
+// append-only, and CLAUDE.md is append-only outside the AgenTeX layout block (inserted
+// once, refreshed in place while pristine, a hand-edited block only flagged). Prints one
+// [created]/[skipped]/[flag] line per action and a final summary. Exit 0 on success, 1 on
+// error.
 //
 // The scaffold actions themselves live in scripts/lib/scaffold.js, shared with the
 // /update-agentex migration engine — one definition of "current conventions".
@@ -23,6 +25,7 @@ if (projectRoot === pluginRoot) {
 let created = 0, skipped = 0;
 const print = a => {
   if (a.kind === 'created') created++; else skipped++;
+  if (a.kind === 'flag') { console.log(`[flag] ${a.message}`); return; }
   console.log(`[${a.kind}] ${a.path}${a.note ? ` — ${a.note}` : ''}`);
 };
 

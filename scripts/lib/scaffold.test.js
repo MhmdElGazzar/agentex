@@ -102,7 +102,9 @@ test('the prior entries are unchanged and in order; the scratch entry is appende
 test('the entries stay narrow: committed plugin files, qa-watchlist, .claude and executions are never ignored', () => {
   const dir = scaffoldedRepo();
   for (const rel of ['.agentex/version.json', '.agentex/test-template.md', '.agentex/task-estimation.json',
-    '.agentex/estimation-history.jsonl', 'qa-watchlist/a.md', '.claude/settings.json', 'executions/', 'executions/x/report.md']) {
+    '.agentex/estimation-history.jsonl', 'qa-watchlist/a.md', '.claude/settings.json', 'executions/', 'executions/x/report.md',
+    // knowledge/ is committed (project-layout-contract R2.5)
+    'knowledge/INDEX.md', 'knowledge/business-rules.md', 'knowledge/app-map.md', 'knowledge/gotchas.md']) {
     assert.strictEqual(checkIgnored(dir, rel), false, `${rel} must not be ignored`);
   }
   const entries = scaffold.GITIGNORE_ENTRIES.map(e => e.entry);
@@ -112,6 +114,23 @@ test('the entries stay narrow: committed plugin files, qa-watchlist, .claude and
   for (const harness of ['.claude/worktrees/', '.claude/settings.local.json']) {
     assert.ok(!entries.includes(harness), `${harness} is a docs recommendation, not a scaffold entry`);
   }
+});
+
+// ---- CLAUDE.md: the AgenTeX layout block (scripts/lib/layout.js) ----
+test('a fresh scaffold has exactly one AgenTeX layout block, current, after the executions/ bullet', () => {
+  const layout = require('./layout.js');
+  const dir = proj();
+  const actions = scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  const text = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+  assert.strictEqual(text.split(layout.BEGIN_PREFIX).length - 1, 1, 'one begin marker');
+  assert.strictEqual(text.split(layout.END_MARKER).length - 1, 1, 'one end marker');
+  assert.strictEqual(layout.parseBlock(Buffer.from(text)).state, 'current');
+  assert.ok(text.startsWith(scaffold.CLAUDE_MD_BULLET), 'the bullet first, as before');
+  assert.strictEqual(text, `${scaffold.CLAUDE_MD_BULLET}\n${layout.renderBlock()}\n`);
+  assert.ok(actions.some((a) => a.path === 'CLAUDE.md' && a.state === 'created'));
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), text, 're-run: one block, byte-identical');
+  assert.ok(!fs.existsSync(path.join(dir, 'knowledge')), 'knowledge/ is created on first write, never scaffolded');
 });
 
 test('the scratch entry: an equivalent spelling or a deliberate un-ignore counts as covered', () => {
