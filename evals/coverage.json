@@ -22,6 +22,7 @@
     "discipline-define-flow-forward-only": ["skills/define-flow", "skills/browser-driver", "commands/define-flow.md"],
     "discipline-define-flow-symbolic-values": ["skills/define-flow", "skills/browser-driver", "commands/define-flow.md"],
     "discipline-define-flow-user-directed": ["skills/define-flow", "skills/browser-driver", "commands/define-flow.md"],
+    "discipline-envsecret-never-printed": ["skills/browser-testing", "skills/test-execution", "skills/browser-driver", "agents/qa-executor.md"],
     "discipline-estimation-first-run-proposal": ["skills/task-estimation", "commands/estimate-sprint.md", "commands/estimate-story.md", "references/tracker"],
     "discipline-estimation-hand-edited-file": ["skills/task-estimation", "commands/estimate-sprint.md", "commands/estimate-story.md", "references/tracker"],
     "discipline-estimation-invalid-file": ["skills/task-estimation", "commands/estimate-sprint.md", "commands/estimate-story.md", "references/tracker"],
