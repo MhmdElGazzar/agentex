@@ -46,7 +46,7 @@
     "discipline-test-design-one-gate": ["skills/test-design", "commands/design-test.md", "references/tracker"],
     "discipline-test-design-scratch-location": ["skills/test-design", "commands/design-test.md", "references/tracker"],
     "discipline-tracker-discussion-one-gate": ["skills/tracker-ops", "scripts/tracker.js", "references/tracker"],
-    "discipline-tracker-non-ascii-via-file": ["skills/tracker-ops", "scripts/tracker.js", "references/tracker"],
+    "discipline-tracker-non-ascii-via-file": ["skills/tracker-ops", "scripts/tracker.js", "references/tracker", "references/project-layout.md"],
     "discipline-tracker-ops-one-gate": ["skills/tracker-ops", "scripts/tracker.js", "references/tracker"],
     "discipline-tracker-remaining-work-refused": ["skills/tracker-ops", "scripts/tracker.js", "references/tracker"],
     "discipline-tracker-selection-fail-closed": ["skills/task-estimation", "commands/estimate-sprint.md", "commands/estimate-story.md", "commands/init-test.md", "references/tracker", "scripts/tracker.js"],
