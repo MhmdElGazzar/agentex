@@ -222,5 +222,141 @@ test('planDigest: stable under listing order; changes when a litter file is adde
   assert.notStrictEqual(strays.planDigest(['b.mjs', 'a.mjs', 'c/d.txt', 'e.mjs']), a);
 });
 
+// ── the mover (behind --move-strays=<digest> only) ──────────────────────────
+const NOW = new Date(Date.UTC(2026, 9, 22, 8, 7, 6));
+const RUN = `${strays.STRAYS_DIR}/20261022-080706`;
+const move = (dir, flags, opts = {}) => strays.engineLines(dir, { pluginRoot: PLUGIN_ROOT, flagArgs: flags, stampCurrent: true, now: NOW, ...opts });
+const digestOf = (dir) => strays.planDigest(paths(list(dir), 'litter'));
+const contentHashes = (dir) => Object.entries(snapshot(dir))
+  .filter(([p]) => !p.startsWith('.git/') && p !== 'knowledge/INDEX.md').map(([, h]) => h).sort();
+
+test('mover: the right digest moves exactly the listed litter, byte-identical, to .agentex/scratch/strays/<run>/', () => {
+  const dir = repo({ tracked: { ...AC_TRACKED, 'notes.md': '# n\n', '.agentex/version.json': '{}\n' }, untracked: AC_UNTRACKED });
+  const litter = paths(list(dir), 'litter');
+  const bytes = Object.fromEntries(litter.map((p) => [p, fs.readFileSync(path.join(dir, p))]));
+  const hashesBefore = contentHashes(dir);
+  const lines = move(dir, [`--move-strays=${digestOf(dir)}`]);
+  for (const p of litter) {
+    assert.ok(!fs.existsSync(path.join(dir, p)), `${p} left its old place`);
+    assert.ok(fs.readFileSync(path.join(dir, RUN, p)).equals(bytes[p]), `${p} byte-identical at the destination`);
+    assert.ok(lines.includes(`[stray] moved ${p} → ${RUN}/${p}`), p);
+  }
+  assert.ok(fs.existsSync(path.join(dir, 'notes.md')), 'an unplaced file is never moved without a knowledge pick');
+  assert.deepStrictEqual(contentHashes(dir), hashesBefore, 'nothing deleted: the same contents, only the paths changed');
+  assert.match(lines[lines.length - 1], /^\[stray\] 9 moved \(4 tracked: commit their removal\), 0 added to knowledge\/ with INDEX\.md lines$/);
+  assert.strictEqual(git(dir, 'status', '--porcelain', '--untracked-files=all').split('\n').filter((l) => l.startsWith('??') && l.includes('strays')).length, 0,
+    'the moved files are ignored scratch');
+});
+
+test('mover: only the directories this run emptied are removed', () => {
+  const dir = repo({ tracked: { '.agentex/version.json': '{}\n' }, untracked: { '.agentex/.tmp/a.json': '{}', 'docs/tmp/x/y.txt': 'y', 'docs/keep.md': 'k' } });
+  fs.mkdirSync(path.join(dir, 'empty-before'));
+  move(dir, [`--move-strays=${digestOf(dir)}`]);
+  assert.ok(!fs.existsSync(path.join(dir, '.agentex/.tmp')), 'emptied → removed');
+  assert.ok(fs.existsSync(path.join(dir, '.agentex/version.json')), '.agentex/ itself is plugin-defined, kept');
+  assert.ok(!fs.existsSync(path.join(dir, 'docs/tmp')), 'emptied chain removed bottom-up');
+  assert.ok(fs.existsSync(path.join(dir, 'docs/keep.md')), 'a folder still holding a file stays');
+  assert.ok(fs.existsSync(path.join(dir, 'empty-before')), 'a folder empty before the run is not this run\'s');
+});
+
+test('mover: knowledge picks move whole to knowledge/<basename> and get their INDEX.md line', () => {
+  const dir = repo({ tracked: { 'notes.md': '# Settled\n- a fact\n', '.agentex/notes.md': '# More\n' }, untracked: { 'probe-a.mjs': 'x' } });
+  const before = fs.readFileSync(path.join(dir, 'notes.md'));
+  const lines = move(dir, [`--move-strays=${digestOf(dir)}`, '--stray-to-knowledge=notes.md::Settled facts about the export']);
+  assert.ok(fs.readFileSync(path.join(dir, 'knowledge/notes.md')).equals(before));
+  assert.ok(!fs.existsSync(path.join(dir, 'notes.md')));
+  assert.ok(fs.existsSync(path.join(dir, '.agentex/notes.md')), 'an unpicked unplaced file stays');
+  assert.match(fs.readFileSync(path.join(dir, 'knowledge/INDEX.md'), 'utf8'), /^- \[notes\.md\]\(notes\.md\) — Settled facts about the export$/m);
+  assert.ok(lines.includes('[stray] moved notes.md → knowledge/notes.md'));
+  assert.match(lines[lines.length - 1], /1 added to knowledge\/ with INDEX\.md lines/);
+});
+
+test('mover: an invalid knowledge pick → nothing moves, one reason line per failure', () => {
+  const dir = repo({ tracked: { 'notes.md': '# n', 'notes.pdf': 'x', 'knowledge/taken.md': '#', 'taken.md': '#', 'README.md': '#' }, untracked: { 'probe-a.mjs': 'x' } });
+  const before = snapshot(dir);
+  const lines = move(dir, [`--move-strays=${digestOf(dir)}`, '--stray-to-knowledge=notes.pdf::A pdf',
+    '--stray-to-knowledge=README.md::readme', '--stray-to-knowledge=taken.md::Taken', '--stray-to-knowledge=notes.md::']);
+  assert.deepStrictEqual(snapshot(dir), before, 'nothing moved');
+  assert.strictEqual(lines.filter((l) => /^\[stray\] not moved: /.test(l)).length, 4, lines.join('\n'));
+  assert.ok(lines.some((l) => /nothing was moved/.test(l)));
+});
+
+test('mover: a mismatched digest → nothing moves; the new plan is printed', () => {
+  const dir = repo({ untracked: { 'probe-a.mjs': 'x' } });
+  const old = digestOf(dir);
+  addFiles(dir, { 'probe-b.mjs': 'y' });
+  const before = snapshot(dir);
+  const lines = move(dir, [`--move-strays=${old}`]);
+  assert.deepStrictEqual(snapshot(dir), before);
+  assert.match(lines[0], /^\[stray\] the set changed since the report — nothing moved; new plan [0-9a-f]{12}:/);
+  assert.ok(lines.some((l) => l.startsWith(`[stray] plan ${digestOf(dir)}`)));
+});
+
+test('mover: .agentex/scratch/ not ignored → nothing moves, with the one preceding step', () => {
+  const dir = repo({ untracked: { 'probe-a.mjs': 'x' } });
+  fs.writeFileSync(path.join(dir, '.gitignore'), '.env\n');
+  const before = snapshot(dir);
+  const lines = move(dir, [`--move-strays=${digestOf(dir)}`]);
+  assert.deepStrictEqual(snapshot(dir), before);
+  assert.ok(lines.includes('[stray] not moved: `.agentex/scratch/` is not gitignored yet — commit, re-run /update-agentex once without the flag so the migration adds the ignore line, then approve again'), lines.join('\n'));
+});
+
+test('mover: an existing destination is never overwritten (validated first; a race at link time fails closed)', () => {
+  const dir = repo({ untracked: { 'probe-a.mjs': 'mine', 'probe-b.mjs': 'b' } });
+  addFiles(dir, { [`${RUN}/probe-a.mjs`]: 'already there' });
+  const before = snapshot(dir);
+  const lines = move(dir, [`--move-strays=${digestOf(dir)}`]);
+  assert.deepStrictEqual(snapshot(dir), before, 'validated before the first move');
+  assert.ok(lines.some((l) => /already exists/.test(l)));
+  // the race: the destination appears between validation and the link
+  const dir2 = repo({ untracked: { 'probe-a.mjs': 'mine', 'probe-b.mjs': 'b' } });
+  const fsImpl = { ...fs, linkSync(src, dst) { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.writeFileSync(dst, 'raced'); return fs.linkSync(src, dst); } };
+  const l2 = move(dir2, [`--move-strays=${digestOf(dir2)}`], { fsImpl });
+  assert.strictEqual(fs.readFileSync(path.join(dir2, RUN, 'probe-a.mjs'), 'utf8'), 'raced', 'never overwritten');
+  assert.strictEqual(fs.readFileSync(path.join(dir2, 'probe-a.mjs'), 'utf8'), 'mine', 'the source stays');
+  assert.ok(fs.existsSync(path.join(dir2, 'probe-b.mjs')), 'the sequence stopped: never retried, never continued');
+  assert.ok(l2.some((l) => /^\[stray\] FAILED moving probe-a\.mjs \(EEXIST\)/.test(l)), l2.join('\n'));
+  assert.ok(l2.some((l) => /not moved: probe-a\.mjs, probe-b\.mjs/.test(l)), l2.join('\n'));
+});
+
+test('mover: without hard links it copies, verifies the bytes, then removes the source; a mismatch fails closed', () => {
+  const exdev = () => { const e = new Error('cross-device link'); e.code = 'EXDEV'; throw e; };
+  const dir = repo({ untracked: { 'probe-a.mjs': 'aaa', 'x-out.txt': 'bbb' } });
+  const lines = move(dir, [`--move-strays=${digestOf(dir)}`], { fsImpl: { ...fs, linkSync: exdev } });
+  assert.strictEqual(fs.readFileSync(path.join(dir, RUN, 'probe-a.mjs'), 'utf8'), 'aaa');
+  assert.ok(!fs.existsSync(path.join(dir, 'probe-a.mjs')));
+  assert.match(lines[lines.length - 1], /^\[stray\] 2 moved/);
+  const dir2 = repo({ untracked: { 'probe-a.mjs': 'aaa' } });
+  const corrupt = { ...fs, linkSync: exdev, copyFileSync(src, dst, mode) { fs.copyFileSync(src, dst, mode); fs.appendFileSync(dst, 'X'); } };
+  const l2 = move(dir2, [`--move-strays=${digestOf(dir2)}`], { fsImpl: corrupt });
+  assert.ok(!fs.existsSync(path.join(dir2, RUN, 'probe-a.mjs')), 'the bad copy is removed');
+  assert.strictEqual(fs.readFileSync(path.join(dir2, 'probe-a.mjs'), 'utf8'), 'aaa', 'the source is kept');
+  assert.ok(l2.some((l) => /FAILED moving probe-a\.mjs \(copy did not match\)/.test(l)), l2.join('\n'));
+});
+
+test('mover: a migration still pending and tracked files moved → the one preceding step is printed', () => {
+  const dir = repo({ tracked: { 'probe-a.mjs': 'x' } });
+  const lines = strays.engineLines(dir, { pluginRoot: PLUGIN_ROOT, flagArgs: [`--move-strays=${digestOf(dir)}`], stampCurrent: false, now: NOW });
+  assert.strictEqual(lines[lines.length - 1], '[stray] moved 1 file; commit the moves, then re-run /update-agentex to finish the migration');
+  const dir2 = repo({ untracked: { 'probe-a.mjs': 'x' } });
+  const l2 = strays.engineLines(dir2, { pluginRoot: PLUGIN_ROOT, flagArgs: [`--move-strays=${digestOf(dir2)}`], stampCurrent: false, now: NOW });
+  assert.ok(!l2.some((l) => /commit the moves/.test(l)), 'only untracked moved: nothing to commit first');
+});
+
+test('mover: stdout never carries a file\'s content', () => {
+  const SENTINEL = 'SENTINEL_STRAY_MOVE_8w1p';
+  const dir = repo({ untracked: { 'ado_dump.json': `{"t":"${SENTINEL}"}`, 'notes.md': SENTINEL } });
+  const lines = move(dir, [`--move-strays=${digestOf(dir)}`, '--stray-to-knowledge=notes.md::Notes']);
+  assert.ok(!lines.join('\n').includes(SENTINEL));
+});
+
+test('mover: --stray-to-knowledge without --move-strays moves nothing', () => {
+  const dir = repo({ tracked: { 'notes.md': '# n' } });
+  const before = snapshot(dir);
+  const lines = move(dir, ['--stray-to-knowledge=notes.md::Notes']);
+  assert.deepStrictEqual(snapshot(dir), before);
+  assert.ok(lines.some((l) => /needs --move-strays/.test(l)));
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;

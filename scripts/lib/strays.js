@@ -167,9 +167,125 @@ function reportLines(projectRoot, { routes, maxListed = MAX_LISTED } = {}) {
   return lines;
 }
 
-// What migrate.js prints in its pre-fast-path slot.
-function engineLines(projectRoot, { flagArgs = [], routes, maxListed } = {}) {
-  return reportLines(projectRoot, { routes, maxListed });
+// ── The mover — behind --move-strays=<digest> only ───────────────────────────
+const NO_HARD_LINK = ['EXDEV', 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'EMLINK', 'ENOSYS'];
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+const runStamp = (d) => d.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15); // yyyymmdd-HHMMss UTC
+
+// One whole-file move that never overwrites: hard link + unlink; without hard links, an
+// exclusive copy, a byte compare, then the unlink (a mismatch removes the copy, keeps the
+// source). Throws with .reason on failure.
+function moveOne(src, dst, fsImpl) {
+  fsImpl.mkdirSync(path.dirname(dst), { recursive: true });
+  try {
+    fsImpl.linkSync(src, dst);
+  } catch (e) {
+    if (!NO_HARD_LINK.includes(e.code)) { e.reason = e.code || e.message; throw e; }
+    try { fsImpl.copyFileSync(src, dst, fs.constants.COPYFILE_EXCL); }
+    catch (c) { c.reason = c.code || c.message; throw c; }
+    if (sha256(fsImpl.readFileSync(src)) !== sha256(fsImpl.readFileSync(dst))) {
+      fsImpl.unlinkSync(dst);
+      const m = new Error('copy did not match'); m.reason = 'copy did not match'; throw m;
+    }
+  }
+  fsImpl.unlinkSync(src);
+}
+
+function parseFlags(flagArgs) {
+  const move = flagArgs.find((a) => a === '--move-strays' || a.startsWith('--move-strays='));
+  const picks = flagArgs.filter((a) => a.startsWith('--stray-to-knowledge=')).map((a) => {
+    const v = a.slice('--stray-to-knowledge='.length);
+    const at = v.indexOf('::');
+    return at === -1 ? { path: v, description: '' } : { path: v.slice(0, at), description: v.slice(at + 2) };
+  });
+  return { move: move === undefined ? null : move.slice('--move-strays='.length), picks };
+}
+
+function isTracked(projectRoot, rel) {
+  try { git(projectRoot, ['ls-files', '--error-unmatch', '--', rel]); return true; } catch { return false; }
+}
+
+function moveLines(projectRoot, { digest, picks, routes, stampCurrent, now = new Date(), fsImpl = fs, maxListed }) {
+  const { candidates } = listStrays(projectRoot, { routes });
+  const litter = candidates.filter((c) => c.class === 'litter');
+  const current = planDigest(litter.map((c) => c.path));
+  if (digest !== current) {
+    return [`[stray] the set changed since the report — nothing moved; new plan ${current}: ask the user again`,
+      ...reportLines(projectRoot, { routes, maxListed })];
+  }
+  // Validate everything before the first move: one failure → nothing moves.
+  const run = `${STRAYS_DIR}/${runStamp(now)}`;
+  const plan = litter.map((c) => ({ ...c, dst: `${run}/${c.path}` }));
+  const reasons = [];
+  const unplacedMd = new Map(candidates.filter((c) => c.class === 'unplaced' && /\.md$/i.test(c.path)).map((c) => [c.path, c]));
+  const taken = new Set();
+  for (const k of picks) {
+    const p = k.path.replace(/\\/g, '/').replace(/^\.\//, '');
+    const dst = `${layout.KNOWLEDGE_DIR}/${path.posix.basename(p)}`;
+    if (!unplacedMd.has(p)) { reasons.push(`${p} is not a listed unplaced Markdown file`); continue; }
+    if (!k.description.trim() || /[\r\n]/.test(k.description)) { reasons.push(`the INDEX.md description for ${p} is empty or spans lines`); continue; }
+    if (taken.has(dst) || fs.existsSync(path.join(projectRoot, dst))) { reasons.push(`${dst} already exists — a move never overwrites`); continue; }
+    taken.add(dst);
+    plan.push({ ...unplacedMd.get(p), dst, knowledge: k.description.trim() });
+  }
+  for (const m of plan) {
+    if (!m.knowledge && fs.existsSync(path.join(projectRoot, m.dst))) reasons.push(`${m.dst} already exists — a move never overwrites`);
+  }
+  try { git(projectRoot, ['check-ignore', '-q', `${STRAYS_DIR}/probe`]); }
+  catch { reasons.push('`.agentex/scratch/` is not gitignored yet — commit, re-run /update-agentex once without the flag so the migration adds the ignore line, then approve again'); }
+  if (reasons.length) return [...reasons.map((r) => `[stray] not moved: ${r}`), '[stray] nothing was moved'];
+  if (!plan.length) return ['[stray] nothing to move'];
+
+  const lines = [];
+  const indexTracked = isTracked(projectRoot, `${layout.KNOWLEDGE_DIR}/INDEX.md`);
+  const done = [];
+  for (const m of plan) {
+    try { moveOne(path.join(projectRoot, m.path), path.join(projectRoot, m.dst), fsImpl); }
+    catch (e) {
+      const rest = plan.slice(done.length).map((x) => x.path);
+      lines.push(`[stray] FAILED moving ${m.path} (${e.reason}) — stopped; never retried`);
+      lines.push(`[stray] moved ${done.length} of ${plan.length} (listed above); not moved: ${rest.join(', ')}`);
+      return lines;
+    }
+    done.push(m);
+    lines.push(`[stray] moved ${m.path} → ${m.dst}`);
+    if (m.knowledge) layout.appendIndexLine(projectRoot, path.posix.basename(m.dst), m.knowledge);
+  }
+  removeEmptied(projectRoot, done.map((m) => m.path), routes);
+  const tracked = done.filter((m) => m.tracked).length;
+  const known = done.filter((m) => m.knowledge).length;
+  lines.push(`[stray] ${done.length} moved${tracked ? ` (${tracked} tracked: commit their removal)` : ''}, ${known} added to knowledge/ with INDEX.md lines`);
+  if (!stampCurrent && (tracked || (known && indexTracked))) {
+    lines.push(`[stray] moved ${done.length} file${done.length === 1 ? '' : 's'}; commit the moves, then re-run /update-agentex to finish the migration`);
+  }
+  return lines;
+}
+
+// rmdir, bottom-up and non-recursive, the source folders this run emptied — never the
+// project root, never a protected or plugin-defined folder (or one holding a defined path).
+function removeEmptied(projectRoot, moved, routes) {
+  const { paths: defined } = layout.definedPaths(projectRoot, { routes });
+  const keep = (d) => isProtected(`${d}/`) || defined.some((e) => e === `${d}/` || e.startsWith(`${d}/`));
+  const dirs = new Set();
+  for (const p of moved) {
+    for (let d = path.posix.dirname(p); d !== '.'; d = path.posix.dirname(d)) dirs.add(d);
+  }
+  for (const d of [...dirs].sort((a, b) => b.split('/').length - a.split('/').length)) {
+    if (keep(d)) continue;
+    try { fs.rmdirSync(path.join(projectRoot, d)); } catch { /* not empty, or gone */ }
+  }
+}
+
+// What migrate.js prints in its pre-fast-path slot: the report, or — behind the consent
+// flag — the moves.
+function engineLines(projectRoot, { flagArgs = [], routes, maxListed, stampCurrent = false, now, fsImpl } = {}) {
+  const { move, picks } = parseFlags(flagArgs);
+  if (move === null) {
+    const lines = reportLines(projectRoot, { routes, maxListed });
+    if (picks.length) lines.unshift('[stray] --stray-to-knowledge needs --move-strays=<plan> in the same run — nothing was moved');
+    return lines;
+  }
+  return moveLines(projectRoot, { digest: move, picks, routes, stampCurrent, now, fsImpl, maxListed });
 }
 
 module.exports = { MAX_LISTED, STRAYS_DIR, listStrays, planDigest, reportLines, engineLines };

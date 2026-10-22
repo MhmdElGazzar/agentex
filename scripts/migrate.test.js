@@ -1401,6 +1401,55 @@ test('[stray] on a migrating project: strays never change the [manual] counts, t
   assert.ok(exists(b, 'probe-x.mjs') && exists(b, 'explore-y.mjs'), 'nothing moved without the flag');
 });
 
+const planOf = (out) => (out.match(/^\[stray\] plan ([0-9a-f]{12})/m) || [])[1];
+
+test('--move-strays=<plan> on a stamped project: moves exactly the listed set, then "already up to date", exit 0', () => {
+  const dir = stampedCurrent();
+  addFiles(dir, { 'probe-login.mjs': 'p\n' });
+  commitAll(dir);
+  addFiles(dir, { 'grid-out.txt': 'g\n' });
+  const plan = planOf(run(dir).out);
+  assert.ok(plan, 'the report carries a plan');
+  const stamp = readText(dir, '.agentex/version.json');
+  const r = run(dir, `--move-strays=${plan}`);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[stray\] moved probe-login\.mjs → \.agentex\/scratch\/strays\/\d{8}-\d{6}\/probe-login\.mjs$/m);
+  assert.match(r.out, /^\[stray\] 2 moved \(1 tracked: commit their removal\), 0 added to knowledge\/ with INDEX\.md lines$/m);
+  assert.match(r.out, /already up to date/i);
+  assert.ok(!exists(dir, 'probe-login.mjs') && !exists(dir, 'grid-out.txt'));
+  assert.strictEqual(readText(dir, '.agentex/version.json'), stamp, 'the stamp is untouched');
+  assert.match(run(dir).out, /^\[stray\] none/m, 'a later run reports nothing');
+});
+
+test('--move-strays with a stale plan moves nothing and prints the new plan', () => {
+  const dir = stampedCurrent();
+  addFiles(dir, { 'probe-a.mjs': 'a\n' });
+  const plan = planOf(run(dir).out);
+  addFiles(dir, { 'probe-b.mjs': 'b\n' });
+  const r = run(dir, `--move-strays=${plan}`);
+  assert.match(r.out, /^\[stray\] the set changed since the report — nothing moved; new plan [0-9a-f]{12}/m);
+  assert.ok(exists(dir, 'probe-a.mjs') && exists(dir, 'probe-b.mjs'));
+});
+
+test('--move-strays on a project with a pending migration: a tracked move prints the one preceding step, then the clean-tree guard aborts', () => {
+  const dir = fixture010();
+  assert.strictEqual(run(dir).code, 0);
+  commitAll(dir);
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.24.0' }) + '\n');
+  addFiles(dir, { 'probe-old.mjs': 'x\n' });
+  commitAll(dir);
+  const plan = planOf(run(dir).out);
+  commitAll(dir); // the migration's stamp refresh from the report run
+  fs.writeFileSync(path.join(dir, '.agentex', 'version.json'), JSON.stringify({ version: '0.24.0' }) + '\n');
+  commitAll(dir);
+  const r = run(dir, `--move-strays=${plan}`);
+  assert.match(r.out, /^\[stray\] moved probe-old\.mjs → /m);
+  assert.match(r.out, /^\[stray\] moved 1 file; commit the moves, then re-run \/update-agentex to finish the migration$/m);
+  assert.strictEqual(r.code, 2, r.out);
+  assert.match(r.out, /\[abort\] working tree has uncommitted changes/);
+  assert.ok(!exists(dir, 'probe-old.mjs'), 'the yes was not lost: the moves happened');
+});
+
 // ── config/estimation.json — created only by an approved estimation run ──────
 // No migration and no scaffold step creates it; once it exists, /update-agentex
 // and an /init-test re-run leave it byte-identical (invariant 11).

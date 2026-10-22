@@ -1,5 +1,5 @@
 ---
-description: "Checks for a newer plugin version first (one confirmation before any pull; after a pull, stop and reload), then migrates the current project to the installed AgenTeX version's conventions — folder structure, config file schemas, the secrets-only .env split, catalog format, CLAUDE.md and .gitignore entries. Refactor/merge, never re-scaffold: user values are carried, never reset. Requires a clean git tree; git is the rollback."
+description: "Checks for a newer plugin version first (one confirmation before any pull; after a pull, stop and reload), then migrates the current project to the installed AgenTeX version's conventions — folder structure, config file schemas, the secrets-only .env split, catalog format, CLAUDE.md and .gitignore entries, plus a stray-file check. Refactor/merge, never re-scaffold: user values are carried, never reset. Requires a clean git tree; git is the rollback."
 ---
 
 Bring this project's AgenTeX setup up to the conventions of the installed plugin
@@ -123,6 +123,35 @@ flagged.
      one-line relays: `installed` / `already installed` / `refreshed`, `existing
      hook left untouched` (point to the docs section "Calling the scan from an
      existing hook"), `shared hooks folder, not installed`.
+   - `[stray]` report: files that sit outside the project layout (paths only — the
+     engine never reads or prints their content). Relay the groups with their counts
+     and destinations: litter goes to `.agentex/scratch/strays/<run>/` under the same
+     relative paths (gitignored scratch: `${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`);
+     the files under "no destination proposed" are listed only. For an
+     unplaced **Markdown** file only, you may Read it silently to judge whether it is a
+     whole file of settled facts about the application; if it is, propose
+     `knowledge/<file name>` with a one-line `knowledge/INDEX.md` description. Never
+     quote any candidate's content, never read a non-Markdown candidate, never propose a
+     split or a merge. Then **ask the user once**, showing the litter set (groups,
+     counts, the destination folder), each knowledge pick with its `INDEX.md` line, the
+     tracked files whose move leaves a removal to commit, and that nothing has been
+     moved yet. Only after an explicit yes, re-run the engine with the plan from the
+     `[stray] plan` line — the engine moves, never you:
+
+     ```
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/migrate.js" --move-strays=<plan> [--stray-to-knowledge=<path>::<one-line description> …]
+     ```
+
+     Never move, rename, Write or Edit a listed file by hand (no `mv`, no `git mv`), and
+     never pass the flag without the user's explicit yes; a no, a "later", or a partial
+     or conditional answer means no flag and nothing moves (offer to re-run the report
+     once they have reorganized). The report never affects the migration or the stamp.
+     Relay the engine's `[stray]` lines verbatim, including the one preceding step when
+     the moves cannot run (`the set changed …` → ask again with the new plan;
+     `.agentex/scratch/` not gitignored yet → commit, re-run once without the flag,
+     approve again) and `commit the moves, then re-run /update-agentex` — after that
+     line the clean-tree guard aborts by design; that is expected. A `FAILED moving`
+     line names what moved and what did not; relay it, never retry.
 
 4. **Suggest the follow-up:** verify with a normal `/execute-test` run, then commit
    the whole migration as one commit (the report lists every file touched; `.env`
