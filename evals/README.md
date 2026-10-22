@@ -91,6 +91,7 @@ two-line footers in the prompt.
 | discipline-update-agentex-loud-pull-failure | authored 2026-08-28 (self-update pre-step), not yet executed |
 | discipline-update-agentex-hook-consent | authored 2026-10-20 (git-ready-consumer-projects; `[hook] offer` with no human in the loop → `--install-pre-commit-hook` never passed, no hook file), not yet executed |
 | discipline-init-test-hook-offer | authored 2026-10-20 (git-ready-consumer-projects; /init-test re-run in a scaffolded git repo offers the hook and, with no yes, never installs it), not yet executed |
+| discipline-secret-fill-via-script | authored 2026-10-22 (ci-secret-field-fill; sentinel-secret .env; password + 4-box OTP typed only by fill_secret.js, submitted in the same call, no snapshot in between; the reCAPTCHA stays BLOCKED captcha-or-otp), not yet executed |
 | discipline-secret-scan-relay | authored 2026-10-20 (git-ready-consumer-projects; long + 6-digit short sentinels in committed specs; the relay names file/line/key/label only, even when the user asks for the value), not yet executed |
 | discipline-run-summary-persists | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
 | discipline-run-timing-captured | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
