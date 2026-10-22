@@ -80,6 +80,17 @@ test('a skill prompt is never a doc: SKILL.md and references map to their lane',
   assert.deepStrictEqual(runs(plan), ['setup', 'tracker', 'wizard']);
 });
 
+test('the plugin-root tracker CLI, its helpers and the suite check map to the tracker lane; its goldens are inert', () => {
+  for (const file of ['scripts/tracker.js', 'scripts/qa-records.js', 'scripts/release-gate/suite-check.js',
+    'references/question-format.md']) {
+    const plan = gp.planLanes([file]);
+    assert.deepStrictEqual(runs(plan), ['setup', 'tracker', 'wizard'], file);
+    assert.deepStrictEqual([plan.full, plan.unmapped], [false, []], file);
+  }
+  const golden = gp.planLanes(['scripts/golden/tracker/ado/A01.json', 'scripts/golden/tracker/jira/J01.json']);
+  assert.strictEqual(golden.docsOnly, true, 'test fixtures only → no lane');
+});
+
 test('an unmapped non-doc file forces full and is listed (fail safe)', () => {
   const plan = gp.planLanes(['docs/a.md', 'skills/brand-new/SKILL.md', 'scripts/secret_scan.js']);
   assert.strictEqual(plan.full, true);

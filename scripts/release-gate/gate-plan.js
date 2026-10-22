@@ -33,7 +33,7 @@ const REQUIRES = { reporting: ['ui'] };
 // No lane: nothing here runs in a consumer flow.
 const INERT = [
   'docs/**', 'README.md', 'CHANGELOG.md', 'LICENSE', 'executions/README.md',
-  'evals/**', '**/*.test.js', 'skills/*/scripts/golden/**',
+  'evals/**', '**/*.test.js', 'skills/*/scripts/golden/**', 'scripts/golden/**',
   '.github/**', '.gitattributes', '.gitignore',
   'scripts/hosts/**', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/release-gate/README.md',
 ];
@@ -98,7 +98,10 @@ const LANE_MAP = [
   ['skills/test-design/**', ['tracker']],
   ['skills/bug-report-azure/**', ['tracker']],
   ['skills/tracker-ops/**', ['tracker']],
+  ['scripts/tracker.js', ['tracker']],                      // the one tracker CLI (tracker-ops)
+  ['scripts/qa-records.js', ['tracker']],                   // QA watchlist helper (tracker skills)
   ['references/tracker/**', ['tracker']],
+  ['references/question-format.md', ['tracker']],           // questions on stories and bugs
   ['scripts/lib/estimation_config.js', ['tracker']],
   ['commands/estimate-story.md', ['tracker']],
   ['commands/estimate-sprint.md', ['tracker']],
@@ -106,6 +109,7 @@ const LANE_MAP = [
   ['scripts/release-gate/inject-env.js', ['tracker']],
   ['scripts/release-gate/gate-ledger.js', ['tracker']],
   ['scripts/release-gate/teardown.js', ['tracker']],
+  ['scripts/release-gate/suite-check.js', ['tracker']],
   ['scripts/release-gate/fixtures/**', ['tracker']],
   // reporting
   ['skills/extent-report/**', ['reporting']],
