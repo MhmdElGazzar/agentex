@@ -10,7 +10,7 @@
 // missing one is added, and environment files / user values are never touched.
 const fs = require('fs');
 const path = require('path');
-const { BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS } = require('../wizard/engine.js');
+const { BUILTIN_USER_FIELDS, LEGACY_DEFAULTS_FIELDS } = require('../wizard/engine.js');
 
 function projectConfigPath(ctx) { return path.join(ctx.projectRoot, 'config', 'project.json'); }
 
@@ -40,7 +40,7 @@ module.exports = {
     const done = [];
     const builtins = {
       userFields: ctx.templates.project.userFields || BUILTIN_USER_FIELDS,
-      defaultsFields: ctx.templates.project.defaultsFields || BUILTIN_DEFAULTS_FIELDS,
+      defaultsFields: LEGACY_DEFAULTS_FIELDS,   // frozen pre-A-2 set: these projects' env files hold the plain literal
     };
     for (const which of missingArrays(ctx)) {
       config[which] = JSON.parse(JSON.stringify(builtins[which]));

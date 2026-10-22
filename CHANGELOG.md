@@ -2,6 +2,63 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.25.0] — 2026-10-22
+### Added
+- **A consumer project can go into git without leaking a secret.** New `scripts/secret_scan.js`
+  checks a consumer project for its *own* secret values — every `.env` key plus every
+  `{ "envSecret": "NAME" }` the config references — in the files git tracks (`--tracked`) or in
+  exactly the content staged for the next commit (`--staged`). It also catches the structural
+  leaks nothing noticed before: a `.env` that is tracked or staged, and a credential pasted into a
+  git remote URL (reported by remote name only, never the URL). One JSON line, exit `0` / `1` /
+  `2`, and it never prints a value — not in the result, not in a finding. A plain-string password
+  in `environments/*.json` or a pasted value in an `integration/*.json` `*Env` field is a warning
+  with the `{ "envSecret": "NAME" }` fix, never a block (the config contract still allows throwaway
+  test credentials). Short values — a 6-digit test password — are matched only as a whole token
+  right after a password label (English or Arabic, through direction marks, NBSP, tatweel and
+  markdown) or under a password key in JSON, never as a raw substring: on the pilot project a raw
+  substring match gave 65 false hits while 11 real copies went unreported. Non-secret keys that live
+  in `.env` by convention — the legacy config keys, the ADO fallbacks, `JIRA_EMAIL`, and the
+  `<NAME>_BASE_URL` that `/import-swagger` tells you to put there — are named as not value-checked
+  instead of refusing commits. No `.env` on the machine → a loud `value check skipped`, not a
+  block.
+  Binary and over-1 MiB files are skipped and counted. Covered by `secret_scan.test.js` (39),
+  `secret_scan_core.test.js` (29) and `git_plumbing.test.js` (13), each with a sentinel test that
+  no secret value reaches stdout or stderr.
+- **An opt-in pre-commit hook runs the scan on every commit.** `/init-test` offers it as a new
+  step 6 and installs it only on an explicit yes; `/update-agentex` offers it while it is absent
+  and installs it only under `--install-pre-commit-hook` — handled before the "already up to date"
+  fast path, so a stamped project gets the offer too. The hook refuses a commit only for a real
+  leak (`LEAK` → nothing committed); warnings print and the commit proceeds. It is static POSIX
+  `sh`, finds the newest installed plugin version at commit time (so it survives plugin updates),
+  and fails *open* loudly — plugin gone, Node missing, scan error → the commit proceeds with an
+  `UNSCANNED` line, never a silent pass. An existing hook is never overwritten, a repo-local
+  `core.hooksPath` is honoured, and a machine-wide one is refused with a pointer to the docs.
+  Turning it off is deleting one file. Covered by `precommit_hook.test.js` (27), including real
+  commits in throwaway repos.
+- **"Putting your project in git" docs page.** `docs/putting-your-project-in-git.md`: what to
+  commit and what stays local (a table including the new scratch folder), why `executions/` is not
+  ignored by default, setting a remote with no token in the URL, the scan and the hook, every
+  finding and its fix — and that a secret already in history or on a remote must be rotated.
+  Linked from `docs/getting-started.md` and the docs index.
+### Changed
+- **Agents stop littering the project with scratch files.** Test-design and task-estimation told
+  the agent to write intermediate files to an undefined `$TMP`, so agents improvised — the pilot
+  project removed 80+ `.tmp-*` / `.scratch_*` files from its root in one cleanup commit. Both skills
+  and their scripts now write only to `.agentex/scratch/`, which the scaffold gitignores — one
+  narrow line, never `.agentex/` or `.claude/` wholesale (`version.json`, `test-template.md` and
+  `qa-watchlist/` stay committed). `/update-agentex` appends the line to existing projects; existing
+  lines are never touched.
+- **The wizard's shared test password is a secret.** Its hint used to say "written as-is … (not a
+  real secret)", contradicting the envSecret policy. A typed value now goes to `.env` under
+  `DEFAULT_PASSWORD` and the environment file refers to it as `{ "envSecret": "DEFAULT_PASSWORD" }`;
+  left blank, no `defaults.password` key is written (it used to write the `Test@1234`
+  placeholder). The hint is fixed in `scripts/wizard/engine.js`, `ui.html` and
+  `templates/config/project.json`; no template ships a password value. Existing projects are never
+  rewritten: a plain on-disk password is shown, kept byte-identical on save, and flagged with how to
+  move it to `.env` — a frozen legacy field definition closes the path where `m11`'s backfill
+  would have deleted it on save. `docs/configuration.md` describes `defaults.password` as a secret
+  field.
+
 ## [0.24.0] — 2026-10-19
 ### Added
 - **One plugin branch per host, generated from `main`.** `main` stays the only source,

@@ -18,3 +18,4 @@ quick tour.
 | [Interactive HTML Report](./extent-report.md) | The standalone `extent-report.html` dashboard. |
 | [CI Quality Gate](./ci-quality-gate.md) | Invoke runs from your CI/CD pipeline: the `ci_gate.js` entry point, exit-code semantics (0/1/2), the public verdict JSON contract, pipeline templates, advisory vs blocking modes. |
 | [Configuration](./configuration.md) | Environment variables, permissions, and secret handling. |
+| [Putting your project in git](./putting-your-project-in-git.md) | What to commit and what stays local, setting a remote safely, the secret scan, the optional pre-commit hook, and fixing findings. |
