@@ -2,6 +2,12 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Changed
+- **`settings.example.json` no longer warns at startup.** The `Write`, `MultiEdit` and
+  `NotebookEdit` path rules are gone: Claude Code consults only `Edit(path)` rules for file edits,
+  and `Edit(./src/**)` already covers every file-editing tool, so protection is unchanged.
+
 ## [0.25.0] — 2026-10-22
 ### Added
 - **A consumer project can go into git without leaking a secret.** New `scripts/secret_scan.js`
