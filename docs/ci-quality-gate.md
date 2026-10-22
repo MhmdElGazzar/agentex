@@ -113,7 +113,7 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
 
 `usage` · `preflight-tools` · `preflight-target` · `preflight-environment` ·
 `preflight-secrets` · `preflight-browser` · `preflight-plugin-version` · `preflight-driver` · `needs-user` ·
-`interaction-required` · `captcha-or-otp` · `blocked-scenarios` · `view-mismatch` ·
+`interaction-required` · `captcha-or-otp` · `secret-unavailable` · `blocked-scenarios` · `view-mismatch` ·
 `incomplete` · `timeout` · `no-verdict` · `session-error` · `unstable` · `ci-mode`
 
 ### Verdict mapping (fixed order)
@@ -124,8 +124,8 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
    `warningsFailGate: false`).
 3. Any environment/indeterminate contribution → **BLOCKED / 2** with named reasons:
    blocked scenarios, ui-check view mismatches, not-run scenarios, and run-level
-   conditions (`needs-user`, `interaction-required`, `captcha-or-otp`, `timeout`,
-   `session-error`).
+   conditions (`needs-user`, `interaction-required`, `captcha-or-otp`,
+   `secret-unavailable`, `timeout`, `session-error`).
 4. `flakyFailsGate` and `counts.flaky > 0` → **BLOCKED / 2**, reason `unstable`,
    marked non-retryable.
 5. Otherwise → **PASS / 0**. `naDescoped` never gates; flaky without the policy never
@@ -161,7 +161,7 @@ informational):
 | node + playwright-cli usable (judged by output — the known benign exit-crash on Windows/Node 24 never gates) | `preflight-tools` |
 | Target reachable (any HTTP response counts — a 500 is the app's problem to fail scenarios on) | `preflight-target` |
 | Environment resolves (named file exists / `defaultEnvironment` / legacy `QA_TARGET_URL`; never a silent fallback) | `preflight-environment` |
-| Secrets present **by name** — every `{ "envSecret": "NAME" }` referenced by the active environment, `config/project.json`, and `integration/` catalogs resolves; missing NAMES are listed, values never appear | `preflight-secrets` |
+| Secrets present **by name** — every `{ "envSecret": "NAME" }` referenced by the active environment, `config/project.json`, and `integration/` catalogs resolves to a non-empty value (an empty or whitespace value counts as missing); missing NAMES are listed, values never appear. `sources` reports where each came from (`process-env` or `dotenv`); a name found only in `.env` gets a stderr note, never a gate | `preflight-secrets` |
 | A Playwright browser binary is installed | `preflight-browser` |
 | Plugin manifest readable; plugin↔project version drift is *reported*, not gate-closing | `preflight-plugin-version` |
 | No spec in scope declares `Drivers: mobile` — mobile specs run via `/execute-mobile-test`, never in a browser; never retried | `preflight-driver` |
@@ -192,7 +192,10 @@ Usable from any CI system, without either shipped template.
 4. The browser driver, inside the project:
    `npm install -D @playwright/cli && npx playwright-cli install-browser chromium`.
 5. Every `{ "envSecret": "NAME" }` your environment files reference, injected as env
-   vars by the secret store (a checked-in `.env` is never needed).
+   vars by the secret store (a checked-in `.env` is never needed). A local `.env` works for
+   a trial run on your own machine, because the bundled scripts read it; preflight then
+   notes on stderr which names came only from `.env`. A CI runner has no `.env`, so in a
+   pipeline every name must come from the secret store.
 
 **The invocation** (from the AgenTeX project root):
 
@@ -210,6 +213,29 @@ node "<plugin-root>/skills/test-execution/scripts/ci_gate.js" --suite test/suite
 - Publish `executions/execu_*/` as the pipeline artifact — `report.md`,
   `extent-report.html`, screenshots, `verdict.json`. **Never publish `test/.auth/`**
   (see Security).
+
+### Password-gated logins
+
+Most enterprise logins need a secret password, and some need an OTP or another secret
+field later in the flow. The whole path, by name only:
+
+1. **Reference it by name.** In `environments/<env>.json`, write the field as
+   `{ "envSecret": "QA_PASSWORD" }`, never the value.
+2. **Inject it from the secret store.** Map the secret to that name in the gate step's
+   `env:` block (GitHub Actions `env: QA_PASSWORD: ${{ secrets.QA_PASSWORD }}`, Azure
+   Pipelines `env: QA_PASSWORD: $(QA_PASSWORD)`). Preflight gates on it being present and
+   non-empty (`preflight-secrets`).
+3. **The plugin types it.** The headless session never sees the value. It calls
+   browser-driver's bundled `fill_secret.js` with the NAME and the field's ref. The
+   script reads the value from its own environment and types it into the field through
+   a temp file that is deleted right away. It submits in the same call and then clears
+   the field, so no snapshot, screenshot, log or report can capture the value. The
+   shipped `ci-settings.json` already allows the call (`Bash(node:*)`).
+4. **Never printed.** The value never appears on a command line, in tool output, in
+   `executions/`, or in the verdict. Only the NAME can appear. If the variable is
+   missing or empty when the field is filled, the scenario is BLOCKED with the run
+   reason `secret-unavailable:<NAME>` (exit 2). A real captcha, or an OTP nobody can
+   supply, is still `captcha-or-otp`.
 
 Inside the gate, the headless session runs as
 `claude --bare -p "/agentex:execute-test ci <scope> [on <env>]" --plugin-dir
@@ -255,7 +281,9 @@ Actions:
   file later.
 - **Captcha / unobtainable OTP → BLOCKED** (`captcha-or-otp`), never defeated. A fixed
   test-environment captcha or OTP whose value comes from the spec or environment
-  `defaults` is typed normally.
+  `defaults` is typed normally. A password or OTP declared as `{ "envSecret" }` is not a
+  gate either: `fill_secret.js` types it (see Password-gated logins), and a missing or
+  empty variable is `secret-unavailable`, never `captcha-or-otp`.
 - **Mode parity:** a CI run produces the same artifacts as an interactive parallel run —
   `report.md`, `extent-report.html` (always generated in CI), screenshots, logs,
   `bugs/` — plus `verdict.json`.
@@ -265,6 +293,8 @@ Actions:
 - **Secrets by env-var name only.** Preflight reports missing secret *names*; the
   verdict JSON carries counts, paths, and names only. Nothing in the contract can carry
   a secret value. CI logs are long-lived — this is structural, not best-effort.
+  Browser fields that need a secret are typed by `fill_secret.js`, which reads the value
+  itself and never prints it.
 - **`test/.auth/` is secret-grade.** A saved login session (`login.mode: "session"`,
   written by `/optimize-login`) is a credential equivalent. Never publish it as a
   pipeline artifact (the templates publish `executions/` only, and the shipped
