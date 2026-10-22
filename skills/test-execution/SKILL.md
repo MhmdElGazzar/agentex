@@ -29,6 +29,7 @@ These hold for every run, in every mode.
 
 **Data and secrets**
 - Never print, log, or pass secret values (tokens, credentials, `envSecret` targets).
+- Every `{ "envSecret" }` browser field is typed only by `skills/browser-driver/scripts/fill_secret.js`, in every mode (browser-driver's Secret fields rule). A missing or empty variable is BLOCKED `secret-unavailable`, never FAIL and never `captcha-or-otp`.
 - `run-summary.json` and `extent-report.html` carry user handles only. Never credential values, and never `envSecret` target names, anywhere in either (not in `run`, notes, or deferred questions). Record the login mode as the mode word only.
 - `config/project.json`, `environments/<env>.json`, and `.env` may be read to resolve config.
 
@@ -48,7 +49,7 @@ These hold for every run, in every mode.
 | **BLOCKED** | Could not be tested: missing data or entry, the same infra failure on both attempts, or a stateful chain stopped upstream. |
 | **FLAKY** | Failed on infrastructure, then passed on the one retry. |
 | **NEEDS-USER** | A ui-check question an executor could not ask mid-run. Resolved at MERGE. |
-| **envSecret** | `{ "envSecret": "NAME" }` on any field: read `NAME` from `.env` at use time, never print it. |
+| **envSecret** | `{ "envSecret": "NAME" }` on any field: typed only by browser-driver's `fill_secret.js` (browser) or the runners (api/db); never resolved by you. |
 | **Handle** | A key under `users` (e.g. `expired_user`). The only user identifier allowed in artifacts. |
 | **Executor** | A **qa-executor** subagent running one test file. |
 | **⏸** | A sequential-mode checkpoint: stop and wait for approval. |

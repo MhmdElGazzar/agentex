@@ -35,6 +35,7 @@
     "discipline-report-secrets": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
     "discipline-run-summary-persists": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
     "discipline-run-timing-captured": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
+    "discipline-secret-fill-via-script": ["skills/browser-driver", "skills/test-execution", "commands/execute-test.md", "agents/qa-executor.md"],
     "discipline-secret-scan-relay": ["commands/init-test.md", "scripts/secret_scan.js", "scripts/lib/secret_scan_core.js"],
     "discipline-suite-editor-no-overwrite-on-conflict": ["skills/endpoint-testing", "skills/api-integration", "commands/test-endpoints.md"],
     "discipline-suite-wizard-consent-exact-list": ["skills/swagger-import", "skills/endpoint-testing", "commands/import-swagger.md"],

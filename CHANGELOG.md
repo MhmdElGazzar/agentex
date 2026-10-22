@@ -40,9 +40,34 @@ All notable changes to AgenTeX are documented here.
     a placeholder is BLOCKED "needs a real value" and never sent). Also `--suite <file>` and
     `--case <n>` subset runs, and a `suite-result.json` in every run folder.
   - Existing suites run unchanged; a legacy-suite snapshot test guards it.
+- **A password-gated login can pass in CI.** Until now, every way to type an
+  `{ "envSecret": "NAME" }` value into a browser field leaked it into a command line or tool
+  output, so a headless run refused them all and ended BLOCKED `captcha-or-otp`. The new
+  `skills/browser-driver/scripts/fill_secret.js` reads the value itself (process env, then
+  `.env`) and types it into the run's playwright-cli session. The value goes through a 0600
+  temp file outside the project that is removed in `finally`. The child's output is never
+  relayed, because playwright-cli echoes the code it ran. Only names declared as `envSecret` in
+  the active environment or `config/project.json` are fillable. Segmented OTP boxes take one
+  call, one `--target` per box. `--submit` / `--submit-target` submit in the same call and then
+  clear every field the script filled on that page: a playwright-cli snapshot shows input
+  values in clear text, password fields included, and every action writes one to
+  `.playwright-cli/`. One JSON line, exit `0` / `2`. It never issues a verdict. The rule lines
+  in browser-driver, qa-executor, test-execution and define-flow make it the only way to type a
+  secret, in every mode. `docs/ci-quality-gate.md` documents the path end to end. Covered by
+  `fill_secret.test.js` (32, including a sentinel sweep of argv, stdout/stderr and every file
+  left behind, and a pin that the shipped CI settings allow the call) and the new
+  `discipline-secret-fill-via-script` eval.
+- **`write_verdict.js` run reason `secret-unavailable`.** A missing or empty variable at fill
+  time is a named BLOCKED (exit 2), no longer reported as `captcha-or-otp`. This is additive to
+  verdict contract v1. `captcha-or-otp` now means a real captcha or an OTP nobody can supply.
 ### Changed
 - `import_swagger.js` now runs on the shared `swagger_model.js`. Its output is byte-identical
   (golden tests over fifteen specs).
+- **CI preflight reports where each secret comes from.** `checks.secrets.sources` gives
+  `process-env` or `dotenv` per name. Names found only in `.env` get one stderr note: that works
+  for a local trial, but a CI runner has no `.env`. The note never gates. An empty or
+  whitespace-only value now counts as missing (`preflight-secrets`, listed under `empty`).
+  Before, it passed preflight.
 - **`settings.example.json` no longer warns at startup.** The `Write`, `MultiEdit` and
   `NotebookEdit` path rules are gone: Claude Code consults only `Edit(path)` rules for file edits,
   and `Edit(./src/**)` already covers every file-editing tool, so protection is unchanged.
