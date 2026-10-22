@@ -59,6 +59,8 @@ For `/import-swagger --wizard`, the same server takes `--mode wizard [--spec <so
 stay attached by looping `node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/studio/channel.js" wait`
 until it returns `closed`. The whole protocol is
 `${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/references/suite-wizard.md`.
+`--spec` takes the source the user gave; any intermediate file you write for the run goes under
+`.agentex/scratch/<task>/` (`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`).
 The server prints `{"ok":true,"url":…}`: give the tester that URL. On `"already-running"`,
 give the URL it names; on `"port-in-use"`, relay its message.
 

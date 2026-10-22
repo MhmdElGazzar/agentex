@@ -24,7 +24,7 @@
 //                ("the ask-kb skill's `references/kb-ask-api.md`").
 //   version      .claude-plugin/plugin.json version = the README version badge (and the
 //                marketplace entry, when .claude-plugin/marketplace.json exists).
-//   env          every process.env.X read in scripts/** and skills/*/scripts/** (non-test)
+//   env          every process.env.X read in scripts/** and skills/*/scripts/** (non-test, not test data)
 //                is a name in .env.example (a KEY= line, or a name in its comments), unless
 //                listed in RUNTIME_ENV / INTERNAL_ENV below.
 //   secrets      a secret-shaped value (private-key block, GitHub, AWS, Atlassian token) in
@@ -81,6 +81,8 @@ const INTERNAL_ENV = new Set([
   'AGENTEX_SECRET_SCAN_TTY',
   // set by ci_gate.js per attempt: the dir fill_secret.js writes its temp code file under
   'AGENTEX_FILL_TMP', 'AGENTEX_PWCLI_CMD',
+  // test seam: browser_bridge.js's tests point it at golden/fake_playwright_cli.js
+  'AGENTEX_PLAYWRIGHT_CLI',
 ]);
 
 // Secret shapes. Written so this file's own source never matches them.
@@ -325,6 +327,8 @@ function documentedEnv(text) {
   }
   return names;
 }
+// Test fixtures — golden/, fixtures/, *.fixture.js — are test data, not scripts.
+const isTestData = (rel) => /(^|\/)(golden|fixtures)\//.test(rel) || /\.fixture\.[cm]?js$/.test(rel);
 function checkEnv(rel, text, documented, err) {
   text.split('\n').forEach((raw, i) => {
     if (/^\s*(\/\/|\*|\/\*)/.test(raw)) return;
@@ -365,7 +369,7 @@ function checkTests(files, warn) {
   const set = new Set(files);
   for (const rel of files) {
     if (!SCRIPT_RE.test(rel) || isTestFile(rel) || rel.startsWith('scripts/dev/')) continue;
-    if (/(^|\/)(golden|fixtures)\//.test(rel) || /\.fixture\.[cm]?js$/.test(rel)) continue;   // test data, not scripts
+    if (isTestData(rel)) continue;
     const dir = path.posix.dirname(rel);
     const base = path.posix.basename(rel).replace(/\.[cm]?js$/, '');
     const prefix = `${dir}/${base}.`;
@@ -390,7 +394,7 @@ function lint(root) {
     if (text === null) continue;
     checkFrontmatter(rel, text, (f, l, m) => err('frontmatter', f, l, m));
     if (PATH_SOURCES.test(rel)) checkPaths(rel, text, (f, l, m) => err('paths', f, l, m));
-    if (SCRIPT_RE.test(rel) && !isTestFile(rel)) checkEnv(rel, text, documented, (f, l, m) => err('env', f, l, m));
+    if (SCRIPT_RE.test(rel) && !isTestFile(rel) && !isTestData(rel)) checkEnv(rel, text, documented, (f, l, m) => err('env', f, l, m));
     if (rel !== DENYLIST_FILE) checkSecrets(rel, text, terms, err);
   }
   checkVersions(root, files, read, err, warn);

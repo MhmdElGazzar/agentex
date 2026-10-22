@@ -31,9 +31,9 @@ Post progress with `channel.js post <kind> --json '<object>'`, always with that 
   `value {runId, param, value, source:"project", provenance:{file, path}}`. Choosing which hit
   fits which need is your judgment: check the type and the operations that use it.
 - Its `db` list names the cataloged queries. Run only `"selectOnly": true` entries, through
-  `db-integration/scripts/run_db.js --entry <entry> … --log "$TMPDIR/agentex-wizard-<n>.log"`.
-  The log goes to the OS temp dir, so the project stays untouched before approval. Never run a
-  write entry.
+  `db-integration/scripts/run_db.js --entry <entry> … --log .agentex/scratch/swagger/wizard-db-<n>.log`.
+  The log is agent scratch (gitignored, see `${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`),
+  so no tracked file changes before approval. Never run a write entry.
 
 **Then the UI**, only for values still missing, and only if the environment has `portalUrl`
 and the event names a `user`. Otherwise post `failed {runId, reason}` in plain words (for
@@ -153,8 +153,8 @@ list.
 
 ## What the scripts guarantee
 
-- Nothing is written in the project before the tester approves step 5. Your only scratch is
-  `.playwright-cli/` (gitignored) and the OS temp dir.
+- Nothing the project tracks is written before the tester approves step 5. Your only scratch is
+  `.agentex/scratch/swagger/` and the tool-owned `.playwright-cli/`, both gitignored.
 - The token and the password never pass through your context, a command line you compose, a
   page response or a log. `fill_secret.js` reads an `envSecret` password itself and never
   relays playwright-cli's output; the bridge redacts what it prints. After the submit, either
