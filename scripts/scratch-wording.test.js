@@ -4,7 +4,8 @@
 // tells the agent to write goes under the consumer project's .agentex/scratch/ — never the
 // system temp directory, never a bare relative name at the project root, never
 // .agentex/cache/ (the tracker cache, not scratch), never a file the agent picks inside the
-// tool-owned .playwright-cli/ folder.
+// tool-owned .playwright-cli/ folder. A scratch file argument names its task subfolder
+// (.agentex/scratch/<task>/…), bar GR's three flat files.
 // Run: node scripts/scratch-wording.test.js
 //
 // Scope: every .md under skills/, references/, commands/ and agents/. docs/ and
@@ -57,6 +58,13 @@ function readValue(s) {
 }
 
 const isScratch = (v) => v.startsWith('.agentex/scratch/');
+// One subfolder per task (references/project-layout.md §Scratch): a scratch file argument
+// names its task folder. GR's three flat files are kept so its text does not churn.
+const FLAT_KEPT = ['cases.json', 'tasks.json', 'estimation-proposal.json'];
+const isFlatScratch = (v) => {
+  const rest = v.slice('.agentex/scratch/'.length);
+  return rest !== '' && !rest.includes('/') && !FLAT_KEPT.includes(rest);
+};
 const isEvidence = (v) => /^(<SESSION_DIR>|\{\{SESSION_DIR\}\}|\$SESSION_DIR|\$\{SESSION_DIR\}|"\$SESSION_DIR"|executions\/)/.test(v);
 // A pure placeholder: <file>, <spec>.json, <file.json>, <json file> — nothing else in it.
 const isPlaceholder = (v) => /^<[^<>/]+>(\.\w+)?$/.test(v);
@@ -95,7 +103,11 @@ function violations(md, { self = false } = {}) {
   for (const part of codeParts(md)) {
     for (const m of part.text.matchAll(FILE_ARG)) {
       const v = readValue(part.text.slice(m.index + m[0].length));
-      if (isNotAValue(v) || isElided(v) || isScratch(v) || isEvidence(v)) continue;
+      if (isScratch(v)) {
+        if (isFlatScratch(v)) out.push({ line: part.line, rule: 'scratch-no-subfolder', text: `--${m[1]} ${v}` });
+        continue;
+      }
+      if (isNotAValue(v) || isElided(v) || isEvidence(v)) continue;
       if (isPlaceholder(v)) {
         if (!statesRule) out.push({ line: part.line, rule: 'placeholder-without-rule', text: `--${m[1]} ${v}` });
         continue;
@@ -139,6 +151,7 @@ const CAUGHT = [
   ['file-arg', '`--spec "cases.json"`'],
   ['placeholder-without-rule', '`--out <file>` and Read the file'],
   ['reference-not-linked', 'Write it to `.agentex/scratch/cases.json`.'],
+  ['scratch-no-subfolder', '`--out .agentex/scratch/<name>.json` and Read' + SCRATCH_LINK],
 ];
 const ALLOWED = [
   // GR's test-design text, as it ships.

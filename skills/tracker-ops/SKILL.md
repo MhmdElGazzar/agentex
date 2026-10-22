@@ -73,7 +73,7 @@ project, and never in a system temp location
 
 ## Rules
 
-- **Text you will analyse goes through `--out .agentex/scratch/<name>.json` and Read — never
+- **Text you will analyse goes through `--out .agentex/scratch/tracker/<name>.json` and Read — never
   through a pipe.**
   Piping a description, acceptance criteria or a comment thread through another command can
   drop non-ASCII characters; the file holds the exact UTF-8 bytes the tracker sent.
