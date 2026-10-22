@@ -166,7 +166,7 @@ async function main(argv) {
   return failed.length ? 1 : 0;
 }
 
-module.exports = { parseArgs, partition, lastLines, SERIAL_ONLY };
+module.exports = { parseArgs, partition, lastLines, runPool, SERIAL_ONLY };
 
 if (require.main === module) {
   main(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (e) => {

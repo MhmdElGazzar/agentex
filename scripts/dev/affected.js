@@ -8,8 +8,9 @@
 //   Changed files = the merge-base of <ref> (default main) and HEAD, diffed against the
 //   working tree, plus untracked files. --files replaces that lookup (comma-separated,
 //   repeatable).
-//   --run executes the selected script tests one by one; evals are only listed (they run
-//   through `claude plugin eval`, slow and paid, so starting them stays a human call).
+//   --run executes the selected script tests in parallel through scripts/run-tests.js's pool
+//   (its SERIAL_ONLY files one at a time after); evals are only listed (they run through
+//   `claude plugin eval`, slow and paid, so starting them stays a human call).
 // Exit: 0 ok · 1 a selected test failed (--run) · 2 usage or git error.
 //
 // Tests: a test depends on what it require()s and on every path it builds from __dirname
@@ -24,8 +25,10 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
+const os = require('node:os');
+const { execFileSync } = require('node:child_process');
 const { matcher } = require('../hosts/transforms.js');
+const { runPool, partition, SERIAL_ONLY } = require('../run-tests.js');
 
 // Only these paths can change what a test or an eval sees; docs, CHANGELOG and spikes cannot.
 const IMPACT_ROOTS = matcher(['skills', 'scripts', 'commands', 'agents', 'templates', 'hosts',
@@ -228,14 +231,11 @@ function select({ root, changed, mergeBase = null, all = false }) {
 }
 
 // ---- running and printing ---------------------------------------------------------------
-function runTests(root, selected, quiet) {
-  const results = [];
-  for (const { test } of selected) {
-    if (!quiet) console.log(`\n▶ node ${test}`);
-    const r = spawnSync(process.execPath, [test], { cwd: root, stdio: quiet ? 'pipe' : 'inherit', encoding: 'utf8' });
-    results.push({ test, exit: r.status === null ? 1 : r.status });
-  }
-  return results;
+async function runTests(root, selected) {
+  const { pool, serial } = partition(selected.map((s) => s.test), SERIAL_ONLY);
+  const done = [...await runPool(root, pool, os.cpus().length), ...await runPool(root, serial, 1)];
+  return done.map((r) => ({ test: r.file, exit: r.exit === null ? 1 : r.exit, tail: r.tail }))
+    .sort((a, b) => a.test.localeCompare(b.test));
 }
 
 function print(r, header) {
@@ -274,7 +274,7 @@ function parseArgs(argv) {
   return a;
 }
 
-function main(argv) {
+async function main(argv) {
   let a;
   try { a = parseArgs(argv); } catch (e) { console.error(`affected: ${e.message}`); return 2; }
   let changed; let mergeBase = null;
@@ -298,16 +298,17 @@ function main(argv) {
   if (!a.run) { if (a.json) console.log(JSON.stringify(r)); else print(r, header); return 0; }
 
   if (!a.json) print(r, header);
-  r.results = runTests(a.root, r.tests.selected, a.json);
+  const started = Date.now();
+  r.results = await runTests(a.root, r.tests.selected);
   const failed = r.results.filter((x) => x.exit !== 0);
-  if (a.json) console.log(JSON.stringify(r));
+  if (a.json) console.log(JSON.stringify({ ...r, results: r.results.map(({ test, exit }) => ({ test, exit })) }));
   else {
-    console.log(`\n${r.results.length - failed.length} passed, ${failed.length} failed`);
-    failed.forEach((x) => console.log(`  FAIL node ${x.test} (exit ${x.exit})`));
+    failed.forEach((x) => console.log(`\nFAIL node ${x.test} (exit ${x.exit})\n${x.tail}`));
+    console.log(`\n${r.results.length - failed.length} passed, ${failed.length} failed — ${((Date.now() - started) / 1000).toFixed(1)}s`);
   }
   return failed.length ? 1 : 0;
 }
 
-if (require.main === module) process.exitCode = main(process.argv.slice(2));
+if (require.main === module) main(process.argv.slice(2)).then((code) => { process.exitCode = code; });
 
 module.exports = { select, makeGraph, IMPACT_ROOTS };

@@ -58,8 +58,7 @@ edits and untracked files) and lists the script tests and evals that change can 
 
 ```
 node scripts/dev/affected.js            # list what to run
-node scripts/dev/affected.js --run      # run the selected script tests
-node scripts/dev/affected.js --all --run   # run every script test (releases)
+node scripts/dev/affected.js --run      # run the selected script tests, in parallel
 ```
 
 Also `--base <ref>` (default `main`), `--files a,b` (skip the git lookup) and `--json`.
@@ -82,6 +81,7 @@ Also `--base <ref>` (default `main`), `--files a,b` (skip the git lookup) and `-
 **When you add an eval case:** add its entry to `evals/coverage.json`;
 `scripts/dev/affected.test.js` fails until you do.
 
-**Releases still run everything:** `--all --run` for the script tests, and the full eval suite.
+**Releases still run everything:** `node scripts/run-tests.js` for the script tests, and the full
+eval suite. `--run` reuses that runner's parallel pool, and also picks up untracked new tests.
 
 Next: [PR Workflow](./pr-workflow.md).
