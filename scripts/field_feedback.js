@@ -12,6 +12,12 @@
 //     password label and credential shapes are replaced first. Runs under AGENTEX_CI=1
 //     as mode ci. A failed capture never needs more than one line from the caller.
 //   forks     lists the project's copies of plugin skills (names, rule, local path).
+//   export    writes ONE sanitized file, .agentex/scratch/field-feedback/export-<UTC ts>.md,
+//             of the open entries (plus the names of forked plugin skills) for the user to
+//             review and send BY HAND. Nothing is sent. Best-effort sanitizer, four layers
+//             (lib/feedback_sanitize.js); any residue, an unparseable config, a newer
+//             schema, a missing secret layer or an un-ignored target stops with exit 2 and
+//             no file. Zero open entries: result NOTHING_TO_EXPORT, no file.
 //
 // Result line: {"tool":"agentex-field-feedback","schemaVersion":1,"verb":…,"result":
 // "OK"|"BLOCKED"(exit 2)|"ERROR"(exit 1), …}. Never a secret, a stripped value or raw
@@ -22,6 +28,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const learnings = require('./lib/learnings.js');
 const inventory = require('./lib/plugin_inventory.js');
 const sanitize = require('./lib/feedback_sanitize.js');
@@ -30,7 +37,7 @@ const TOOL = 'agentex-field-feedback';
 const SCHEMA_VERSION = 1;
 const { Refusal } = learnings;
 const USAGE = 'usage: field_feedback.js capture --trigger <workaround|repeated-correction|self-written-script|forked-skill> --affected <skill|command|unknown> ' +
-  '[--mode sequential|parallel|ci] [--session <s>] [--script <path>] [--fork <path>] [--rule CLAUDE.md] (stdin: {"problem","workaround"}) | forks';
+  '[--mode sequential|parallel|ci] [--session <s>] [--script <path>] [--fork <path>] [--rule CLAUDE.md] (stdin: {"problem","workaround"}) | forks | export';
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -133,17 +140,67 @@ async function forks(args, o) {
   return line('forks', 'OK', { forks: list });
 }
 
-const VERBS = { capture, forks };
+// ---- export ----------------------------------------------------------------------------------
+const EXPORT_DIR = '.agentex/scratch/field-feedback';
+const pad2 = (n) => String(n).padStart(2, '0');
+const utcStamp = (d) => `${d.getUTCFullYear()}${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}T${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`;
+
+// true / false inside a git work tree, null when there is no repository (or no git): the
+// ignore check only applies inside one.
+function gitIgnores(cwd, rel) {
+  const r = spawnSync('git', ['check-ignore', '-q', '--', rel], { cwd, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, windowsHide: true });
+  if (r.error || r.status === null) return null;
+  if (r.status === 0) return true;
+  if (r.status === 1) return false;
+  return null;
+}
+
+async function exportVerb(args, o) {
+  const cur = learnings.readLearnings(o.cwd);
+  learnings.refuseNewer(cur.parsed);
+  const open = cur.parsed.entries.filter((e) => e.status === 'open');
+  if (!open.length) return line('export', 'NOTHING_TO_EXPORT', { entries: 0, forkedSkills: 0 });
+
+  const ctx = sanitize.buildContext(o.cwd, { pluginRoot: o.pluginRoot, env: o.env, ...o.sanitize });
+  let manifest;
+  try { manifest = inventory.readManifest(o.pluginRoot); }
+  catch (e) { throw new Refusal(e.message, { reason: 'io', code: 1 }); }
+  const entries = []; const all = [];
+  for (const e of open) { const r = sanitize.sanitizeEntry(e, ctx); entries.push(r.entry); all.push(r.counts); }
+  const counts = sanitize.sumCounts(all);
+  const forkedSkills = [...new Set(inventory.detectForks(o.cwd, inventory.loadInventory(o.pluginRoot)).map((f) => f.plugin))].sort();
+  const payload = sanitize.buildPayload({ plugin: { name: manifest.name || 'agentex', version: manifest.version }, entries, forkedSkills, counts });
+  const md = sanitize.renderExport(payload, { repository: manifest.repository, valueCheck: ctx.valueCheck, valueCheckReason: ctx.valueCheckReason, configFound: ctx.configFound });
+
+  const stamp = utcStamp((o.learn.now || (() => new Date()))());
+  let rel = `${EXPORT_DIR}/export-${stamp}.md`;
+  if (gitIgnores(o.cwd, rel) === false) {
+    throw new Refusal(`${EXPORT_DIR}/ is not git-ignored, so no export was written — run /update-agentex (migration 05 adds the scratch line to .gitignore), then export again.`, { reason: 'not-ignored' });
+  }
+  try { fs.mkdirSync(path.join(o.cwd, EXPORT_DIR), { recursive: true }); }
+  catch (e) { throw new Refusal(`could not create ${EXPORT_DIR}: ${e.message}`, { reason: 'io', code: 1 }); }
+  for (let n = 1; ; n++) {
+    try { fs.writeFileSync(path.join(o.cwd, rel), md, { flag: 'wx' }); break; }
+    catch (e) {
+      if (e.code === 'EEXIST' && n < 50) { rel = `${EXPORT_DIR}/export-${stamp}-${n + 1}.md`; continue; }
+      throw new Refusal(`could not write the export file: ${e.code || 'error'}`, { reason: 'io', code: 1 });
+    }
+  }
+  return line('export', 'OK', { file: rel, entries: entries.length, forkedSkills: forkedSkills.length, counts, valueCheck: ctx.valueCheck, config: ctx.configFound ? 'found' : 'none' });
+}
+
+const VERBS = { capture, forks, export: exportVerb };
 
 // run(argv, { cwd, pluginRoot, env, stdin, now, randomHex, sleep, lockWaitMs, lockRetryMs, staleLockMs }):
 // the seams are for tests; the CLI passes none of them.
 async function run(argv, opts = {}) {
-  const { cwd, pluginRoot, env, stdin, ...learn } = opts;
+  const { cwd, pluginRoot, env, stdin, sanitize: sanitizeOpts, ...learn } = opts;
   const o = {
     cwd: cwd || process.cwd(),
     pluginRoot: pluginRoot || inventory.defaultPluginRoot(),
     env: env || process.env,
     stdin,
+    sanitize: sanitizeOpts,
     learn,
   };
   const args = parseArgs(argv);
