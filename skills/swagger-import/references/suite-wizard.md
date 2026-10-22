@@ -47,6 +47,11 @@ example "no application URL is configured for qc") and stop. The wizard goes on.
    - Never take a `snapshot` (or `eval` an input's value) while a filled password field is on
      screen. The accessibility snapshot prints field values; that is why the bridge submits
      in the same step.
+   - `"passwordFieldCleared": true` means the login did not leave the page (wrong password,
+     or a captcha/OTP on the same page) and the bridge emptied the field. To try again, fill
+     it through `fill-secret` once more. Never type into it or read it yourself.
+   - `"passwordFieldStillFilled": true` means it could not be emptied: take no snapshot,
+     close the session and post `failed`.
 4. Prove the login by a landmark (optimize-login's rules: an element only a signed-in user
    sees, never the URL).
    - A captcha or OTP: post `gate {runId, kind:"captcha"|"otp"|"other", text}` and wait for

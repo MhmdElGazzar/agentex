@@ -65,6 +65,23 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     assert.strictEqual(r[1].requestBody.status, 'open');
   });
 
+  await test('redaction: an application/x-www-form-urlencoded body has its secret-named keys redacted, the rest kept', async () => {
+    const calls = [
+      { method: 'POST', url: 'https://api.example.test/connect/token', status: 200, headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: `grant_type=password&username=qa_user_a&password=${PASSWORD}&client_secret=cs-value-9&scope=orders+read`,
+        response: `access_token=at-value-7&token_type=bearer&expires_in=3600` },
+      { method: 'POST', url: 'https://api.example.test/login', status: 302, body: `user%5Bname%5D=qa&user%5Bpassword%5D=${PASSWORD}` },
+    ];
+    const r = B.redactCalls(calls);
+    const text = JSON.stringify(r);
+    for (const secret of [PASSWORD, 'cs-value-9', 'at-value-7']) assert.ok(!text.includes(secret), secret);
+    assert.strictEqual(r[0].requestBody, 'grant_type=password&username=qa_user_a&password=[redacted]&client_secret=[redacted]&scope=orders+read');
+    assert.strictEqual(r[0].responseBody, 'access_token=[redacted]&token_type=[redacted]&expires_in=3600'); // same key rule as JSON bodies
+    assert.strictEqual(r[1].requestBody, 'user%5Bname%5D=qa&user%5Bpassword%5D=[redacted]');
+    // plain text that only looks like a sentence is left alone
+    assert.strictEqual(B.redactCalls([{ method: 'POST', url: 'https://x.test/', body: 'hello world' }])[0].requestBody, 'hello world');
+  });
+
   await test('single-use loopback handle: 127.0.0.1, random path, second GET 404, wrong path 404', async () => {
     const h = await B.serveOnce(PASSWORD);
     assert.match(h.url, /^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}$/);
@@ -129,11 +146,33 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     const second = path.join(dir, '..', `${path.basename(dir)}-second.txt`);
     const r = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]'], { SHIM_FILLED: filled, SHIM_SECOND_GET: second });
     assert.strictEqual(r.code, 0, r.out);
-    assert.deepStrictEqual(r.json, { ok: true, filled: true, submitted: true, user: 'qa_user_a' });
+    assert.deepStrictEqual(r.json, { ok: true, filled: true, submitted: true, user: 'qa_user_a', passwordFieldCleared: false });
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(filled, 'utf8')), { status: 200, value: PASSWORD });
     assert.strictEqual(fs.readFileSync(second, 'utf8'), '404');
     assert.ok(!r.out.includes(PASSWORD) && !r.err.includes(PASSWORD) && !r.argv.includes(PASSWORD));
     assert.match(r.argv, /button\[type=submit\]/);
+  });
+
+  await test('fill-secret --submit: a password field still filled after submit is cleared and reported (wrong password, same-page OTP)', async () => {
+    const dir = proj({ 'environments/qc.json': { defaults: { password: { envSecret: 'QA_PASSWORD' } }, users: { qa_user_a: {} } }, '.env': `QA_PASSWORD=${PASSWORD}\n` });
+    const field = path.join(dir, '..', `${path.basename(dir)}-field.json`);
+    const r = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]'], { SHIM_FIELD: field, SHIM_STAY_ON_PAGE: '1' });
+    assert.strictEqual(r.code, 0, r.out);
+    assert.strictEqual(r.json.passwordFieldCleared, true);
+    assert.match(r.json.message, /fill-secret/);
+    const f = JSON.parse(fs.readFileSync(field, 'utf8'));
+    assert.deepStrictEqual(f.clicks, ['button[type=submit]']);
+    assert.strictEqual(f.value, '', 'the field is empty when the bridge returns');
+    assert.ok(f.sawPassword, 'the field held the password before submit');
+    assert.ok(!r.out.includes(PASSWORD) && !r.err.includes(PASSWORD) && !r.argv.includes(PASSWORD));
+    // the page moved on: nothing to clear
+    const gone = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]'], { SHIM_FIELD: field });
+    assert.strictEqual(gone.json.passwordFieldCleared, false);
+    // a field that refuses to clear is reported, never claimed cleared
+    const stuck = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]'], { SHIM_FIELD: field, SHIM_STAY_ON_PAGE: '1', SHIM_FIELD_STUCK: '1' });
+    assert.strictEqual(stuck.json.passwordFieldCleared, false);
+    assert.strictEqual(stuck.json.passwordFieldStillFilled, true);
+    assert.ok(!stuck.out.includes(PASSWORD));
   });
 
   await test('fill-secret: an unknown user or no password -> refused without touching the browser', async () => {
@@ -160,6 +199,7 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     const code = B.captureCode({ apiOrigin: 'https://api.example.test', sinkUrl: 'http://127.0.0.1:1/abc', goto: 'https://app.example.test/x', waitMs: 10 });
     assert.ok(!code.includes('\n'));
     assert.ok(!B.fillCode({ handleUrl: 'http://127.0.0.1:1/abc', locator: '#p' }).includes('\n'));
+    assert.ok(!B.fillCode({ handleUrl: 'http://127.0.0.1:1/abc', locator: '#p', submit: '#go' }).includes('\n'));
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

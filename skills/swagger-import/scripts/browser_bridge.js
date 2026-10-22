@@ -19,8 +19,10 @@
 //       Resolves the user's password (users.<u>.password, else defaults.password, from
 //       environments/<e>.json — a { "envSecret": NAME } field reads .env) in this process and
 //       serves it ONCE from an ephemeral 127.0.0.1 listener on a random path; the run-code reads
-//       it from there and fills the field, then clicks --submit when given. The password never
-//       appears in a command line, an output or a log.
+//       it from there and fills the field, then clicks --submit when given. After a submit, a
+//       password field still on screen and non-empty is cleared ("passwordFieldCleared": true)
+//       so no later snapshot can print it. The password never appears in a command line, an
+//       output or a log.
 //   token-status --store <suite> --env <e>      owner and times only, never the value
 //
 // Common: [--project <root>] (default: the current directory).
@@ -42,6 +44,7 @@ const MAX_CALLS = 50;            // captured calls per capture (Q8)
 const MAX_BODY = 64 * 1024;      // bytes kept per request/response body (Q8)
 const DEFAULT_WAIT_MS = 2500;    // (Q8)
 const CLI_TIMEOUT_MS = 90 * 1000;
+const SUBMIT_SETTLE_MS = 2000;   // after --submit, before checking for a still-filled password field
 const SECRET_KEY_RE = /token|secret|passw|authori|cookie|session|otp/i;
 const JWT_RE = /eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g;
 const ALWAYS_SECRET_HEADERS = ['authorization', 'cookie', 'set-cookie', 'x-api-key', 'proxy-authorization'];
@@ -131,9 +134,23 @@ function redactJson(v, secrets) {
   }
   return typeof v === 'string' ? redactString(v, secrets) : v;
 }
+// application/x-www-form-urlencoded: `k=v&k2=v2`, no whitespace. Secret-named keys (same rule
+// as JSON keys, after decoding: "user%5Bpassword%5D" is user[password]) get "[redacted]".
+const FORM_RE = /^[^=&\s]+=[^&\s]*(?:&[^=&\s]*(?:=[^&\s]*)?)*$/;
+function redactForm(text, secrets) {
+  const out = text.split('&').map(pair => {
+    const at = pair.indexOf('=');
+    if (at === -1) return pair;
+    let key = pair.slice(0, at);
+    try { key = decodeURIComponent(key.replace(/\+/g, ' ')); } catch { /* keep raw */ }
+    return SECRET_KEY_RE.test(key) ? `${pair.slice(0, at)}=[redacted]` : pair;
+  }).join('&');
+  return redactString(out, secrets);
+}
 function redactBody(text, secrets) {
   if (typeof text !== 'string' || !text) return text || undefined;
-  try { return redactJson(JSON.parse(text), secrets); } catch { return redactString(text, secrets); }
+  try { return redactJson(JSON.parse(text), secrets); } catch { /* not JSON */ }
+  return FORM_RE.test(text) ? redactForm(text, secrets) : redactString(text, secrets);
 }
 function redactUrl(u, secrets) {
   try {
@@ -179,11 +196,18 @@ function captureCode({ apiOrigin, sinkUrl, goto, click, waitMs }) {
     + `page.on('request', onReq); page.on('response', onRes); try { ${action} await page.waitForTimeout(${waitMs}); await Promise.all(pend); } finally { page.off('request', onReq); page.off('response', onRes); } `
     + `await page.request.post(sink, { data: JSON.stringify(calls) }); return 'captured ' + calls.length; }`;
 }
+// After --submit, a password field still on screen and non-empty (wrong password, a same-page
+// captcha/OTP step) is cleared in the browser, so the agent's next snapshot cannot print it.
+// The value is only compared to '' inside the page; it never leaves it.
 function fillCode({ handleUrl, locator, submit }) {
+  const loc = JSON.stringify(locator);
+  const clear = `await page.waitForLoadState('load').catch(() => {}); await page.waitForTimeout(${SUBMIT_SETTLE_MS}); `
+    + `const fields = [page.locator(${loc}).first()]; const all = page.locator('input[type=password]'); const n = await all.count().catch(() => 0); for (let i = 0; i < n; i++) fields.push(all.nth(i)); `
+    + `let cleared = false, left = false; for (const f of fields) { if (!(await f.count().catch(() => 0))) continue; if (!(await f.inputValue().catch(() => ''))) continue; await f.fill('').catch(() => {}); if (await f.inputValue().catch(() => '')) left = true; else cleared = true; } `
+    + `return left ? 'filled-left' : cleared ? 'filled-cleared' : 'filled'; }`;
   return `async (page) => { const r = await page.request.get(${JSON.stringify(handleUrl)}); if (!r.ok()) return 'handle-refused'; `
-    + `await page.locator(${JSON.stringify(locator)}).first().fill(await r.text()); `
-    + (submit ? `await page.locator(${JSON.stringify(submit)}).first().click(); ` : '')
-    + `return 'filled'; }`;
+    + `await page.locator(${loc}).first().fill(await r.text()); `
+    + (submit ? `await page.locator(${JSON.stringify(submit)}).first().click(); ${clear}` : `return 'filled'; }`);
 }
 
 function userPassword(root, envName, user) {
@@ -223,10 +247,20 @@ async function main(argv) {
     const r = await runCli(root, session, fillCode({ handleUrl: handle.url, locator, submit }));
     const used = handle.used();
     handle.close();
-    if (!used || !/"filled"/.test(r.output)) {
+    const m = /"filled(-cleared|-left)?"/.exec(r.output);
+    if (!used || !m) {
       return emit({ ok: false, error: 'not-filled', message: `the password field was not filled (playwright-cli exit ${r.status})`, detail: redactString(r.output.slice(-400), [pw.value]) }, 1);
     }
-    return emit({ ok: true, filled: true, submitted: !!submit, user }, 0);
+    if (!submit) return emit({ ok: true, filled: true, submitted: false, user }, 0);
+    if (m[1] === '-cleared') {
+      return emit({ ok: true, filled: true, submitted: true, user, passwordFieldCleared: true,
+        message: 'a password field was still filled after submit (wrong password, or a captcha/OTP on the same page) and has been cleared; to try again, re-fill it with fill-secret' }, 0);
+    }
+    if (m[1] === '-left') {
+      return emit({ ok: true, filled: true, submitted: true, user, passwordFieldCleared: false, passwordFieldStillFilled: true,
+        message: 'a password field is still filled after submit and could not be cleared: take no snapshot of this page; close the session and post failed' }, 0);
+    }
+    return emit({ ok: true, filled: true, submitted: true, user, passwordFieldCleared: false }, 0);
   }
 
   if (cmd === 'capture') {
