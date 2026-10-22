@@ -130,6 +130,7 @@ const envCases = [
   ['captcha or unobtainable OTP', { total: 3, passed: 3 }, ['--run-reason', 'captcha-or-otp:login presented an uncataloged captcha'], 'captcha-or-otp'],
   ['run-level timeout', { total: 3, passed: 1, notRun: 2 }, ['--run-reason', 'timeout:attempt budget exceeded'], 'timeout'],
   ['session error', { total: 3, passed: 0, notRun: 3 }, ['--run-reason', 'session-error:the browser session died'], 'session-error'],
+  ['secret unavailable at fill time (a named variable, never captcha-or-otp)', { total: 3, passed: 2, blocked: 1 }, ['--run-reason', 'secret-unavailable:QA_PASSWORD'], 'secret-unavailable'],
 ];
 for (const [label, counts, args, code] of envCases) {
   test(`1-vs-2 promise: ${label} → BLOCKED / exit 2, never 1`, () => {
@@ -145,6 +146,13 @@ test('needs-user carries the precise question as detail', () => {
   const r = runVerdict({ total: 1, passed: 1 }, { args: ['--run-reason', 'needs-user:which variant is current: A or B?'] });
   const reason = r.json.blockedReasons.find((b) => b.code === 'needs-user');
   assert.strictEqual(reason.detail, 'which variant is current: A or B?');
+});
+
+test('secret-unavailable carries the env-var NAME as detail and is not reported as captcha-or-otp', () => {
+  const r = runVerdict({ total: 1, passed: 0, blocked: 1 }, { args: ['--run-reason', 'secret-unavailable:QA_PASSWORD'] });
+  const reason = r.json.blockedReasons.find((b) => b.code === 'secret-unavailable');
+  assert.strictEqual(reason.detail, 'QA_PASSWORD');
+  assert.ok(!r.json.blockedReasons.some((b) => b.code === 'captcha-or-otp'));
 });
 
 test('an unknown run-reason code is refused (closed vocabulary) → usage, exit 2', () => {

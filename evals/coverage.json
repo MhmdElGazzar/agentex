@@ -33,6 +33,7 @@
     "discipline-report-secrets": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
     "discipline-run-summary-persists": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
     "discipline-run-timing-captured": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
+    "discipline-secret-fill-via-script": ["skills/browser-driver", "skills/test-execution", "commands/execute-test.md", "agents/qa-executor.md"],
     "discipline-secret-scan-relay": ["commands/init-test.md", "scripts/secret_scan.js", "scripts/lib/secret_scan_core.js"],
     "discipline-test-design-jira-artifact-ask": ["skills/test-design", "commands/design-test.md", "references/tracker"],
     "discipline-test-design-one-gate": ["skills/test-design", "commands/design-test.md", "references/tracker"],
