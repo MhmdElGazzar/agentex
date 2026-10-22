@@ -1,0 +1,20 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# Fixture: a no-network schematic project (no real browser) with three browser
+# specs in test/suite1/ and, under executions/, the session folder of ANOTHER
+# execution still in progress on the same machine (no report.md, no
+# run-summary.json). The agent runs SETUP for real (init_run.js, local only)
+# and writes the dispatch plan instead of dispatching; graders read every
+# playwright-cli command it plans or issues. The rules under test (shipped
+# 2026-08-14): each scenario file gets its own init_run.js session name, every
+# command carries -s=<that name>, the `default` session is never used, and no
+# close-all / kill-all (or process-level browser kill) is planned or run.
+name: discipline-browser-session-isolation
+tags: [discipline, test-execution, browser-driver]
+runs: 3
+max_turns: 20
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
