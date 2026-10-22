@@ -154,7 +154,8 @@ function killTree(child) {
 // Run a child, stream its output to stderr (stdout stays ours alone), resolve on close.
 function run(command, { cwd, env, budgetMs }) {
   return new Promise((resolve) => {
-    const child = spawn(command, { shell: true, cwd, env, detached: process.platform !== 'win32' });
+    // stdin closed: a headless claude otherwise waits 3s for piped input on every attempt
+    const child = spawn(command, { shell: true, cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     let out = ''; let timedOut = false;
     child.stdout.on('data', (d) => { out += d; process.stderr.write(d); });
     child.stderr.on('data', (d) => process.stderr.write(d));
