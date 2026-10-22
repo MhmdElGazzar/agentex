@@ -62,8 +62,8 @@ an export is a local file the user reviews and sends by hand.
    `--affected` is the AgenTeX skill or command the gap is in (`test-design`, `update-agentex`),
    or `unknown`; the script turns a name it does not know into `unknown`. The script reads `.env`
    itself and strips every value it finds: never read `.env` for this. It prints one JSON line.
-4. **Exit 0**: say exactly one line, with the `affected` the script recorded, then continue the
-   task. Never ask, never wait:
+4. **Exit 0**: say exactly one line (`<affected>` is `unknown` when the JSON has
+   `affectedCoerced: true`), then continue the task. Never ask, never wait:
 
    > Recorded an AgenTeX learning (`<trigger>` · `<affected>`) in `.agentex/plugin-learnings.md`.
 5. **Exit 1 or 2**: nothing was written. Say one line, "Could not record an AgenTeX learning:
