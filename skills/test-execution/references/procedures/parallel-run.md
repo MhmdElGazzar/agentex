@@ -25,4 +25,5 @@ Run end to end without per-checkpoint approval, and present the final report whe
    3. **Report.** Write `report.md` and build `bugs/`, including any ui-check FAILs finalized in step 1 (`report.md`).
    4. **Run record.** Record the run end and compose `run-summary.json` from the executor reports (`run-record.md`): `run.tools` from SETUP's preflight, `run.sessions` from `init_run.js`, per-scenario timings and evidence paths, ui-check detail, flaky attempt records, resolved deferrals, and the defects. Link it from `report.md`.
    5. Optional: `extent-report.html` from that `run-summary.json` via the **extent-report** skill.
+   6. **Learnings.** Relay one line per LEARNINGS id in the merged summary: "Recorded an AgenTeX learning `<id>` (session `<label>`) in `.agentex/plugin-learnings.md`." No LEARNINGS line from any executor → nothing to relay. Never ask about them.
 5. **PRESENT**: show the merged summary.
