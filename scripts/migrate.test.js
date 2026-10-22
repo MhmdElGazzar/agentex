@@ -1361,6 +1361,46 @@ test('an extra ROUTES row reaches an existing project through the engine; bytes 
   assert.ok(text.includes('| A test-only extra row | `extra/` |'));
 });
 
+// ── stray-files check: a report on every run, or the consented moves ─────────
+// Runs right after the [hook] slot, before the version fast path; never touches the report
+// counters or the stamp.
+test('[stray] report on a project stamped at the installed version (fast path): paths listed, stamp unchanged, zero writes', () => {
+  const dir = stampedCurrent();
+  addFiles(dir, { 'probe-login.mjs': 'x\n', 'ado_dump.json': '{}\n' });
+  commitAll(dir);
+  addFiles(dir, { 'grid-out.txt': 'x\n' });
+  const stamp = readText(dir, '.agentex/version.json');
+  const before = snapshot(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^\[stray\] 3 files outside the project layout \(paths only; nothing was moved\)$/m);
+  assert.match(r.out, /^\[stray\]     probe-login\.mjs \(tracked\)$/m);
+  assert.match(r.out, /^\[stray\] plan [0-9a-f]{12} — ask the user once; only on an explicit yes, re-run with --move-strays=[0-9a-f]{12}$/m);
+  assert.match(r.out, /already up to date/i);
+  assert.ok(r.out.indexOf('[stray]') < r.out.indexOf('already up to date'), 'before the fast path');
+  assert.strictEqual(readText(dir, '.agentex/version.json'), stamp);
+  assert.deepStrictEqual(snapshot(dir), before, 'report-only: zero writes');
+});
+
+test('[stray] none on a fresh scaffold', () => {
+  const r = run(stampedCurrent());
+  assert.match(r.out, /^\[stray\] none — every file is where the layout puts it$/m);
+});
+
+test('[stray] on a migrating project: strays never change the [manual] counts, the summary or the stamp', () => {
+  const a = fixture010();
+  const b = fixture010();
+  addFiles(b, { 'probe-x.mjs': 'x\n', 'explore-y.mjs': 'y\n' });
+  const plain = run(a);
+  const withStrays = run(b);
+  assert.strictEqual(withStrays.code, plain.code, withStrays.out);
+  const strip = (out, dir) => out.split('\n').filter(l => !l.startsWith('[stray]')).join('\n').split(dir).join('<dir>');
+  assert.strictEqual(strip(withStrays.out, b), strip(plain.out, a), 'identical report apart from the [stray] lines');
+  assert.match(withStrays.out, /^\[stray\]     probe-x\.mjs$/m);
+  assert.strictEqual(readJson(b, '.agentex/version.json').version, INSTALLED);
+  assert.ok(exists(b, 'probe-x.mjs') && exists(b, 'explore-y.mjs'), 'nothing moved without the flag');
+});
+
 // ── config/estimation.json — created only by an approved estimation run ──────
 // No migration and no scaffold step creates it; once it exists, /update-agentex
 // and an /init-test re-run leave it byte-identical (invariant 11).
