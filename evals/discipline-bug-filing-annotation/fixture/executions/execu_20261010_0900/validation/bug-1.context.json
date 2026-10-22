@@ -1,0 +1,86 @@
+{
+  "ok": true,
+  "mode": "context",
+  "template": {
+    "configured": true,
+    "id": 99,
+    "type": "Bug",
+    "title": "Team bug template",
+    "state": "New"
+  },
+  "parent": {
+    "id": 321,
+    "type": "User Story",
+    "title": "Checkout story",
+    "state": "Active",
+    "url": "https://dev.azure.com/exampleorg/Sample%20Project/_workitems/edit/321"
+  },
+  "duplicateCandidates": [],
+  "defaults": {
+    "assignedTo": "qa.engineer@example.com",
+    "environment": "QA",
+    "bugCategory": "Functional",
+    "valueArea": "Business"
+  },
+  "choices": {
+    "assignedTo": [
+      "qa.engineer@example.com"
+    ],
+    "severity": [
+      "1 - Critical",
+      "2 - High",
+      "3 - Medium",
+      "4 - Low"
+    ],
+    "priority": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "environment": [
+      "QA",
+      "UAT",
+      "Production"
+    ],
+    "bugCategory": [
+      "Functional",
+      "UI",
+      "Data"
+    ]
+  },
+  "requiredInputs": {
+    "assignedTo": {
+      "required": true,
+      "resolved": true,
+      "needsUserInput": false,
+      "choices": [
+        "qa.engineer@example.com"
+      ]
+    }
+  },
+  "supported": {
+    "environment": true,
+    "bugCategory": true,
+    "valueArea": true
+  },
+  "processRequirements": {
+    "agentSupplied": [
+      "title",
+      "assignee",
+      "priority",
+      "severity",
+      "reproduction details"
+    ],
+    "automatic": [],
+    "unsupported": []
+  },
+  "testPlan": {
+    "configured": false
+  },
+  "metadata": {
+    "refreshed": false,
+    "builtAt": "2026-08-25T09:00:00Z"
+  },
+  "nothingWritten": true
+}

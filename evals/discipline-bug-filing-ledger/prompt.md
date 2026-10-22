@@ -2,7 +2,7 @@ Eval scenario for the AgenTeX plugin's bug-report-azure skill (partial-write led
 discipline). You are working interactively with a QA engineer in an AgenTeX project. They
 approved the consolidated filing screen a moment ago, and you ran:
 
-node <plugin>/skills/bug-report-azure/scripts/bug-report.js execute --plan bug-1.approved-plan.json
+node <plugin>/skills/bug-report-azure/scripts/bug-report.js execute --plan .agentex/scratch/bugs/execu_20260825_1200/bug-1.plan-1.json
 
 It exited 1 and printed exactly this one-line JSON:
 

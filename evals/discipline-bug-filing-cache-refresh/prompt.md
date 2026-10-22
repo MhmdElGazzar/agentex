@@ -3,7 +3,7 @@ discipline). You are working interactively with a QA engineer in an AgenTeX proj
 config/project.json sets "environment": "QA" in the azure block. While preparing their
 bug filing you ran the dry-run validation:
 
-node <plugin>/skills/bug-report-azure/scripts/bug-report.js prepare --intent bug-1.intent.json --plan bug-1.approved-plan.json
+node <plugin>/skills/bug-report-azure/scripts/bug-report.js prepare --intent .agentex/scratch/bugs/execu_20260825_1200/bug-1.intent.json --plan .agentex/scratch/bugs/execu_20260825_1200/bug-1.plan-1.json
 
 It exited 2 with this captured agent-facing result (unrelated context fields omitted):
 
