@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.26.0] — 2026-10-22
 ### Added
 - **A password-gated login can pass in CI.** Until now, every way to type an
   `{ "envSecret": "NAME" }` value into a browser field leaked it into a command line or tool
