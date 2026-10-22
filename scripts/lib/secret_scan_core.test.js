@@ -58,6 +58,40 @@ test('buildNeedles: non-secret config keys (ENV_KEY_MAP, ADO fallbacks, JIRA_EMA
   assert.deepStrictEqual(n.valueCheck.notChecked.nonSecretKeys, ['AZURE_AREA_PATH', 'JIRA_EMAIL', 'QA_URL']);
 });
 
+test('buildNeedles: <NAME>_BASE_URL keys are not needles and are named under notChecked.baseUrlKeys', () => {
+  const n = core.buildNeedles({
+    envText: `PETSTORE_BASE_URL=https://petstore.example.test/v2\nORDERS_V2_BASE_URL=https://orders.example.test\nAPI_TOKEN=${S}\n`,
+    processEnv: {},
+  });
+  assert.deepStrictEqual(n.substring.map(x => x.key), ['API_TOKEN'], 'the real secret beside them is still a needle');
+  assert.ok(!n.all.some(x => /_BASE_URL$/.test(x.key)), 'never in the overlap set either');
+  assert.deepStrictEqual(n.valueCheck.notChecked.baseUrlKeys, ['ORDERS_V2_BASE_URL', 'PETSTORE_BASE_URL']);
+  assert.deepStrictEqual(n.valueCheck.notChecked.nonSecretKeys, []);
+});
+
+test('buildNeedles: KB_ASK_BASE_URL stays a non-secret config key (ENV_KEY_MAP wording), not a base-URL key', () => {
+  const n = core.buildNeedles({ envText: 'KB_ASK_BASE_URL=https://kb.example.test\nX_BASE_URL=https://x.example.test\n', processEnv: {} });
+  assert.deepStrictEqual(n.valueCheck.notChecked.nonSecretKeys, ['KB_ASK_BASE_URL']);
+  assert.deepStrictEqual(n.valueCheck.notChecked.baseUrlKeys, ['X_BASE_URL']);
+});
+
+test('buildNeedles: only the exact _BASE_URL suffix on an upper-case name is excluded — no other suffix heuristics', () => {
+  const env = ['petstore_base_url', 'PETSTORE_BASE_URL_TOKEN', 'PETSTORE_URL', 'BASE_URL', 'PETSTORE_BASEURL', 'PETSTORE_API_KEY']
+    .map((k, i) => `${k}=${S}_${i}`).join('\n');
+  const n = core.buildNeedles({ envText: env, processEnv: {} });
+  assert.deepStrictEqual(n.valueCheck.notChecked.baseUrlKeys, []);
+  assert.deepStrictEqual(n.substring.map(x => x.key).sort(),
+    ['BASE_URL', 'PETSTORE_API_KEY', 'PETSTORE_BASEURL', 'PETSTORE_BASE_URL_TOKEN', 'PETSTORE_URL', 'petstore_base_url']);
+});
+
+test('scanFile: a base-URL value in a staged environment file is not a finding; a real secret beside it still leaks', () => {
+  const n = needles(`PETSTORE_BASE_URL=https://petstore.example.test/v2\nAPI_TOKEN=${S}\n`);
+  const env = `{\n  "api": { "baseUrl": "https://petstore.example.test/v2" }\n}\n`;
+  assert.deepStrictEqual(core.scanFile({ file: 'environments/qc.json', text: env, needles: n, fieldKind: 'environment', fieldTable: core.secretFieldTable([]) }), []);
+  const leak = core.scanFile({ file: 'r.md', text: `url https://petstore.example.test/v2\ntoken ${S}\n`, needles: n });
+  assert.deepStrictEqual(leak, [{ severity: 'leak', kind: 'secret-value', file: 'r.md', line: 2, key: 'API_TOKEN' }]);
+});
+
 test('buildNeedles: envSecret names and process-environment values count (NU-7)', () => {
   const n = core.buildNeedles({
     envText: null, envSecretNames: ['MY_REF'], processEnv: { MY_REF: S, UNRELATED: 'EVAL_SENTINEL_SCAN_unrelated' },
@@ -70,9 +104,10 @@ test('buildNeedles: envSecret names and process-environment values count (NU-7)'
 
 test('buildNeedles: skipped reasons — no-env-file, no-values (keys-only .env), all-excluded', () => {
   assert.deepStrictEqual(core.buildNeedles({ envText: null, processEnv: {} }).valueCheck,
-    { status: 'skipped', reason: 'no-env-file', keysChecked: [], labelChecked: [], notChecked: { shortValue: [], nonSecretKeys: [] } });
+    { status: 'skipped', reason: 'no-env-file', keysChecked: [], labelChecked: [], notChecked: { shortValue: [], nonSecretKeys: [], baseUrlKeys: [] } });
   assert.strictEqual(core.buildNeedles({ envText: 'AZURE_PAT=\nAPI_TOKEN=\n', processEnv: {} }).valueCheck.reason, 'no-values');
   assert.strictEqual(core.buildNeedles({ envText: 'QA_URL=https://example.test\nPIN=1\n', processEnv: {} }).valueCheck.reason, 'all-excluded');
+  assert.strictEqual(core.buildNeedles({ envText: 'PETSTORE_BASE_URL=https://petstore.example.test\n', processEnv: {} }).valueCheck.reason, 'all-excluded');
 });
 
 test('canonicalSecretNames: active keys of the plugin .env.example plus the PAT names', () => {

@@ -7,7 +7,8 @@
 //   needles   — the project's own secret values (every .env key + every envSecret
 //               name + the plugin's canonical secret names, resolved the way the
 //               plugin resolves them: process env and .env), minus the plugin's
-//               own non-secret config keys; short values never substring-matched.
+//               own non-secret config keys and any <NAME>_BASE_URL key; short values
+//               never substring-matched.
 //   matching  — `secret-value` (whole-text includes prefilter, then line split) and,
 //               for short known values only, `short-value-labeled`: (a) a whole token
 //               right after a password label in text, (b) structurally in JSON.
@@ -44,6 +45,10 @@ const IDENTIFIER_ENV_KEYS = ['JIRA_EMAIL'];
 const NON_SECRET_ENV_KEYS = Object.freeze([...new Set([
   ...Object.keys(ENV_KEY_MAP), ...ADO_NON_SECRET_FALLBACKS, ...IDENTIFIER_ENV_KEYS,
 ])]);
+// A service base URL is not a secret: /import-swagger tells the user to keep
+// <NAME>_BASE_URL in .env. Named separately (notChecked.baseUrlKeys) because, unlike
+// the keys above, it is not a setting to move into config. Only this exact suffix.
+const BASE_URL_KEY_RE = /^[A-Z0-9_]+_BASE_URL$/;
 
 const ENV_LINE_RE = /^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=/;
 const stripBom = (s) => String(s).replace(/^﻿/, '');
@@ -78,6 +83,7 @@ function buildNeedles({
   const text = envText === null || envText === undefined ? null : stripBom(envText);
   const names = [...new Set([...(text === null ? [] : enumerateEnvKeys(text)), ...envSecretNames, ...canonicalNames])];
   const nonSecretNamed = new Set();
+  const baseUrlNamed = new Set();
   const shortNamed = new Set();
   const keysChecked = new Set();
   const labelChecked = new Set();
@@ -93,6 +99,7 @@ function buildNeedles({
     if (!values.length) continue;
     anyValue = true;
     if (NON_SECRET_ENV_KEYS.includes(name)) { nonSecretNamed.add(name); continue; }
+    if (BASE_URL_KEY_RE.test(name)) { baseUrlNamed.add(name); continue; }
     for (const value of values) {
       if (seen.has(value)) continue;
       seen.add(value);
@@ -107,7 +114,11 @@ function buildNeedles({
     status: 'ran',
     keysChecked: [...keysChecked].sort(byName),
     labelChecked: [...labelChecked].sort(byName),
-    notChecked: { shortValue: [...shortNamed].sort(byName), nonSecretKeys: [...nonSecretNamed].sort(byName) },
+    notChecked: {
+      shortValue: [...shortNamed].sort(byName),
+      nonSecretKeys: [...nonSecretNamed].sort(byName),
+      baseUrlKeys: [...baseUrlNamed].sort(byName),
+    },
   };
   if (!substring.length && !labeled.length) {
     const noSource = text === null && !names.some(n => processEnv[n]);
@@ -459,7 +470,7 @@ function errorResult(mode, code, message) {
 }
 
 module.exports = {
-  DEFAULTS, NON_SECRET_ENV_KEYS, ADO_NON_SECRET_FALLBACKS,
+  DEFAULTS, NON_SECRET_ENV_KEYS, ADO_NON_SECRET_FALLBACKS, BASE_URL_KEY_RE,
   enumerateEnvKeys, canonicalSecretNames, buildNeedles, collectEnvSecretNames,
   labelOf, labelBeforeValue, rightBoundaryOk,
   parseJson, formatPath, walkValues, walkObjects,
