@@ -30,6 +30,50 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js" \
 - **`auth.type`**: `bearer`, `basic`, `apiKey` (custom header — e.g.
   `{"type":"apiKey","headerName":"X-Api-Key","tokenEnv":"API_TOKEN"}`), or `none`. Same
   missing-env-var → BLOCKED behavior for all three.
+- **`--expect-contains <dot.path>=<text>`** passes when the field's text includes `<text>`
+  (a non-string value is compared as its JSON text). It needs a JSON response, like
+  `--expect-equals`.
+- **`--no-auth`** sends the request with no credential at all: the environment's `api` token
+  and the catalog's `auth` are both ignored, and an unset token variable is not BLOCKED. Use
+  it for "401 without a token" checks.
+- **`--omit <param>`** (repeatable) sends the request without that declared param: a query
+  param is left out of the URL; a typed body node's key (or array element) is removed. A path
+  param (`cannot omit "<p>": it is a path parameter`), an undeclared name, or a param used
+  inside a legacy `"{p}"` body string (`cannot omit "<p>": it is used inside a body string
+  template`) is BLOCKED.
+- PASS and FAIL results carry `ms` (the request's duration). Every credential value the runner
+  sends (token, API key, basic password) is replaced by `[redacted]` in the evidence log and
+  in the printed JSON, even when the API echoes it back.
+
+## Typed body nodes — `$param`
+
+Anywhere in a request's `body`, `{"$param": "<name>", "type": "string|integer|number|boolean|json"}`
+takes the value of the declared param `<name>`, converted to that type (`json` parses the text
+as JSON). A value that does not convert is BLOCKED: `param "<n>" = "<v>" is not a valid <type>`.
+A param used this way is body-only: it never falls back to the query string. Omitting it
+(`--omit`) removes the key holding the node. Legacy `"{name}"` string templates work as
+before.
+
+```json
+{ "name": "create-order", "method": "POST", "path": "/orders", "params": ["qty", "item"],
+  "body": { "qty": { "$param": "qty", "type": "integer" }, "item": { "$param": "item", "type": "json" } } }
+```
+
+## A captured token — `auth.tokenStore`
+
+`auth.tokenStore` (a suite slug, with `bearer` or `apiKey` auth only — any other type is
+BLOCKED, `reasonCode: "bad-auth-field"`) lets a catalog use a token the suite wizard captured
+from the application's UI. Resolution:
+1. The catalog's `tokenEnv` set in the environment or `.env` → used; it always wins.
+2. Otherwise `test/.auth/api-tokens/<tokenStore>-<env>.json` for the resolved environment
+   (`--env`, else `defaultEnvironment`). No environment → BLOCKED (`… uses a captured token,
+   which needs an environment — pass --env or set defaultEnvironment`).
+3. The file is missing → BLOCKED, `reasonCode: "token-missing"`.
+4. Past its `expiresAt` (or the JWT `exp`, decoded locally) → BLOCKED,
+   `reasonCode: "token-expired"`, never a 401 FAIL.
+
+The token file is gitignored, mode 0600, and the only place the value is kept. To capture it
+again, ask the agent in chat.
 
 ## Where the target comes from — the catalog's `target` field
 

@@ -1,0 +1,16 @@
+{
+  "name": "svc-suite",
+  "cases": [
+    {
+      "name": "a-happy-path",
+      "entry": "svc.a",
+      "params": {},
+      "expect": {
+        "status": 200
+      },
+      "review": [
+        "no 2xx response is documented — expect.status 200 is a guess; set the real success status"
+      ]
+    }
+  ]
+}

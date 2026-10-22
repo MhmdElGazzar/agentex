@@ -52,15 +52,38 @@ have multiple cases (happy path, not-found, validation error, …).
   reported **BLOCKED** with the reason quoted (`case skipped: "<reason>"`), counted like any
   other BLOCKED case in the roll-up. `swagger-import` writes
   `"skip": "review: write operation — remove this line to enable"` on every generated
-  POST/PUT/PATCH/DELETE case — delete that line once you've reviewed the case to enable it.
+  POST/PUT/PATCH/DELETE case. Write cases are enabled **one at a time**, each only after the
+  user has reviewed that case (what it creates or changes, the values it sends, the
+  environment), or by the user through the editor's per-case Skip toggle. A request to strip
+  the `skip` lines in bulk is declined, with an offer to walk through the write cases one by
+  one (endpoint-testing's SKILL.md, "Enabling a skipped write case").
 - **`review`** (optional) — an array of notes from `swagger-import` (inferred param values,
   invented statuses, placeholder error values, …). Informational only: the runner ignores it.
   Since every generated write-method case also carries `skip`, a generated case with review
   notes runs as-is only when it is a GET — read the notes, fix the values, then delete them.
 
-Every case in every suite file runs every time — there's no scope/tag filtering. Suite files
-are simply how you organize cases into files (e.g. one per service); which cases exist under
-`integration/api_test_suites/` is the only control over what a run covers.
+### Optional case fields (absent = the behaviour above)
+
+```json
+{ "name": "get-order-no-token", "entry": "orders.get-order", "kind": "no-token", "auth": "none",
+  "params": { "orderId": 1042 }, "sources": { "orderId": "ui" }, "omit": [],
+  "expect": { "status": 401, "contains": { "message": "token" } } }
+```
+
+| Field | Values | Runner behaviour |
+|---|---|---|
+| `kind` | `happy` · `not-found` · `no-token` · `missing-field` | Informational (the wizard and the editor group by it) |
+| `auth` | `"none"` | Sent with no credential at all (`run_api.js --no-auth`). Any other value is BLOCKED: `case "<n>": "auth" must be "none" or absent (got <v>)` |
+| `sources` | `{param: "ui" \| "project" \| "auto" \| "manual" \| "placeholder"}` | A param still `placeholder` (and not omitted) → BLOCKED, `reasonCode: "placeholder"`, **never sent**: `needs a real value: param "<p>" is still a placeholder — set it in the editor or the suite file`. Other values only feed the editor's badges; a param with no entry shows as Manual |
+| `omit` | `[param, …]` | Each is sent left out (`--omit`); its value in `params`, if any, is ignored |
+| `expect.contains` | `{dot.path: text}` | Passes when the field includes the text (`--expect-contains`); counts as an expectation |
+
+Object and array `params` values are passed to `run_api.js` as JSON text (for typed `$param`
+body nodes of type `json`).
+
+A full run covers every case in every suite file. Suite files are simply how you organize
+cases into files (e.g. one per service); which cases exist under `integration/api_test_suites/`
+is the control over what a full run covers. `--suite` / `--case` (below) run a subset.
 
 ## The runner script
 
@@ -89,6 +112,14 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
   Exit: `0` all PASS, `1` any FAIL, `2` zero FAIL but any BLOCKED.
 - No suite files or no cases at all → **BLOCKED** with a clear reason. Never silently reports
   an empty run as PASS.
+- **`--suite <file>`** runs that one suite file; it must sit under `--suites` (else BLOCKED).
+  **`--case <n>`** (needs `--suite`) runs only its nth case, 1-based; out of range is BLOCKED
+  naming the case count.
+- Each case result also carries `suite` (the file, relative to the project root), `index` (its
+  1-based position) and, from `run_api.js`, `reasonCode` and `ms` when present.
+- Every run writes `<run-dir>/suite-result.json`: the printed summary plus `schemaVersion: 1`,
+  `startedAt`, and `suite` / `case` / `env` when given. The suite editor's "last result" reads
+  the newest one.
 
 ## Worked example
 

@@ -1,0 +1,17 @@
+{
+  "name": "legacy",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${LEGACY_BASE_URL}",
+  "auth": {
+    "type": "none"
+  },
+  "requests": [
+    {
+      "name": "listitems",
+      "method": "GET",
+      "path": "/items",
+      "params": []
+    }
+  ]
+}

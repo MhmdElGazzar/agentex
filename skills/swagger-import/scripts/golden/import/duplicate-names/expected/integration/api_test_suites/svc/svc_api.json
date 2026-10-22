@@ -1,0 +1,35 @@
+{
+  "name": "svc",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${SVC_BASE_URL}",
+  "auth": {
+    "type": "none"
+  },
+  "requests": [
+    {
+      "name": "listthings",
+      "method": "GET",
+      "path": "/a",
+      "params": []
+    },
+    {
+      "name": "listthings-2",
+      "method": "GET",
+      "path": "/b",
+      "params": [],
+      "review": [
+        "duplicate request name \"listthings\" (another operation already produced it) — renamed to \"listthings-2\"; rename it to something meaningful"
+      ]
+    },
+    {
+      "name": "listthings-3",
+      "method": "GET",
+      "path": "/c",
+      "params": [],
+      "review": [
+        "duplicate request name \"listthings\" (another operation already produced it) — renamed to \"listthings-3\"; rename it to something meaningful"
+      ]
+    }
+  ]
+}

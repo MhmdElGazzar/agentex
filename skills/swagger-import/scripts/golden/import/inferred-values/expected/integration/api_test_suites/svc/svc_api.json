@@ -1,0 +1,23 @@
+{
+  "name": "svc",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${SVC_BASE_URL}",
+  "auth": {
+    "type": "none"
+  },
+  "requests": [
+    {
+      "name": "getpet",
+      "method": "GET",
+      "path": "/pets/{id}",
+      "params": [
+        "id",
+        "tag"
+      ],
+      "query": [
+        "tag"
+      ]
+    }
+  ]
+}

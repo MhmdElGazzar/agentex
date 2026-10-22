@@ -1,0 +1,59 @@
+{
+  "name": "svc",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${SVC_BASE_URL}",
+  "auth": {
+    "type": "none"
+  },
+  "requests": [
+    {
+      "name": "getpet",
+      "method": "GET",
+      "path": "/pets/{id}",
+      "params": [
+        "id"
+      ]
+    },
+    {
+      "name": "putpet",
+      "method": "PUT",
+      "path": "/pets/{id}",
+      "params": [
+        "id"
+      ],
+      "body": {
+        "name": "example"
+      },
+      "review": [
+        "request body generated from schema — verify/adjust values"
+      ]
+    },
+    {
+      "name": "deletepet",
+      "method": "DELETE",
+      "path": "/pets/{id}",
+      "params": [
+        "id"
+      ]
+    },
+    {
+      "name": "addpet",
+      "method": "POST",
+      "path": "/pets",
+      "params": [],
+      "body": {
+        "name": "example"
+      },
+      "review": [
+        "request body generated from schema — verify/adjust values"
+      ]
+    },
+    {
+      "name": "patchpets",
+      "method": "PATCH",
+      "path": "/pets",
+      "params": []
+    }
+  ]
+}

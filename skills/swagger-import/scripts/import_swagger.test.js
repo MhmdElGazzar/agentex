@@ -242,6 +242,35 @@ test('envVarsToSet points secrets at the project .env, never "shell only"', () =
   assert.doesNotMatch(bearer.envVarsToSet.SHOP_TOKEN, /shell|never in/i);
 });
 
+// Golden: stdout + both written files, byte for byte, as main's importer produced them before
+// the spec model was extracted into swagger_model.js (golden/import/<case>/expected/).
+const GOLDEN = path.join(__dirname, 'golden', 'import');
+function walkFiles(d, base = d) {
+  let r = [];
+  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+    const f = path.join(d, e.name);
+    if (e.isDirectory()) r = r.concat(walkFiles(f, base)); else r.push(path.relative(base, f).split(path.sep).join('/'));
+  }
+  return r.sort();
+}
+for (const c of fs.readdirSync(GOLDEN).sort()) {
+  test(`golden: ${c} — stdout, catalog and suite byte-identical to the pre-refactor importer`, () => {
+    const dir = tmp();
+    fs.copyFileSync(path.join(GOLDEN, c, 'spec.json'), path.join(dir, 'spec.json'));
+    const args = JSON.parse(fs.readFileSync(path.join(GOLDEN, c, 'args.json'), 'utf8'));
+    const p = spawnSync(process.execPath, [IMPORTER, 'spec.json', ...args], { cwd: dir, encoding: 'utf8' });
+    const exp = path.join(GOLDEN, c, 'expected');
+    // Windows writes path.join separators into the stdout paths; the bytes are otherwise identical.
+    const stdout = process.platform === 'win32' ? p.stdout.replace(/\\\\/g, '/') : p.stdout;
+    assert.strictEqual(stdout, fs.readFileSync(path.join(exp, 'stdout.txt'), 'utf8'));
+    assert.strictEqual(String(p.status), fs.readFileSync(path.join(exp, 'exit.txt'), 'utf8').trim());
+    const want = walkFiles(path.join(exp, 'integration'));
+    const integ = path.join(dir, 'integration');
+    assert.deepStrictEqual(fs.existsSync(integ) ? walkFiles(integ) : [], want);
+    for (const rel of want) assert.strictEqual(fs.readFileSync(path.join(integ, rel), 'utf8'), fs.readFileSync(path.join(exp, 'integration', rel), 'utf8'), rel);
+  });
+}
+
 // async: the importer fetches from a local server, so it must not be spawned synchronously
 (async () => {
   await new Promise(resolve => {

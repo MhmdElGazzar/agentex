@@ -1,0 +1,29 @@
+{
+  "name": "svc-suite",
+  "cases": [
+    {
+      "name": "listthings-happy-path",
+      "entry": "svc.listthings",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "listthings-2-happy-path",
+      "entry": "svc.listthings-2",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    },
+    {
+      "name": "listthings-3-happy-path",
+      "entry": "svc.listthings-3",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    }
+  ]
+}

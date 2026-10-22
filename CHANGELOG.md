@@ -2,6 +2,46 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **From a Swagger to basic API checks with real data: `/import-swagger --wizard`.** A local
+  page (Arabic by default, `--lang=en`) takes a spec, a suite name and an environment you pick,
+  lists every operation (destructive writes unselected, other writes arriving skipped, public
+  ones without a 401 case), then collects real test data.
+  - **Project first:** test data, past executions, and read-only cataloged DB queries.
+  - **Then the application's UI:** Claude signs in as a user you pick and reads IDs, bodies
+    and the session token from the app's own network calls. The password and the token never
+    pass through the agent, a command line, the page or a log. A password declared
+    `{ "envSecret" }` is typed by browser-driver's `fill_secret.js`, as in a test run. A
+    captcha or OTP is handed to you.
+  - **Creating missing data** needs one consent on the exact list, and only on an environment
+    marked `"nonProduction": true`. The server enforces this and names the field when it
+    refuses.
+  - **Cases:** a preview of four checks per endpoint (happy path, not found, no token, missing
+    required field). One approval writes the catalog and the suite, never over an existing
+    file. The captured token goes only to `test/.auth/api-tokens/` (0600); the collected values
+    to `.agentex/cache/api-data/` (both gitignored).
+- **A local suite editor: `/test-endpoints --edit`.** Every suite under
+  `integration/api_test_suites/`, with a source badge per value (UI · Project · Auto ·
+  Placeholder · Manual), Needs review / Failing / Skipped filters and an edit drawer.
+  - Save never overwrites a change made on disk after the page loaded the file: it refuses
+    and lists your unsaved edits. Unknown fields, review notes and case order are kept.
+  - Run all / Run this case go through the same runner as `/test-endpoints`, with the same
+    evidence in `executions/`.
+  - The page answers only `127.0.0.1:<port>` / `localhost:<port>` (no DNS rebinding).
+- **Generated write cases are enabled one at a time.** Each POST/PUT/PATCH/DELETE case stays
+  skipped until you review it (what it creates or changes, the values it sends, the
+  environment) or flip its Skip toggle in the editor; a request to strip the skip lines in
+  bulk is declined.
+- **Runner gaps closed (backward compatible).**
+  - `run_api.js`: `--no-auth`, `--expect-contains`, `--omit`, typed `$param` body nodes,
+    `auth.tokenStore` (BLOCKED `token-missing` / `token-expired`, never a 401 FAIL), an `ms`
+    timing, and every credential value it sent redacted from logs and output.
+  - `run_suite.js`: case `auth: "none"`, `omit`, `expect.contains` and `sources` (a value still
+    a placeholder is BLOCKED "needs a real value" and never sent). Also `--suite <file>` and
+    `--case <n>` subset runs, and a `suite-result.json` in every run folder.
+  - Existing suites run unchanged; a legacy-suite snapshot test guards it.
+
 ## [0.26.0] — 2026-10-22
 ### Added
 - **A password-gated login can pass in CI.** Until now, every way to type an
@@ -26,6 +66,8 @@ All notable changes to AgenTeX are documented here.
   verdict contract v1. `captcha-or-otp` now means a real captcha or an OTP nobody can supply.
 
 ### Changed
+- `import_swagger.js` now runs on the shared `swagger_model.js`. Its output is byte-identical
+  (golden tests over fifteen specs).
 - **CI preflight reports where each secret comes from.** `checks.secrets.sources` gives
   `process-env` or `dotenv` per name. Names found only in `.env` get one stderr note: that works
   for a local trial, but a CI runner has no `.env`. The note never gates. An empty or

@@ -1,0 +1,54 @@
+{
+  "name": "petstore-two",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${PETSTORE_TWO_BASE_URL}",
+  "auth": {
+    "type": "apiKey",
+    "headerName": "api_key",
+    "tokenEnv": "PETSTORE_TWO_TOKEN"
+  },
+  "requests": [
+    {
+      "name": "getpetbyid",
+      "description": "Find pet by ID",
+      "method": "GET",
+      "path": "/pet/{petId}",
+      "params": [
+        "petId"
+      ]
+    },
+    {
+      "name": "deletepet",
+      "method": "DELETE",
+      "path": "/pet/{petId}",
+      "params": [
+        "petId"
+      ]
+    },
+    {
+      "name": "addpet",
+      "method": "POST",
+      "path": "/pet",
+      "params": [],
+      "body": {
+        "id": 1,
+        "name": "example"
+      },
+      "review": [
+        "request body generated from schema — verify/adjust values"
+      ]
+    },
+    {
+      "name": "findpetsbystatus",
+      "method": "GET",
+      "path": "/pet/findByStatus",
+      "params": [
+        "status"
+      ],
+      "query": [
+        "status"
+      ]
+    }
+  ]
+}

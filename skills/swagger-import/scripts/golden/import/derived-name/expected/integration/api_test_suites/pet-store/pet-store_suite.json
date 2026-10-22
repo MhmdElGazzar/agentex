@@ -1,0 +1,13 @@
+{
+  "name": "pet-store-suite",
+  "cases": [
+    {
+      "name": "a-happy-path",
+      "entry": "pet-store.a",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    }
+  ]
+}

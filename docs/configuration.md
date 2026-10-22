@@ -85,6 +85,7 @@ your board, delete or move it; the next estimation run proposes a new one.
 | `users` | Test accounts keyed by a descriptive handle (`valid_user`, `expired_user`, …) that specs refer to ("login as expired_user"). Fields free-form: `phone`, `role`, `idNumber`, `password`, `notes`, … A user without `password` uses `defaults.password`. |
 | `db` | `server`, `port`, `name`, `user`, `password` — for cataloged `db:` steps. |
 | `api` | `baseUrl`, `token` — for cataloged `api:` steps. |
+| `nonProduction` | Optional, `true` only. Marks the environment as safe for the suite wizard to create missing test data through the UI (after your one consent on the exact list). Anything else (absent, `false`, the string `"true"`) means no data is ever created there. Add it by hand; the setup wizard keeps it on re-save. |
 | `mobile` | `platformName`, `automationName`, `app` (or `appPackage`+`appActivity` / `bundleId`), `deviceName`, `platformVersion`, optional `udid` — the Appium target for [mobile testing](./mobile-testing.md). **Opt-in**: the scaffolded sample has no `mobile` block; add one only if you test a native app (example below). |
 
 An opt-in `mobile` block (Android emulator, local `.apk`):
