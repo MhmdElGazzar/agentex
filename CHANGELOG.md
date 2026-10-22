@@ -2,7 +2,7 @@
 
 All notable changes to AgenTeX are documented here.
 
-## [Unreleased]
+## [0.27.0] — 2026-10-23
 ### Added
 - **From a Swagger to basic API checks with real data: `/import-swagger --wizard`.** A local
   page (Arabic by default, `--lang=en`) takes a spec, a suite name and an environment you pick,
@@ -41,7 +41,6 @@ All notable changes to AgenTeX are documented here.
     a placeholder is BLOCKED "needs a real value" and never sent). Also `--suite <file>` and
     `--case <n>` subset runs, and a `suite-result.json` in every run folder.
   - Existing suites run unchanged; a legacy-suite snapshot test guards it.
-
 ### Changed
 - **A CI BLOCKED that left no verdict now says why.** Before, the verdict said only
   `no-verdict`, and the gate spent up to 4 sessions and 90 s of pauses on it. Now
@@ -54,6 +53,34 @@ All notable changes to AgenTeX are documented here.
   `cause: "unknown"` and is retried as before. A verdict file the session did write always
   wins. The new fields are optional and additive to verdict contract v1 (no `schemaVersion`
   bump); `docs/ci-quality-gate.md` documents them and the no-retry cases.
+- **Maintainer tooling: changelog fragments and file-level eval selection.** Nothing here
+  reaches a consumer.
+  - A feature now adds `changelog.d/<slug>.md` instead of editing `CHANGELOG.md`, so merges
+    into a moving `main` stop conflicting there. `node scripts/dev/changelog.js --check`
+    validates the fragments; `--assemble <X.Y.Z>` folds them (and any `[Unreleased]` section)
+    into the release section at release time. `changelog.d` is excluded from every host build
+    and inert in the release-gate plan.
+  - `scripts/dev/affected.js`: an `evals/coverage.json` pattern that names a folder no longer
+    matches a changed script (a `.js` outside `*.test.js`), directly or through a file that
+    requires it, so a script edit in a skill stops selecting every eval of that skill. A
+    pattern naming a file still matches it; prompts, references and data keep matching folder
+    patterns.
+### Fixed
+- **A failed login that re-renders the password no longer leaks it to a snapshot.** After
+  `--submit`, `fill_secret.js` now clears every input and textarea on the page the browser
+  ends up on whose value equals the secret, not only the fields it filled itself, and counts
+  them in `scrubbed`. The suite wizard's plain-string login (`browser_bridge.js fill-secret`)
+  does the same. The suite wizard's login step says a snapshot is safe only after this scrub.
+- **A failure note in the suite wizard survives a late `ended`.** A run marked `failed` stays
+  failed; the wizard text now says to post `failed` on failure and `ended` only on success.
+- **The editor's case drawer no longer shows the word `null`** under the message check and
+  after "Last run".
+- **Studio runs are named like every other run.** `executions/execu_<local time>` — the same
+  `YYYY-MM-DD_HH-MM-SS` as `/test-endpoints`, in local time; before, they were
+  named in UTC and sorted out of order next to other runs. A test pins the two formats together.
+- **The Save-conflict banner hides after Reload.**
+- **`result.md` of a run started by "Approve and run" says "run from the suite wizard"**
+  instead of "run from the editor".
 
 ## [0.26.0] — 2026-10-22
 ### Added

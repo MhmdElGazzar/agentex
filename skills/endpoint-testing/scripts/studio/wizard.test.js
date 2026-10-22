@@ -183,6 +183,10 @@ const ALL_SAFE = ['GET /pets', 'POST /pets', 'GET /pets/{petId}', 'GET /store/in
     assert.strictEqual(r.result.suite, 'integration/api_test_suites/pets/pets_suite.json');
     assert.deepStrictEqual(r.result.cases.map(c => [c.name, c.result]), [["getinventory-happy", "PASS"]], JSON.stringify(r.result));
     assert.deepStrictEqual(sv.apiHits, ['GET /v1/store/inventory']);
+    // S-6: the run came from the wizard, and result.md says so
+    const md = fs.readFileSync(path.join(dir, r.runDir, 'result.md'), 'utf8');
+    assert.ok(md.includes('run from the suite wizard'), md);
+    assert.ok(!md.includes('run from the editor'), md);
   });
 
   await test('the wizard page is served in Arabic by default, with the spec prefilled when given', async () => {
@@ -274,6 +278,16 @@ const ALL_SAFE = ['GET /pets', 'POST /pets', 'GET /pets/{petId}', 'GET /store/in
     const st = (await s.page('GET', '/api/wizard/state')).json;
     assert.deepStrictEqual([st.run.status, st.run.reason], ['failed', 'the browser is not available']);
     assert.strictEqual((await s.page('GET', '/api/wizard/preview')).status, 200);
+  });
+
+  await test('failed is final: a later ended does not overwrite it; the state the page reads still carries the failure note', async () => {
+    const { s, post } = await collectRun({});
+    await post('failed', { reason: 'the login did not work' });
+    const late = await post('ended', { found: 0, total: 2 });
+    assert.strictEqual(late.json.ok, true);
+    const st = (await s.page('GET', '/api/wizard/state')).json;
+    assert.deepStrictEqual([st.run.status, st.run.reason], ['failed', 'the login did not work']);
+    assert.strictEqual(st.run.found, undefined);
   });
 
   await test('the captured token is held in memory, never in a response, and written only to its 0600 file at approval', async () => {
