@@ -233,6 +233,21 @@ const isWrite = (c) =>
     }
   });
 
+  await test('record / ensure-suite: a malformed plan or parent id is refused before any request (exit 2, one JSON line)', async () => {
+    for (const argv of [
+      ['record', '--plan', '03', '--testcase', '77', '--outcome', 'Passed'],
+      ['record', '--plan', '+3', '--testcase', '77', '--outcome', 'Failed', '--bug', '4711'],
+      ['ensure-suite', '--plan', '3 ', '--type', 'static', '--name', 'Smoke'],
+      ['ensure-suite', '--plan', '3', '--type', 'static', '--name', 'Smoke', '--parent', '0x4'],
+    ]) {
+      const f = fakeFetch(failRoutes());
+      const { code, out } = await run(argv, { cwd: proj(), fetch: f });
+      assert.strictEqual(code, 2, `${argv.join(' ')}: ${JSON.stringify(out)}`);
+      assert.match(out.error.message, /positive canonical decimal/);
+      assert.strictEqual(f.calls.length, 0, `${argv.join(' ')}: nothing was sent`);
+    }
+  });
+
   await test('fail: no test point for the TC in the plan blocks with exit 2', async () => {
     const f = fakeFetch([
       { match: '/testplan/Plans/3/suites', json: SUITES },

@@ -92,6 +92,17 @@ const PLAN_NOTE =
 // test-run mechanics — on a tracker whose adapter declares testPlans: false
 // (Jira), the honest answer is one refusal line BEFORE any request, never an
 // attempt. The /design-test skill's Jira path owns what to offer instead.
+// ensure-suite's --parent / --requirement are ids the user names (never a plan
+// stand-in), and they decide which existing suite matches as well as what a
+// create sends — so they take the adapter's canonical-id rule upfront: exit 2
+// before any request, the same wording the adapter refuses with.
+function requireCanonicalArg(flag, value) {
+  if (/^[1-9][0-9]*$/.test(String(value)) && Number.isSafeInteger(Number(value))) return String(value);
+  const e = new Error(`--${flag} needs a positive canonical decimal id (got ${JSON.stringify(String(value))}) — refused before any request`);
+  e.exitCode = 2;
+  throw e;
+}
+
 function guardTestPlans(adapter) {
   if (adapter.capabilities && adapter.capabilities.testPlans === false) {
     const e = new Error(
@@ -405,7 +416,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       // the baseline defaults stay, and there is NO idempotent skip.
       const plan = need('plan'); const tc = need('testcase'); const bug = need('bug');
       const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
-      return recordOutcome(adapter, args, {
+      return await recordOutcome(adapter, args, {
         plan, tc, bug, outcome: 'Failed', alias: true, idempotent: false,
         comment: args.comment || `Failed during automated regression run; see Bug #${bug}.`,
         runName: args['run-name'] || `Regression fail — TC ${tc} (Bug ${bug})`,
@@ -427,7 +438,7 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
         };
       }
       const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
-      return recordOutcome(adapter, args, {
+      return await recordOutcome(adapter, args, {
         plan, tc, bug, outcome, alias: false, idempotent: true,
         comment: args.comment || (bug ? `${outcome} during automated regression run; see Bug #${bug}.` : `${outcome} recorded by AgenTeX`),
         runName: args['run-name'] || `${outcome} — TC ${tc}${bug ? ` (Bug ${bug})` : ''}`,
@@ -480,7 +491,8 @@ async function run(argv, { cwd = process.cwd(), fetch } = {}) {
       const name = type === 'static' ? need('name') : null;
       const adapter = guardTestPlans(resolveTracker(cwd, { fetch }));
       const mode = args.execute ? 'executed' : 'plan';
-      let parent = args.parent !== undefined && args.parent !== true ? String(args.parent) : null;
+      if (requirement !== null) requireCanonicalArg('requirement', requirement);
+      let parent = args.parent !== undefined && args.parent !== true ? requireCanonicalArg('parent', args.parent) : null;
       if (!parent) {
         const p = await adapter.getPlan(plan);
         parent = p && p.rootSuite ? String(p.rootSuite.id) : null;
