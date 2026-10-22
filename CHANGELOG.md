@@ -2,6 +2,86 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.27.0] — 2026-10-23
+### Added
+- **From a Swagger to basic API checks with real data: `/import-swagger --wizard`.** A local
+  page (Arabic by default, `--lang=en`) takes a spec, a suite name and an environment you pick,
+  lists every operation (destructive writes unselected, other writes arriving skipped, public
+  ones without a 401 case), then collects real test data.
+  - **Project first:** test data, past executions, and read-only cataloged DB queries.
+  - **Then the application's UI:** Claude signs in as a user you pick and reads IDs, bodies
+    and the session token from the app's own network calls. The password and the token never
+    pass through the agent, a command line, the page or a log. A password declared
+    `{ "envSecret" }` is typed by browser-driver's `fill_secret.js`, as in a test run. A
+    captcha or OTP is handed to you.
+  - **Creating missing data** needs one consent on the exact list, and only on an environment
+    marked `"nonProduction": true`. The server enforces this and names the field when it
+    refuses.
+  - **Cases:** a preview of four checks per endpoint (happy path, not found, no token, missing
+    required field). One approval writes the catalog and the suite, never over an existing
+    file. The captured token goes only to `test/.auth/api-tokens/` (0600); the collected values
+    to `.agentex/cache/api-data/` (both gitignored).
+- **A local suite editor: `/test-endpoints --edit`.** Every suite under
+  `integration/api_test_suites/`, with a source badge per value (UI · Project · Auto ·
+  Placeholder · Manual), Needs review / Failing / Skipped filters and an edit drawer.
+  - Save never overwrites a change made on disk after the page loaded the file: it refuses
+    and lists your unsaved edits. Unknown fields, review notes and case order are kept.
+  - Run all / Run this case go through the same runner as `/test-endpoints`, with the same
+    evidence in `executions/`.
+  - The page answers only `127.0.0.1:<port>` / `localhost:<port>` (no DNS rebinding).
+- **Generated write cases are enabled one at a time.** Each POST/PUT/PATCH/DELETE case stays
+  skipped until you review it (what it creates or changes, the values it sends, the
+  environment) or flip its Skip toggle in the editor; a request to strip the skip lines in
+  bulk is declined.
+- **Runner gaps closed (backward compatible).**
+  - `run_api.js`: `--no-auth`, `--expect-contains`, `--omit`, typed `$param` body nodes,
+    `auth.tokenStore` (BLOCKED `token-missing` / `token-expired`, never a 401 FAIL), an `ms`
+    timing, and every credential value it sent redacted from logs and output.
+  - `run_suite.js`: case `auth: "none"`, `omit`, `expect.contains` and `sources` (a value still
+    a placeholder is BLOCKED "needs a real value" and never sent). Also `--suite <file>` and
+    `--case <n>` subset runs, and a `suite-result.json` in every run folder.
+  - Existing suites run unchanged; a legacy-suite snapshot test guards it.
+### Changed
+- **A CI BLOCKED that left no verdict now says why.** Before, the verdict said only
+  `no-verdict`, and the gate spent up to 4 sessions and 90 s of pauses on it. Now
+  `ci_gate.js` reads the session's own result and names the cause on the reason, plus one
+  stderr line with the fix. A runner with no Claude auth gives `session-error` with
+  `cause: "not-authenticated"`; set `ANTHROPIC_API_KEY` on the gate step. A tool the CI
+  settings denied gives `no-verdict` with `cause: "tool-denied"` and `tools` (names only, never
+  the tool's input); allow it in `ci-settings.json`. Neither is retried (`retryable: false`),
+  so the run stops after one session. Anything else stays `no-verdict` with
+  `cause: "unknown"` and is retried as before. A verdict file the session did write always
+  wins. The new fields are optional and additive to verdict contract v1 (no `schemaVersion`
+  bump); `docs/ci-quality-gate.md` documents them and the no-retry cases.
+- **Maintainer tooling: changelog fragments and file-level eval selection.** Nothing here
+  reaches a consumer.
+  - A feature now adds `changelog.d/<slug>.md` instead of editing `CHANGELOG.md`, so merges
+    into a moving `main` stop conflicting there. `node scripts/dev/changelog.js --check`
+    validates the fragments; `--assemble <X.Y.Z>` folds them (and any `[Unreleased]` section)
+    into the release section at release time. `changelog.d` is excluded from every host build
+    and inert in the release-gate plan.
+  - `scripts/dev/affected.js`: an `evals/coverage.json` pattern that names a folder no longer
+    matches a changed script (a `.js` outside `*.test.js`), directly or through a file that
+    requires it, so a script edit in a skill stops selecting every eval of that skill. A
+    pattern naming a file still matches it; prompts, references and data keep matching folder
+    patterns.
+### Fixed
+- **A failed login that re-renders the password no longer leaks it to a snapshot.** After
+  `--submit`, `fill_secret.js` now clears every input and textarea on the page the browser
+  ends up on whose value equals the secret, not only the fields it filled itself, and counts
+  them in `scrubbed`. The suite wizard's plain-string login (`browser_bridge.js fill-secret`)
+  does the same. The suite wizard's login step says a snapshot is safe only after this scrub.
+- **A failure note in the suite wizard survives a late `ended`.** A run marked `failed` stays
+  failed; the wizard text now says to post `failed` on failure and `ended` only on success.
+- **The editor's case drawer no longer shows the word `null`** under the message check and
+  after "Last run".
+- **Studio runs are named like every other run.** `executions/execu_<local time>` — the same
+  `YYYY-MM-DD_HH-MM-SS` as `/test-endpoints`, in local time; before, they were
+  named in UTC and sorted out of order next to other runs. A test pins the two formats together.
+- **The Save-conflict banner hides after Reload.**
+- **`result.md` of a run started by "Approve and run" says "run from the suite wizard"**
+  instead of "run from the editor".
+
 ## [0.26.0] — 2026-10-22
 ### Added
 - **A password-gated login can pass in CI.** Until now, every way to type an
@@ -26,6 +106,8 @@ All notable changes to AgenTeX are documented here.
   verdict contract v1. `captcha-or-otp` now means a real captcha or an OTP nobody can supply.
 
 ### Changed
+- `import_swagger.js` now runs on the shared `swagger_model.js`. Its output is byte-identical
+  (golden tests over fifteen specs).
 - **CI preflight reports where each secret comes from.** `checks.secrets.sources` gives
   `process-env` or `dotenv` per name. Names found only in `.env` get one stderr note: that works
   for a local trial, but a CI runner has no `.env`. The note never gates. An empty or

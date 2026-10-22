@@ -2,7 +2,7 @@
 
 **Agentic QA for Claude Code — an agent plans, runs, and reports your tests so you don't click through them by hand.**
 
-[![Version](https://img.shields.io/badge/version-0.26.0-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.27.0-blue.svg)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-8A2BE2.svg)](https://docs.anthropic.com/en/docs/claude-code)
 [![Playwright](https://img.shields.io/badge/Playwright-CLI-2EAD33.svg?logo=playwright&logoColor=white)](https://www.npmjs.com/package/@playwright/cli)
@@ -43,8 +43,8 @@ $agentex:execute-test https://example.com
 | **Tracker bug filing (Azure DevOps or Jira Cloud)** | After a run, `bug-report-azure` files found defects as tracker **Bugs** through the same bundled scripts — recommends severity/priority, validates every field against your project's real values, links each bug to its parent User Story, validates & attaches screenshots, optionally fails the related test case (ADO); all writes behind **one** approval, with an exact per-write ledger if anything fails partway. | [azure-devops](./docs/azure-devops.md) · [jira](./docs/jira.md) |
 | **HTML report** | At the end of a run, generates a standalone, self-contained `extent-report.html` dashboard (donut chart, status cards, expandable per-test-case steps). | [extent-report](./docs/extent-report.md) |
 | **Configuration** | Three homes, one each: `config/project.json` (project settings), `environments/<env>.json` (targets, users, integrations), and a secrets-only `.env` — legacy keys-only `.env` projects still work untouched. After a plugin update, `$agentex:update-agentex` migrates a project to the new conventions, carrying your values. | [configuration](./docs/configuration.md) |
-| **Standalone API tests** | `$agentex:test-endpoints` runs every cataloged endpoint's test cases in one pass, dispatching an `api-executor` subagent and reporting pass/fail per case. | [skills/endpoint-testing/SKILL.md](./skills/endpoint-testing/SKILL.md) |
-| **Swagger/OpenAPI import** | `$agentex:import-swagger <path-or-url>` generates the API catalog + suite from a Swagger 2.0 / OpenAPI 3.x spec — mapping fields, skipping what it can't infer, and picking an auth scheme. | [skills/swagger-import/SKILL.md](./skills/swagger-import/SKILL.md) |
+| **Standalone API tests** | `$agentex:test-endpoints` runs every cataloged endpoint's test cases in one pass, dispatching an `api-executor` subagent and reporting pass/fail per case. `$agentex:test-endpoints --edit` opens a local editor to review, fix and re-run cases. | [skills/endpoint-testing/SKILL.md](./skills/endpoint-testing/SKILL.md) |
+| **Swagger/OpenAPI import** | `$agentex:import-swagger <path-or-url>` generates the API catalog + suite from a Swagger 2.0 / OpenAPI 3.x spec — mapping fields, skipping what it can't infer, and picking an auth scheme. `$agentex:import-swagger --wizard` walks you through it with real test data and four basic checks per endpoint. | [skills/swagger-import/SKILL.md](./skills/swagger-import/SKILL.md) |
 
 See [docs/](./docs/) for the full reference on any feature.
 
@@ -63,6 +63,8 @@ $agentex:define-flow-command https://example.com     # build a spec step by step
 $agentex:execute-mobile-test suite1          # runs ./test/mobile-suite1/ (not ./test/suite1/)
 $agentex:test-endpoints
 $agentex:import-swagger ./openapi.json --name acme-api
+$agentex:import-swagger --wizard ./openapi.json   # guided: real test data, basic checks, one approval
+$agentex:test-endpoints --edit                    # local suite editor
 $agentex:estimate-story 12345 12346
 $agentex:estimate-sprint         # every story in the current sprint
 $agentex:design-test 12345
