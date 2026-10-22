@@ -89,6 +89,37 @@ test('AC fixture: root probes, explores, *-out.txt, a root JSON dump, .tmp-*, .s
   assert.deepStrictEqual(tracked, ['.tmp-abc', 'ado_items.json', 'explore-grid.mjs', 'probe-login.mjs']);
 });
 
+// Ordinary root tool configuration a real project carries (plugin-tester probe): never litter,
+// never unplaced, never part of a plan — tracked or not.
+const ROOT_TOOL_CONFIG = ['jest.config.js', 'cypress.config.ts', 'vitest.config.ts', 'babel.config.js', 'global-setup.ts',
+  'requirements.txt', 'renovate.json', '.lintstagedrc.json', '.dockerignore', '.prettierignore', 'docker-compose.yml',
+  'pyproject.toml', 'sonar-project.properties'];
+
+test('root tool configuration is never reported (litter, unplaced or plan); the AC litter beside it still is', () => {
+  const half = Math.ceil(ROOT_TOOL_CONFIG.length / 2);
+  const files = (names) => Object.fromEntries(names.map((n) => [n, 'x\n']));
+  const dir = repo({ tracked: { ...AC_TRACKED, ...files(ROOT_TOOL_CONFIG.slice(0, half)) },
+    untracked: { ...AC_UNTRACKED, ...files(ROOT_TOOL_CONFIG.slice(half)) } });
+  const r = list(dir);
+  const listedPaths = r.candidates.map((c) => c.path);
+  for (const n of ROOT_TOOL_CONFIG) assert.ok(!listedPaths.includes(n), `${n} is not listed`);
+  assert.deepStrictEqual(paths(r, 'litter'), ['.agentex/.tmp/a.json', '.agentex/tmp/b.txt', '.scratch_1', '.tmp-abc',
+    'ado_items.json', 'explore-grid.mjs', 'grid-out.txt', 'probe-login.mjs', 'probe-otp.mjs'], 'the AC litter is still litter');
+  assert.deepStrictEqual(paths(r, 'unplaced'), []);
+  const lines = report(dir);
+  for (const n of ROOT_TOOL_CONFIG) assert.ok(!lines.some((l) => l.includes(n)), `${n} is absent from the report`);
+  const planLine = lines.find((l) => l.startsWith('[stray] plan '));
+  const litterOnly = repo({ tracked: AC_TRACKED, untracked: AC_UNTRACKED });
+  assert.strictEqual(planLine, report(litterOnly).find((l) => l.startsWith('[stray] plan ')), 'the plan digest covers the litter only');
+});
+
+test('a litter name still wins over a tool-config shape; a tmp copy of a config file is litter', () => {
+  const dir = repo({ untracked: { 'probe-jest.config.js': 'x', 'jest.config.js.tmp': 'x', 'tmp-requirements.txt': 'x',
+    '.scratch_rc': 'x', 'ado_dump.json': '{}', 'probe-login.mjs': 'x' } });
+  assert.deepStrictEqual(paths(list(dir), 'litter'), ['.scratch_rc', 'ado_dump.json', 'jest.config.js.tmp', 'probe-jest.config.js',
+    'probe-login.mjs', 'tmp-requirements.txt']);
+});
+
 test('protected subtrees and files are never listed, even with litter-named files in them', () => {
   const files = {
     'test/probe-x.mjs': 'x', 'test/suite1/tmp-a.json': 'x', 'config/probe.json': '{}', 'environments/tmp-qc.json': '{}',

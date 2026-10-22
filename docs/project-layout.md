@@ -141,10 +141,15 @@ files that sit outside this layout. It never affects the migration or the versio
 
 **What is never reported:** `test/`, `config/`, `environments/`, `integration/`,
 `executions/`, `knowledge/`, `.git/`, `.claude/`, `.env` files, the files AgenTeX defines,
-anything your `.gitignore` ignores, ordinary root files (`README.md`, `LICENSE`, package
-manifests and lockfiles, tool config such as `tsconfig.json` or `playwright.config.ts`, CI
-files), OS files such as `.DS_Store`, and the contents of folders you created yourself (only
-litter-named files inside them are reported).
+anything your `.gitignore` ignores, ordinary root files, OS files such as `.DS_Store`, and the
+contents of folders you created yourself (only litter-named files inside them are reported).
+Ordinary root files are `README.md`, `LICENSE` and the like; package manifests and lockfiles
+(`package.json`, `requirements*.txt`, `pyproject.toml`, `pom.xml`, …); tool configuration by
+its shape (`*.config.*`, `*.conf.*`, `.*rc`, `.*rc.*`, `.*ignore`, `tsconfig*.json`,
+`global-setup.*`, `sonar-project.properties`, `renovate.json`, …); and build, container and CI
+files (`Makefile`, `Dockerfile*`, `docker-compose*.yml`, `azure-pipelines*.yml`, …). A
+litter-named file stays litter even when it looks like tool config: `probe-jest.config.js` and
+`jest.config.js.tmp` are both reported.
 
 **The guarantees:**
 

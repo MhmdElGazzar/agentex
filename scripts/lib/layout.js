@@ -292,15 +292,33 @@ const PLUGIN_DEFINED = ['.agentex/version.json', '.agentex/test-template.md', '.
   'agentex.config.json', 'integrations/'];
 // OS metadata: never listed anywhere.
 const OS_METADATA = ['.DS_Store', 'Thumbs.db', 'desktop.ini'];
-// User-owned root files: never reported.
+// User-owned root files: never reported. Checked after the litter names (strays.js), so a
+// probe-*, tmp-* or *.tmp file is litter even when it is shaped like tool config.
 const ROOT_ALLOWLIST = [
-  /^README/i, /^LICEN[CS]E/i, /^CHANGELOG/i, /^CONTRIBUTING/i, /^CODEOWNERS$/, /^CLAUDE\.local\.md$/, /^AGENTS\.md$/,
-  /^\.gitattributes$/, /^\.editorconfig$/, /^\.env\.example$/, /^\.npmrc$/, /^\.nvmrc$/, /^\.node-version$/,
-  /^\.tool-versions$/, /^\.mcp\.json$/,
+  // docs and repository meta
+  /^README/i, /^LICEN[CS]E/i, /^CHANGELOG/i, /^CONTRIBUTING/i, /^CODE_OF_CONDUCT/i, /^SECURITY\.md$/i, /^NOTICE/i,
+  /^CODEOWNERS$/, /^CLAUDE\.local\.md$/, /^AGENTS\.md$/,
+  /^\.gitattributes$/, /^\.gitmodules$/, /^\.mailmap$/, /^\.editorconfig$/, /^\.env\.example$/,
+  /^\.node-version$/, /^\.python-version$/, /^\.ruby-version$/, /^\.tool-versions$/, /^\.mcp\.json$/,
+  // tool configuration by shape: *.config.*, *.conf.*, .*rc / .*rc.*, .*ignore
+  /\.config\.[^.]+(\.[^.]+)*$/i, /\.conf\.[^.]+$/i, /^\.[^.]+rc$/, /^\.[^.]+rc\.[^.]+$/, /^\.[^.]+ignore$/,
+  /^tsconfig.*\.json$/, /^jsconfig.*\.json$/, /^\.eslintrc/, /^\.prettierrc/,
+  /^global-(setup|teardown)\.[^.]+$/, /^\.pre-commit-config\.ya?ml$/, /^renovate\.json5?$/, /^biome\.jsonc?$/,
+  /^(cspell|\.cspell)\.json$/, /^\.browserslistrc$/, /^nuget\.config$/i, /^sonar-project\.properties$/,
+  // manifests and lockfiles
   /^package\.json$/, /^package-lock\.json$/, /^npm-shrinkwrap\.json$/, /^yarn\.lock$/, /^pnpm-lock\.yaml$/,
-  /^pnpm-workspace\.yaml$/, /^bun\.lockb$/,
-  /^tsconfig.*\.json$/, /^jsconfig\.json$/, /^playwright\.config\./, /^eslint\.config\./, /^\.eslintrc/, /^\.prettierrc/,
-  /^Makefile$/, /^Dockerfile$/, /^azure-pipelines.*\.ya?ml$/, /^\.gitlab-ci\.yml$/,
+  /^pnpm-workspace\.yaml$/, /^bun\.lockb?$/, /^bunfig\.toml$/, /^deno\.jsonc?$/, /^deno\.lock$/,
+  /^lerna\.json$/, /^nx\.json$/, /^turbo\.json$/, /^vercel\.json$/, /^netlify\.toml$/,
+  /^requirements.*\.txt$/, /^constraints.*\.txt$/, /^pyproject\.toml$/, /^setup\.cfg$/, /^setup\.py$/, /^tox\.ini$/,
+  /^pytest\.ini$/, /^conftest\.py$/, /^Pipfile(\.lock)?$/, /^poetry\.lock$/, /^uv\.lock$/,
+  /^Gemfile(\.lock)?$/, /^go\.(mod|sum|work)$/, /^Cargo\.(toml|lock)$/, /^composer\.(json|lock)$/,
+  /^pom\.xml$/, /^(build|settings)\.gradle(\.kts)?$/, /^gradle\.properties$/, /^gradlew(\.bat)?$/, /^mvnw(\.cmd)?$/,
+  /\.sln$/i, /\.(cs|fs|vb)proj$/i, /^global\.json$/, /^Directory\.(Build|Packages)\.(props|targets)$/,
+  // build, containers, CI
+  /^Makefile$/, /^Procfile$/, /^Jenkinsfile/, /^Dockerfile/, /^Containerfile/,
+  /^docker-compose.*\.ya?ml$/, /^compose.*\.ya?ml$/,
+  /^azure-pipelines.*\.ya?ml$/, /^\.gitlab-ci\.ya?ml$/, /^bitbucket-pipelines\.ya?ml$/, /^\.travis\.ya?ml$/,
+  /^appveyor\.ya?ml$/, /^\.?codecov\.ya?ml$/,
 ];
 // Litter: agent leftovers by name, anywhere outside protected subtrees.
 const LITTER_NAMES = [/^probe-/, /^explore-/, /^recon-/, /^scratch-/, /^tmp-/, /^temp-/, /^\.tmp-/,
