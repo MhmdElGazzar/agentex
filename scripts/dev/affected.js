@@ -20,7 +20,10 @@
 // Safety net: a changed code or data file no test reaches selects every script test.
 //
 // Evals: evals/coverage.json maps each case to the paths it exercises. A changed .js file
-// also counts as a change to every file that requires or spawns it. Any change to a
+// also counts as a change to every file that requires or spawns it. A pattern that names a
+// folder (no file extension) covers the prompts, references and data below it, never its
+// scripts — a script change selects a case only through a pattern naming that script (or a
+// file that requires it); a *.test.js still counts as anything else. Any change to a
 // skills/*/SKILL.md or commands/*.md frontmatter selects every trigger-* and negative-* case.
 
 const fs = require('node:fs');
@@ -38,6 +41,14 @@ const DESCRIPTION_SOURCES = matcher(['skills/*/SKILL.md', 'commands/*.md']);
 const PROMPT_FILES = matcher(['skills', 'commands', 'agents', 'references']);
 const isTest = (f) => f.endsWith('.test.js');
 const isJs = (f) => /\.[cm]?js$/.test(f);
+const isScript = (f) => isJs(f) && !isTest(f);
+// An eval-coverage pattern names a folder when its last segment has no file extension.
+const namesFolder = (pattern) => !/\.[A-Za-z0-9]+$/.test(pattern.replace(/\/+$/, '').split('/').pop());
+// A case's matcher: a folder pattern never matches a script, a file pattern matches as written.
+function caseMatcher(patterns) {
+  const each = (patterns || []).map((p) => ({ folder: namesFolder(p), match: matcher([p]) }));
+  return (f) => each.some((e) => e.match(f) && !(e.folder && isScript(f)));
+}
 
 // ---- git ------------------------------------------------------------------------------
 function git(root, args) {
@@ -198,7 +209,7 @@ function select({ root, changed, mergeBase = null, all = false }) {
   const graph = makeGraph(root, files);
   const testHits = new Map(tests.map((t) => [t, []]));
   const evalHits = new Map(cases.map((c) => [c, []]));
-  const caseMatch = new Map(cases.map((c) => [c, matcher(coverage[c])]));
+  const caseMatch = new Map(cases.map((c) => [c, caseMatcher(coverage[c])]));
   const closures = new Map(tests.map((t) => [t, graph.closure(t)]));
 
   for (const c of changed) {

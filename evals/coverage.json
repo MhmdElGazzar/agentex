@@ -3,6 +3,7 @@
     "What each eval case exercises, read by scripts/dev/affected.js to pick the evals a change can affect.",
     "Patterns follow scripts/hosts/transforms.js: a pattern matches a path or anything below it, * stays in one segment, **/ spans any depth.",
     "A changed .js file also selects a case when any file that requires or spawns it (transitively) matches the case's patterns.",
+    "A pattern naming a folder (no file extension) never matches a script (a .js outside *.test.js), directly or through a dependent: name the script itself to cover it.",
     "Every trigger-* and negative-* case is also selected whenever a skills/*/SKILL.md or commands/*.md frontmatter changes: triggering depends on all descriptions together.",
     "Add an entry for every new case; scripts/dev/affected.test.js fails on a case without one."
   ],

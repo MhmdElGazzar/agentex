@@ -94,7 +94,7 @@ say why in the design.
 11. **Wire it up everywhere a skill would, plus:**
     - Row in `docs/README.md`'s table and the root `README.md` feature table (a new capability
       this size usually also earns a badge next to the existing ones).
-    - `CHANGELOG.md` entry under `[Unreleased]`.
+    - A changelog fragment `changelog.d/<slug>.md` (never `CHANGELOG.md` directly).
     - `settings.example.json` — permission entries for the capability's new CLI tools.
       `allow` only read-only probes (like `adb devices`, `npx appium --version`). Put in
       `ask` anything that installs or fetches code, runs an arbitrary command, sends data off
