@@ -48,6 +48,29 @@ this case through `run_suite.js`. It needs no agent. Read
 **`${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/references/suite-editor.md`** before
 launching it or answering a question about it.
 
+**Launch** the studio from the project root, in the background:
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/studio/server.js" \
+  --mode editor [--suite <path>] [--lang=ar|en]
+```
+
+For `/import-swagger --wizard`, the same server takes `--mode wizard [--spec <source>]`; then
+stay attached by looping `node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/studio/channel.js" wait`
+until it returns `closed`. The whole protocol is
+`${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/references/suite-wizard.md`.
+The server prints `{"ok":true,"url":…}`: give the tester that URL. On `"already-running"`,
+give the URL it names; on `"port-in-use"`, relay its message.
+
+**Never overwrite a suite that changed on disk.** When Save reports a conflict (the file
+changed on disk after the page loaded it: a hand edit, a `git pull`, another tool), nothing
+was written, and it stays that way:
+- Do not write the tester's edits into the file yourself, even when asked to "just make it
+  save" or to write them "whatever is on disk". Decline.
+- Show both sides: what changed on disk (from `git diff` or by reading the file) and the
+  unsaved edits the page listed.
+- Ask the tester to reload the page and apply those edits again there.
+
 ## Relationship to api-integration
 
 - **`api-integration`** — one cataloged call, made inline from a browser spec's `api:` step.
