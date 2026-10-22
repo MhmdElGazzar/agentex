@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 'use strict';
-// AgenTeX suite wizard — the browser bridge. Composes `playwright-cli run-code` for the three
-// things the agent must never do with its own hands: read a session token off the app's own
-// requests, hand it over, and type a password. The agent drives everything else in the
-// browser itself (login form, navigation, landmarks) with playwright-cli.
+// AgenTeX suite wizard — the browser bridge. Composes `playwright-cli run-code` for the things
+// the agent must never do with its own hands: read a session token off the app's own requests
+// and hand it over. The agent drives everything else in the browser itself (login form,
+// navigation, landmarks) with playwright-cli. A password declared { "envSecret": NAME } — the
+// standard form — is typed by browser-driver's fill_secret.js, the plugin's one way to type a
+// secret; the bridge only names that call. It types a legacy plain-string password itself.
 //
 //   capture --session <s> --api-origin <o> (--goto <url> | --click <locator>) [--wait-ms 2500]
 //           (--to-studio | --store <suite> --env <e> --user <u>) [--header-name <h>]
@@ -16,13 +18,17 @@
 //       test/.auth/api-tokens/<suite>-<env>.json (--store, mode 0600). Its value is never
 //       printed. The bridge sends no request of its own to the application.
 //   fill-secret --session <s> --locator <loc> --env <e> --user <u> [--submit <locator>]
-//       Resolves the user's password (users.<u>.password, else defaults.password, from
-//       environments/<e>.json — a { "envSecret": NAME } field reads .env) in this process and
-//       serves it ONCE from an ephemeral 127.0.0.1 listener on a random path; the run-code reads
-//       it from there and fills the field, then clicks --submit when given. After a submit, a
-//       password field still on screen and non-empty is cleared ("passwordFieldCleared": true)
-//       so no later snapshot can print it. The password never appears in a command line, an
-//       output or a log.
+//       Looks up the user's password field (users.<u>.password, else defaults.password, in
+//       environments/<e>.json).
+//       - { "envSecret": NAME }: refused before the browser is touched (exit 2,
+//         "error":"use-fill-secret"); the result names NAME and the exact fill_secret.js call
+//         (--target <loc>, --submit-target <submit> or --submit), which reads the value itself.
+//       - A plain string (legacy; the secret scan warns on it): resolved in this process and
+//         served ONCE from an ephemeral 127.0.0.1 listener on a random path; the run-code reads
+//         it from there and fills the field, then clicks --submit when given. After a submit, a
+//         password field still on screen and non-empty is cleared ("passwordFieldCleared": true)
+//         so no later snapshot can print it. The password never appears in a command line, an
+//         output or a log.
 //   token-status --store <suite> --env <e>      owner and times only, never the value
 //
 // Common: [--project <root>] (default: the current directory).
@@ -210,6 +216,8 @@ function fillCode({ handleUrl, locator, submit }) {
     + (submit ? `await page.locator(${JSON.stringify(submit)}).first().click(); ${clear}` : `return 'filled'; }`);
 }
 
+// The user's password: { envVar } for an { "envSecret": NAME } field (never resolved here —
+// fill_secret.js reads it), { value } for a plain string, else { error }.
 function userPassword(root, envName, user) {
   const file = path.join(root, 'environments', `${envName}.json`);
   let env;
@@ -217,9 +225,19 @@ function userPassword(root, envName, user) {
   const u = env.users && env.users[user];
   if (!u) return { error: `user "${user}" is not in environments/${envName}.json` };
   const field = u.password !== undefined ? u.password : (env.defaults || {}).password;
+  if (field && typeof field === 'object' && typeof field.envSecret === 'string' && field.envSecret.trim()) return { envVar: field.envSecret.trim() };
   const value = pc.resolveSecret(root, field);
   if (!value) return { error: `no password for user "${user}": set users.${user}.password or defaults.password in environments/${envName}.json (an { "envSecret": NAME } field reads .env)` };
   return { value };
+}
+
+// browser-driver's fill_secret.js call for an { envSecret } password, as one shell line. It
+// carries the variable NAME and locators only, never a value.
+const FILL_SECRET = path.join(__dirname, '..', '..', 'browser-driver', 'scripts', 'fill_secret.js');
+const shq = s => (/^[A-Za-z0-9_./:=@%+-]+$/.test(s) ? s : `'${String(s).replace(/'/g, `'\\''`)}'`);
+function fillSecretCommand({ session, locator, envVar, env, submit }) {
+  return ['node', FILL_SECRET, '--session', session, '--target', locator, '--env-var', envVar, '--env', env,
+    ...(submit ? ['--submit-target', submit] : ['--submit'])].map(shq).join(' ');
 }
 
 async function main(argv) {
@@ -243,6 +261,11 @@ async function main(argv) {
     if (!session || !locator || !env || !user) return emit({ ok: false, error: 'usage', message: 'fill-secret --session <s> --locator <loc> --env <e> --user <u> [--submit <locator>]' }, 2);
     const pw = userPassword(root, env, user);
     if (pw.error) return emit({ ok: false, error: 'no-password', message: pw.error }, 2);
+    if (pw.envVar) {
+      return emit({ ok: false, error: 'use-fill-secret', user, envVar: pw.envVar,
+        command: fillSecretCommand({ session, locator, envVar: pw.envVar, env, submit }),
+        message: `the password of "${user}" is { "envSecret": "${pw.envVar}" }: type it with browser-driver's fill_secret.js — run "command" as given (it reads the value itself and submits in the same call); nothing was typed` }, 2);
+    }
     const handle = await serveOnce(pw.value);
     const r = await runCli(root, session, fillCode({ handleUrl: handle.url, locator, submit }));
     const used = handle.used();
@@ -311,4 +334,4 @@ async function main(argv) {
 }
 
 if (require.main === module) main(process.argv);
-module.exports = { serveOnce, sinkOnce, redactCalls, redactString, findToken, captureCode, fillCode, findCli, userPassword };
+module.exports = { serveOnce, sinkOnce, redactCalls, redactString, findToken, captureCode, fillCode, findCli, userPassword, fillSecretCommand };

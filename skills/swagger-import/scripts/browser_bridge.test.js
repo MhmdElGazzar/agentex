@@ -1,6 +1,8 @@
 'use strict';
 // Tests for browser_bridge.js — capture / fill-secret / token-status, against a fake
-// playwright-cli (golden/fake_playwright_cli.js, via AGENTEX_PLAYWRIGHT_CLI).
+// playwright-cli (golden/fake_playwright_cli.js, via AGENTEX_PLAYWRIGHT_CLI). Also the wizard's
+// standard login: an { "envSecret" } password is typed by browser-driver's fill_secret.js (the
+// same fake, via its AGENTEX_PWCLI_CMD seam), never by the bridge.
 // Run: node skills/swagger-import/scripts/browser_bridge.test.js
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -13,6 +15,7 @@ process.env.TMPDIR = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-bridge-tmp-'
 const B = require('./browser_bridge.js');
 const BRIDGE = path.join(__dirname, 'browser_bridge.js');
 const SHIM = path.join(__dirname, 'golden', 'fake_playwright_cli.js');
+const FILL_SECRET = path.join(__dirname, '..', '..', 'browser-driver', 'scripts', 'fill_secret.js');
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -140,8 +143,8 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     assert.strictEqual(r.json.error, 'browser-failed');
   });
 
-  await test('fill-secret: the password is served once over loopback, never on the command line or in the output', async () => {
-    const dir = proj({ 'environments/qc.json': { defaults: { password: { envSecret: 'QA_PASSWORD' } }, users: { qa_user_a: { email: 'qa_user_a@example.test' } } }, '.env': `QA_PASSWORD=${PASSWORD}\n` });
+  await test('fill-secret (plain-string password only): served once over loopback, never on the command line or in the output', async () => {
+    const dir = proj({ 'environments/qc.json': { defaults: { password: PASSWORD }, users: { qa_user_a: { email: 'qa_user_a@example.test' } } } });
     const filled = path.join(dir, '..', `${path.basename(dir)}-filled.json`);
     const second = path.join(dir, '..', `${path.basename(dir)}-second.txt`);
     const r = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]'], { SHIM_FILLED: filled, SHIM_SECOND_GET: second });
@@ -153,8 +156,8 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     assert.match(r.argv, /button\[type=submit\]/);
   });
 
-  await test('fill-secret --submit: a password field still filled after submit is cleared and reported (wrong password, same-page OTP)', async () => {
-    const dir = proj({ 'environments/qc.json': { defaults: { password: { envSecret: 'QA_PASSWORD' } }, users: { qa_user_a: {} } }, '.env': `QA_PASSWORD=${PASSWORD}\n` });
+  await test('fill-secret --submit (plain-string password): a password field still filled after submit is cleared and reported (wrong password, same-page OTP)', async () => {
+    const dir = proj({ 'environments/qc.json': { users: { qa_user_a: { password: PASSWORD } } } });
     const field = path.join(dir, '..', `${path.basename(dir)}-field.json`);
     const r = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]'], { SHIM_FIELD: field, SHIM_STAY_ON_PAGE: '1' });
     assert.strictEqual(r.code, 0, r.out);
@@ -174,6 +177,97 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     assert.strictEqual(stuck.json.passwordFieldStillFilled, true);
     assert.ok(!stuck.out.includes(PASSWORD));
   });
+
+  await test('fill-secret refuses an { envSecret } password before touching the browser and names the fill_secret.js call', async () => {
+    for (const env of [
+      { defaults: { password: { envSecret: 'QA_PASSWORD' } }, users: { qa_user_a: { email: 'qa_user_a@example.test' } } },
+      { defaults: { password: 'not-this-one' }, users: { qa_user_a: { password: { envSecret: 'QA_PASSWORD' } } } },
+    ]) {
+      const dir = proj({ 'environments/qc.json': env, '.env': `QA_PASSWORD=${PASSWORD}\n` });
+      const r = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]']);
+      assert.strictEqual(r.code, 2, r.out);
+      assert.strictEqual(r.json.error, 'use-fill-secret');
+      assert.strictEqual(r.json.envVar, 'QA_PASSWORD');
+      assert.strictEqual(r.json.command, `node ${FILL_SECRET} --session agentex-collect --target '#password' --env-var QA_PASSWORD --env qc --submit-target 'button[type=submit]'`);
+      assert.strictEqual(r.argv, '', 'the browser was driven');
+      assert.ok(!r.out.includes(PASSWORD) && !r.err.includes(PASSWORD));
+    }
+    // without --submit, the named call submits with Enter
+    const dir = proj({ 'environments/qc.json': { defaults: { password: { envSecret: 'QA_PASSWORD' } }, users: { qa_user_a: {} } } });
+    const r = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', 'e4', '--env', 'qc', '--user', 'qa_user_a']);
+    assert.strictEqual(r.json.command, `node ${FILL_SECRET} --session agentex-collect --target e4 --env-var QA_PASSWORD --env qc --submit`);
+  });
+
+  if (process.platform !== 'win32') {
+    await test('the named fill_secret.js call survives the shell: quotes and spaces in a locator reach argv unchanged', async () => {
+      const locator = `input[name='pass word']`, submit = `text="Sign in"`;
+      const cmd = B.fillSecretCommand({ session: 'agentex-collect', locator, envVar: 'QA_PASSWORD', env: 'qc', submit });
+      const echoed = execFileSync('/bin/sh', ['-c', cmd.replace(/^node \S+/, `${JSON.stringify(process.execPath)} -e "console.log(JSON.stringify(process.argv.slice(1)))" --`)], { encoding: 'utf8' });
+      assert.deepStrictEqual(JSON.parse(echoed), ['--session', 'agentex-collect', '--target', locator, '--env-var', 'QA_PASSWORD', '--env', 'qc', '--submit-target', submit]);
+    });
+  }
+
+  // The wizard's standard login, end to end: the bridge names the call, the agent runs it as
+  // given, fill_secret.js types the .env value into the field and submits. The value never
+  // reaches argv, stdout/stderr, .playwright-cli/ or a temp file; after a same-page failure the
+  // field is scrubbed, so the snapshot playwright-cli writes next shows it empty.
+  const fillSecretLogin = (dir, stayOnPage) => new Promise(resolve => {
+    const log = path.join(dir, '..', `${path.basename(dir)}-fs-shim.log`);
+    const tdir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-bridge-fs-tmp-'));
+    (async () => {
+      const named = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]']);
+      const env = { ...process.env, AGENTEX_PWCLI_CMD: SHIM, SHIM_LOG: log, TMPDIR: tdir, TEMP: tdir, TMP: tdir };
+      delete env.QA_PASSWORD; delete env.SHIM_STAY_ON_PAGE;
+      if (stayOnPage) env.SHIM_STAY_ON_PAGE = '1';
+      const p = spawn('/bin/sh', ['-c', named.json.command], { cwd: dir, env });
+      let out = '', err = '';
+      p.stdout.on('data', d => (out += d)); p.stderr.on('data', d => (err += d));
+      p.on('close', code => {
+        let json = null; try { json = JSON.parse(out.trim().split('\n').pop()); } catch { /* none */ }
+        resolve({ code, json, out, err, named, tdir, argv: fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '' });
+      });
+    })();
+  });
+  const walk = (d, acc = []) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== '.git') walk(f, acc); } else acc.push(f); } return acc; };
+  const WIZARD_ENV = { portalUrl: 'https://app.example.test', defaults: { password: { envSecret: 'QA_PASSWORD' } }, users: { qa_user_a: { email: 'qa_user_a@example.test' } } };
+
+  if (process.platform !== 'win32') {
+    await test('envSecret login through fill_secret.js: typed and submitted in one call; the value is nowhere but the field', async () => {
+      const dir = proj({ 'config/project.json': { defaultEnvironment: 'qc' }, 'environments/qc.json': WIZARD_ENV, '.env': `QA_PASSWORD=${PASSWORD}\n` });
+      const r = await fillSecretLogin(dir, false);
+      assert.strictEqual(r.code, 0, r.out + r.err);
+      assert.deepStrictEqual(r.json, { result: 'PASS', envVar: 'QA_PASSWORD', targets: 1, masked: [true], submitted: true, scrubbed: 0 });
+      assert.match(r.argv, /run-code/);
+      assert.match(r.argv, /--filename=/);
+      for (const [label, text] of [['stdout', r.out], ['stderr', r.err], ['the CLI argv', r.argv], ['the bridge output', r.named.out + r.named.err]]) assert.ok(!text.includes(PASSWORD), `password in ${label}`);
+      const files = [...walk(dir).filter(f => path.basename(f) !== '.env'), ...walk(r.tdir)];
+      assert.ok(files.some(f => f.includes(`${path.sep}.playwright-cli${path.sep}`)), 'the fake wrote no snapshot');
+      for (const f of files) assert.ok(!fs.readFileSync(f, 'utf8').includes(PASSWORD), `password in ${f}`);
+      assert.deepStrictEqual(walk(r.tdir), [], 'a temp file outlived the call');
+    });
+
+    await test('envSecret login through fill_secret.js: the page did not move on (wrong password, same-page OTP) -> scrubbed, and the next snapshot shows the field empty', async () => {
+      const dir = proj({ 'config/project.json': { defaultEnvironment: 'qc' }, 'environments/qc.json': WIZARD_ENV, '.env': `QA_PASSWORD=${PASSWORD}\n` });
+      const r = await fillSecretLogin(dir, true);
+      assert.strictEqual(r.code, 0, r.out + r.err);
+      assert.strictEqual(r.json.submitted, true);
+      assert.strictEqual(r.json.scrubbed, 1);
+      const snaps = walk(path.join(dir, '.playwright-cli'));
+      assert.strictEqual(snaps.length, 1);
+      assert.match(fs.readFileSync(snaps[0], 'utf8'), /textbox "Password" \[ref=e4\]: \n/);
+      for (const f of walk(dir).filter(f => path.basename(f) !== '.env')) assert.ok(!fs.readFileSync(f, 'utf8').includes(PASSWORD), `password in ${f}`);
+      assert.ok(!r.out.includes(PASSWORD) && !r.err.includes(PASSWORD) && !r.argv.includes(PASSWORD));
+    });
+
+    await test('envSecret login through fill_secret.js: an unset variable is BLOCKED secret-unavailable before the browser, naming the variable', async () => {
+      const dir = proj({ 'config/project.json': { defaultEnvironment: 'qc' }, 'environments/qc.json': WIZARD_ENV });
+      const r = await fillSecretLogin(dir, false);
+      assert.strictEqual(r.code, 2);
+      assert.strictEqual(r.json.reason, 'secret-unavailable');
+      assert.match(r.json.detail, /QA_PASSWORD/);
+      assert.strictEqual(r.argv, '');
+    });
+  }
 
   await test('fill-secret: an unknown user or no password -> refused without touching the browser', async () => {
     const dir = proj({ 'environments/qc.json': { users: { qa_user_a: {} } } });

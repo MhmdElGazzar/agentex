@@ -5,13 +5,18 @@
 //   capture     → POSTs the calls in $SHIM_CALLS (a JSON file) to the code's loopback sink
 //   fill-secret → GETs the code's single-use handle; writes what it received to $SHIM_FILLED
 // It then prints CLI-like output that echoes the code, as the real CLI does.
+// It also plays browser-driver's fill_secret.js (AGENTEX_PWCLI_CMD seam): `run-code --raw
+// --filename=<file>` runs that file's code against a login page (a password field, a submit
+// button; see runFillSecret) and then writes a page snapshot to .playwright-cli/ in its cwd,
+// as every real playwright-cli action does — so a test can see what a later snapshot would show.
 const fs = require('fs');
 const http = require('http');
 const args = process.argv.slice(2);
 if (process.env.SHIM_LOG) fs.appendFileSync(process.env.SHIM_LOG, JSON.stringify(args) + '\n');
 const at = args.indexOf('run-code');
 if (at === -1) { console.log('### Page\n- Page URL: about:blank'); process.exit(0); }
-const code = args[at + 1];
+const fileArg = args.find(a => a.startsWith('--filename='));
+const code = fileArg ? fs.readFileSync(fileArg.slice('--filename='.length), 'utf8') : args[at + 1];
 const done = (result) => { console.log(`### Result\n${JSON.stringify(result)}\n### Ran Playwright code\n\`\`\`js\nawait (${code})(page);\n\`\`\``); process.exit(0); };
 const sink = /const sink = ("[^"]+")/.exec(code);
 const handle = /page\.request\.get\(("[^"]+")\)/.exec(code);
@@ -55,7 +60,49 @@ async function runFill(src, served) {
   return result;
 }
 
+// fill_secret.js's code against a login page: `#password` / aria-ref=e4 (type=password) and the
+// submit button `button[type=submit]` / aria-ref=e6. A submit (click or Enter) navigates away
+// unless SHIM_STAY_ON_PAGE is set (wrong password / same-page OTP). Afterwards a snapshot of the
+// page — field values in clear text, like the real one — goes to .playwright-cli/.
+async function runFillSecret(src) {
+  const field = { type: 'password', value: '', attrs: {}, present: true, setAttribute(k, v) { this.attrs[k] = v; } };
+  const isField = sel => sel === '#password' || sel === 'aria-ref=e4';
+  const isSubmit = sel => sel === 'button[type=submit]' || sel === 'aria-ref=e6';
+  const leave = () => { if (!process.env.SHIM_STAY_ON_PAGE) field.present = false; };
+  const page = {
+    locator(sel) {
+      if (sel === '[data-agentex-secret]') {
+        const marked = field.present && 'data-agentex-secret' in field.attrs ? 1 : 0;
+        return { count: async () => marked, nth: () => page.locator('#password') };
+      }
+      const n = (isField(sel) || isSubmit(sel)) && field.present ? 1 : 0;
+      return {
+        count: async () => n,
+        fill: async v => { if (!n || !isField(sel)) throw new Error('not fillable'); field.value = v; },
+        pressSequentially: async v => { if (!n || !isField(sel)) throw new Error('not fillable'); field.value += v; },
+        click: async () => { if (!n) throw new Error('no element'); if (isSubmit(sel)) leave(); },
+        press: async key => { if (key === 'Enter') leave(); },
+        evaluate: async fn => fn(field),
+      };
+    },
+    waitForLoadState: async () => {}, waitForTimeout: async () => {},
+  };
+  global.getComputedStyle = () => ({ webkitTextSecurity: 'none', getPropertyValue: () => '' });
+  const result = await eval(`(${src})`)(page); // eslint-disable-line no-eval -- test double for the browser
+  const snapDir = require('path').join(process.cwd(), '.playwright-cli');
+  fs.mkdirSync(snapDir, { recursive: true });
+  fs.writeFileSync(require('path').join(snapDir, `page-${Date.now()}-${process.pid}.yml`),
+    field.present ? `- textbox "Password" [ref=e4]: ${field.value}\n- button "Sign in" [ref=e6]\n` : '- heading "Dashboard" [ref=e1]\n');
+  return result;
+}
+
 (async () => {
+  if (fileArg) {
+    let out;
+    try { out = JSON.stringify(await runFillSecret(code)); } catch (e) { out = `### Error\n${e.message}`; }
+    console.log(`${args.includes('--raw') ? out : `### Result\n${out}`}\n### Ran Playwright code\n\`\`\`js\nawait (${code})(page);\n\`\`\``);
+    process.exit(0);
+  }
   if (process.env.SHIM_FAIL) { console.log('### Error\nError: browser crashed'); process.exit(1); }
   if (sink) {
     const calls = process.env.SHIM_CALLS ? fs.readFileSync(process.env.SHIM_CALLS, 'utf8') : '[]';
