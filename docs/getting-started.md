@@ -51,6 +51,10 @@ Plugin manifests can't ship permission rules, so copy the `permissions` block fr
 so Claude doesn't have to ask before every single one during a run — and denies secret reads /
 destructive actions.
 
+Planning to share the project through git? [Putting your project in git](./putting-your-project-in-git.md)
+says what to commit and what stays local, and how the secret scan and the optional pre-commit
+hook (offered by `/init-test`) keep a secret out of your history.
+
 ## 5. Run your first test
 
 ```
@@ -86,9 +90,18 @@ executions/execu_<timestamp>/
 - Run: `/execute-test <url>`
 - After a plugin update: `/update-agentex` (migrates the project to the new conventions)
 
+## Optional: testing a native mobile app instead
+
+Everything above scaffolds the **browser** flow. If your target is a native Android/iOS app
+instead (or as well), see [Mobile Testing](./mobile-testing.md) for the equivalent setup
+(`appium` + a platform driver instead of `playwright-cli`) and `/execute-mobile-test`.
+
 ## Next steps
 
 - [Test Execution](./test-execution.md) — sequential vs. parallel modes, writing your own specs.
+- [Mobile Testing](./mobile-testing.md) — the same flow for native Android/iOS apps, via Appium.
 - [Configuration](./configuration.md) — the three config files (`config/project.json`,
   `environments/<env>.json`, `.env`) and secret handling.
+- [Putting your project in git](./putting-your-project-in-git.md) — what to commit, setting a
+  remote safely, the secret scan and the optional pre-commit hook.
 - [docs/](./README.md) — the full feature reference.

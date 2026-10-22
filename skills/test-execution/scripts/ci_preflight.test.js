@@ -269,6 +269,21 @@ const codes = (j) => (j.blockedReasons || []).map((b) => b.code);
     assert.strictEqual(r.json.checks.apiTarget.ok, false);
   });
 
+  await test('--needs mobile → exit 2 preflight-driver: mobile specs run via /execute-mobile-test, never in a browser', async () => {
+    const r = await runPreflight(proj({ envFile: apiEnv(null), dotenv: '' }), ['--needs', 'mobile'], noBrowser);
+    assert.strictEqual(r.status, 2, r.stdout);
+    const d = r.json.blockedReasons.find((b) => b.code === 'preflight-driver');
+    assert.ok(d, JSON.stringify(r.json.blockedReasons));
+    assert.match(d.detail, /mobile specs run via \/execute-mobile-test/);
+    assert.ok(r.json.checks.browser.skipped, 'no browser is demanded for a mobile spec');
+  });
+
+  await test('--needs browser,mobile → still blocked on the mobile spec even when the browser half is healthy', async () => {
+    const r = await runPreflight(proj({ portalUrl: base }), ['--needs', 'browser,mobile']);
+    assert.strictEqual(r.status, 2);
+    assert.ok(r.json.blockedReasons.some((b) => b.code === 'preflight-driver'));
+  });
+
   await test('no --needs → browser (every existing caller keeps today\'s checks)', async () => {
     const r = await runPreflight(proj({ portalUrl: base }));
     assert.deepStrictEqual(r.json.needs, ['browser']);

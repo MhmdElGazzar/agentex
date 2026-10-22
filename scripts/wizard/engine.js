@@ -30,12 +30,38 @@ const BUILTIN_USER_FIELDS = [
   { key: 'role', label: 'الدور', labelEn: 'Role', type: 'text', placeholder: 'customer' },
   { key: 'notes', label: 'ملاحظات', labelEn: 'Notes', type: 'text', placeholder: 'for negative login scenarios' },
 ];
+// Decision A-2: the shared test password is a SECRET field — its value goes to
+// .env under DEFAULT_PASSWORD (the suggestDefaultsSecretName convention) and the
+// environment file carries { "envSecret": "<NAME>" }. No shipped default: a
+// secret descriptor's default is never written, and a plugin template must
+// never carry a password value.
 const BUILTIN_DEFAULTS_FIELDS = [
-  { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
-    hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
-    hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+  { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', secret: true,
+    hint: 'كلمة مرور حسابات الاختبار المشتركة — قيمتها تُحفظ في ‎.env فقط، وملف البيئة يشير إليها باسم المتغير',
+    hintEn: 'The shared test-account password — its value is kept in .env only; the environment file refers to it by variable name' },
   { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
 ];
+
+// The pre-A-2 defaults set, FROZEN: the fields the wizard always wrote before the
+// password became secret (plain, with the Test@1234 placeholder). m11 backfills
+// THIS — never the current template — into a project without defaultsFields,
+// because that project's environment files carry the plain literal; the wizard
+// falls back to it for a loaded legacy project. Its hint is the corrected
+// plain-field wording (the shipped wording told users the password was no secret).
+const LEGACY_PLAIN_PASSWORD_HINT = 'كلمة مرور حسابات الاختبار المشتركة، مخزّنة نصًّا عاديًا في كل ملف بيئة. لحفظها في ‎.env بدلًا من ذلك، اجعل هذا الحقل سريًّا في محرر الحقول.';
+const LEGACY_PLAIN_PASSWORD_HINT_EN = 'The shared test-account password, stored as plain text in each environment file. To keep it in .env instead, mark this field secret in the field editor.';
+const LEGACY_DEFAULTS_FIELDS = Object.freeze([
+  Object.freeze({ key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+    hint: LEGACY_PLAIN_PASSWORD_HINT, hintEn: LEGACY_PLAIN_PASSWORD_HINT_EN }),
+  Object.freeze({ key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' }),
+]);
+// Display-time only (never persisted): a descriptor hint byte-equal to a hint the
+// plugin once shipped is SHOWN as the corrected plain-field wording; the stored
+// text in the project's own defaultsFields is left as the user's file has it.
+const LEGACY_HINT_CORRECTIONS = Object.freeze({
+  'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)': LEGACY_PLAIN_PASSWORD_HINT,
+  'The shared test-account password — written as-is into the environment file (not a real secret)': LEGACY_PLAIN_PASSWORD_HINT_EN,
+});
 
 const FIELD_KEY_RE = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 const ENV_VAR_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -753,7 +779,7 @@ function flattenObject(obj, prefix = '') {
 
 module.exports = {
   DEFAULT_ENV_NAME,
-  BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS,
+  BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS, LEGACY_DEFAULTS_FIELDS, LEGACY_HINT_CORRECTIONS,
   validateFieldDescriptors, validateProjectFieldSchema,
   stepApplies, validateTrackerBlocks, TRACKER_PROVIDERS,
   buildConfigs, validate, validateConfigs, validateEnvConfig, planSave, buildEnvUsers, isHttpUrl,

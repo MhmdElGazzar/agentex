@@ -1,0 +1,85 @@
+---
+name: endpoint-testing
+description: >
+  Run a standalone API test pass over the project's cataloged endpoints ("api-tests"),
+  independent of any browser test spec. Use for /test-endpoints, or requests like "run the
+  API tests", "test all endpoints". Distinct from api-integration's `api:` step (a single
+  cataloged call made mid-browser-test) — this skill runs the whole set of cases in one pass
+  and returns a consolidated report. Execution is catalog+suite-only: only cases defined in
+  integration/api_test_suites/**/*_suite.json, referencing entries defined in the sibling
+  *_api.json catalog, ever run.
+---
+
+# Endpoint Testing — standalone API test runs
+
+Runs the full set of API test **cases** (params + expected result per case, possibly several
+cases per cataloged endpoint) as its own pass, not tied to a browser spec. Read
+**`${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/references/suite-format.md`** before the
+first run in a session — it covers the suite file schema and the runner's contract in full.
+
+## Relationship to api-integration
+
+- **`api-integration`** — one cataloged call, made inline from a browser spec's `api:` step.
+  Unaffected by this skill; its catalog (`*_api.json`, found recursively under `integration/`)
+  and runner (`run_api.js`) are reused here, not duplicated.
+- **`endpoint-testing`** (this skill) — the whole set of cases
+  (`integration/api_test_suites/**/*_suite.json`), run standalone via the **`api-executor`**
+  subagent, producing one report. No browser involved.
+
+## The suites — the ONLY cases you may run
+
+Definitions live in the **consumer project** under **`./integration/api_test_suites/`**, one
+subfolder per service (e.g. `integration/api_test_suites/petstore/petstore_suite.json`) —
+this is also where `swagger-import` writes its generated suite, co-located with that
+service's catalog.
+- If missing when a standalone run is requested, scaffold from
+  `${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/templates/sample_suite.json` (never
+  overwrite), then ask the user to define real cases before treating results as meaningful.
+- Each case's `entry` must resolve in a sibling (or elsewhere under `integration/`)
+  `*_api.json` catalog — if the catalog itself is missing, point the user at `/init-test`
+  first.
+- **Hard rule:** a case naming an undefined entry is BLOCKED — report which definition is
+  missing, never improvise a request.
+
+## Running the api-tests
+
+Dispatch the bundled **`api-executor`** agent (do not run the loop inline yourself — it keeps
+per-case logs/output out of the orchestrator's context and returns one consolidated report,
+same reasoning as dispatching `qa-executor` for browser sessions). It makes one call to
+`run_suite.js` covering every case, then formats the result.
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/scripts/run_suite.js" \
+  --catalog ./integration --suites ./integration/api_test_suites [--env <name>] \
+  --run-dir <RUN_DIR>
+```
+
+A case with no `expect` is BLOCKED ("case has no expect") — a case that asserts nothing never
+PASSes.
+
+Every case in every suite file runs every time — there's no scope/tag selection — except a
+case carrying `"skip": "<reason>"`, which is never executed and is reported BLOCKED with that
+reason quoted. `swagger-import` writes `skip` on every generated write-method case.
+
+- **`--env <name>`** picks the environment for the whole run: it is passed to every case's
+  `run_api.js` call (omitted = the project's `defaultEnvironment`; an unknown name comes back
+  BLOCKED per case, listing the environments that exist). It selects the `api` block used by
+  the catalogs that follow the environment (api-integration's "Where the target comes from");
+  a `swagger-import`ed catalog keeps its own base URL and auth either way. Dispatch `api-executor` with `ENVIRONMENT` set to the user's environment
+  (`""` when none was named); it adds `--env` to its `run_suite.js` call only when non-empty.
+
+## Safety rules (also enforced by the runner)
+
+- Catalog+suite-only, same as `api-integration`: never compose a request that isn't defined.
+- Secrets stay in env — suite files hold only params/expectations, never token values.
+- Write-method cases (POST/PUT/DELETE) run if cataloged — be deliberate about which write
+  operations you add cases for, since every case under `integration/api_test_suites/` without a
+  `skip` runs every time. Generated write cases arrive disabled (`skip`); a generated case's
+  `review` notes are informational, so a reviewed-but-unedited case runs only if it is a GET.
+
+## Evidence
+
+One log per case under `<RUN_DIR>/logs/<suiteBase>__<index>-<case-name>.log` (unique even when
+case names repeat), plus a final `result.md` written by
+`api-executor` summarizing PASS/FAIL/BLOCKED counts and any failures in the project's
+standard defect format.

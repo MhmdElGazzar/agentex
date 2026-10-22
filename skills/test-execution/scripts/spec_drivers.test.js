@@ -88,9 +88,23 @@ test('an unreadable spec resolves to browser and is listed', () => {
 });
 
 test('unknown driver names are reported, not silently dropped', () => {
-  const r = specDrivers(['s.md'], project({ 's.md': '# s\nDrivers: api, mobile\n## S\n' }));
-  assert.deepStrictEqual(r.drivers, ['api', 'mobile']);
-  assert.deepStrictEqual(r.unknown, ['mobile']);
+  const r = specDrivers(['s.md'], project({ 's.md': '# s\nDrivers: api, desktop\n## S\n' }));
+  assert.deepStrictEqual(r.drivers, ['api', 'desktop']);
+  assert.deepStrictEqual(r.unknown, ['desktop']);
+});
+
+test('Drivers: mobile is a known driver and never implies browser', () => {
+  const r = specDrivers(['s.md'], project({ 's.md': '# s\nApp under test: x\nDrivers: mobile\n## Scenarios\n1. Tap "Views"\n' }));
+  assert.deepStrictEqual(r.drivers, ['mobile']);
+  assert.strictEqual(r.unknown, undefined);
+});
+
+test('the bundled test/mobile-suite1 specs resolve to mobile, not browser', () => {
+  const pluginRoot = path.resolve(__dirname, '..', '..', '..');
+  const r = specDrivers(['test/mobile-suite1'], pluginRoot);
+  const specs = Object.keys(r.perSpec);
+  assert.ok(specs.length >= 3, `found ${specs.join(', ')}`);
+  for (const s of specs) assert.deepStrictEqual(r.perSpec[s], ['mobile'], s);
 });
 
 test('CLI: one JSON line, exit 0; --all reads test/; usage errors exit 2', () => {

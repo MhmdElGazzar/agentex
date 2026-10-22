@@ -50,9 +50,10 @@ const SEARCH_PAGE_SIZE = 100;
 const SEARCH_MAX_PAGES = 10;            // documented hard cap; result carries truncated: true
 const META_PAGE_SIZE = 100;
 const META_MAX_PAGES = 10;
+const SPRINT_MAX_PAGES = 20;            // runaway guard for sprint paging (refuses past it)
 const BULK_CHUNK = 100;                 // issue/bulkfetch accepts at most 100 keys per call
 const COMMENT_PAGE_SIZE = 100;
-const MAX_PAGES = 1000;                 // runaway guard for comment / sprint paging
+const MAX_PAGES = 1000;                 // runaway guard for comment paging
 // Rich-text fields whose plain-string values the dialect layer wraps via toAdf.
 const ADF_FIELDS = ['description', 'environment'];
 
@@ -441,10 +442,12 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
 
     // Pages only while the response says isLast: false (additive: the first
     // request URL is unchanged, and a response without isLast is one page).
+    // The agile API lists sprints oldest first, so "the last N closed sprints"
+    // needs every page; past SPRINT_MAX_PAGES it refuses rather than loop.
     async listSprints(boardId, { state } = {}) {
       const out = [];
       let startAt = 0;
-      for (let page = 0; page < MAX_PAGES; page++) {
+      for (let page = 0; page < SPRINT_MAX_PAGES; page++) {
         const q = [state ? `state=${encodeURIComponent(state)}` : null, startAt ? `startAt=${startAt}` : null].filter(Boolean).join('&');
         const u = agile(`board/${encodeURIComponent(boardId)}/sprint${q ? `?${q}` : ''}`);
         const res = await request('listSprints', 'GET', u);
@@ -453,7 +456,10 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
         if (!res || res.isLast !== false || !values.length) return out;
         startAt += values.length;
       }
-      throw new TrackerError({ op: 'listSprints', url: agile(`board/${boardId}/sprint`), serverMessage: `more than ${MAX_PAGES} pages — stopping rather than looping` });
+      throw new TrackerError({
+        op: 'listSprints', url: agile(`board/${encodeURIComponent(boardId)}/sprint`),
+        serverMessage: `more than ${SPRINT_MAX_PAGES} pages of sprints — stopping rather than looping`,
+      });
     },
 
     // Batch read: POST issue/bulkfetch, chunks of 100. The service answers in
@@ -592,6 +598,82 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       return { ok: true, sprint: from, refs: issues.map((i) => i.key) };
     },
 
+    // PastSprints — the last `count` CLOSED sprints of one board, newest first.
+    // The board: opts.board (id first, then name — the current-sprint rule);
+    // without it, the project's boards whose type is not kanban: none → no
+    // sprints, one → it, several → a condition (the caller asks). A 400 on the
+    // closed-sprint route of a board whose type is not scrum is the documented
+    // "board does not support sprints" answer and reads as zero sprints (status
+    // + board type decide it, no prose is parsed); on a scrum board it propagates.
+    //   { ok: true, sprints: [{ id, name, finishDate }], found, board?: { id, name } }
+    //   { ok: false, condition: 'board-not-found', data: { board, boards: [{ id, name }] } }
+    //   { ok: false, condition: 'board-ambiguous', data: { boards: [{ id, name, type }] } }
+    async listPastSprints({ board = null, count } = {}) {
+      const boards = await this.listBoards();
+      let b;
+      if (board) {
+        b = boards.find((x) => String(x.id) === String(board)) || boards.find((x) => x.name === board);
+        if (!b) return { ok: false, condition: 'board-not-found', data: { board, boards: boards.map((x) => ({ id: x.id, name: x.name })) } };
+      } else {
+        const candidates = boards.filter((x) => x.type !== 'kanban');
+        if (!candidates.length) return { ok: true, found: 0, sprints: [] };
+        if (candidates.length > 1) {
+          return { ok: false, condition: 'board-ambiguous', data: { boards: candidates.map((x) => ({ id: x.id, name: x.name, type: x.type ?? null })) } };
+        }
+        b = candidates[0];
+      }
+      let closed;
+      try { closed = await this.listSprints(b.id, { state: 'closed' }); }
+      catch (e) {
+        if (e instanceof TrackerError && e.status === 400 && b.type !== 'scrum') closed = [];
+        else throw e;
+      }
+      const end = (sp) => sp.completeDate || sp.endDate || null;
+      const t = (d) => (d ? Date.parse(d) || 0 : 0);
+      closed = [...closed].sort((x, y) => (t(end(y)) - t(end(x))) || (Number(y.id) - Number(x.id)));
+      return {
+        ok: true,
+        found: closed.length,
+        board: { id: b.id, name: b.name },
+        sprints: closed.slice(0, count).map((sp) => ({ id: sp.id, name: sp.name, finishDate: end(sp) })),
+      };
+    },
+
+    // ChildEstimates — story-first, because sprint JQL misses the sub-tasks of
+    // team-managed projects: the stories of type opts.storyType in those
+    // sprints, then their sub-tasks by `parent in (…)` per 100 stories, with
+    // the Original Estimate (timeoriginalestimate, seconds) and nothing else
+    // that carries hours. ZERO requests when sprints is empty. The query cap
+    // surfaces as truncated.
+    //   { stories: [{ id, seq, title, url }],
+    //     children: [{ id, seq, title, parentId, hours: number > 0 | null }], truncated }
+    async listChildEstimates({ sprints = [], storyType } = {}) {
+      const ids = sprints.map((sp) => Number(sp.id)).filter((n) => Number.isInteger(n));
+      if (!ids.length) return { stories: [], children: [], truncated: false };
+      if (!storyType) throw new Error('listChildEstimates needs opts.storyType (the issue type that counts as a story)');
+      const storyRes = await this.query(
+        `project = ${jqlQuote(cfg.project)} AND issuetype = ${jqlQuote(storyType)} AND sprint in (${ids.join(', ')}) ORDER BY key`,
+        { fields: ['summary'] });
+      let truncated = Boolean(storyRes.truncated);
+      const storyIssues = storyRes.issues || [];
+      const childIssues = [];
+      for (let i = 0; i < storyIssues.length; i += SEARCH_PAGE_SIZE) {
+        const keys = storyIssues.slice(i, i + SEARCH_PAGE_SIZE).map((x) => jqlQuote(x.key));
+        const res = await this.query(`parent in (${keys.join(', ')}) ORDER BY key`, { fields: ['summary', 'parent', 'timeoriginalestimate'] });
+        truncated = truncated || Boolean(res.truncated);
+        childIssues.push(...(res.issues || []));
+      }
+      const hoursOf = (sec) => (typeof sec === 'number' && Number.isFinite(sec) && sec > 0 ? Math.round((sec / 3600) * 100) / 100 : null);
+      return {
+        stories: storyIssues.map((x) => ({ id: x.key, seq: Number(x.id), title: (x.fields || {}).summary || null, url: webUrl(x.key) })),
+        children: childIssues.map((x) => {
+          const f = x.fields || {};
+          return { id: x.key, seq: Number(x.id), title: f.summary || '', parentId: (f.parent && f.parent.key) || null, hours: hoursOf(f.timeoriginalestimate) };
+        }),
+        truncated,
+      };
+    },
+
     // ── WRITES (each takes {execute}; execute:false returns the descriptor) ──
     async createWorkItem(type, payload = {}, { validateOnly = false, execute = false } = {}) {
       if (validateOnly) {
@@ -649,7 +731,14 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
     // Multipart with ZERO npm deps: built-in FormData + Blob (undici, the same
     // Node ≥18 floor built-in fetch already imposes); fetch composes the
     // boundary itself — the adapter never sets Content-Type manually.
-    async uploadAttachment(filePath, { fileName, issueId, execute = false } = {}) {
+    // opts.bytes: the caller's already-checked buffer (create-bug.js passes
+    // what its structural check read), so the upload is exactly the validated
+    // bytes even if the file changes on disk in between. Without it the file
+    // is read here, as before.
+    async uploadAttachment(filePath, { fileName, issueId, execute = false, bytes } = {}) {
+      if (bytes !== undefined && bytes !== null && !(bytes instanceof Uint8Array)) {
+        throw configError('uploadAttachment opts.bytes must be a Buffer/Uint8Array when given');
+      }
       const name = fileName || path.basename(filePath);
       if (!issueId) {
         throw configError(
@@ -658,17 +747,16 @@ function createAdapter({ cwd = process.cwd(), fetch: fetchImpl, timeoutMs = DEFA
       }
       const u = api(`issue/${encodeURIComponent(issueId)}/attachments`);
       if (!execute) {
-        let size = null;
-        try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ }
+        let size = bytes ? bytes.length : null;
+        if (size === null) { try { size = fs.statSync(filePath).size; } catch { /* descriptor only */ } }
         return descriptor('uploadAttachment', 'POST', u, {
           body: `<multipart form-data: file "${name}"${size !== null ? `, ${size} bytes` : ''}>`,
           extraHeaders: { 'X-Atlassian-Token': 'no-check' },
         });
       }
       assertCiWritesAllowed('uploadAttachment');
-      const bytes = fs.readFileSync(filePath);
       const fd = new FormData();
-      fd.append('file', new Blob([bytes]), name);
+      fd.append('file', new Blob([bytes || fs.readFileSync(filePath)]), name);
       const res = await request('uploadAttachment', 'POST', u, {
         body: fd, extraHeaders: { 'X-Atlassian-Token': 'no-check' },
       });

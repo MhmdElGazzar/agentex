@@ -37,6 +37,78 @@ test('readEnvVar prefers process.env over .env', () => {
   finally { delete process.env.X_TEST_VAR; }
 });
 
+// ---- readEnvVar: line-parser edge cases (security: an empty key must never
+// read the NEXT line — that would send a neighbouring secret to another host) ----
+test('readEnvVar: empty key followed by another key → null, never the next line', () => {
+  const dir = proj({ '.env': 'API_TOKEN=\nOTHER_SECRET=s3cr3t\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'OTHER_SECRET'), 's3cr3t');
+});
+test('readEnvVar: fresh /init-test scaffold (keys only) → every key null', () => {
+  const dir = proj({ '.env': '# Jira\nJIRA_EMAIL=\nJIRA_API_TOKEN=\n\nAPI_TOKEN=\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'JIRA_EMAIL'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'JIRA_API_TOKEN'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), null);
+});
+test('readEnvVar: empty key followed by a comment / blank lines → null', () => {
+  const dir = proj({ '.env': 'API_TOKEN=\n# Bearer token for x\n\nB=1\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), null);
+  const dir2 = proj({ '.env': 'API_TOKEN=   \n\n\nB=1\n' });
+  assert.strictEqual(pc.readEnvVar(dir2, 'API_TOKEN'), null);
+});
+test('readEnvVar: empty key at EOF (with and without trailing newline) → null', () => {
+  assert.strictEqual(pc.readEnvVar(proj({ '.env': 'A=1\nAPI_TOKEN=' }), 'API_TOKEN'), null);
+  assert.strictEqual(pc.readEnvVar(proj({ '.env': 'A=1\nAPI_TOKEN=\n' }), 'API_TOKEN'), null);
+});
+test('readEnvVar: empty quoted value → null', () => {
+  const dir = proj({ '.env': 'A=""\nB=\'\'\nC=x\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'A'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'B'), null);
+});
+test('readEnvVar: `export KEY=v` and leading whitespace are honoured', () => {
+  const dir = proj({ '.env': 'export API_TOKEN=tok-1\n   INDENTED=v2\n\texport TABBED = v3\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), 'tok-1');
+  assert.strictEqual(pc.readEnvVar(dir, 'INDENTED'), 'v2');
+  assert.strictEqual(pc.readEnvVar(dir, 'TABBED'), 'v3');
+});
+test('readEnvVar: quotes — one matching pair stripped, inner content kept verbatim', () => {
+  const dir = proj({ '.env': [
+    'DQ="a b # c"', "SQ='x=y'", 'MIXED="abc\'', 'INNER=it\'s', 'KEEPSP=" padded "', 'HASH=pa#ss',
+  ].join('\n') + '\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'DQ'), 'a b # c');
+  assert.strictEqual(pc.readEnvVar(dir, 'SQ'), 'x=y');
+  assert.strictEqual(pc.readEnvVar(dir, 'MIXED'), '"abc\'', 'mismatched quotes are not a pair');
+  assert.strictEqual(pc.readEnvVar(dir, 'INNER'), "it's");
+  assert.strictEqual(pc.readEnvVar(dir, 'KEEPSP'), ' padded ');
+  assert.strictEqual(pc.readEnvVar(dir, 'HASH'), 'pa#ss', '# inside a secret is data, not a comment');
+});
+test('readEnvVar: CRLF line endings — value never ends with \\r; empty CRLF key → null', () => {
+  const dir = proj({ '.env': 'API_TOKEN=\r\nOTHER=s3cr3t\r\nQ="quoted"\r\nLAST=v\r\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'API_TOKEN'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'OTHER'), 's3cr3t');
+  assert.strictEqual(pc.readEnvVar(dir, 'Q'), 'quoted');
+  assert.strictEqual(pc.readEnvVar(dir, 'LAST'), 'v');
+});
+test('readEnvVar: name is matched literally (regex metachars escaped)', () => {
+  const dir = proj({ '.env': 'AXB=wrong\nA.B=right\nTOKEN_EXTRA=nope\n' });
+  assert.strictEqual(pc.readEnvVar(dir, 'A.B'), 'right');
+  assert.strictEqual(pc.readEnvVar(dir, 'A+B'), null);
+  assert.strictEqual(pc.readEnvVar(dir, '.*'), null);
+  assert.strictEqual(pc.readEnvVar(dir, 'TOKEN'), null, 'a name is not a prefix match');
+});
+test('readEnvVar: empty process.env value falls through to .env', () => {
+  const dir = proj({ '.env': 'X_EMPTY_PROC=fromfile\n' });
+  process.env.X_EMPTY_PROC = '';
+  try { assert.strictEqual(pc.readEnvVar(dir, 'X_EMPTY_PROC'), 'fromfile'); }
+  finally { delete process.env.X_EMPTY_PROC; }
+});
+test('parseEnvValue: pure text parser shared by the other .env readers', () => {
+  assert.strictEqual(typeof pc.parseEnvValue, 'function');
+  assert.strictEqual(pc.parseEnvValue('A=\nB=2\n', 'A'), null);
+  assert.strictEqual(pc.parseEnvValue('A=1\r\n', 'A'), '1');
+  assert.strictEqual(pc.parseEnvValue('', 'A'), null);
+});
+
 // ---- loadProjectConfig ----
 test('loadProjectConfig returns {} when file is absent', () => {
   assert.deepStrictEqual(pc.loadProjectConfig(proj()), {});

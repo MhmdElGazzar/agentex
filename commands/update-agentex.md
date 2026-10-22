@@ -104,6 +104,25 @@ flagged.
    - `[flag] spec drift`: the user's spec files were left byte-identical on
      purpose. Offer to help modernize the flagged specs **only if the user
      explicitly asks** — never edit them as part of this command's run.
+   - `[hook] offer`: the optional pre-commit secret-scan hook is not installed (or an
+     older AgenTeX hook is). Explain that it scans each commit's staged content,
+     refuses a commit only for a real leak, never overwrites an existing hook, and
+     is turned off by deleting the file, and **ask the user explicitly** whether to
+     install it. Only after the user confirms, re-run the engine with the consent
+     flag — the engine installs it, never you:
+
+     ```
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/migrate.js" --install-pre-commit-hook
+     ```
+
+     Never install the hook by hand, and never pass the flag without the user's
+     explicit confirmation; a no, or no answer, means nothing is written. The offer
+     never affects the migration or the stamp. If this run aborted on the
+     clean-tree guard, the consented re-run installs the hook and then aborts on the
+     same guard again — expected; relay both lines. The other `[hook]` lines are
+     one-line relays: `installed` / `already installed` / `refreshed`, `existing
+     hook left untouched` (point to the docs section "Calling the scan from an
+     existing hook"), `shared hooks folder, not installed`.
 
 4. **Suggest the follow-up:** verify with a normal `/execute-test` run, then commit
    the whole migration as one commit (the report lists every file touched; `.env`

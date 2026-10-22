@@ -14,7 +14,7 @@ async function test(name, fn) {
   catch (e) { failures.push(name); console.error(`  FAIL - ${name}: ${e.message}`); }
 }
 
-const SENTINEL_TOKEN = 'SENTINEL-JIRA-TOKEN-a1b2c3d4e5f60718293a4b5c';
+const SENTINEL_TOKEN = 'SENTINEL-JIRA-TOKEN-a1b2c3d4e5f60718293a4b5c'; // ggignore — synthetic test sentinel, not a credential
 const SENTINEL_EMAIL = 'sentinel.qa@example.com';
 const SENTINEL_B64 = Buffer.from(`${SENTINEL_EMAIL}:${SENTINEL_TOKEN}`).toString('base64');
 
@@ -454,6 +454,23 @@ const SUBTASK_FIELDS = {
     assert.strictEqual(call.headers['X-Atlassian-Token'], 'no-check');
     const headerNames = Object.keys(call.headers).map((h) => h.toLowerCase());
     assert.ok(!headerNames.includes('content-type'), 'fetch composes the multipart boundary itself');
+  });
+
+  await test('uploadAttachment with opts.bytes sends that buffer verbatim — not a re-read of the file', async () => {
+    const dir = proj();
+    const png = path.join(dir, 'shot.png');
+    fs.writeFileSync(png, Buffer.from('what is on disk now'));
+    const checked = Buffer.from([0x89, 0x50, 0x4e, 0x47, 9, 8, 7, 6]);
+    const f = fakeFetch([{ method: 'POST', match: '/rest/api/3/issue/PROJ-44/attachments', json: [{ id: '9002', content: `${BASE}/a/9002` }] }]);
+    const a = createAdapter({ cwd: dir, fetch: f });
+    const d = await a.uploadAttachment(png, { issueId: 'PROJ-44', execute: false, bytes: checked });
+    assert.match(d.body, /"shot\.png", 8 bytes/, 'the dry-run size is the size that will be sent');
+    await a.uploadAttachment(png, { issueId: 'PROJ-44', execute: true, bytes: checked });
+    const file = f.calls[0].body.get('file');
+    assert.strictEqual(Buffer.compare(Buffer.from(await file.arrayBuffer()), checked), 0, 'the given bytes travel');
+    await assert.rejects(() => a.uploadAttachment(png, { issueId: 'PROJ-44', execute: true, bytes: 'not a buffer' }),
+      (e) => e.exitCode === 2 && /opts\.bytes must be a Buffer/.test(e.message));
+    assert.strictEqual(f.calls.length, 1, 'a bad bytes option sends nothing');
   });
 
   await test('uploadAttachment without opts.issueId is a named exit-2 error (Jira has no unparented upload)', async () => {
@@ -1035,6 +1052,165 @@ const SUBTASK_FIELDS = {
       await assert.rejects(a[m](...args), (e) => e instanceof TrackerError && /capabilities\.testPlans: false/.test(e.message), m);
     }
     assert.strictEqual(f.calls.length, 0);
+  });
+
+  // ── listSprints: additive paging (the first request is unchanged) ────────
+  await test('listSprints: a response without isLast is ONE page; the first URL is byte-identical to before', async () => {
+    const f = fakeFetch([{ match: '/rest/agile/1.0/board/42/sprint', json: { values: [{ id: 7, name: 'Sprint 7' }] } }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listSprints(42, { state: 'closed' });
+    assert.deepStrictEqual(r, [{ id: 7, name: 'Sprint 7' }]);
+    assert.deepStrictEqual(f.calls.map((c) => c.url), [`${BASE}/rest/agile/1.0/board/42/sprint?state=closed`]);
+    const g = fakeFetch([{ match: '/rest/agile/1.0/board/42/sprint', json: { isLast: true, values: [{ id: 7 }] } }]);
+    await createAdapter({ cwd: proj(), fetch: g }).listSprints(42);
+    assert.deepStrictEqual(g.calls.map((c) => c.url), [`${BASE}/rest/agile/1.0/board/42/sprint`]);
+  });
+
+  await test('listSprints: follows ONLY isLast:false, with startAt, until the last page', async () => {
+    const pages = [
+      { isLast: false, startAt: 0, values: [{ id: 1 }, { id: 2 }] },
+      { isLast: false, startAt: 2, values: [{ id: 3 }, { id: 4 }] },
+      { isLast: true, startAt: 4, values: [{ id: 5 }] },
+    ];
+    const f = fakeFetch([{ match: '/board/42/sprint', json: (call) => pages[(Number((/startAt=(\d+)/.exec(call.url) || [0, 0])[1])) / 2] }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listSprints(42, { state: 'closed' });
+    assert.deepStrictEqual(r.map((s) => s.id), [1, 2, 3, 4, 5]);
+    assert.deepStrictEqual(f.calls.map((c) => c.url.replace(BASE, '')), [
+      '/rest/agile/1.0/board/42/sprint?state=closed',
+      '/rest/agile/1.0/board/42/sprint?state=closed&startAt=2',
+      '/rest/agile/1.0/board/42/sprint?state=closed&startAt=4',
+    ]);
+  });
+
+  await test('listSprints: paging is capped at 20 pages — a 21st page refuses rather than looping', async () => {
+    const f = fakeFetch([{ match: '/board/42/sprint', json: { isLast: false, values: [{ id: 1 }] } }]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: f }).listSprints(42, { state: 'closed' }),
+      (e) => e instanceof TrackerError && e.op === 'listSprints' && /20 pages/.test(e.message));
+    assert.strictEqual(f.calls.length, 20);
+  });
+
+  // ── neutral history reads (first-run estimation proposal) ────────────────
+  const FORBIDDEN = /CompletedWork|RemainingWork|timespent|timeestimate|timetracking|aggregatetimespent|worklog|description|renderedFields/i;
+  const assertFieldGuard = (calls) => {
+    assert.ok(calls.length > 0, 'requests were sent');
+    for (const c of calls) {
+      assert.ok(!FORBIDDEN.test(c.url), `forbidden field in URL ${c.url}`);
+      assert.ok(!FORBIDDEN.test(String(c.body || '')), `forbidden field in body ${c.body}`);
+    }
+  };
+  const BOARDS = (values) => ({ match: '/rest/agile/1.0/board?projectKeyOrId=', json: { values } });
+  const CLOSED = (id, values, extra = {}) => ({ match: `/rest/agile/1.0/board/${id}/sprint`, json: { values }, ...extra });
+  const SPR = (id, name, completeDate, endDate) => ({ id, name, state: 'closed', ...(completeDate ? { completeDate } : {}), ...(endDate ? { endDate } : {}) });
+
+  await test('listPastSprints: a configured board matches by id first, then by name; closed sprints newest first (completeDate || endDate; ties id desc), count taken', async () => {
+    const f = fakeFetch([
+      BOARDS([{ id: 7, name: '42', type: 'scrum' }, { id: 42, name: 'Team board', type: 'scrum' }]),
+      CLOSED(42, [SPR(10, 'Sprint 40', '2026-08-31'), SPR(12, 'Sprint 42', null, '2026-09-28'), SPR(11, 'Sprint 41', '2026-09-14'), SPR(13, 'Sprint 42b', '2026-09-28')]),
+    ]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listPastSprints({ board: '42', count: 3 });
+    assert.deepStrictEqual(r, { ok: true, found: 4, board: { id: 42, name: 'Team board' }, sprints: [
+      { id: 13, name: 'Sprint 42b', finishDate: '2026-09-28' },
+      { id: 12, name: 'Sprint 42', finishDate: '2026-09-28' },
+      { id: 11, name: 'Sprint 41', finishDate: '2026-09-14' },
+    ] });
+    assert.ok(f.calls[1].url.endsWith('/rest/agile/1.0/board/42/sprint?state=closed'), f.calls[1].url);
+    assertFlowFree(r);
+    const g = fakeFetch([BOARDS([{ id: 5, name: 'Team board', type: 'scrum' }]), CLOSED(5, [])]);
+    const byName = await createAdapter({ cwd: proj(), fetch: g }).listPastSprints({ board: 'Team board', count: 2 });
+    assert.deepStrictEqual(byName.board, { id: 5, name: 'Team board' });
+  });
+
+  await test('listPastSprints: board-not-found stops BEFORE listSprints; data carries the real boards', async () => {
+    const f = fakeFetch([BOARDS([{ id: 5, name: 'Team board', type: 'scrum' }])]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listPastSprints({ board: 'Nope', count: 2 });
+    assert.deepStrictEqual(r, { ok: false, condition: 'board-not-found', data: { board: 'Nope', boards: [{ id: 5, name: 'Team board' }] } });
+    assert.ok(!f.calls.some((c) => c.url.includes('/sprint')));
+    assertFlowFree(r);
+  });
+
+  await test('listPastSprints: no board configured — kanban boards are excluded; one candidate is used; several are board-ambiguous; none is an empty list', async () => {
+    const one = fakeFetch([BOARDS([{ id: 1, name: 'Flow', type: 'kanban' }, { id: 2, name: 'Sprints', type: 'scrum' }]), CLOSED(2, [SPR(9, 'Sprint 9', '2026-09-01')])]);
+    const r1 = await createAdapter({ cwd: proj(), fetch: one }).listPastSprints({ count: 2 });
+    assert.deepStrictEqual(r1.board, { id: 2, name: 'Sprints' });
+    assert.deepStrictEqual(r1.sprints.map((s) => s.id), [9]);
+    const many = fakeFetch([BOARDS([{ id: 2, name: 'A', type: 'scrum' }, { id: 3, name: 'B', type: 'simple' }, { id: 1, name: 'Flow', type: 'kanban' }])]);
+    const r2 = await createAdapter({ cwd: proj(), fetch: many }).listPastSprints({ count: 2 });
+    assert.deepStrictEqual(r2, { ok: false, condition: 'board-ambiguous', data: { boards: [{ id: 2, name: 'A', type: 'scrum' }, { id: 3, name: 'B', type: 'simple' }] } });
+    assert.strictEqual(many.calls.length, 1, 'no sprint read before the choice');
+    const none = fakeFetch([BOARDS([{ id: 1, name: 'Flow', type: 'kanban' }])]);
+    assert.deepStrictEqual(await createAdapter({ cwd: proj(), fetch: none }).listPastSprints({ count: 2 }), { ok: true, found: 0, sprints: [] });
+  });
+
+  await test('listPastSprints: a 400 on a non-scrum board reads as zero sprints; a 400 on a scrum board propagates', async () => {
+    const simple = fakeFetch([BOARDS([{ id: 3, name: 'B', type: 'simple' }]), CLOSED(3, [], { status: 400, text: JSON.stringify({ errorMessages: ['The board does not support sprints'] }) })]);
+    const r = await createAdapter({ cwd: proj(), fetch: simple }).listPastSprints({ count: 2 });
+    assert.deepStrictEqual(r, { ok: true, found: 0, board: { id: 3, name: 'B' }, sprints: [] });
+    const scrum = fakeFetch([BOARDS([{ id: 2, name: 'A', type: 'scrum' }]), CLOSED(2, [], { status: 400, text: JSON.stringify({ errorMessages: ['bad'] }) })]);
+    await assert.rejects(createAdapter({ cwd: proj(), fetch: scrum }).listPastSprints({ count: 2 }),
+      (e) => e instanceof TrackerError && e.status === 400 && e.op === 'listSprints');
+  });
+
+  await test('listPastSprints: closed sprints come from every page (the agile API lists oldest first)', async () => {
+    const f = fakeFetch([BOARDS([{ id: 2, name: 'A', type: 'scrum' }]),
+      { match: '/rest/agile/1.0/board/2/sprint', json: (call) => (call.url.includes('startAt=2')
+        ? { isLast: true, values: [SPR(3, 'Sprint 3', '2026-03-01')] }
+        : { isLast: false, values: [SPR(1, 'Sprint 1', '2026-01-01'), SPR(2, 'Sprint 2', '2026-02-01')] }) }]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listPastSprints({ count: 2 });
+    assert.deepStrictEqual(r.sprints.map((s) => s.name), ['Sprint 3', 'Sprint 2']);
+    assert.strictEqual(r.found, 3);
+  });
+
+  const JIRA_HISTORY = (extra = []) => [
+    ...extra,
+    { method: 'POST', match: '/rest/api/3/search/jql', bodyMatch: 'sprint in (', json: { issues: [
+      { id: '10101', key: 'PROJ-1', fields: { summary: 'Contact preferences' } },
+      { id: '10102', key: 'PROJ-2', fields: { summary: 'Checkout address form' } },
+    ] } },
+    { method: 'POST', match: '/rest/api/3/search/jql', bodyMatch: 'parent in (', json: { issues: [
+      { id: '10201', key: 'PROJ-11', fields: { summary: '[Testing] Test Execution', parent: { key: 'PROJ-1' }, timeoriginalestimate: 7200 } },
+      { id: '10202', key: 'PROJ-12', fields: { summary: '[Testing] Requirement Review', parent: { key: 'PROJ-2' }, timeoriginalestimate: 5432 } },
+      { id: '10203', key: 'PROJ-13', fields: { summary: '[Testing] Automation', parent: { key: 'PROJ-2' }, timeoriginalestimate: null } },
+      { id: '10204', key: 'PROJ-14', fields: { summary: 'Build it', parent: { key: 'PROJ-2' }, timeoriginalestimate: 0 } },
+    ] } },
+  ];
+
+  await test('listChildEstimates: story-first — stories by sprint, then their sub-tasks by parent; Original Estimate seconds → hours', async () => {
+    const f = fakeFetch(JIRA_HISTORY());
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listChildEstimates({ sprints: [{ id: 12, name: 'Sprint 42' }, { id: 11, name: 'Sprint 41' }], storyType: 'Story' });
+    assert.strictEqual(f.calls.length, 2);
+    assert.deepStrictEqual(JSON.parse(f.calls[0].body), { jql: 'project = "PROJ" AND issuetype = "Story" AND sprint in (12, 11) ORDER BY key', fields: ['summary'], maxResults: 100 });
+    assert.deepStrictEqual(JSON.parse(f.calls[1].body), { jql: 'parent in ("PROJ-1", "PROJ-2") ORDER BY key', fields: ['summary', 'parent', 'timeoriginalestimate'], maxResults: 100 });
+    assert.deepStrictEqual(r, {
+      stories: [
+        { id: 'PROJ-1', seq: 10101, title: 'Contact preferences', url: `${BASE}/browse/PROJ-1` },
+        { id: 'PROJ-2', seq: 10102, title: 'Checkout address form', url: `${BASE}/browse/PROJ-2` },
+      ],
+      children: [
+        { id: 'PROJ-11', seq: 10201, title: '[Testing] Test Execution', parentId: 'PROJ-1', hours: 2 },
+        { id: 'PROJ-12', seq: 10202, title: '[Testing] Requirement Review', parentId: 'PROJ-2', hours: 1.51 },
+        { id: 'PROJ-13', seq: 10203, title: '[Testing] Automation', parentId: 'PROJ-2', hours: null },
+        { id: 'PROJ-14', seq: 10204, title: 'Build it', parentId: 'PROJ-2', hours: null },
+      ],
+      truncated: false,
+    });
+    assertFlowFree(r);
+    assertFieldGuard(f.calls);
+  });
+
+  await test('listChildEstimates: ZERO requests for no sprints; sub-tasks are read per 100-story chunk; the query cap surfaces as truncated', async () => {
+    const f0 = fakeFetch([]);
+    assert.deepStrictEqual(await createAdapter({ cwd: proj(), fetch: f0 }).listChildEstimates({ sprints: [], storyType: 'Story' }),
+      { stories: [], children: [], truncated: false });
+    assert.strictEqual(f0.calls.length, 0);
+    const keys = Array.from({ length: 101 }, (_, i) => ({ id: String(30000 + i), key: `PROJ-${i + 1}`, fields: { summary: `S${i}` } }));
+    const f = fakeFetch([
+      { method: 'POST', match: '/search/jql', bodyMatch: 'sprint in (', json: { issues: keys } },
+      { method: 'POST', match: '/search/jql', bodyMatch: 'parent in (', json: { issues: [], nextPageToken: 'more' } },
+    ]);
+    const r = await createAdapter({ cwd: proj(), fetch: f }).listChildEstimates({ sprints: [{ id: 1, name: 'S' }], storyType: 'Story' });
+    const parentCalls = f.calls.filter((c) => c.body.includes('parent in ('));
+    assert.strictEqual(new Set(parentCalls.map((c) => JSON.parse(c.body).jql)).size, 2, 'two 100-key chunks');
+    assert.strictEqual(r.truncated, true, 'the adapter query cap is reported');
+    assertFieldGuard(f.calls);
   });
 
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);

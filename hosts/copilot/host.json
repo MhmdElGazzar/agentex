@@ -1,0 +1,77 @@
+{
+  "label": "GitHub Copilot",
+  "description": "Branch `copilot`, for Copilot CLI and VS Code agent plugins. Copilot reads the Claude layout (.claude-plugin/plugin.json, skills/, agents/, commands/), so the conversion is small: the plugin root becomes a placeholder the preamble explains (Copilot documents ${CLAUDE_PLUGIN_ROOT} for hooks and MCP config only), the ask tool is renamed, and the manifest names its agents/commands folders explicitly. awesome-copilot pins a tag + sha, hence `tag`.",
+  "target": {
+    "branch": "copilot"
+  },
+  "tag": "copilot-v{version}",
+  "exclude": [
+    "skills/browser-testing",
+    "docs/contributing"
+  ],
+  "transforms": [
+    [
+      "pluginRoot",
+      {
+        "mode": "placeholder"
+      }
+    ],
+    [
+      "askUser",
+      {
+        "replacement": "ask-the-user call (`ask_user`; `askQuestions` in VS Code)"
+      }
+    ],
+    [
+      "preamble",
+      {
+        "targets": [
+          "skills/*/SKILL.md",
+          "agents/*.md",
+          "commands/*.md"
+        ],
+        "text": "> **AgenTeX on {host}.** `<agentex-root>` stands for this plugin's install folder: `{root}` from the folder this file is in. Resolve it to an absolute path before you run or read anything that uses it. When a step says to dispatch a bundled agent (`qa-executor`, `api-executor`, `mobile-qa-executor`), start it as a subagent."
+      }
+    ],
+    [
+      "manifest",
+      {
+        "target": ".claude-plugin/plugin.json",
+        "fields": {
+          "agents": "./agents",
+          "commands": "./commands"
+        }
+      }
+    ]
+  ],
+  "guards": {
+    "skills": {
+      "nameMatchesFolder": true,
+      "nameMax": 64,
+      "descriptionMax": 1024
+    },
+    "forbiddenText": [
+      {
+        "pattern": "\\$\\{CLAUDE_PLUGIN_ROOT\\}",
+        "why": "Copilot does not expand it in skill text"
+      },
+      {
+        "pattern": "AskUserQuestion",
+        "why": "Claude-only tool name"
+      }
+    ],
+    "forbiddenPaths": [
+      ".gitattributes",
+      "**/.DS_Store"
+    ],
+    "manifest": {
+      "path": ".claude-plugin/plugin.json",
+      "required": [
+        "name",
+        "version",
+        "description",
+        "license"
+      ]
+    }
+  }
+}

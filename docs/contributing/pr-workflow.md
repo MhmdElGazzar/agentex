@@ -33,3 +33,8 @@ common reason a PR needs a revision.
 The maintainer commits releases straight to `main` and bumps the version in
 `.claude-plugin/plugin.json` + `CHANGELOG.md`; the `elgazzar-plugins` marketplace listing is
 re-synced on each release. You don't need to do either of these in your PR.
+
+Every push to `main` also rebuilds one generated branch per host: `store` (the Claude plugin
+directory), `copilot`, `devin` and `codex`. Write `main` the Claude way and never commit to a
+generated branch by hand; see [Host Branches](./host-branches.md) for what the converters do
+and what can make a host build fail.

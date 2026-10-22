@@ -14,16 +14,34 @@
 const fs = require('fs');
 const path = require('path');
 
-// Read an env var: process.env first, then a KEY=value line in <cwd>/.env
-// (the harness does not always load .env into process.env). null when unset.
+const escapeRegExp = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// The value of `name` in .env-format text — the ONE .env line parser. Matched
+// strictly per line (never across a newline: an empty `KEY=` must not read the
+// next line's secret), CRLF-safe, `export ` and leading whitespace allowed, the
+// name matched literally. One matching pair of surrounding quotes is stripped;
+// no inline-comment stripping (a `#` inside a secret is data — the scaffold uses
+// full-line comments only). First occurrence wins. Empty value → null (unset).
+function parseEnvValue(text, name) {
+  const re = new RegExp('^[ \\t]*(?:export[ \\t]+)?' + escapeRegExp(name) + '[ \\t]*=(.*)$');
+  for (const line of String(text).split(/\r\n|\n|\r/)) {
+    const m = line.match(re);
+    if (!m) continue;
+    let v = m[1].trim();
+    if (v.length >= 2 && (v[0] === '"' || v[0] === "'") && v[v.length - 1] === v[0]) v = v.slice(1, -1);
+    return v === '' ? null : v;
+  }
+  return null;
+}
+
+// Read an env var: process.env first (an empty value falls through), then a
+// KEY=value line in <cwd>/.env (the harness does not always load .env into
+// process.env). null when unset or empty.
 function readEnvVar(cwd, name) {
   if (process.env[name]) return String(process.env[name]).trim();
-  try {
-    const re = new RegExp('^' + name + '\\s*=\\s*(.+)$', 'm');
-    const m = fs.readFileSync(path.join(cwd, '.env'), 'utf8').match(re);
-    if (m) return m[1].trim().replace(/^["']|["']$/g, '');
-  } catch {}
-  return null;
+  let text;
+  try { text = fs.readFileSync(path.join(cwd, '.env'), 'utf8'); } catch { return null; }
+  return parseEnvValue(text, name);
 }
 
 function readJsonIfExists(file) {
@@ -398,7 +416,7 @@ function withPluginConfigBlocks(projectConfig) {
 }
 
 module.exports = {
-  readEnvVar, loadProjectConfig, listEnvironments, loadEnvironment,
+  readEnvVar, parseEnvValue, loadProjectConfig, listEnvironments, loadEnvironment,
   resolveSecret, secretHint, resolveDbConnection, resolveApiTarget,
   STRUCTURED_DEFAULTS, ConfigError, getStructured, withPluginConfigBlocks, detectTrackerBlock,
 };

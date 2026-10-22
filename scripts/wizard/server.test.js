@@ -9,8 +9,15 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const SERVER = path.join(__dirname, 'server.js');
-const PORT = 7391;
-const BASE = `http://127.0.0.1:${PORT}`;
+// An ephemeral port, not a fixed one: two suite runs at once (parallel runner, another
+// worktree) must never collide — a taken port made the server exit and this test hang.
+let PORT = 0;
+let BASE = '';
+const freePort = () => new Promise((resolve, reject) => {
+  const probe = require('node:net').createServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+});
 
 let passed = 0; const failures = [];
 async function test(name, fn) {
@@ -28,6 +35,8 @@ const post = (route, body, headers = {}) =>
   });
 
 (async () => {
+  PORT = await freePort();
+  BASE = `http://127.0.0.1:${PORT}`;
   const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wizard-srv-'));
   const child = spawn(process.execPath, [SERVER, projectDir, `--port=${PORT}`, '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
@@ -179,6 +188,20 @@ const post = (route, body, headers = {}) =>
     assert.ok(!JSON.stringify(env).includes('tok-test'), 'secret must not land in JSON');
   });
 
+  await test('a save leaves an existing config/estimation.json byte-identical (the wizard never writes it)', async () => {
+    const file = path.join(projectDir, 'config', 'estimation.json');
+    const bytes = '{\n  "schemaVersion": 1,\n  "tasks": [ { "name": "Exploratory Pass", "enabled": true, "minHours": 1, "maxHours": 3 } ],\n  "factors": { "Scope": 1 }\n}\n';
+    fs.writeFileSync(file, bytes);
+    const r = await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: { API_TOKEN: 'tok-test' },
+    });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), bytes);
+    fs.unlinkSync(file);
+  });
+
   await test('.env upsert keeps unrelated lines intact', async () => {
     fs.appendFileSync(path.join(projectDir, '.env'), 'KEEP_ME=untouched\n');
     await post('/api/save', {
@@ -190,6 +213,20 @@ const post = (route, body, headers = {}) =>
     assert.match(dotenv, /^KEEP_ME=untouched$/m);
     assert.match(dotenv, /^API_TOKEN=tok-updated$/m);
     assert.ok(!dotenv.includes('tok-test'), 'old value replaced, not duplicated');
+  });
+
+  await test('.env upsert replaces an export-prefixed / indented key in place (the readers honour those forms)', async () => {
+    const envPath = path.join(projectDir, '.env');
+    const before = fs.readFileSync(envPath, 'utf8').split('\n').filter(l => !/API_TOKEN=/.test(l)).join('\n');
+    fs.writeFileSync(envPath, before + '\n  export API_TOKEN=tok-old-exported\n');
+    await post('/api/save', {
+      projectConfig: { name: 'demo', defaultEnvironment: 'qa' },
+      envConfig: { portalUrl: 'https://ok.example', users: { valid_user: { phone: '1' } } },
+      envName: 'qa', secrets: { API_TOKEN: 'tok-new' },
+    });
+    const dotenv = fs.readFileSync(envPath, 'utf8');
+    assert.ok(!dotenv.includes('tok-old-exported'), 'old exported value replaced, not shadowing the new one');
+    assert.strictEqual(require('../lib/project_config.js').parseEnvValue(dotenv, 'API_TOKEN'), 'tok-new');
   });
 
   await test('rejects secret env var names that are not valid identifiers', async () => {
@@ -373,6 +410,27 @@ const post = (route, body, headers = {}) =>
     assert.strictEqual(data.projectPristine, true, 'template project.json is scaffolding, not config');
     assert.deepStrictEqual(data.pristineSamples, ['qc'],
       'every pristine sample is enumerated — the review step must list ALL files a save would reconcile');
+  });
+
+  await test('A-2: projectPristine is true for the pre-A-2 project template too (historical shape)', async () => {
+    const projPath = path.join(projectDir2, 'config', 'project.json');
+    const current = fs.readFileSync(projPath, 'utf8');
+    const old = JSON.parse(current);
+    old.defaultsFields = [
+      { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+        hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+        hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+      { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+    ];
+    fs.writeFileSync(projPath, JSON.stringify(old, null, 2) + '\n');
+    try {
+      const data = await (await get2('/api/config')).json();
+      assert.strictEqual(data.projectPristine, true, 'an untouched older scaffold is still scaffolding');
+      old.name = 'my-real-project';
+      fs.writeFileSync(projPath, JSON.stringify(old, null, 2) + '\n');
+      const touched = await (await get2('/api/config')).json();
+      assert.strictEqual(touched.projectPristine, false, 'any user value makes it the user\'s');
+    } finally { fs.writeFileSync(projPath, current); }
   });
 
   await test('a user-touched environment under the default name is prefilled and protected', async () => {

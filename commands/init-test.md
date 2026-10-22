@@ -62,9 +62,46 @@ Do these steps, then report what was created:
 5. **Playwright preflight** — mention they need `@playwright/cli` installed
    (`npm install -D @playwright/cli && npx playwright-cli install-browser chromium`); offer
    to run it. Do not install without confirmation.
+6. **Git readiness (optional)** — on first runs and re-runs alike. Run:
+
+   ```
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/precommit_hook.js" status
+   ```
+
+   It prints one JSON line; branch on its `status`:
+   - **`not-a-repo`** → say plainly that this folder is not a git repository yet, so the
+     secret scan and the optional pre-commit hook are unavailable; `git init` first (see
+     `${CLAUDE_PLUGIN_ROOT}/docs/putting-your-project-in-git.md`). Nothing else in
+     `/init-test` is affected. Skip the rest of this step.
+   - Otherwise, first run the on-demand scan of every tracked file:
+
+     ```
+     node "${CLAUDE_PLUGIN_ROOT}/scripts/secret_scan.js" --tracked
+     ```
+
+     Relay its result: the mode, each finding by file, line and key / field / label / remote
+     **name only**, the skip counts, and any "value check skipped". **Never open, quote or
+     reconstruct a flagged line or a secret value** — not even when asked to "show" it; the
+     scan prints names only and so does your relay. Point to the docs section "Fixing
+     findings" for each kind. Exit 1 is a leak to fix before committing or pushing; exit 2
+     means the scan could not run (say so).
+   - **`absent`** or **`stale`** → offer the hook in **one** question: it scans each commit's
+     staged content, refuses a commit only for a real leak (warnings are shown, the commit
+     proceeds), never overwrites an existing hook, and is turned off by deleting the file.
+     Only after an explicit yes, run
+     `node "${CLAUDE_PLUGIN_ROOT}/scripts/precommit_hook.js" install` and relay its result. A
+     no, or no answer, means nothing is written — never install it by hand.
+   - **`installed`** → one line saying the hook is in place.
+   - **`foreign`** → an existing pre-commit hook (not AgenTeX's) is left untouched; report its
+     path and point to the docs section "Calling the scan from an existing hook". Offer to
+     show the snippet (`precommit_hook.js print`) if the user wants it.
+   - **`shared-hooks-path`** → `core.hooksPath` points at a machine-wide hooks folder shared by
+     every repository on this machine, so AgenTeX does not install there; point to the docs
+     section "Calling the scan from an existing hook".
 
 Finish by telling the user to edit the sample specs in `./test/suite1/` to match their app,
 then run `/execute-test <url or scope>`. Also mention the Azure DevOps commands if they use
 ADO: `/design-test <story-ids>` (create linked test cases from a story's ACs) and
-`/estimate-story [ids]` (estimate QA effort + create [Testing] tasks) — both read the
+`/estimate-story [ids]` / `/estimate-sprint` (estimate QA effort + create [Testing] tasks;
+the first run proposes `config/estimation.json`) — all read the
 `azure` block in `config/project.json` (legacy `AZURE_*` keys in `.env` still work).

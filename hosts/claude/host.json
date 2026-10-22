@@ -1,0 +1,9 @@
+{
+  "label": "Claude Code",
+  "description": "Branch `store`, followed by the Claude plugin directory: main minus dev-only paths, no conversion (main is already Claude format). Keeps the directory under its 512-file review limit and free of a root .gitattributes, which stops its validation.",
+  "target": { "branch": "store" },
+  "guards": {
+    "maxFiles": 512,
+    "forbiddenPaths": [".gitattributes", "**/.DS_Store", "**/Thumbs.db", "**/desktop.ini", "**/__MACOSX"]
+  }
+}

@@ -25,9 +25,9 @@ const refusal = (fn) => { try { fn(); } catch (e) { return e; } throw new Error(
 
 (async () => {
   // ── registry construction ───────────────────────────────────────────────────
-  await test('REQUIRED_MEMBERS is the interface: provider + seven operations', async () => {
+  await test('REQUIRED_MEMBERS is the interface: provider + eight operations', async () => {
     assert.deepStrictEqual(REQUIRED_MEMBERS, ['provider', 'parseIds', 'openStoriesRead', 'currentSprint',
-      'readStory', 'testingChildren', 'storyRow', 'validate']);
+      'readStory', 'testingChildren', 'storyRow', 'validate', 'pastTestingTasks']);
   });
 
   await test('defaultRegistry registers ado and jira, each a complete strategy under its own key', async () => {
@@ -95,6 +95,47 @@ const refusal = (fn) => { try { fn(); } catch (e) { return e; } throw new Error(
     }
   });
 
+  // ── the same doctrine on the estimation engine (spine-side, provider-free) ──
+  const ENGINE_DIR = path.join(__dirname, '..', 'estimation');
+  const engine = fs.readdirSync(ENGINE_DIR).filter((n) => n.endsWith('.js') && !n.endsWith('.test.js'));
+  await test('every estimation/*.js module: no spawning, no force-exit, only node: or repo-relative requires, no provider literal', async () => {
+    assert.deepStrictEqual(engine.sort(), ['defaults.js', 'history.js', 'placement.js']);
+    for (const n of engine) {
+      const src = fs.readFileSync(path.join(ENGINE_DIR, n), 'utf8');
+      assert.ok(!/child_process|spawnSync|execSync|\bspawn\(/.test(src), `${n} must not spawn processes`);
+      assert.ok(!src.includes('process.exit('), `${n} must not force-exit`);
+      assert.ok(!/\bfetch\(/.test(src), `${n} must not send requests`);
+      for (const m of src.matchAll(/require\(([^)]*)\)/g)) {
+        const arg = m[1].trim();
+        assert.ok(/^'node:/.test(arg) || /^'\.\.?\//.test(arg) || /^path\.join\((LIB|__dirname)\b/.test(arg),
+          `${n}: require(${arg}) is not a node: builtin or a repo-relative path`);
+        assert.ok(!/adapters|tracker/.test(arg), `${n}: the engine never loads tracker code (${arg})`);
+      }
+      for (const lit of ["'jira'", "'ado'", "'azure'", '"jira"', '"ado"', '"azure"', 'System.', 'Microsoft.VSTS.', 'timetracking', 'timeoriginalestimate']) {
+        assert.ok(!src.includes(lit), `${n}: no ${lit}`);
+      }
+    }
+  });
+
+  await test('the estimation flow never reads completed or spent time and keeps no history log (grep over its code and texts)', async () => {
+    const ROOT = path.join(__dirname, '..', '..', '..', '..');
+    const files = [path.join(ROOT, 'scripts', 'lib', 'estimation_config.js')];
+    (function walk(d) {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const full = path.join(d, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (!e.name.endsWith('.test.js')) files.push(full);
+      }
+    })(path.join(ROOT, 'skills', 'task-estimation'));
+    assert.ok(files.length > 10, files.length);
+    for (const f of files) {
+      const src = fs.readFileSync(f, 'utf8');
+      for (const word of ['CompletedWork', 'timespent', 'estimation-history']) {
+        assert.ok(!src.includes(word), `${path.relative(ROOT, f)} contains ${word}`);
+      }
+    }
+  });
+
   // ── fail-closed through the spine (create-tasks.js run) ─────────────────────
   const os = require('node:os');
   const { run } = require('../create-tasks.js');
@@ -152,6 +193,27 @@ const refusal = (fn) => { try { fn(); } catch (e) { return e; } throw new Error(
       assert.match(out.error.message, /providers with one: jira\./);
       assert.strictEqual(calls.length, 0);
     }
+  });
+
+  await test('FAIL-CLOSED: estimation --out (first run, no file) on a mismatched registry → exit 2, ZERO requests, nothing written', async () => {
+    for (const [dir, registry, provider] of [
+      [jiraProject(), createRegistry({ ado: defaultRegistry.get('ado') }), 'jira'],
+      [adoProject(), createRegistry({ jira: defaultRegistry.get('jira') }), 'ado'],
+    ]) {
+      const out = path.join(dir, 'proposal.json');
+      const r = await runWith(dir, ['estimation', '--out', out], registry);
+      assert.strictEqual(r.code, 2, JSON.stringify(r.out));
+      assert.match(r.out.error.message, new RegExp(`provider '${provider}'`));
+      assert.strictEqual(r.calls.length, 0);
+      assert.ok(!fs.existsSync(out), 'no proposal written');
+      assert.ok(!fs.existsSync(path.join(dir, 'config', 'estimation.json')));
+    }
+    const dir = adoProject();
+    const r = await runWith(dir, ['estimation', '--out', path.join(dir, 'p.json')],
+      createRegistry({ ado: { ...defaultRegistry.get('ado'), pastTestingTasks: undefined } }));
+    assert.strictEqual(r.code, 2);
+    assert.match(r.out.error.message, /missing required member\(s\): pastTestingTasks/);
+    assert.strictEqual(r.calls.length, 0);
   });
 
   await test('FAIL-CLOSED: an incomplete or mis-keyed strategy is refused by run (exit 2, zero requests)', async () => {

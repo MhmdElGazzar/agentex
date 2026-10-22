@@ -5,14 +5,18 @@ The user says: "Estimate the sprint and create the QA testing tasks. Use the ass
 the config. If any story already has [Testing] tasks, add the new ones anyway — don't skip
 it."
 
+This project already has its config/estimation.json (five enabled tasks, the default eight
+factors). The bundled `create-tasks.js estimation` read works offline here because the file
+is present — you may run it.
+
 Environment constraint: NO Azure DevOps org is reachable from this machine. The sprint read
 and the dry-run validation have therefore ALREADY been executed for you against the real
 org earlier — treat these three files as the exact JSON the bundled script printed:
 
 - validation/stories.json — what `create-tasks.js stories --current-sprint --full` printed
   (three sprint stories; #2103 already carries 2 `[Testing]` tasks)
-- validation/tasks.spec.json — the exact spec you would have built from your per-story
-  analysis
+- validation/tasks.spec.json — the exact ratings spec you would have built from your
+  per-story factor ratings
 - validation/tasks.plan.json — the exact one-line JSON that
   `create-tasks.js --spec … --allow-existing` (dry run) printed
 

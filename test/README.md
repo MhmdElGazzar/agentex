@@ -70,6 +70,13 @@ CI. Without a `Drivers:` line a spec is a browser spec plus the `api:` / `db:` /
 - Parallel (autonomous, one session per file): ask for a "parallel regression from the
   specs in `test/suite1/`".
 
+## Mobile app specs
+
+Native Android/iOS specs work the same way, one folder over: `test/mobile-suite1/` (seeded by
+`/execute-mobile-test` on first run — same lazy-scaffold behavior as `suite1/` above). See
+[Mobile Testing](../docs/mobile-testing.md) for how a mobile spec differs (app under test and
+element selectors instead of a URL and CSS selectors).
+
 ## Azure DevOps (optional)
 
 AgenTeX can also work your ADO backlog — fill the `azure` block in `config/project.json` first
@@ -78,4 +85,5 @@ always stays in `.env` as `AZURE_PAT`, read by the bundled scripts themselves:
 
 - `/design-test <story-ids>` — analyze a story's ACs and create linked test cases
   (project conventions live in `.agentex/test-template.md`, scaffolded on first run).
-- `/estimate-story [ids]` — estimate QA effort and create the 5 `[Testing]` tasks per story.
+- `/estimate-story [ids]` — estimate QA effort and create the `[Testing]` tasks your
+  `config/estimation.json` defines (`/estimate-sprint` for the whole current sprint).

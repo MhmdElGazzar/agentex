@@ -1,0 +1,11 @@
+{
+  "name": "agentex-copilot",
+  "owner": { "name": "Mohamed Elgazzar" },
+  "plugins": [
+    {
+      "name": "agentex",
+      "source": "./",
+      "description": "Agentic QA for GitHub Copilot: plans and runs your tests with evidence and a defect report."
+    }
+  ]
+}

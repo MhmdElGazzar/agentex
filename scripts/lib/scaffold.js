@@ -63,7 +63,11 @@ function hasEnvFiles(projectRoot) {
 // binaries out of a QA repo, and it carries its own comment so the block does not
 // claim a cache holds a session. Same for .agentex/cache/ — tracker field metadata
 // (picklist allowedValues etc.), safe to delete, rebuilt on demand by the tracker
-// scripts. Committing that cache is a documented one-line opt-in: appending
+// scripts. .agentex/scratch/ is the one defined place where the test-design and
+// task-estimation skills write their intermediate files (cases.json, tasks.json) —
+// agent scratch, safe to delete; ignoring exactly that folder keeps the committed
+// .agentex/ files (version.json, test-template.md, …) visible.
+// Committing the tracker cache is a documented one-line opt-in: appending
 // `!.agentex/cache/` to .gitignore — the negation both re-includes the directory
 // and is listed in the entry's covers, so this scaffold (and m05) never re-adds
 // the ignore line over the user's opt-in.
@@ -95,6 +99,14 @@ const GITIGNORE_ENTRIES = [
       // The documented commit opt-in: the user re-included the cache on purpose —
       // never add the ignore line back over it.
       '!.agentex/cache/', '!.agentex/cache'],
+  },
+  {
+    entry: '.agentex/scratch/',
+    comment: '# and this one is agent scratch - intermediate files of test design and estimation runs, safe to delete',
+    covers: ['.agentex/scratch/', '.agentex/scratch', '/.agentex/scratch/', '/.agentex/scratch',
+      '.agentex/', '.agentex', '/.agentex/', '/.agentex', '.agentex/*', '/.agentex/*',
+      // a deliberate un-ignore: never add the line back over it
+      '!.agentex/scratch/', '!.agentex/scratch', '!/.agentex/scratch/', '!/.agentex/scratch'],
   },
 ];
 
@@ -256,8 +268,11 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
 // and is treated as the user's, always.
 //
 // HISTORICAL_SAMPLE_ENV_SHAPES holds every shipped revision of
-// templates/environments/* from the plugin's git history (currently one: the
-// qa.json shipped from 0.11.0 through 0.16.x, byte-equal to today's qc.json).
+// templates/environments/* from the plugin's git history. Currently two:
+//   1. the qa.json shipped from 0.11.0 through 0.16.x (structurally equal to
+//      today's qc.json again — kept so the next template change still knows it);
+//   2. the same sample plus a placeholder `mobile` block, shipped on main after
+//      PR #24 (2026-10-09) until the mobile block became opt-in.
 // When the template changes, append the outgoing shape here — pre-change
 // projects still carry it.
 const HISTORICAL_SAMPLE_ENV_SHAPES = [
@@ -274,7 +289,63 @@ const HISTORICAL_SAMPLE_ENV_SHAPES = [
     },
     api: { baseUrl: 'https://jsonplaceholder.typicode.com', token: { envSecret: 'API_TOKEN' } },
   },
+  {
+    portalUrl: 'https://example.com',
+    defaults: { otp: '0000', password: 'Test@1234' },
+    users: {
+      valid_user: { phone: '0550000001', role: 'customer' },
+      expired_user: { phone: '0550000002', notes: 'for negative login scenarios' },
+    },
+    db: {
+      server: 'localhost', port: 1433, name: 'my-database', user: 'qa_user',
+      password: { envSecret: 'SQLCMDPASSWORD' },
+    },
+    api: { baseUrl: 'https://jsonplaceholder.typicode.com', token: { envSecret: 'API_TOKEN' } },
+    mobile: {
+      platformName: 'Android', automationName: 'UiAutomator2',
+      app: '/absolute/path/to/app.apk', deviceName: 'emulator-5554',
+    },
+  },
 ];
+
+// HISTORICAL_PROJECT_TEMPLATE_SHAPES — the same rule for templates/config/project.json:
+// the wizard's "pristine project" check (server.js) judges against the current
+// template plus every shipped revision, so a project scaffolded by an older version
+// and never configured is still recognised as scaffolding. Currently one:
+//   1. the template shipped until Decision A-2 (2026-10-19): the shared test password
+//      was a plain descriptor with the Test@1234 default; A-2 made it secret.
+// When the template changes, append the outgoing shape here.
+const HISTORICAL_PROJECT_TEMPLATE_SHAPES = [
+  {
+    name: 'my-project',
+    defaultEnvironment: 'qc',
+    kb: { baseUrl: '', project: '' },
+    figma: { fileKey: '', token: { envSecret: 'FIGMA_TOKEN' } },
+    login: { mode: 'session' },
+    userFields: [
+      { key: 'phone', label: 'رقم الهاتف', labelEn: 'Phone', type: 'text', placeholder: '0550000001' },
+      { key: 'email', label: 'البريد الإلكتروني', labelEn: 'Email', type: 'email', placeholder: 'test@example.com' },
+      { key: 'role', label: 'الدور', labelEn: 'Role', type: 'text', placeholder: 'customer' },
+      { key: 'notes', label: 'ملاحظات', labelEn: 'Notes', type: 'text', placeholder: 'for negative login scenarios' },
+    ],
+    defaultsFields: [
+      { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+        hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+        hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+      { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
+    ],
+  },
+];
+
+// Is this parsed config/project.json structurally identical to a shipped template?
+function isPristineProjectConfig(parsed, pluginRoot) {
+  if (!parsed || typeof parsed !== 'object') return false;
+  const shapes = [];
+  try {
+    shapes.push(JSON.parse(fs.readFileSync(path.join(pluginRoot, 'templates', 'config', 'project.json'), 'utf8')));
+  } catch { /* unreadable template — historical shapes still apply */ }
+  return shapes.concat(HISTORICAL_PROJECT_TEMPLATE_SHAPES).some(shape => isDeepStrictEqual(parsed, shape));
+}
 
 // Every sample-environment shape ever shipped: current template first (read from
 // the installed plugin), then the historical revisions.
@@ -345,8 +416,8 @@ function readPluginVersion(pluginRoot) {
 module.exports = {
   CLAUDE_MD_BULLET, STAMP_REL,
   hasSpecFiles, hasEnvFiles, scaffoldProject, hasLegacySignals,
-  sampleEnvShapes, isPristineSampleEnv,
-  gitignoreMissing, ensureGitignore,
+  sampleEnvShapes, isPristineSampleEnv, isPristineProjectConfig,
+  GITIGNORE_ENTRIES, gitignoreMissing, ensureGitignore,
   claudeMdHasBullet, ensureClaudeMdBullet,
   stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,
 };

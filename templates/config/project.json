@@ -17,9 +17,9 @@
     { "key": "notes", "label": "ملاحظات", "labelEn": "Notes", "type": "text", "placeholder": "for negative login scenarios" }
   ],
   "defaultsFields": [
-    { "key": "password", "label": "كلمة المرور الافتراضية", "labelEn": "Default Password", "default": "Test@1234",
-      "hint": "كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)",
-      "hintEn": "The shared test-account password — written as-is into the environment file (not a real secret)" },
+    { "key": "password", "label": "كلمة المرور الافتراضية", "labelEn": "Default Password", "secret": true,
+      "hint": "كلمة مرور حسابات الاختبار المشتركة — قيمتها تُحفظ في ‎.env فقط، وملف البيئة يشير إليها باسم المتغير",
+      "hintEn": "The shared test-account password — its value is kept in .env only; the environment file refers to it by variable name" },
     { "key": "otp", "label": "OTP الافتراضي", "labelEn": "Default OTP", "default": "0000" }
   ],
   "testingTasks": [

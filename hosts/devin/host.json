@@ -1,0 +1,84 @@
+{
+  "label": "Devin",
+  "description": "Branch `devin`, for Devin Desktop / Devin CLI (formerly Windsurf). Devin installs Claude-layout plugins as-is, but documents neither plugin commands/ nor ${CLAUDE_PLUGIN_ROOT} in skill text, so commands become skills (mentions rewritten to `/agentex:<skill>`, Devin's plugin-skill syntax) and the root becomes a placeholder. The devin-marketplace pins a sha, hence `tag`.",
+  "target": {
+    "branch": "devin"
+  },
+  "tag": "devin-v{version}",
+  "exclude": [
+    "skills/browser-testing",
+    "docs/contributing"
+  ],
+  "transforms": [
+    [
+      "commandsToSkills"
+    ],
+    [
+      "invocations",
+      {
+        "prefix": "/agentex:"
+      }
+    ],
+    [
+      "pluginRoot",
+      {
+        "mode": "placeholder"
+      }
+    ],
+    [
+      "askUser",
+      {
+        "replacement": "`ask_user_question` call"
+      }
+    ],
+    [
+      "preamble",
+      {
+        "targets": [
+          "skills/*/SKILL.md",
+          "agents/*.md"
+        ],
+        "text": "> **AgenTeX on {host}.** `<agentex-root>` stands for this plugin's install folder: `{root}` from the folder this file is in. Resolve it to an absolute path before you run or read anything that uses it. When a step says to dispatch a bundled agent (`qa-executor`, `api-executor`, `mobile-qa-executor`), start it as a subagent; ask the user anything you need before dispatching, because subagents cannot ask."
+      }
+    ]
+  ],
+  "guards": {
+    "skills": {
+      "nameMatchesFolder": true,
+      "nameMax": 64,
+      "descriptionMax": 1024
+    },
+    "forbiddenText": [
+      {
+        "pattern": "\\$\\{CLAUDE_PLUGIN_ROOT\\}",
+        "why": "not documented as expanded in skill text"
+      },
+      {
+        "pattern": "AskUserQuestion",
+        "why": "Claude-only tool name"
+      },
+      {
+        "pattern": "\\$ARGUMENTS",
+        "why": "commands became skills",
+        "paths": [
+          "skills",
+          "agents",
+          "references/agents"
+        ]
+      }
+    ],
+    "forbiddenPaths": [
+      ".gitattributes",
+      "**/.DS_Store",
+      "commands"
+    ],
+    "manifest": {
+      "path": ".claude-plugin/plugin.json",
+      "required": [
+        "name",
+        "version",
+        "description"
+      ]
+    }
+  }
+}

@@ -1,0 +1,17 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# The no-history rule (the harder Jira case): past [Testing] sub-tasks carry no readable
+# Original Estimate because hours mode `none` put the hours in their descriptions. The
+# proposal is the starter defaults, labelled as defaults with the reason and the likely
+# cause — and description text is never read as an estimate. Offline: every board read is
+# pre-baked under validation/.
+name: discipline-estimation-no-history
+tags: [discipline, task-estimation, jira]
+runs: 3
+max_turns: 15
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'JIRA_EMAIL=\nJIRA_API_TOKEN=\n' > .env
