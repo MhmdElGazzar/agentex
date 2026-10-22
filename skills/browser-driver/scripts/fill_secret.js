@@ -178,6 +178,22 @@ function buildCode({ selectors, pieces, pressSequentially, submit }) {
         if (await l.evaluate((e) => String(('value' in e ? e.value : e.textContent) || '').length > 0)) { await l.fill(''); scrubbed++; }
       } catch (e) {}
     }
+    // The page the browser ended up on may hold the secret in a field no earlier call marked:
+    // a failed login re-renders value="<password>" on a fresh element (same page or a full
+    // load). Clear every input/textarea whose current value IS the secret.
+    const FULL = V.join('');
+    if (FULL) {
+      const fields = loc('input, textarea');
+      let m = 0; try { m = await fields.count(); } catch (e) {}
+      for (let i = 0; i < m; i++) {
+        try {
+          const l = fields.nth(i);
+          if (!(await l.evaluate((e, full) => String(e.value || '') === full, FULL))) continue;
+          try { await l.fill(''); } catch (e) { await l.evaluate((e) => { e.value = ''; }); }
+          scrubbed++;
+        } catch (e) {}
+      }
+    }
   }
   return { found, filled: true, masked, nonEmpty, submitted, scrubbed };
 }`;

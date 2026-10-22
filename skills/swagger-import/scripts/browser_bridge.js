@@ -207,15 +207,17 @@ function captureCode({ apiOrigin, sinkUrl, goto, click, waitMs }) {
 }
 // After --submit, a password field still on screen and non-empty (wrong password, a same-page
 // captcha/OTP step) is cleared in the browser, so the agent's next snapshot cannot print it.
-// The value is only compared to '' inside the page; it never leaves it.
+// The value is only compared inside the page; it never leaves it. A re-rendered form that
+// shows the password in a non-password input is cleared too (value equals the password).
 function fillCode({ handleUrl, locator, submit }) {
   const loc = JSON.stringify(locator);
   const clear = `await page.waitForLoadState('load').catch(() => {}); await page.waitForTimeout(${SUBMIT_SETTLE_MS}); `
     + `const fields = [page.locator(${loc}).first()]; const all = page.locator('input[type=password]'); const n = await all.count().catch(() => 0); for (let i = 0; i < n; i++) fields.push(all.nth(i)); `
     + `let cleared = false, left = false; for (const f of fields) { if (!(await f.count().catch(() => 0))) continue; if (!(await f.inputValue().catch(() => ''))) continue; await f.fill('').catch(() => {}); if (await f.inputValue().catch(() => '')) left = true; else cleared = true; } `
+    + `const any = page.locator('input, textarea'); const m = await any.count().catch(() => 0); for (let i = 0; i < m; i++) { const f = any.nth(i); try { if ((await f.inputValue()) === pw) { await f.fill(''); cleared = true; } } catch (e) {} } `
     + `return left ? 'filled-left' : cleared ? 'filled-cleared' : 'filled'; }`;
   return `async (page) => { const r = await page.request.get(${JSON.stringify(handleUrl)}); if (!r.ok()) return 'handle-refused'; `
-    + `await page.locator(${loc}).first().fill(await r.text()); `
+    + `const pw = await r.text(); await page.locator(${loc}).first().fill(pw); `
     + (submit ? `await page.locator(${JSON.stringify(submit)}).first().click(); ${clear}` : `return 'filled'; }`);
 }
 
