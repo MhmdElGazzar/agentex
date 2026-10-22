@@ -14,8 +14,7 @@ const path   = require('path');
 const { execSync } = require('child_process');
 
 const { buildConfigs, validate, planSave, extractFromText, DEFAULT_ENV_NAME } = require('./engine.js');
-const { isPristineSampleEnv } = require('../lib/scaffold.js');
-const { isDeepStrictEqual } = require('util');
+const { isPristineSampleEnv, isPristineProjectConfig } = require('../lib/scaffold.js');
 
 // ── CLI args ──────────────────────────────────────────────────────────────
 const args        = process.argv.slice(2);
@@ -48,10 +47,6 @@ if (!FORCE && projectRoot === pluginRoot) {
 
 // ── Schema ────────────────────────────────────────────────────────────────
 const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
-
-// Shipped project template — a config/project.json still structurally equal to
-// it is scaffolding, not the user's configuration.
-const projectTemplate = safeReadJSON(path.join(pluginRoot, 'templates', 'config', 'project.json'));
 
 // ── Server ────────────────────────────────────────────────────────────────
 let server;
@@ -120,8 +115,9 @@ server = http.createServer((req, res) => {
     // nothing would let the wizard quietly overwrite whatever it couldn't read.
     const unreadable = [];
     if (existingProj === null && fs.existsSync(projCfgPath)) unreadable.push('config/project.json');
-    const projectPristine = existingProj !== null && projectTemplate !== null &&
-      isDeepStrictEqual(existingProj, projectTemplate);
+    // Pristine = structurally a project template this plugin ever shipped (current
+    // or historical) — untouched scaffolding, never "your existing configuration".
+    const projectPristine = existingProj !== null && isPristineProjectConfig(existingProj, pluginRoot);
     const envDir = path.join(projectRoot, 'environments');
     const environments = {};
     const pristineSamples = [];
