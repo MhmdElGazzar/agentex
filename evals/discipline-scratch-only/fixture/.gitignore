@@ -1,0 +1,6 @@
+.env
+test/.auth/
+.playwright-cli/
+test/.ui-baselines/
+.agentex/cache/
+.agentex/scratch/
