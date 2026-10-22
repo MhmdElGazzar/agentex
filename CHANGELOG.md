@@ -11,8 +11,9 @@ All notable changes to AgenTeX are documented here.
   - **Project first:** test data, past executions, and read-only cataloged DB queries.
   - **Then the application's UI:** Claude signs in as a user you pick and reads IDs, bodies
     and the session token from the app's own network calls. The password and the token never
-    pass through the agent, a command line, the page or a log. A captcha or OTP is handed to
-    you.
+    pass through the agent, a command line, the page or a log. A password declared
+    `{ "envSecret" }` is typed by browser-driver's `fill_secret.js`, as in a test run. A
+    captcha or OTP is handed to you.
   - **Creating missing data** needs one consent on the exact list, and only on an environment
     marked `"nonProduction": true`. The server enforces this and names the field when it
     refuses.

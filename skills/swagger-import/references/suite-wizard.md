@@ -39,19 +39,43 @@ Post progress with `channel.js post <kind> --json '<object>'`, always with that 
 and the event names a `user`. Otherwise post `failed {runId, reason}` in plain words (for
 example "no application URL is configured for qc") and stop. The wizard goes on.
 1. Open a headed session: `playwright-cli -s=agentex-collect open <portalUrl> --headed`.
-2. Find the login form. Fill the user's identifying field (from `users.<user>` in the
-   environment file) yourself.
-3. Fill the password **only** through the bridge. Put it last and let the bridge submit:
-   `node swagger-import/scripts/browser_bridge.js fill-secret --session agentex-collect --locator <password field> --env <env> --user <user> --submit <submit button>`
-   - Never type a password literal and never read one.
-   - Never take a `snapshot` (or `eval` an input's value) while a filled password field is on
-     screen. The accessibility snapshot prints field values; that is why the bridge submits
-     in the same step.
-   - `"passwordFieldCleared": true` means the login did not leave the page (wrong password,
-     or a captcha/OTP on the same page) and the bridge emptied the field. To try again, fill
-     it through `fill-secret` once more. Never type into it or read it yourself.
-   - `"passwordFieldStillFilled": true` means it could not be emptied: take no snapshot,
-     close the session and post `failed`.
+2. Find the login form and `snapshot` it now, while no secret is on the page: take the refs of
+   the fields and of the submit button from this snapshot. Fill the user's identifying field
+   (from `users.<user>` in the environment file) yourself. If that field is itself an
+   `{ "envSecret": "NAME" }`, it is a secret: type it with `fill_secret.js` (below, without a
+   submit flag) just before the password.
+3. Type the password last, through a script that submits in the same call. Its form is
+   `users.<user>.password`, else `defaults.password`, in `environments/<env>.json`:
+   - `{ "envSecret": "NAME" }`, the standard form: browser-driver's `fill_secret.js`, the
+     plugin's only way to type a secret (browser-driver's Secret fields rule; read
+     `browser-driver/references/tools/fill-secret.md` first):
+     `node browser-driver/scripts/fill_secret.js --session agentex-collect --target <password ref> --env-var NAME --env <env> --submit-target <submit ref>`
+     (`--submit` presses Enter instead).
+   - A plain string (legacy; the secret scan warns on it): the bridge,
+     `node swagger-import/scripts/browser_bridge.js fill-secret --session agentex-collect --locator <password field> --env <env> --user <user> --submit <submit button>`.
+     It refuses an `envSecret` password (`"error":"use-fill-secret"`) before touching the
+     browser and gives the `fill_secret.js` call to run instead in `command`: run it as given.
+   Rules:
+   - Never type, read or echo a password: no `fill`, `type`, `press` or `run-code` carrying it,
+     no `$NAME`, no reading `.env`.
+   - Between the first secret fill and the submit, run no other playwright-cli command. A
+     snapshot prints field values, password fields included, and every action writes one to
+     `.playwright-cli/`; that is why the script submits in the same call.
+   - Never wrap the login in `capture`, and never print the login request (`requests`,
+     `request-body`): its body carries the password.
+   - `"scrubbed": 0` (the bridge: `"passwordFieldCleared": false`): the page moved on, or no
+     field kept the password. Go on to step 4.
+   - `"scrubbed"` 1 or more (the bridge: `"passwordFieldCleared": true`): the login did not
+     leave the page (wrong password, or a captcha/OTP on the same page). The field was emptied
+     after the submit, so a snapshot is safe again. To try again, run the same call once more.
+   - `"reason":"secret-unavailable"`: NAME is not set in `.env` (or not declared). Post
+     `failed {runId, reason}` naming the variable, never a value, and stop the UI step.
+   - `"reason":"target-not-found"`: nothing was typed. If no earlier secret fill on this page
+     left a value, re-`snapshot` and retry once with the current ref; otherwise treat it as
+     the next case.
+   - Any other failure once a secret may be on the page (another BLOCKED, the bridge's
+     `"error":"not-filled"` or `"passwordFieldStillFilled": true`): take no `snapshot`, `eval`
+     or `screenshot` of that page. Close the session and post `failed`.
 4. Prove the login by a landmark (optimize-login's rules: an element only a signed-in user
    sees, never the URL).
    - A captcha or OTP: post `gate {runId, kind:"captcha"|"otp"|"other", text}` and wait for
@@ -130,6 +154,8 @@ list.
 - Nothing is written in the project before the tester approves step 5. Your only scratch is
   `.playwright-cli/` (gitignored) and the OS temp dir.
 - The token and the password never pass through your context, a command line you compose, a
-  page response or a log. The bridge redacts what it prints.
+  page response or a log. `fill_secret.js` reads an `envSecret` password itself and never
+  relays playwright-cli's output; the bridge redacts what it prints. After the submit, either
+  one empties a password field still holding its value.
 - The non-production guard is enforced by the server. It does not depend on you remembering
   it.

@@ -41,7 +41,8 @@ scheme selection works.
 A local page walks the tester through spec → endpoints → test data → cases → one approval.
 Step 3 is the agent's: project values first, then the application's own network calls through
 the browser bridge, with one consent on an exact list before creating anything (non-production
-environments only). Read
+environments only). A login password declared `{ "envSecret" }` is typed only by browser-driver's
+`fill_secret.js`, never by hand. Read
 **`${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/references/suite-wizard.md`** before launching
 it; it is the whole protocol. The direct import below is unchanged.
 
