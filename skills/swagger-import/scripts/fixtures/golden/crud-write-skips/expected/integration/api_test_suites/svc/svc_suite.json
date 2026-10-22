@@ -1,0 +1,91 @@
+{
+  "name": "svc-suite",
+  "cases": [
+    {
+      "name": "getpet-happy-path",
+      "entry": "svc.getpet",
+      "params": {
+        "id": 1
+      },
+      "expect": {
+        "status": 200
+      },
+      "review": [
+        "param \"id\" = 1 is inferred (the spec gives no example/default) — replace it with a value that exists in your target"
+      ]
+    },
+    {
+      "name": "getpet-error-case",
+      "entry": "svc.getpet",
+      "params": {
+        "id": 999999999
+      },
+      "expect": {
+        "status": 404
+      },
+      "review": [
+        "error case uses a placeholder param value — verify it actually produces 404"
+      ]
+    },
+    {
+      "name": "putpet-happy-path",
+      "entry": "svc.putpet",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {
+        "id": 1
+      },
+      "expect": {
+        "status": 200
+      },
+      "review": [
+        "param \"id\" = 1 is inferred (the spec gives no example/default) — replace it with a value that exists in your target"
+      ]
+    },
+    {
+      "name": "deletepet-happy-path",
+      "entry": "svc.deletepet",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {
+        "id": 1
+      },
+      "expect": {
+        "status": 204
+      },
+      "review": [
+        "param \"id\" = 1 is inferred (the spec gives no example/default) — replace it with a value that exists in your target"
+      ]
+    },
+    {
+      "name": "deletepet-error-case",
+      "entry": "svc.deletepet",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {
+        "id": 999999999
+      },
+      "expect": {
+        "status": 404
+      },
+      "review": [
+        "error case uses a placeholder param value — verify it actually produces 404"
+      ]
+    },
+    {
+      "name": "addpet-happy-path",
+      "entry": "svc.addpet",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {},
+      "expect": {
+        "status": 201
+      }
+    },
+    {
+      "name": "patchpets-happy-path",
+      "entry": "svc.patchpets",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    }
+  ]
+}

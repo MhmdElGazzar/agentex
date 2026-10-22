@@ -1,0 +1,34 @@
+{
+  "name": "petstore",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${PETSTORE_BASE_URL}",
+  "auth": {
+    "type": "apiKey",
+    "headerName": "X-API-Key",
+    "tokenEnv": "PETSTORE_TOKEN"
+  },
+  "requests": [
+    {
+      "name": "getpet",
+      "method": "GET",
+      "path": "/pets/{id}",
+      "params": [
+        "id"
+      ]
+    },
+    {
+      "name": "addpet",
+      "method": "POST",
+      "path": "/pets",
+      "params": [],
+      "body": {
+        "name": "example",
+        "born": "2024-01-01T00:00:00Z"
+      },
+      "review": [
+        "request body generated from schema — verify/adjust values"
+      ]
+    }
+  ]
+}

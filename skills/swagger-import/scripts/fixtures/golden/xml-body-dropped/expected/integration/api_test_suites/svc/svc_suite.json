@@ -1,0 +1,14 @@
+{
+  "name": "svc-suite",
+  "cases": [
+    {
+      "name": "up-happy-path",
+      "entry": "svc.up",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    }
+  ]
+}

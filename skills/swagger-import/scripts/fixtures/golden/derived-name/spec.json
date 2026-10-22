@@ -1,0 +1,23 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Pet Store"
+  },
+  "servers": [
+    {
+      "url": "https://p.example.test"
+    }
+  ],
+  "paths": {
+    "/a": {
+      "get": {
+        "operationId": "a",
+        "responses": {
+          "200": {
+            "description": "ok"
+          }
+        }
+      }
+    }
+  }
+}

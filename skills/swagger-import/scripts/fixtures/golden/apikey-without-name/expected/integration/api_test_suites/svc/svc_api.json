@@ -1,0 +1,17 @@
+{
+  "name": "svc",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${SVC_BASE_URL}",
+  "auth": {
+    "type": "none"
+  },
+  "requests": [
+    {
+      "name": "a",
+      "method": "GET",
+      "path": "/a",
+      "params": []
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "svc-suite",
+  "cases": [
+    {
+      "name": "a-happy-path",
+      "entry": "svc.a",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    }
+  ]
+}
