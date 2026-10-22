@@ -411,7 +411,7 @@ function secretProject() {
     assert.deepStrictEqual(exportFiles(e), []);
     // core-unavailable: a plugin copy without the secret-scan core
     const copy = tmp();
-    for (const rel of ['scripts/field_feedback.js', 'scripts/lib/learnings.js', 'scripts/lib/plugin_inventory.js', 'scripts/lib/feedback_sanitize.js', '.claude-plugin/plugin.json']) {
+    for (const rel of ['scripts/field_feedback.js', 'scripts/lib/learnings.js', 'scripts/lib/plugin_inventory.js', 'scripts/lib/feedback_sanitize.js', 'scripts/lib/version.js', 'scripts/lib/git_plumbing.js', '.claude-plugin/plugin.json']) {
       write(copy, rel, fs.readFileSync(path.join(__dirname, '..', rel), 'utf8'));
     }
     const f = exportProject();
