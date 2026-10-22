@@ -208,6 +208,10 @@ function openTerminal() {
   try {
     if (seam) return { inFd: fs.openSync(seam, 'r'), outFd: 2 };
     if (process.platform === 'win32') {
+      // A git started by an IDE or a CI runner can still own a hidden console, so CONIN$ would
+      // open and the read would block with nobody to answer. Ask only when stderr — which the
+      // hook leaves attached — is an interactive console; under an IDE it is a pipe.
+      if (!process.stderr.isTTY) return null;
       const inFd = fs.openSync('\\\\.\\CONIN$', 'r');
       try { return { inFd, outFd: fs.openSync('\\\\.\\CONOUT$', 'w') }; }
       catch (e) { fs.closeSync(inFd); throw e; }
@@ -217,14 +221,15 @@ function openTerminal() {
   } catch { return null; }
 }
 
-// One line from the terminal ('' on end of input or a read error — the default No).
+// One line from the terminal; null when nothing could be read (end of input before any
+// answer, or a read error) — nobody answered, which is not a No.
 function readAnswer(fd) {
   const buf = Buffer.alloc(256);
   let s = '';
   for (;;) {
     let n = 0;
-    try { n = fs.readSync(fd, buf, 0, buf.length, null); } catch { break; }
-    if (!n) break;
+    try { n = fs.readSync(fd, buf, 0, buf.length, null); } catch { return s ? s : null; }
+    if (!n) return s ? s : null;
     s += buf.toString('utf8', 0, n);
     if (s.includes('\n') || s.length > 1024) break;
   }
@@ -250,6 +255,10 @@ function confirm(result, findings) {
     for (const fd of new Set([term.inFd, term.outFd])) if (fd !== 2) { try { fs.closeSync(fd); } catch { /* closed */ } }
   }
   if (term.outFd === 2) process.stderr.write('\n');
+  if (answer === null) {
+    process.stderr.write('  no answer could be read from the terminal - the commit proceeds with the credential-shape warning(s) above.\n');
+    return result;
+  }
   if (core.confirmAnswerIsYes(answer)) {
     process.stderr.write('  you confirmed - the commit proceeds with the warning(s) above.\n');
     return result;

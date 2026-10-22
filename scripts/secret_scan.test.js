@@ -586,10 +586,18 @@ test('--hook + a terminal: "n" refuses through the installed hook contract (exit
 });
 
 test('--hook + a terminal: Enter (empty) and anything but y/yes are the default No', () => {
-  for (const a of ['\n', '', 'nope\n', 'yy\n']) {
+  for (const a of ['\n', 'nope\n', 'yy\n']) {
     const r = scan(shapeRepoStaged(), 'staged', { args: ['--hook'], env: { AGENTEX_SECRET_SCAN_TTY: answerFile(a) } });
     assert.deepStrictEqual([r.status, r.json.reason], [1, 'declined'], JSON.stringify(a));
   }
+});
+
+test('--hook + a terminal that gives no answer at all (end of input): nobody answered, the commit proceeds', () => {
+  const r = scan(shapeRepoStaged(), 'staged', { args: ['--hook'], env: { AGENTEX_SECRET_SCAN_TTY: answerFile('') } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(r.json.result, 'WARN');
+  assert.ok(!('reason' in r.json));
+  assert.match(r.stderr, /no answer could be read/);
 });
 
 test('--hook + a terminal: "y" → exit 0 with the warnings, the commit proceeds', () => {

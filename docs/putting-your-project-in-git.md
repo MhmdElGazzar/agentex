@@ -130,7 +130,8 @@ The optional pre-commit hook runs the staged scan on every commit — from a ter
 Claude. A real leak refuses the commit and tells you the file, line and key, and where the fix
 is documented. Warnings and a skipped value check are shown, and the commit goes ahead — with
 one exception: when a warning is a `credential-shape` and you commit from a terminal, the hook
-asks `Continue the commit anyway? [y/N]` first (see `credential-shape` below). If the
+asks `Continue the commit anyway? [y/N]` first (see `credential-shape` below); if no answer can
+be read at all, the commit goes ahead with the warning. If the
 scan cannot run (Node.js missing, the plugin uninstalled, a scan error), the commit goes ahead
 and the hook says loudly that the secret scan did **not** run.
 

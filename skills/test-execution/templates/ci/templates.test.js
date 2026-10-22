@@ -86,12 +86,13 @@ test('ci-settings.json: the PowerShell spellings of the denied destructive verbs
   }
 });
 
-test('ci-settings.json names no retired tool (MultiEdit is gone — startup warning)', () => {
+test('ci-settings.json has no rule Claude Code warns about at startup', () => {
   const { allow, deny } = JSON.parse(read(SETTINGS)).permissions;
-  for (const r of [...allow, ...deny]) assert.ok(!/^MultiEdit\b/.test(r), `retired tool rule: ${r}`);
-  for (const rule of ['Edit(./src/**)', 'Write(./src/**)', 'NotebookEdit(./src/**)']) {
-    assert.ok(deny.includes(rule), `${rule} stays denied`);
-  }
+  // MultiEdit is retired; path rules on Write / NotebookEdit / Glob are never consulted —
+  // only Edit(path) rules are, and they cover every file-editing tool.
+  for (const r of [...allow, ...deny]) assert.ok(!/^(MultiEdit|Write|NotebookEdit|Glob)\(/.test(r), `startup-warning rule: ${r}`);
+  assert.ok(deny.includes('Edit(./src/**)'), 'Edit(./src/**) stays denied');
+  for (const rule of ['Edit(./executions/**)', 'Edit(./test/**)']) assert.ok(allow.includes(rule), `${rule} stays allowed`);
 });
 
 test('ci-settings.json notes say both shell rule sets ship and the runner\'s shell tool picks one', () => {

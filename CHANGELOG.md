@@ -11,8 +11,8 @@ All notable changes to AgenTeX are documented here.
   a `credential-shape` warning with file, line and pattern label, never the matched text, and it
   runs even with no `.env` on the machine. In the pre-commit hook, when a terminal is available,
   it asks `Continue the commit anyway? [y/N]`; No refuses the commit through the hooks projects
-  already have installed (no re-install), Yes or no terminal (an IDE commit button, CI) lets it
-  through with the warning. A real leak of the project's own values still refuses as before.
+  already have installed (no re-install), Yes, no terminal (an IDE commit button, CI) or no
+  readable answer lets it through with the warning. A real leak of the project's own values still refuses as before.
 - **Three new behavioral evals:** `discipline-envsecret-never-printed` (an `envSecret` value
   never reaches a reply, a narrated command or a written file), `discipline-update-agentex-phantom-sample-relay`
   (the leftover sample environment is offered for removal, never deleted without consent) and
@@ -23,8 +23,9 @@ All notable changes to AgenTeX are documented here.
 - **The CI settings template works on Windows runners as shipped.** `ci-settings.json` now carries
   a `PowerShell(...)` twin for every `Bash(...)` rule, allow and deny alike, plus PowerShell's own
   spellings of the denied verbs (`rm`, `del`, `rd`, `Invoke-WebRequest`, `iwr`, `Invoke-RestMethod`,
-  `irm`), so a Windows runner gets nothing a Linux runner is denied. The retired `MultiEdit` rule
-  is gone. `docs/ci-quality-gate.md` says local trials must export `envSecret` names into the
+  `irm`), so a Windows runner gets nothing a Linux runner is denied. The template no longer warns
+  at startup: the retired `MultiEdit` rule and the `Write` / `NotebookEdit` path rules (never
+  consulted; `Edit(path)` rules cover every file-editing tool) are gone, with no permission change. `docs/ci-quality-gate.md` says local trials must export `envSecret` names into the
   process environment, since a `.env` alone never reaches the headless session.
 
 ### Maintainers
