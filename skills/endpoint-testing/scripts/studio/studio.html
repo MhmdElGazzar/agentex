@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="app.title">API</title>
+<style>
+  /* System fonts only: the page loads nothing from outside the machine. */
+  :root { --bg:#f6f7f9; --panel:#fff; --line:#dde1e7; --ink:#1d232b; --mute:#5d6875; --accent:#1f5fbf;
+    --pass:#177245; --fail:#b42318; --warn:#9a6700; --skip:#6b7280; --ui:#5b3cc4; --proj:#0e7490; --auto:#4b5563; --ph:#b45309; --man:#374151; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Tahoma, Arial, sans-serif; color:var(--ink); background:var(--bg); }
+  header.top { display:flex; align-items:center; gap:12px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header.top h1 { font-size:16px; margin:0; flex:1; }
+  button { font:inherit; padding:6px 12px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  input, select, textarea { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  input[type=checkbox], input[type=radio] { padding:0; }
+  .muted { color:var(--mute); }
+  .note { padding:8px 12px; border-radius:6px; background:#eef4ff; border:1px solid #c9dafc; margin:8px 0; }
+  .warn { background:#fff6e5; border-color:#f3d28b; }
+  .err { background:#fdecea; border-color:#f5b7b1; }
+  .ok { background:#e8f6ee; border-color:#a6dcbc; }
+  .badge { display:inline-block; font-size:11px; padding:1px 6px; border-radius:10px; color:#fff; margin-inline-start:4px; vertical-align:middle; }
+  .b-ui { background:var(--ui); } .b-project { background:var(--proj); } .b-auto { background:var(--auto); }
+  .b-placeholder { background:var(--ph); } .b-manual { background:var(--man); }
+  .tag { display:inline-block; font-size:11px; padding:0 6px; border:1px solid var(--line); border-radius:4px; margin-inline-start:4px; color:var(--mute); }
+  .r-PASS { color:var(--pass); font-weight:600; } .r-FAIL { color:var(--fail); font-weight:600; } .r-BLOCKED { color:var(--warn); } .r-SKIP { color:var(--skip); }
+  table { border-collapse:collapse; width:100%; background:var(--panel); }
+  th, td { text-align:start; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--mute); font-size:12px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+  [hidden] { display:none !important; }
+  /* editor */
+  #editor { display:grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 50px); }
+  .rail { background:var(--panel); border-inline-end:1px solid var(--line); padding:12px; }
+  .rail h2 { font-size:13px; margin:0 0 8px; color:var(--mute); }
+  .suite { padding:8px; border-radius:6px; cursor:pointer; margin-bottom:4px; }
+  .suite:hover { background:#f0f3f8; } .suite.on { background:#e6eefc; }
+  .suite .nm { font-weight:600; } .suite .ct { font-size:12px; color:var(--mute); }
+  .content { padding:12px 16px; overflow:auto; }
+  .bar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; }
+  .bar .grow { flex:1; }
+  .unsaved { color:var(--warn); font-weight:600; }
+  .tabs button { border-radius:6px 6px 0 0; } .tabs button.on { background:#e6eefc; border-color:#b8cdf3; }
+  .filters button.on { background:var(--ink); color:#fff; }
+  .group td { background:#f0f3f8; font-weight:600; }
+  .row { cursor:pointer; } .row:hover td { background:#fafbfd; }
+  .drawer { position:fixed; inset-block:0; inset-inline-end:0; width:min(520px, 100vw); background:var(--panel); border-inline-start:1px solid var(--line); box-shadow:0 0 24px rgba(0,0,0,.12); padding:14px; overflow:auto; z-index:5; }
+  .drawer h3 { font-size:13px; margin:14px 0 6px; color:var(--mute); }
+  .prow { border:1px solid var(--line); border-radius:6px; padding:8px; margin-bottom:6px; }
+  .prov { font-size:12px; color:var(--mute); }
+  .dialog { position:fixed; inset:0; background:rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center; z-index:10; }
+  .dialog > div { background:#fff; padding:16px; border-radius:8px; max-width:520px; }
+  pre.log { white-space:pre-wrap; max-height:220px; overflow:auto; background:#f6f7f9; padding:8px; border-radius:6px; }
+  /* wizard */
+  #wizard { max-width:1100px; margin:0 auto; padding:16px; }
+  .steps { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  .steps span { padding:4px 10px; border-radius:12px; background:#e9edf2; color:var(--mute); font-size:12px; }
+  .steps span.on { background:var(--accent); color:#fff; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; margin-bottom:12px; }
+  .grid2 { display:grid; grid-template-columns: 220px 1fr; gap:8px 12px; align-items:center; }
+  .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1 id="title" data-i18n="app.title">API</h1>
+  <button id="langBtn" data-i18n="app.lang">English</button>
+  <button id="doneBtn" data-i18n="app.close">Close</button>
+</header>
+<div id="banner"></div>
+
+<!-- ======================= Editor ======================= -->
+<main id="editor" hidden>
+  <aside class="rail">
+    <h2 data-i18n="ed.rail">Services</h2>
+    <div id="suiteList"></div>
+    <p id="noSuites" class="muted" data-i18n="ed.noSuites" hidden></p>
+    <button id="importBtn" data-i18n="ed.import">Import</button>
+  </aside>
+  <section class="content">
+    <div class="bar">
+      <label><span data-i18n="ed.env">Environment</span> <select id="envSel"></select></label>
+      <span id="stats" class="muted grow"></span>
+      <span id="unsaved" class="unsaved" data-i18n="ed.unsaved" hidden></span>
+      <button id="saveBtn" data-i18n="ed.save">Save</button>
+      <button id="runAllBtn" class="primary" data-i18n="ed.runAll">Run all</button>
+    </div>
+    <div id="edMsg"></div>
+    <div class="bar tabs">
+      <button id="tabCases" class="on" data-i18n="ed.tabCases">Cases</button>
+      <button id="tabData" data-i18n="ed.tabData">Collected data</button>
+      <span class="grow"></span>
+      <span id="filePath" class="muted mono"></span>
+    </div>
+    <div id="casesView">
+      <div class="bar filters" id="filters"></div>
+      <table>
+        <thead><tr><th data-i18n="ed.colCase">Case</th><th data-i18n="ed.colParams">Parameters</th><th data-i18n="ed.colStatus">Status</th><th data-i18n="ed.colCheck">Check</th><th data-i18n="ed.colLast">Last result</th></tr></thead>
+        <tbody id="caseRows"></tbody>
+      </table>
+    </div>
+    <div id="dataView" hidden>
+      <div id="tokenEntry"></div>
+      <table>
+        <thead><tr><th data-i18n="cd.param">Parameter</th><th data-i18n="cd.value">Value</th><th data-i18n="cd.user">User</th><th data-i18n="cd.where">Collected at</th><th data-i18n="cd.used">Used by</th></tr></thead>
+        <tbody id="dataRows"></tbody>
+      </table>
+      <p id="noData" class="muted" data-i18n="cd.none" hidden></p>
+      <h3 data-i18n="cd.missing">Still missing</h3>
+      <div id="missingList"></div>
+    </div>
+  </section>
+  <aside id="drawer" class="drawer" hidden></aside>
+</main>
+
+<!-- ======================= Wizard ======================= -->
+<main id="wizard" hidden>
+  <h2 data-i18n="wiz.title">New suite</h2>
+  <div class="steps" id="stepTabs"></div>
+
+  <section id="step1" class="card">
+    <p data-i18n="s1.lede"></p>
+    <div class="grid2">
+      <label for="specIn" data-i18n="s1.source">Spec</label><input id="specIn" class="mono">
+      <label for="nameIn" data-i18n="s1.name">Name</label><input id="nameIn">
+      <label for="envIn" data-i18n="s1.env">Environment</label><select id="envIn"></select>
+    </div>
+    <p id="noEnvs" class="note warn" data-i18n="s1.noEnvs" hidden></p>
+    <div id="s1Msg"></div>
+    <div class="actions"><button id="s1Next" class="primary" data-i18n="nav.next">Next</button></div>
+  </section>
+
+  <section id="step2" class="card" hidden>
+    <table>
+      <thead><tr><th data-i18n="s2.select">Test</th><th data-i18n="s2.method">Method</th><th data-i18n="s2.path">Path</th><th data-i18n="s2.summary">Summary</th><th data-i18n="s2.auth">Auth</th><th data-i18n="s2.needs">Needs</th><th data-i18n="s2.note">Note</th></tr></thead>
+      <tbody id="opRows"></tbody>
+    </table>
+    <p id="pickOne" class="note warn" data-i18n="s2.pickOne" hidden></p>
+    <div class="actions"><button id="s2Back" data-i18n="nav.back">Back</button><button id="s2Next" class="primary" data-i18n="nav.next">Next</button></div>
+  </section>
+
+  <section id="step3" class="card" hidden>
+    <div id="whoLine" class="note"></div>
+    <div class="bar">
+      <label><span data-i18n="s3.user">User</span> <select id="userSel"></select></label>
+      <button id="collectBtn" class="primary" data-i18n="s3.collect">Collect</button>
+      <button id="againMissing" data-i18n="s3.againMissing" hidden>Again</button>
+      <button id="againAll" data-i18n="s3.againAll" hidden>Again all</button>
+      <button id="cancelBtn" data-i18n="s3.cancel" hidden>Stop</button>
+      <span id="progress" class="muted"></span>
+    </div>
+    <div id="noAgent" class="note warn" data-i18n="s3.noAgent" hidden></div>
+    <div id="s3Notes"></div>
+    <div id="gateBox" class="note warn" hidden><span id="gateText"></span> <button id="gateDone" data-i18n="s3.gateDone">Done</button></div>
+    <div id="proposalBox" class="card" hidden></div>
+    <table>
+      <thead><tr><th data-i18n="cd.param">Parameter</th><th data-i18n="s3.param">Value</th><th data-i18n="s3.source">Source</th><th data-i18n="s3.where">Where</th></tr></thead>
+      <tbody id="needRows"></tbody>
+    </table>
+    <div class="actions"><button id="s3Back" data-i18n="nav.back">Back</button><button id="s3Next" class="primary" data-i18n="nav.next">Next</button></div>
+  </section>
+
+  <section id="step4" class="card" hidden>
+    <p id="totals"></p>
+    <h3 data-i18n="s4.byKind">By kind</h3>
+    <div id="kinds" class="bar"></div>
+    <div id="previewList"></div>
+    <div class="actions"><button id="s4Back" data-i18n="nav.back">Back</button><button id="s4Next" class="primary" data-i18n="nav.next">Next</button></div>
+  </section>
+
+  <section id="step5" class="card" hidden>
+    <p data-i18n="s5.files"></p>
+    <ul id="fileList" class="mono"></ul>
+    <h3 data-i18n="s5.sources">Sources</h3>
+    <div id="sourceCounts" class="bar"></div>
+    <div class="grid2"><label for="baseUrlIn" id="baseUrlLabel"></label><input id="baseUrlIn" class="mono"></div>
+    <p id="envLine" class="muted"></p>
+    <p id="tokLine" class="muted"></p>
+    <div id="s5Msg"></div>
+    <div class="actions"><button id="s5Back" data-i18n="nav.back">Back</button><button id="s5Open" class="primary" data-i18n="s5.open">Approve</button><button id="s5Run" data-i18n="s5.run">Approve and run</button></div>
+  </section>
+</main>
+
+<script>
+'use strict';
+// Injected by server.js per run: the page token, the language, the view and an optional suite.
+const STUDIO = { token: '__STUDIO_TOKEN__', lang: '__STUDIO_LANG__', view: '__STUDIO_VIEW__', suite: '__STUDIO_SUITE__', spec: '__STUDIO_SPEC__' };
+let STR = { en: {}, ar: {} };
+let LANG = STUDIO.lang === 'en' ? 'en' : 'ar';
+const $ = id => document.getElementById(id);
+const t = (k, v) => String((STR[LANG] && STR[LANG][k]) || k).replace(/\{(\w+)\}/g, (_, n) => (v && v[n] !== undefined ? String(v[n]) : `{${n}}`));
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return n;
+}
+async function api(method, p, body) {
+  let r;
+  try {
+    r = await fetch(p, { method, headers: { 'x-studio-token': STUDIO.token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  } catch (e) { return { status: 0, ok: false, error: 'offline', message: e.message }; }
+  let j = {};
+  try { j = await r.json(); } catch { j = {}; }
+  return { httpStatus: r.status, ...j };
+}
+function note(target, cls, text) { const box = typeof target === 'string' ? $(target) : target; box.replaceChildren(text ? el('div', { class: `note ${cls}`, text }) : ''); }
+function applyI18n() {
+  document.documentElement.lang = LANG;
+  document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
+  document.querySelectorAll('[data-i18n]').forEach(n => { n.textContent = t(n.dataset.i18n); });
+}
+const fmt = v => (v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v));
+const badge = src => el('span', { class: `badge b-${src || 'manual'}`, text: t(`badge.${src || 'manual'}`) });
+const MESSAGE_PATHS = ['message', 'error.message', 'detail', 'title', 'error'];
+
+// ============================ Editor ============================
+const ED = { suites: [], envs: [], env: '', path: null, doc: null, etag: null, canonical: true, endpoints: {}, last: {}, collected: {}, edits: [], filter: 'all', tab: 'cases', drawer: null, run: null, conflictEdits: null };
+
+function clone(o) { return JSON.parse(JSON.stringify(o)); }
+// The same edit model as suite_store.applyEdits, applied locally to show unsaved edits.
+function applyUpdate(c, u) {
+  if (typeof u.name === 'string' && u.name.trim()) c.name = u.name.trim();
+  if ('auth' in u) { if (u.auth === 'none') c.auth = 'none'; else delete c.auth; }
+  if (u.params) { c.params = c.params || {}; Object.assign(c.params, u.params); }
+  if (u.sources) { c.sources = c.sources || {}; for (const [k, v] of Object.entries(u.sources)) { if (v == null) delete c.sources[k]; else c.sources[k] = v; } if (!Object.keys(c.sources).length) delete c.sources; }
+  if ('omit' in u) { if (u.omit && u.omit.length) c.omit = u.omit.slice(); else delete c.omit; }
+  if (u.expect) {
+    const e = c.expect = c.expect || {};
+    if ('status' in u.expect) { if (u.expect.status === null || u.expect.status === '') delete e.status; else e.status = Number(u.expect.status); }
+    if ('fields' in u.expect) { if (u.expect.fields && u.expect.fields.length) e.fields = u.expect.fields.slice(); else delete e.fields; }
+    if ('message' in u.expect) {
+      const m = u.expect.message || {}; const from = m.from !== undefined ? m.from : m.path;
+      for (const map of ['equals', 'contains']) if (e[map] && from) delete e[map][from];
+      if (m.path && m.text) { const map = m.match === 'contains' ? 'contains' : 'equals'; e[map] = e[map] || {}; e[map][m.path] = m.text; }
+      for (const map of ['equals', 'contains']) if (e[map] && !Object.keys(e[map]).length) delete e[map];
+    }
+  }
+  if ('skip' in u) { if (u.skip) c.skip = String(u.skip); else delete c.skip; }
+}
+function viewCases() {
+  const doc = clone(ED.doc || { cases: [] });
+  const cases = (doc.cases || []).map((c, i) => Object.assign(c, { __i: i + 1 }));
+  const orig = cases.slice(); const deleted = new Set();
+  ED.edits.forEach((e, k) => {
+    if (e.op === 'update') applyUpdate(orig[e.index - 1], e.case);
+    else if (e.op === 'delete') deleted.add(orig[e.index - 1]);
+    else if (e.op === 'add') {
+      const c = Object.assign(clone(e.case), { __add: k });
+      let at = -1; cases.forEach((x, i) => { if (x.entry === c.entry) at = i; });
+      if (at === -1) cases.push(c); else cases.splice(at + 1, 0, c);
+    }
+  });
+  return cases.filter(c => !deleted.has(c));
+}
+const isPlaceholder = c => Object.entries(c.sources || {}).some(([p, s]) => s === 'placeholder' && !(c.omit || []).includes(p));
+const lastOf = c => (c.__i && ED.last[c.__i] && ED.last[c.__i].name === (ED.doc.cases[c.__i - 1] || {}).name ? ED.last[c.__i] : null);
+function matches(c, f) {
+  if (f === 'needs-review') return isPlaceholder(c);
+  if (f === 'failing') { const l = lastOf(c); return !!l && l.result === 'FAIL'; }
+  if (f === 'skipped') return !!c.skip;
+  return true;
+}
+function messageCheck(c) {
+  const e = c.expect || {};
+  const cont = Object.keys(e.contains || {});
+  if (cont.length) return { path: cont[0], text: e.contains[cont[0]], match: 'contains', others: Object.keys(e.equals || {}).length + cont.length - 1 };
+  const eq = Object.keys(e.equals || {});
+  const p = eq.find(k => MESSAGE_PATHS.includes(k)) || eq[0];
+  if (p) return { path: p, text: e.equals[p], match: 'equals', others: eq.length - 1 };
+  return { path: '', text: '', match: 'equals', others: 0 };
+}
+function rcText(r) {
+  const reason = r.reason || '';
+  const env = (/on "([^"]+)"/.exec(reason) || [])[1] || ED.env;
+  if (r.reasonCode === 'placeholder') return t('rc.placeholder', { p: (/param "([^"]+)"/.exec(reason) || [])[1] || '' });
+  if (r.reasonCode === 'token-missing') return t('rc.token-missing', { env, NAME: (/set (\S+) in \.env/.exec(reason) || [])[1] || '' });
+  if (r.reasonCode === 'token-expired') return t('rc.token-expired', { env, time: (/expired at (\S+)/.exec(reason) || [])[1] || '' });
+  return reason;
+}
+function resultCell(c) {
+  if (ED.run && ED.run.status === 'running' && (ED.run.case === undefined ? !c.skip : ED.run.case === c.__i)) return el('span', { class: 'muted', text: t('res.running') });
+  const l = lastOf(c);
+  if (!l) return el('span', { class: 'muted', text: t('res.notRun') });
+  if (l.result === 'PASS') return el('span', { class: 'r-PASS', text: `${t('res.pass')} ${l.status}${l.ms !== undefined ? ` · ${l.ms} ms` : ''}` });
+  if (l.result === 'FAIL') return el('span', { class: 'r-FAIL', text: `${t('res.fail')} ${l.status !== undefined ? l.status : ''} · ${(l.failures || [l.reason || '']).join('; ')}` });
+  if (l.skipped) return el('span', { class: 'r-SKIP', text: t('res.skipped') });
+  return el('span', { class: 'r-BLOCKED', text: `${t('res.blocked')} — ${rcText(l)}` });
+}
+function renderRail() {
+  $('suiteList').replaceChildren(...ED.suites.map(s => el('div', { class: `suite${s.path === ED.path ? ' on' : ''}`, onclick: () => openSuite(s.path) },
+    el('div', { class: 'nm', text: s.name }),
+    el('div', { class: 'ct', text: s.error ? s.error : t('ed.counts', { e: s.endpoints, c: s.cases }) }),
+    s.needsReview ? el('span', { class: 'tag', text: `${t('filter.needs-review')} ${s.needsReview}` }) : null,
+    s.failing ? el('span', { class: 'tag r-FAIL', text: `${t('filter.failing')} ${s.failing}` }) : null)));
+  $('noSuites').hidden = ED.suites.length > 0;
+}
+function renderEnvSel() {
+  $('envSel').replaceChildren(...ED.envs.map(e => el('option', { value: e.name, text: e.name, selected: e.name === ED.env })));
+}
+function renderEditor() {
+  const cases = viewCases();
+  $('unsaved').hidden = ED.edits.length === 0;
+  $('filePath').textContent = ED.path ? t('ed.file', { path: ED.path }) : '';
+  const count = f => cases.filter(c => matches(c, f)).length;
+  const lasts = cases.map(lastOf).filter(Boolean);
+  $('stats').textContent = ED.path ? t('ed.stat', { cases: cases.length, review: count('needs-review'), pass: lasts.filter(l => l.result === 'PASS').length, fail: lasts.filter(l => l.result === 'FAIL').length, skipped: count('skipped') }) : '';
+  $('filters').replaceChildren(...['all', 'needs-review', 'failing', 'skipped'].map(f => el('button', { class: ED.filter === f ? 'on' : '', onclick: () => { ED.filter = f; renderEditor(); }, text: `${t(`filter.${f}`)} (${count(f)})` })));
+  $('casesView').hidden = ED.tab !== 'cases'; $('dataView').hidden = ED.tab !== 'data';
+  $('tabCases').className = ED.tab === 'cases' ? 'on' : ''; $('tabData').className = ED.tab === 'data' ? 'on' : '';
+  const rows = [];
+  const groups = [];
+  for (const c of cases) { let g = groups.find(x => x.entry === c.entry); if (!g) groups.push(g = { entry: c.entry, cases: [] }); g.cases.push(c); }
+  for (const g of groups) {
+    const ep = ED.endpoints[g.entry] || { method: '', path: g.entry };
+    const shown = g.cases.filter(c => matches(c, ED.filter));
+    if (!shown.length) continue;
+    rows.push(el('tr', { class: 'group' }, el('td', { colspan: 5 },
+      el('span', { class: 'mono', text: `${ep.method} ${ep.path}` }), ' ', el('span', { class: 'muted', text: t('ed.cases', { n: g.cases.length }) }), ' ',
+      el('button', { onclick: ev => { ev.stopPropagation(); addCase(g.entry); }, text: t('ed.addCase') }))));
+    for (const c of shown) {
+      const mc = messageCheck(c);
+      const params = Object.entries(c.params || {}).map(([k, v]) => el('div', {},
+        el('span', { class: 'mono', text: `${k} = ${(c.omit || []).includes(k) ? t('ed.omitted') : fmt(v)}` }),
+        badge((c.sources || {})[k] || 'manual')));
+      for (const k of (c.omit || [])) if (!(k in (c.params || {}))) params.push(el('div', {}, el('span', { class: 'mono', text: `${k} = ${t('ed.omitted')}` })));
+      const check = [];
+      if (mc.path) check.push(el('div', { class: 'mono', text: `${mc.path} ${t(mc.match === 'contains' ? 'ed.contains' : 'ed.equals')} "${mc.text}"` }));
+      if ((c.expect || {}).fields) check.push(el('div', { class: 'mono', text: t('ed.fieldsCheck', { f: c.expect.fields.join(', ') }) }));
+      if (mc.others > 0) check.push(el('div', { class: 'muted', text: t('ed.otherChecks', { n: mc.others }) }));
+      if (!check.length) check.push(el('span', { class: 'muted', text: t('ed.noCheck') }));
+      rows.push(el('tr', { class: 'row', onclick: () => openDrawer(c) },
+        el('td', {}, c.name, c.auth === 'none' ? el('span', { class: 'tag', text: t('tag.noToken') }) : null, c.skip ? el('span', { class: 'tag', text: t('ed.skipTag') }) : null),
+        el('td', {}, params),
+        el('td', { class: 'mono', text: (c.expect || {}).status !== undefined ? String(c.expect.status) : '—' }),
+        el('td', {}, check),
+        el('td', {}, resultCell(c))));
+    }
+  }
+  $('caseRows').replaceChildren(...rows);
+  renderData(cases);
+}
+function provenanceOf(param, value) {
+  const v = (ED.collected.values || []).find(x => x.param === param && fmt(x.value) === fmt(value));
+  if (!v || !v.provenance) return '';
+  const p = v.provenance;
+  return [p.screen, p.call, p.file, p.path].filter(Boolean).join(' · ') + (v.user ? ` · ${v.user}` : '');
+}
+function renderData(cases) {
+  const col = ED.collected || {};
+  const tok = col.token;
+  $('tokenEntry').replaceChildren(tok ? el('div', { class: 'note' }, el('strong', { text: `${t('cd.token')}: ` }), t('tok.entry', { user: tok.user || '—', time: tok.capturedAt || '—' }), badge(tok.source || 'ui')) : '');
+  const vals = col.values || [];
+  $('noData').hidden = vals.length > 0 || !!tok;
+  $('dataRows').replaceChildren(...vals.map(v => el('tr', {},
+    el('td', { class: 'mono', text: v.param }),
+    el('td', {}, el('span', { class: 'mono', text: fmt(v.value) }), badge(v.source)),
+    el('td', { text: v.user || '—' }),
+    el('td', { class: 'prov', text: v.provenance ? [v.provenance.screen, v.provenance.call, v.provenance.file, v.provenance.path].filter(Boolean).join(' · ') : '—' }),
+    el('td', { text: t('cd.usedN', { n: cases.filter(c => c.params && fmt(c.params[v.param]) === fmt(v.value)).length }) }))));
+  $('missingList').replaceChildren(...(col.missing || []).map(m => el('div', { class: 'note warn' },
+    el('strong', { class: 'mono', text: m.param }), ' — ', t('cd.casesNeed', { n: m.cases !== undefined ? m.cases : cases.filter(c => c.sources && c.sources[m.param] === 'placeholder').length }),
+    m.hint ? el('div', { class: 'muted', text: m.hint }) : null, el('div', { class: 'muted', text: t('ed.missingHint') }))));
+}
+function addCase(entry) {
+  const cases = viewCases();
+  const first = cases.find(c => c.entry === entry) || {};
+  const req = entry.split('.').slice(1).join('.');
+  let n = 1; while (cases.some(c => c.name === `${req}-case-${n}`)) n++;
+  const c = { name: `${req}-case-${n}`, entry, params: clone(first.params || {}), ...(first.sources ? { sources: clone(first.sources) } : {}), expect: { status: 200 } };
+  ED.edits.push({ op: 'add', entry, case: c });
+  renderEditor();
+  openDrawer(Object.assign(clone(c), { __add: ED.edits.length - 1 }));
+}
+function openDrawer(c) {
+  ED.drawer = c;
+  const ep = ED.endpoints[c.entry] || { params: [], pathParams: [] };
+  const names = [...new Set([...(ep.params || []), ...Object.keys(c.params || {})])];
+  const mc = messageCheck(c);
+  const d = $('drawer');
+  const form = { params: {}, sources: {}, omit: new Set(c.omit || []) };
+  const prow = name => {
+    const src = (c.sources || {})[name] || 'manual';
+    const isPath = (ep.pathParams || []).includes(name);
+    const input = el('input', { class: 'mono', value: c.params && name in c.params ? fmt(c.params[name]) : '' });
+    const srcBadge = el('span', {}, badge(src));
+    const prov = el('div', { class: 'prov', text: provenanceOf(name, (c.params || {})[name]) });
+    const warn = el('div', { class: 'note warn', text: t('ed.placeholder'), hidden: src !== 'placeholder' });
+    form.sources[name] = src;
+    input.addEventListener('input', () => { form.sources[name] = 'manual'; srcBadge.replaceChildren(badge('manual')); warn.hidden = true; prov.textContent = ''; });
+    const picks = (ED.collected.values || []).filter(v => v.param === name);
+    const pick = picks.length ? el('select', { onchange: ev => {
+      const v = picks[Number(ev.target.value)]; if (!v) return;
+      input.value = fmt(v.value); form.sources[name] = v.source; srcBadge.replaceChildren(badge(v.source)); warn.hidden = true; prov.textContent = provenanceOf(name, v.value);
+    } }, el('option', { value: '', text: t('dr.pick') }), ...picks.map((v, i) => el('option', { value: String(i), text: `${fmt(v.value)} (${t(`badge.${v.source}`)})` }))) : null;
+    const omit = el('input', { type: 'checkbox', checked: form.omit.has(name), disabled: isPath, onchange: ev => { if (ev.target.checked) form.omit.add(name); else form.omit.delete(name); } });
+    form.params[name] = input;
+    return el('div', { class: 'prow' }, el('div', {}, el('strong', { class: 'mono', text: name }), srcBadge), input, pick, prov, warn,
+      el('label', {}, omit, ' ', t('ed.leaveOut')), isPath ? el('div', { class: 'muted', text: t('ed.pathNoOmit') }) : null);
+  };
+  const nameIn = el('input', { value: c.name });
+  const authSuite = el('input', { type: 'radio', name: 'auth', checked: c.auth !== 'none' });
+  const authNone = el('input', { type: 'radio', name: 'auth', checked: c.auth === 'none' });
+  const statusIn = el('input', { type: 'number', value: (c.expect || {}).status !== undefined ? c.expect.status : '' });
+  const fieldsIn = el('input', { class: 'mono', value: ((c.expect || {}).fields || []).join(', ') });
+  const msgPath = el('input', { class: 'mono', value: mc.path || 'message' });
+  const msgText = el('input', { value: mc.text || '' });
+  const msgMatch = el('select', {}, el('option', { value: 'equals', text: t('ed.equals'), selected: mc.match === 'equals' }), el('option', { value: 'contains', text: t('ed.contains'), selected: mc.match === 'contains' }));
+  const skipOn = el('input', { type: 'checkbox', checked: !!c.skip });
+  const skipWhy = el('input', { value: c.skip ? String(c.skip) : '' });
+  const last = lastOf(c);
+  const logBox = el('pre', { class: 'log mono', hidden: true });
+  d.replaceChildren(
+    el('div', { class: 'bar' }, el('strong', { class: 'grow', text: c.name }), el('button', { onclick: closeDrawer, text: t('dr.close') })),
+    el('h3', { text: t('dr.case') }), el('label', {}, t('dr.name'), ' ', nameIn),
+    el('h3', { text: t('dr.auth') }), el('label', {}, authSuite, ' ', t('auth.suite')), ' ', el('label', {}, authNone, ' ', t('auth.none')),
+    el('h3', { text: t('dr.params') }), ...names.map(prow),
+    el('h3', { text: t('dr.expect') }),
+    el('div', { class: 'grid2' }, el('span', { text: t('dr.status') }), statusIn, el('span', { text: t('dr.fields') }), fieldsIn,
+      el('span', { text: t('dr.message') }), el('div', {}, msgPath, ' ', msgMatch, ' ', msgText)),
+    mc.others > 0 ? el('div', { class: 'muted', text: t('ed.otherChecks', { n: mc.others }) }) : null,
+    el('h3', { text: t('dr.skip') }), el('label', {}, skipOn, ' ', t('dr.skip')), ' ', el('label', {}, t('dr.skipReason'), ' ', skipWhy),
+    el('h3', { text: t('dr.last') }), resultCell(c), last && last.log ? el('div', { class: 'prov mono', text: t('dr.log', { path: last.log }) }) : null, logBox,
+    el('div', { class: 'actions' },
+      el('button', { onclick: () => deleteCase(c), text: t('dr.delete') }),
+      el('button', { onclick: () => startRun(c.__i), disabled: !c.__i, text: t('dr.runCase') }),
+      el('button', { class: 'primary', onclick: () => applyDrawer(c, { nameIn, authNone, statusIn, fieldsIn, msgPath, msgText, msgMatch, skipOn, skipWhy, form, mc }), text: t('dr.apply') })));
+  d.hidden = false;
+  if (last && last.log) api('GET', `/api/log?path=${encodeURIComponent(last.log)}`).then(r => { if (r.ok) { logBox.textContent = r.text; logBox.hidden = false; } });
+}
+function closeDrawer() { ED.drawer = null; $('drawer').hidden = true; }
+function parseValue(s, old) {
+  if (typeof old === 'number' && s.trim() !== '' && !Number.isNaN(Number(s))) return Number(s);
+  if (typeof old === 'boolean' && (s === 'true' || s === 'false')) return s === 'true';
+  if (old !== null && typeof old === 'object') { try { return JSON.parse(s); } catch { return s; } }
+  return s;
+}
+function applyDrawer(c, f) {
+  const u = { params: {}, sources: {} };
+  if (f.nameIn.value.trim() && f.nameIn.value.trim() !== c.name) u.name = f.nameIn.value.trim();
+  const wantNone = f.authNone.checked;
+  if (wantNone !== (c.auth === 'none')) u.auth = wantNone ? 'none' : null;
+  for (const [k, input] of Object.entries(f.form.params)) {
+    const old = (c.params || {})[k];
+    const val = parseValue(input.value, old);
+    if (fmt(val) !== fmt(old === undefined ? '' : old)) u.params[k] = val;
+    const src = f.form.sources[k];
+    if (src !== ((c.sources || {})[k] || 'manual') || k in u.params) u.sources[k] = src;
+  }
+  if (!Object.keys(u.params).length) delete u.params;
+  if (!Object.keys(u.sources).length) delete u.sources;
+  const omit = [...f.form.omit];
+  if (omit.join('\u0000') !== (c.omit || []).join('\u0000')) u.omit = omit;
+  const e = {};
+  const st = f.statusIn.value === '' ? null : Number(f.statusIn.value);
+  if (st !== ((c.expect || {}).status === undefined ? null : c.expect.status)) e.status = st;
+  const fields = f.fieldsIn.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (fields.join(',') !== ((c.expect || {}).fields || []).join(',')) e.fields = fields;
+  const m = { from: f.mc.path || f.msgPath.value.trim(), path: f.msgPath.value.trim(), text: f.msgText.value, match: f.msgMatch.value };
+  if (m.path !== f.mc.path || m.text !== f.mc.text || m.match !== f.mc.match) e.message = m;
+  if (Object.keys(e).length) u.expect = e;
+  const skip = f.skipOn.checked ? (f.skipWhy.value.trim() || 'skip: true') : null;
+  if ((skip || null) !== (c.skip ? String(c.skip) : null)) u.skip = skip;
+  if (Object.keys(u).length) {
+    if (c.__add !== undefined) applyUpdate(ED.edits[c.__add].case, u);
+    else ED.edits.push({ op: 'update', index: c.__i, case: u });
+  }
+  closeDrawer();
+  renderEditor();
+}
+function deleteCase(c) {
+  if (c.__add !== undefined) ED.edits[c.__add] = { op: 'noop' };
+  else ED.edits.push({ op: 'delete', index: c.__i });
+  ED.edits = ED.edits.filter(e => e.op !== 'noop');
+  closeDrawer();
+  renderEditor();
+}
+function editSummary(e) {
+  if (e.op === 'add') return `+ ${e.case.name}`;
+  const name = ((ED.doc.cases || [])[e.index - 1] || {}).name || `#${e.index}`;
+  if (e.op === 'delete') return `− ${name}`;
+  return `${name}: ${JSON.stringify(e.case)}`;
+}
+async function save(acceptFormat) {
+  if (!ED.path || !ED.edits.length) return true;
+  const r = await api('POST', '/api/suite/save', { path: ED.path, etag: ED.etag, edits: ED.edits, acceptFormat: !!acceptFormat });
+  if (r.ok) { ED.edits = []; await openSuite(ED.path, true); note('edMsg', 'ok', t('ed.saved')); return true; }
+  if (r.error === 'needs-format-consent') {
+    dialog(t('ed.format'), [{ label: t('ed.formatOk'), primary: true, fn: () => save(true) }, { label: t('ed.cancel') }]);
+    return false;
+  }
+  if (r.error === 'conflict') {
+    const box = $('edMsg');
+    box.replaceChildren(el('div', { class: 'note err' }, t('ed.conflict'),
+      el('div', { class: 'muted', text: t('ed.unsavedList') }), el('ul', {}, ED.edits.map(e => el('li', { class: 'mono', text: editSummary(e) }))),
+      el('button', { onclick: () => { ED.edits = []; openSuite(ED.path, true); }, text: t('ed.reload') })));
+    return false;
+  }
+  note('edMsg', 'err', t('app.error', { msg: r.message || r.error }));
+  return false;
+}
+function dialog(text, buttons) {
+  const d = el('div', { class: 'dialog' }, el('div', {}, el('p', { text }), el('div', { class: 'actions' },
+    buttons.map(b => el('button', { class: b.primary ? 'primary' : '', onclick: () => { d.remove(); if (b.fn) b.fn(); }, text: b.label })))));
+  document.body.append(d);
+}
+async function startRun(caseN) {
+  if (!ED.path) return;
+  if (ED.edits.length) {
+    dialog(t('ed.runUnsaved'), [{ label: t('ed.saveRun'), primary: true, fn: async () => { if (await save()) startRun(caseN); } }, { label: t('ed.cancel') }]);
+    return;
+  }
+  const r = await api('POST', '/api/run', { suite: ED.path, case: caseN, env: ED.env, etag: ED.etag, dirty: false });
+  if (r.error === 'stale') { note('edMsg', 'warn', t('ed.runStale')); return; }
+  if (r.nothing) { note('edMsg', 'warn', t('ed.nothing', { skipped: r.skipped, review: r.review })); return; }
+  if (!r.ok) { note('edMsg', 'err', t('app.error', { msg: r.message || r.error })); return; }
+  note('edMsg', '', '');
+  ED.run = { id: r.id, status: 'running', case: caseN };
+  closeDrawer();
+  renderEditor();
+  const poll = async () => {
+    const s = await api('GET', `/api/run/${r.id}`);
+    if (s.status === 'done' || !s.ok) { ED.run = null; await openSuite(ED.path, true); return; }
+    setTimeout(poll, 1000);
+  };
+  setTimeout(poll, 700);
+}
+async function openSuite(p, keepFilter) {
+  const r = await api('GET', `/api/suite?path=${encodeURIComponent(p)}`);
+  if (!r.ok) { note('edMsg', 'err', t('app.error', { msg: r.message || r.error })); return; }
+  ED.path = r.path; ED.doc = r.json; ED.etag = r.etag; ED.canonical = r.canonical; ED.endpoints = r.endpoints || {}; ED.last = r.last || {}; ED.collected = r.collected || {};
+  if (!keepFilter) ED.filter = 'all';
+  const list = await api('GET', '/api/suites');
+  if (list.suites) ED.suites = list.suites;
+  renderRail();
+  renderEditor();
+}
+async function startEditor(params) {
+  $('editor').hidden = false; $('wizard').hidden = true;
+  const r = await api('GET', '/api/suites');
+  ED.suites = r.suites || []; ED.envs = r.environments || [];
+  ED.env = ED.env || r.defaultEnvironment || (ED.envs[0] && ED.envs[0].name) || '';
+  renderEnvSel(); renderRail();
+  const want = params.get('suite') || STUDIO.suite || (ED.suites[0] && ED.suites[0].path);
+  if (want) { await openSuite(want); if (params.get('filter')) { ED.filter = params.get('filter'); renderEditor(); } }
+  else renderEditor();
+}
+$('envSel').addEventListener('change', ev => { ED.env = ev.target.value; });
+$('saveBtn').addEventListener('click', () => save());
+$('runAllBtn').addEventListener('click', () => startRun(undefined));
+$('tabCases').addEventListener('click', () => { ED.tab = 'cases'; renderEditor(); });
+$('tabData').addEventListener('click', () => { ED.tab = 'data'; renderEditor(); });
+$('importBtn').addEventListener('click', () => { location.href = `/wizard?lang=${LANG}`; });
+
+// ============================ Wizard ============================
+const WZ = { step: 1, envs: [], ops: [], selection: new Set(), needs: [], files: null, exists: null, state: null, preview: null, polling: false };
+function showStep(n) {
+  WZ.step = n;
+  for (let i = 1; i <= 5; i++) $(`step${i}`).hidden = i !== n;
+  $('stepTabs').replaceChildren(...t('wiz.steps').split(' · ').map((s, i) => el('span', { class: i + 1 === n ? 'on' : '', text: `${i + 1}. ${s}` })));
+  if (n === 3) { renderStep3(); pollState(); }
+  if (n === 4) loadPreview();
+  if (n === 5) renderStep5();
+}
+async function startWizard() {
+  $('wizard').hidden = false; $('editor').hidden = true;
+  const r = await api('GET', '/api/envs');
+  WZ.envs = r.environments || [];
+  $('noEnvs').hidden = WZ.envs.length > 0;
+  // No preselection (A18): the tester picks the environment.
+  $('envIn').replaceChildren(el('option', { value: '', text: t('s1.envPick') }), ...WZ.envs.map(e => el('option', { value: e.name, text: e.name })));
+  if (STUDIO.spec) $('specIn').value = STUDIO.spec;
+  showStep(1);
+}
+$('s1Next').addEventListener('click', async () => {
+  const source = $('specIn').value.trim(), suiteName = $('nameIn').value.trim(), env = $('envIn').value;
+  if (!source || !suiteName || !env) { note('s1Msg', 'warn', t('s1.needAll')); return; }
+  note('s1Msg', '', t('s1.fetching'));
+  const r = await api('POST', '/api/wizard/spec', { source, suiteName, env });
+  if (!r.ok) { note('s1Msg', 'err', t('s1.specError', { msg: r.message || r.error })); return; }
+  note('s1Msg', '', '');
+  WZ.ops = r.ops; WZ.files = r.files; WZ.exists = r.exists;
+  WZ.selection = new Set(r.ops.filter(o => !o.destructive).map(o => o.id));
+  renderStep2(); showStep(2);
+});
+function renderStep2() {
+  $('opRows').replaceChildren(...WZ.ops.map(o => {
+    const notes = [];
+    if (o.destructive) notes.push(t('s2.destructive')); else if (o.write) notes.push(t('s2.writeSkipped'));
+    if (o.auth === 'public') notes.push(t('s2.public'));
+    return el('tr', {},
+      el('td', {}, el('input', { type: 'checkbox', checked: WZ.selection.has(o.id), onchange: ev => { if (ev.target.checked) WZ.selection.add(o.id); else WZ.selection.delete(o.id); updatePick(); } })),
+      el('td', { class: 'mono', text: o.method }), el('td', { class: 'mono', text: o.path }), el('td', { text: o.summary }),
+      el('td', { text: o.auth === 'token' ? t('s2.token') : t('s2.publicShort') }),
+      el('td', { class: 'mono', text: o.needs.length ? o.needs.map(n => `${n.param} (${n.in})`).join(', ') : t('s2.none') }),
+      el('td', { text: notes.join(' ') }));
+  }));
+  updatePick();
+}
+function updatePick() { const none = WZ.selection.size === 0; $('s2Next').disabled = none; $('pickOne').hidden = !none; }
+$('s2Back').addEventListener('click', () => showStep(1));
+$('s2Next').addEventListener('click', async () => {
+  const r = await api('POST', '/api/wizard/select', { selection: [...WZ.selection] });
+  if (!r.ok) { $('pickOne').hidden = false; return; }
+  WZ.needs = r.needs; showStep(3);
+});
+function envOf() { return WZ.envs.find(e => e.name === $('envIn').value) || { users: [] }; }
+function renderStep3() {
+  const env = envOf();
+  $('userSel').replaceChildren(...env.users.map(u => el('option', { value: u, text: u })));
+  const s = WZ.state || {};
+  const user = $('userSel').value || '—';
+  $('whoLine').textContent = env.portalUrl && env.users.length ? t('s3.who', { url: env.portalUrl, user }) : t('s3.uiFailed', { reason: t('s3.noPortal') });
+  $('noAgent').hidden = !!s.attached || (s.run && s.run.status === 'collecting');
+  const run = s.run || null;
+  const collecting = run && run.status === 'collecting';
+  $('collectBtn').hidden = !!run; $('collectBtn').disabled = !s.attached;
+  $('againMissing').hidden = !run || collecting; $('againAll').hidden = !run || collecting;
+  $('againMissing').disabled = $('againAll').disabled = !s.attached;
+  $('cancelBtn').hidden = !collecting;
+  const values = s.values || {};
+  const found = WZ.needs.filter(n => values[n.param] && ['ui', 'project'].includes(values[n.param].source)).length;
+  $('progress').textContent = run ? `${collecting ? t('s3.collecting') + ' ' : ''}${t('s3.progress', { n: found, m: WZ.needs.length })}` : '';
+  const notes = [];
+  if (run && run.phase) notes.push(el('div', { class: 'note', text: t('s3.phase', { text: run.phase.text || run.phase.name }) }));
+  if (run && run.status === 'failed') notes.push(el('div', { class: 'note err', text: t('s3.uiFailed', { reason: run.reason || '' }) }));
+  if (run && run.status === 'ended' && !(s.token && s.token.present) && s.tokenNeeded) notes.push(el('div', { class: 'note warn', text: t('s3.noToken', { NAME: s.tokenVar || '' }) }));
+  if (s.token && s.token.present) notes.push(el('div', { class: 'note ok', text: t('s3.tokenSeen') }));
+  if (run && run.refused) notes.push(el('div', { class: 'note err', text: t('q21.refused', { env: run.refused.env }) }));
+  for (const v of (run && run.violations) || []) notes.push(el('div', { class: 'note err', text: t('q21.violation', { what: v.what }) }));
+  for (const c of (run && run.created) || []) notes.push(el('div', { class: 'note ok', text: t('s3.created', { what: c.what }) }));
+  $('s3Notes').replaceChildren(...notes);
+  $('gateBox').hidden = !(run && run.gate);
+  if (run && run.gate) $('gateText').textContent = t('s3.gate', { kind: run.gate.kind });
+  const pb = $('proposalBox');
+  if (run && run.proposal && !run.proposal.decided) {
+    const items = run.proposal.items;
+    pb.replaceChildren(el('strong', { text: t('q21.title', { n: items.length, env: s.env }) }), el('p', { text: t('q21.body') }),
+      el('ol', {}, items.map(i => el('li', { text: `${i.what} — ${i.screen}` }))),
+      el('div', { class: 'actions' },
+        el('button', { onclick: () => consent('no'), text: t('q21.no') }),
+        el('button', { class: 'primary', onclick: () => consent('yes'), text: t('q21.yes', { n: items.length }) })));
+    pb.hidden = false;
+  } else pb.hidden = true;
+  $('needRows').replaceChildren(...WZ.needs.map(n => {
+    const v = values[n.param];
+    const src = v ? v.source : null;
+    const input = el('input', { class: 'mono', value: v && v.source === 'manual' ? fmt(v.value) : '' });
+    const prov = v && v.provenance ? [v.provenance.screen, v.provenance.call, v.provenance.file, v.provenance.path].filter(Boolean).join(' · ') : '';
+    return el('tr', {},
+      el('td', { class: 'mono', text: `${n.param} (${n.in})` }),
+      el('td', {}, v && ['ui', 'project'].includes(v.source) ? el('span', { class: 'mono', text: fmt(v.value) }) :
+        el('span', {}, input, ' ', el('button', { onclick: () => setValue(n.param, input.value, 'manual'), text: t('s3.set') }), ' ',
+          el('button', { onclick: () => setValue(n.param, '', 'placeholder'), text: t('s3.leave') }))),
+      el('td', {}, src ? badge(src) : el('span', { class: 'muted', text: (s.missing || {})[n.param] ? t('s3.notFound') : '—' })),
+      el('td', { class: 'prov', text: prov || (((s.missing || {})[n.param] || {}).hint || '') + (v && v.user ? ` ${v.user}` : '') }));
+  }));
+}
+async function setValue(param, value, source) {
+  if (source === 'manual' && !String(value).trim()) return;
+  await api('POST', '/api/wizard/value', { param, value, source });
+  await refreshState();
+}
+async function consent(decision) { await api('POST', '/api/wizard/consent', { proposalId: WZ.state.run.proposal.id, decision }); await refreshState(); }
+async function refreshState() { const r = await api('GET', '/api/wizard/state'); if (r.ok) { WZ.state = r; if (WZ.step === 3) renderStep3(); } }
+async function pollState() {
+  if (WZ.polling) return; WZ.polling = true;
+  while (WZ.step === 3) { await refreshState(); await new Promise(r => setTimeout(r, 1000)); }
+  WZ.polling = false;
+}
+$('userSel').addEventListener('change', renderStep3);
+$('collectBtn').addEventListener('click', async () => { const r = await api('POST', '/api/wizard/collect', { user: $('userSel').value || null }); if (!r.ok && r.error === 'no-agent') $('noAgent').hidden = false; refreshState(); });
+$('againMissing').addEventListener('click', async () => { await api('POST', '/api/wizard/collect-again', { all: false, user: $('userSel').value || null }); refreshState(); });
+$('againAll').addEventListener('click', async () => { await api('POST', '/api/wizard/collect-again', { all: true, user: $('userSel').value || null }); refreshState(); });
+$('cancelBtn').addEventListener('click', async () => { await api('POST', '/api/wizard/cancel', {}); refreshState(); });
+$('gateDone').addEventListener('click', async () => { await api('POST', '/api/wizard/gate-cleared', {}); refreshState(); });
+$('s3Back').addEventListener('click', () => showStep(2));
+$('s3Next').addEventListener('click', () => showStep(4));
+async function loadPreview() {
+  const r = await api('GET', '/api/wizard/preview');
+  if (!r.ok) { $('previewList').replaceChildren(el('div', { class: 'note err', text: t('app.error', { msg: r.message || r.error }) })); return; }
+  WZ.preview = r;
+  const s = r.summary;
+  $('totals').textContent = t('s4.totals', { total: s.total, ready: s.ready, review: s.review, skipped: s.skipped });
+  $('kinds').replaceChildren(...Object.entries(s.byKind).map(([k, n]) => el('span', { class: 'tag', text: `${t(`kind.${k}`)}: ${n}` })));
+  $('previewList').replaceChildren(...s.endpoints.map(e => el('div', { class: 'card' },
+    el('strong', { class: 'mono', text: `${e.method} ${e.path}` }),
+    el('table', {}, el('tbody', {}, e.cases.map(c => el('tr', {},
+      el('td', { text: c.name }), el('td', { text: t(`kind.${c.kind}`) }), el('td', { class: 'mono', text: `${t('s4.expect')} ${c.status}` }),
+      el('td', {}, c.skipped ? el('span', { class: 'tag', text: t('s4.skip') }) : null, c.needsReview ? el('span', { class: 'tag', text: t('s4.review') }) : null))))))));
+}
+$('s4Back').addEventListener('click', () => showStep(3));
+$('s4Next').addEventListener('click', () => showStep(5));
+function renderStep5() {
+  const p = WZ.preview;
+  if (!p) return;
+  $('fileList').replaceChildren(el('li', { text: p.files.catalog }), el('li', { text: p.files.suite }));
+  $('sourceCounts').replaceChildren(...['ui', 'project', 'auto', 'placeholder', 'manual'].map(k => el('span', {}, badge(k), ` ${p.summary.bySource[k] || 0}`)));
+  $('baseUrlLabel').textContent = t('s5.baseUrl', { NAME: p.baseUrl.var });
+  $('baseUrlIn').value = p.baseUrl.suggested || '';
+  $('baseUrlIn').disabled = p.baseUrl.isSet;
+  $('envLine').textContent = p.baseUrl.isSet ? t('s5.baseUrlSet', { NAME: p.baseUrl.var }) : t('s5.envLine', { NAME: p.baseUrl.var });
+  $('tokLine').textContent = p.token && p.token.present ? t('tok.entry', { user: p.token.user || '—', time: p.token.capturedAt || '—' }) : '';
+  const exists = p.exists && (p.exists.catalog || p.exists.suite);
+  if (exists) note('s5Msg', 'err', t('s5.exists', { file: p.exists.catalog ? p.files.catalog : p.files.suite })); else note('s5Msg', '', '');
+  $('s5Open').disabled = $('s5Run').disabled = !!exists;
+}
+async function approve(runNow) {
+  $('s5Open').disabled = $('s5Run').disabled = true;
+  note('s5Msg', '', t('s5.approving'));
+  const r = await api('POST', '/api/wizard/approve', { baseUrl: $('baseUrlIn').value.trim(), run: runNow });
+  if (!r.ok) {
+    if (r.error === 'exists') note('s5Msg', 'err', t('s5.exists', { file: r.file }));
+    else note('s5Msg', 'err', t('app.error', { msg: r.message || r.error }));
+    return;
+  }
+  const notIgnored = (r.notIgnored || []).map(p => t('ed.notIgnored', { path: p })).join(' ');
+  if (notIgnored) sessionStorage.setItem('studioNotice', notIgnored);
+  location.href = `/editor?lang=${LANG}&suite=${encodeURIComponent(r.suitePath)}&filter=${r.filter}${r.runId ? `&run=${r.runId}` : ''}`;
+}
+$('s5Back').addEventListener('click', () => showStep(4));
+$('s5Open').addEventListener('click', () => approve(false));
+$('s5Run').addEventListener('click', () => approve(true));
+
+// ============================ Boot ============================
+$('langBtn').addEventListener('click', () => { LANG = LANG === 'ar' ? 'en' : 'ar'; applyI18n(); if (!$('editor').hidden) { renderRail(); renderEditor(); } else showStep(WZ.step); });
+$('doneBtn').addEventListener('click', async () => { await api('GET', '/api/done'); document.body.replaceChildren(el('p', { class: 'note', text: t('app.closed') })); });
+(async () => {
+  const s = await api('GET', '/api/strings');
+  if (s.en) STR = s;
+  applyI18n();
+  const params = new URLSearchParams(location.search);
+  const notice = sessionStorage.getItem('studioNotice');
+  if (notice) { sessionStorage.removeItem('studioNotice'); note('banner', 'warn', notice); }
+  if (STUDIO.view === 'wizard') await startWizard();
+  else {
+    await startEditor(params);
+    const runId = params.get('run');
+    if (runId) {
+      ED.run = { id: runId, status: 'running' }; renderEditor();
+      const poll = async () => { const r = await api('GET', `/api/run/${runId}`); if (r.status === 'done' || !r.ok) { ED.run = null; if (ED.path) openSuite(ED.path, true); return; } setTimeout(poll, 1000); };
+      poll();
+    }
+  }
+})();
+</script>
+</body>
+</html>
