@@ -464,7 +464,9 @@ function applyDrawer(c, f) {
   const fields = f.fieldsIn.value.split(',').map(s => s.trim()).filter(Boolean);
   if (fields.join(',') !== ((c.expect || {}).fields || []).join(',')) e.fields = fields;
   const m = { from: f.mc.path || f.msgPath.value.trim(), path: f.msgPath.value.trim(), text: f.msgText.value, match: f.msgMatch.value };
-  if (m.path !== f.mc.path || m.text !== f.mc.text || m.match !== f.mc.match) e.message = m;
+  // No message before and none typed now: nothing changed (the path box only has a default).
+  const hadMessage = !!f.mc.path;
+  if ((hadMessage || m.text) && (m.path !== f.mc.path || m.text !== f.mc.text || m.match !== f.mc.match)) e.message = m;
   if (Object.keys(e).length) u.expect = e;
   const skip = f.skipOn.checked ? (f.skipWhy.value.trim() || 'skip: true') : null;
   if ((skip || null) !== (c.skip ? String(c.skip) : null)) u.skip = skip;
@@ -560,12 +562,12 @@ $('tabData').addEventListener('click', () => { ED.tab = 'data'; renderEditor(); 
 $('importBtn').addEventListener('click', () => { location.href = `/wizard?lang=${LANG}`; });
 
 // ============================ Wizard ============================
-const WZ = { step: 1, envs: [], ops: [], selection: new Set(), needs: [], files: null, exists: null, state: null, preview: null, polling: false };
+const WZ = { step: 1, envs: [], ops: [], selection: new Set(), needs: [], files: null, exists: null, state: null, preview: null, polling: false, drafts: {}, rowsSig: null };
 function showStep(n) {
   WZ.step = n;
   for (let i = 1; i <= 5; i++) $(`step${i}`).hidden = i !== n;
   $('stepTabs').replaceChildren(...t('wiz.steps').split(' · ').map((s, i) => el('span', { class: i + 1 === n ? 'on' : '', text: `${i + 1}. ${s}` })));
-  if (n === 3) { renderStep3(); pollState(); }
+  if (n === 3) { WZ.rowsSig = null; renderStep3(); pollState(); }
   if (n === 4) loadPreview();
   if (n === 5) renderStep5();
 }
@@ -649,10 +651,16 @@ function renderStep3() {
         el('button', { class: 'primary', onclick: () => consent('yes'), text: t('q21.yes', { n: items.length }) })));
     pb.hidden = false;
   } else pb.hidden = true;
+  // Re-render the rows only when the data changed: the 1 s poll must never wipe a value the
+  // tester is typing (drafts are kept per param as well).
+  const sig = JSON.stringify([WZ.needs, values, s.missing || {}, LANG]);
+  if (sig === WZ.rowsSig) return;
+  WZ.rowsSig = sig;
   $('needRows').replaceChildren(...WZ.needs.map(n => {
     const v = values[n.param];
     const src = v ? v.source : null;
-    const input = el('input', { class: 'mono', value: v && v.source === 'manual' ? fmt(v.value) : '' });
+    const draft = WZ.drafts[n.param];
+    const input = el('input', { class: 'mono', value: draft !== undefined ? draft : (v && v.source === 'manual' ? fmt(v.value) : ''), oninput: ev => { WZ.drafts[n.param] = ev.target.value; } });
     const prov = v && v.provenance ? [v.provenance.screen, v.provenance.call, v.provenance.file, v.provenance.path].filter(Boolean).join(' · ') : '';
     return el('tr', {},
       el('td', { class: 'mono', text: `${n.param} (${n.in})` }),
@@ -666,6 +674,7 @@ function renderStep3() {
 async function setValue(param, value, source) {
   if (source === 'manual' && !String(value).trim()) return;
   await api('POST', '/api/wizard/value', { param, value, source });
+  delete WZ.drafts[param];
   await refreshState();
 }
 async function consent(decision) { await api('POST', '/api/wizard/consent', { proposalId: WZ.state.run.proposal.id, decision }); await refreshState(); }
