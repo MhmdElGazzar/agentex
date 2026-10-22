@@ -192,5 +192,124 @@ const ALL_SAFE = ['GET /pets', 'POST /pets', 'GET /pets/{petId}', 'GET /store/in
     assert.ok(html.includes("spec: 'specs/orders.json'"));
   });
 
+  // ---- step 3 with the agent: the Q21 guard and consent (agent routes driven directly) ----
+  async function collectRun(envJson) {
+    const sv = await servers();
+    const dir = proj({ '.gitignore': '.agentex/\ntest/.auth/\n', 'environments/qc.json': { portalUrl: 'https://app.example.test', users: { qa_user_a: {} }, ...envJson } });
+    const s = await studio(dir, { mode: 'wizard' });
+    await s.page('POST', '/api/wizard/spec', { source: sv.specUrl, suiteName: 'Pets', env: 'qc' });
+    await s.page('POST', '/api/wizard/select', { selection: ['GET /pets/{petId}', 'GET /pets'] });
+    sv.close();
+    await s.agent('GET', '/api/agent/next?timeout=10'); // attach
+    const c = await s.page('POST', '/api/wizard/collect', { user: 'qa_user_a' });
+    const ev = (await s.agent('GET', '/api/agent/next?timeout=50')).json;
+    assert.strictEqual(ev.event, 'collect');
+    const post = (event, payload) => s.agent('POST', '/api/agent/event', { event, payload: { runId: c.json.runId, ...payload } });
+    return { s, dir, runId: c.json.runId, post };
+  }
+  const ITEMS = [{ what: 'Pet with status sold', screen: 'New pet' }, { what: 'Second pet', screen: 'New pet' }];
+
+  for (const [label, envJson] of [['missing', {}], ['the string "true"', { nonProduction: 'true' }], ['false', { nonProduction: false }]]) {
+    await test(`Q21 guard: nonProduction ${label} -> the proposal is refused naming the field and the file; collecting goes on`, async () => {
+      const { s, post } = await collectRun(envJson);
+      const r = await post('proposal', { items: ITEMS });
+      assert.strictEqual(r.json.error, 'refused');
+      assert.strictEqual(r.json.field, 'nonProduction');
+      assert.strictEqual(r.json.file, 'environments/qc.json');
+      const st = (await s.page('GET', '/api/wizard/state')).json;
+      assert.deepStrictEqual(st.run.refused && [st.run.refused.field, st.run.refused.file], ['nonProduction', 'environments/qc.json']);
+      assert.strictEqual(st.run.proposal, null);
+      assert.strictEqual((await post('value', { param: 'petId', value: 3, source: 'ui' })).json.ok, true);
+      assert.strictEqual((await post('proposal', { items: ITEMS })).json.error, 'one-proposal-per-run');
+    });
+  }
+
+  await test('Q21 consent: one proposal per run; the consent echoes the exact list; created outside it is refused and flagged', async () => {
+    const { s, dir, post } = await collectRun({ nonProduction: true });
+    const pr = await post('proposal', { items: ITEMS });
+    assert.strictEqual(pr.json.ok, true, pr.text);
+    assert.strictEqual((await post('proposal', { items: ITEMS })).json.error, 'one-proposal-per-run');
+    const st = (await s.page('GET', '/api/wizard/state')).json;
+    assert.deepStrictEqual(st.run.proposal.items, ITEMS);
+    await s.page('POST', '/api/wizard/consent', { proposalId: pr.json.proposalId, decision: 'yes' });
+    const ev = (await s.agent('GET', '/api/agent/next?timeout=50')).json;
+    assert.deepStrictEqual(ev, { event: 'consent', runId: st.run.runId, proposalId: pr.json.proposalId, decision: 'yes', items: ITEMS });
+    assert.strictEqual((await post('created', { proposalId: pr.json.proposalId, index: 0 })).json.ok, true);
+    const out = await post('created', { proposalId: pr.json.proposalId, index: 7, what: 'A customer account' });
+    assert.strictEqual(out.json.error, 'not-consented');
+    const after = (await s.page('GET', '/api/wizard/state')).json;
+    assert.deepStrictEqual(after.run.violations.map(v => v.what), ['A customer account']);
+    assert.deepStrictEqual(after.run.created.map(c => c.what), ['Pet with status sold']);
+    await post('ended', { found: 1, total: 2 });
+    await s.page('POST', '/api/wizard/value', { param: 'petId', value: '3', source: 'manual' });
+    const a = await s.page('POST', '/api/wizard/approve', {});
+    assert.strictEqual(a.status, 200, a.text);
+    const store = JSON.parse(fs.readFileSync(path.join(dir, '.agentex/cache/api-data/pets.json'), 'utf8'));
+    assert.deepStrictEqual(store.consents.map(c => [c.decision, c.items.length, c.created]), [['yes', 2, [0]]]);
+  });
+
+  await test('Q21 consent "no": nothing may be created; Collect again opens a new run that may ask again (A19)', async () => {
+    const { s, post } = await collectRun({ nonProduction: true });
+    const pr = await post('proposal', { items: ITEMS });
+    await s.page('POST', '/api/wizard/consent', { proposalId: pr.json.proposalId, decision: 'no' });
+    assert.strictEqual((await s.agent('GET', '/api/agent/next?timeout=50')).json.decision, 'no');
+    assert.strictEqual((await post('created', { proposalId: pr.json.proposalId, index: 0 })).json.error, 'not-consented');
+    await post('ended', { found: 0, total: 2 });
+    const again = await s.page('POST', '/api/wizard/collect-again', { all: false, user: 'qa_user_a' });
+    assert.strictEqual(again.json.ok, true, again.text);
+    const ev = (await s.agent('GET', '/api/agent/next?timeout=50')).json;
+    assert.strictEqual(ev.event, 'collect-again');
+    assert.deepStrictEqual(ev.needs.map(n => n.param).sort(), ['petId', 'status']);
+    const pr2 = await s.agent('POST', '/api/agent/event', { event: 'proposal', payload: { runId: again.json.runId, items: ITEMS.slice(0, 1) } });
+    assert.strictEqual(pr2.json.ok, true);
+  });
+
+  await test('gate: the page shows it and "I\'ve completed the login" reaches the agent; failed keeps the wizard going', async () => {
+    const { s, post } = await collectRun({});
+    await post('gate', { kind: 'captcha', text: 'a captcha is shown' });
+    assert.strictEqual((await s.page('GET', '/api/wizard/state')).json.run.gate.kind, 'captcha');
+    await s.page('POST', '/api/wizard/gate-cleared', {});
+    assert.strictEqual((await s.agent('GET', '/api/agent/next?timeout=50')).json.event, 'gate-cleared');
+    await post('failed', { reason: 'the browser is not available' });
+    const st = (await s.page('GET', '/api/wizard/state')).json;
+    assert.deepStrictEqual([st.run.status, st.run.reason], ['failed', 'the browser is not available']);
+    assert.strictEqual((await s.page('GET', '/api/wizard/preview')).status, 200);
+  });
+
+  await test('the captured token is held in memory, never in a response, and written only to its 0600 file at approval', async () => {
+    const SENT = 'EVAL_SENTINEL_TOKEN_wizard_59';
+    const { s, dir, post } = await collectRun({});
+    const t = await s.agent('POST', '/api/agent/token', { token: SENT, scheme: 'bearer', headerName: 'Authorization', apiOrigin: 'https://api.example.test' });
+    assert.deepStrictEqual(t.json, { ok: true });
+    await post('ended', { found: 0, total: 2 });
+    const st = await s.page('GET', '/api/wizard/state');
+    const pv = await s.page('GET', '/api/wizard/preview');
+    assert.ok(!st.text.includes(SENT) && !pv.text.includes(SENT));
+    assert.strictEqual(pv.json.baseUrl.suggested, 'https://api.example.test/v1');
+    const a = await s.page('POST', '/api/wizard/approve', {});
+    assert.ok(!a.text.includes(SENT));
+    assert.strictEqual(a.json.tokenRef, 'pets-qc');
+    const tok = JSON.parse(fs.readFileSync(path.join(dir, 'test/.auth/api-tokens/pets-qc.json'), 'utf8'));
+    assert.strictEqual(tok.token, SENT);
+    for (const f of ['integration/api_test_suites/pets/pets_api.json', 'integration/api_test_suites/pets/pets_suite.json', '.agentex/cache/api-data/pets.json']) {
+      assert.ok(!fs.readFileSync(path.join(dir, f), 'utf8').includes(SENT), f);
+    }
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'integration/api_test_suites/pets/pets_api.json'), 'utf8')).auth.tokenStore, 'pets');
+  });
+
+  await test('a store path that is not gitignored is refused and named; the suite and catalog are still written', async () => {
+    const sv = await servers();
+    const dir = proj({ '.gitignore': 'node_modules/\n', 'environments/qc.json': { users: {} } });
+    const s = await studio(dir, { mode: 'wizard' });
+    await s.page('POST', '/api/wizard/spec', { source: sv.specUrl, suiteName: 'Pets', env: 'qc' });
+    await s.page('POST', '/api/wizard/select', { selection: ['GET /store/inventory'] });
+    sv.close();
+    await s.agent('POST', '/api/agent/token', { token: 'tok-not-persisted-123', scheme: 'bearer' });
+    const a = await s.page('POST', '/api/wizard/approve', {});
+    assert.deepStrictEqual(a.json.notIgnored, ['test/.auth/api-tokens/pets-qc.json', '.agentex/cache/api-data/pets.json']);
+    assert.ok(!fs.existsSync(path.join(dir, 'test')) && !fs.existsSync(path.join(dir, '.agentex')));
+    assert.ok(fs.existsSync(path.join(dir, 'integration/api_test_suites/pets/pets_suite.json')));
+  });
+
   done();
 })();

@@ -238,6 +238,8 @@ async function createStudio(opts) {
     return { body: { ok: true } };
   });
 
+  const closeHooks = [];
+  studio.onClose = h => closeHooks.push(h);
   if (typeof opts.mount === 'function') opts.mount(studio);
 
   // ---- server ----
@@ -295,7 +297,6 @@ async function createStudio(opts) {
   idleTimer.unref();
 
   let closed = false;
-  const closeHooks = [];
   function shutdown(reason) {
     if (closed) return;
     closed = true;
@@ -306,10 +307,11 @@ async function createStudio(opts) {
       if (cur.pid === process.pid && cur.port === actualPort) fs.unlinkSync(studio.sessionFile);
     } catch { /* already gone */ }
     server.close();
-    server.closeAllConnections && server.closeAllConnections();
+    // let the answers just written (closed events to waiting agents) flush first
+    const t = setTimeout(() => { if (server.closeAllConnections) server.closeAllConnections(); }, 300);
+    t.unref();
     if (opts.onShutdown) opts.onShutdown(reason);
   }
-  studio.onClose = h => closeHooks.push(h);
   studio.shutdown = shutdown;
   return { server, port: actualPort, url, state, studio, close: () => shutdown('shutdown') };
 }

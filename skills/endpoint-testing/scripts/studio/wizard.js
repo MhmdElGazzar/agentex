@@ -24,6 +24,9 @@ const M = require(path.join(__dirname, '..', '..', '..', 'swagger-import', 'scri
 const pc = require(path.join(__dirname, '..', '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 
 const MAX_PROPOSAL_ITEMS = 50; // (Q8)
+const WAIT_MS = 90 * 1000;          // one channel.js wait, by default (Q8)
+const MAX_WAIT_MS = 120 * 1000;
+const ATTACH_GRACE_MS = 10 * 1000;  // attached while a wait is pending or ended < 10 s ago (Q8)
 const SECRET_KEY_RE = /passw|secret|token|authoriz|cookie/i;
 const JWT_RE = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/;
 const HEADER_TOKEN_RE = /^\s*(bearer|basic|token|apikey|api-key)\s+\S{8,}/i;
@@ -53,8 +56,35 @@ function suggestBaseUrl(literal, observed) {
 function mount(studio) {
   const { state, route, root } = studio;
   let wz = state.wizard = freshWizard();
-  if (!studio.agentAttached) studio.agentAttached = () => false;
-  if (!studio.notifyAgent) studio.notifyAgent = () => {};
+
+  // ---- the channel: the agent opts in with bounded long-polls (channel.js wait) ----
+  const ch = { queue: [], waiters: [], lastWaitEnd: 0 };
+  studio.agentAttached = () => ch.waiters.length > 0 || Date.now() - ch.lastWaitEnd < ATTACH_GRACE_MS;
+  function deliver(w, ev) {
+    if (w.done) return false;
+    w.done = true;
+    clearTimeout(w.timer);
+    ch.waiters = ch.waiters.filter(x => x !== w);
+    ch.lastWaitEnd = Date.now();
+    U.respondJSON(w.res, 200, ev);
+    return true;
+  }
+  studio.notifyAgent = (ev) => {
+    while (ch.waiters.length) { if (deliver(ch.waiters[0], ev)) return; }
+    ch.queue.push(ev);
+  };
+  if (studio.onClose) studio.onClose(reason => { for (const w of ch.waiters.slice()) deliver(w, { event: 'closed', reason }); });
+  route('GET', '/api/agent/next', 'control', (req, url, m, res) => {
+    const asked = parseInt(url.searchParams.get('timeout'), 10);
+    const timeout = Math.min(Math.max(Number.isFinite(asked) ? asked : WAIT_MS, 10), MAX_WAIT_MS);
+    ch.lastWaitEnd = Date.now();
+    if (ch.queue.length) return { body: ch.queue.shift() };
+    const w = { res, done: false };
+    w.timer = setTimeout(() => deliver(w, { event: 'idle' }), timeout);
+    res.on('close', () => { if (!w.done) { w.done = true; clearTimeout(w.timer); ch.waiters = ch.waiters.filter(x => x !== w); ch.lastWaitEnd = Date.now(); } });
+    ch.waiters.push(w);
+    return undefined; // answered by deliver()
+  });
 
   const credentialShaped = (v) => {
     const s = typeof v === 'string' ? v : JSON.stringify(v);
@@ -240,6 +270,137 @@ function mount(studio) {
     studio.notifyAgent({ event: kind, runId, suite: wz.slug, env: wz.env, user, apiOrigin: wz.apiOrigin, needs });
     return { body: { ok: true, runId } };
   }
+
+  // ---- page → agent: cancel, gate cleared, the one Q21 consent ----
+  const current = () => wz.run;
+  route('POST', '/api/wizard/cancel', 'page', () => {
+    const r = current();
+    if (!r || r.status !== 'collecting') return { status: 400, body: { ok: false, error: 'not-collecting' } };
+    r.status = 'cancelled';
+    studio.notifyAgent({ event: 'cancel', runId: r.runId });
+    return { body: { ok: true } };
+  });
+  route('POST', '/api/wizard/gate-cleared', 'page', () => {
+    const r = current();
+    if (!r || !r.gate) return { status: 400, body: { ok: false, error: 'no-gate' } };
+    r.gate = null;
+    studio.notifyAgent({ event: 'gate-cleared', runId: r.runId });
+    return { body: { ok: true } };
+  });
+  route('POST', '/api/wizard/consent', 'page', async (req) => {
+    const b = await U.readJSON(req);
+    const r = current();
+    if (!r || !r.proposal || r.proposal.id !== b.proposalId || r.proposal.decided) return { status: 400, body: { ok: false, error: 'no-open-proposal' } };
+    if (b.decision !== 'yes' && b.decision !== 'no') return { status: 400, body: { ok: false, error: 'bad-decision' } };
+    r.proposal.decided = true;
+    r.proposal.decision = b.decision;
+    r.consent = { at: new Date().toISOString(), environment: wz.env, decision: b.decision, items: r.proposal.items, created: [] };
+    wz.consents.push(r.consent);
+    // the exact list as shown — the agent creates these and nothing else
+    studio.notifyAgent({ event: 'consent', runId: r.runId, proposalId: r.proposal.id, decision: b.decision, items: r.proposal.items });
+    return { body: { ok: true } };
+  });
+
+  // ---- agent → page: progress, values, the proposal (Q21 guard), created items ----
+  const str = (v, max = 500) => (typeof v === 'string' ? v.slice(0, max) : '');
+  const agentEvents = {
+    phase(r, b) {
+      if (!['project', 'login', 'walk', 'create', 'done'].includes(b.name)) return { ok: false, error: 'bad-phase' };
+      r.phase = { name: b.name, text: str(b.text) };
+      return { ok: true };
+    },
+    value(r, b) {
+      const n = need(b.param);
+      if (!n) return { ok: false, error: 'unknown-param' };
+      if (b.source !== 'project' && b.source !== 'ui') return { ok: false, error: 'bad-source' };
+      if (b.value === undefined || b.value === null || b.value === '') return { ok: false, error: 'bad-value' };
+      if (credentialShaped(b.value)) return { ok: false, error: 'credential-shaped' };
+      const prov = b.provenance && typeof b.provenance === 'object' ? Object.fromEntries(Object.entries(b.provenance).filter(([k, v]) => ['screen', 'call', 'file', 'path', 'query'].includes(k) && typeof v === 'string').map(([k, v]) => [k, v.slice(0, 300)])) : undefined;
+      if (prov && credentialShaped(Object.values(prov).join(' '))) return { ok: false, error: 'credential-shaped' };
+      wz.values[n.param] = { value: b.value, source: b.source, ...(b.user ? { user: str(b.user, 100) } : {}), ...(prov ? { provenance: prov } : {}) };
+      delete wz.missing[n.param];
+      return { ok: true };
+    },
+    missing(r, b) {
+      const n = need(b.param);
+      if (!n) return { ok: false, error: 'unknown-param' };
+      wz.missing[n.param] = { hint: str(b.hint) };
+      return { ok: true };
+    },
+    gate(r, b) {
+      if (!['captcha', 'otp', 'other'].includes(b.kind)) return { ok: false, error: 'bad-gate' };
+      r.gate = { kind: b.kind, text: str(b.text) };
+      return { ok: true };
+    },
+    proposal(r, b) {
+      if (r.proposal || r.refused) return { ok: false, error: 'one-proposal-per-run' };
+      const items = Array.isArray(b.items) ? b.items : [];
+      if (!items.length || items.length > MAX_PROPOSAL_ITEMS || !items.every(i => i && typeof i.what === 'string' && i.what.trim() && typeof i.screen === 'string' && i.screen.trim())) {
+        return { ok: false, error: 'bad-items', message: `items must be 1-${MAX_PROPOSAL_ITEMS} entries of {what, screen}` };
+      }
+      const list = items.map(i => ({ what: str(i.what, 200), screen: str(i.screen, 200) }));
+      // Q21: only an environment explicitly marked non-production (boolean true) may get data created.
+      const file = `environments/${wz.env}.json`;
+      let envJson = null;
+      try { envJson = JSON.parse(fs.readFileSync(path.join(root, file), 'utf8')); } catch { envJson = null; }
+      if (!envJson || envJson.nonProduction !== true) {
+        r.refused = { env: wz.env, field: 'nonProduction', file, items: list };
+        state.log(`wizard: refused a data-creation proposal — ${file} is not marked "nonProduction": true`);
+        return { ok: false, error: 'refused', field: 'nonProduction', file,
+          message: `creating data is off for "${wz.env}": this environment is not marked non-production — the tester can add "nonProduction": true to ${file}; never edit it yourself. Collecting existing values still works.` };
+      }
+      r.proposal = { id: `p-${r.runId}`, items: list, decided: false };
+      return { ok: true, proposalId: r.proposal.id };
+    },
+    created(r, b) {
+      const p = r.proposal;
+      const idx = Number(b.index);
+      const ok = p && p.id === b.proposalId && p.decision === 'yes' && Number.isInteger(idx) && idx >= 0 && idx < p.items.length && !r.created.some(c => c.index === idx);
+      if (!ok) {
+        const what = str(b.what, 200) || (p && Number.isInteger(idx) && p.items[idx] ? p.items[idx].what : `#${b.index}`);
+        r.violations.push({ what, at: new Date().toISOString() });
+        state.log(`wizard: VIOLATION — the agent reported creating "${what}", which is not on the consented list`);
+        return { ok: false, error: 'not-consented' };
+      }
+      r.created.push({ index: idx, what: p.items[idx].what });
+      if (r.consent) r.consent.created.push(idx);
+      return { ok: true };
+    },
+    ended(r, b) {
+      r.status = 'ended'; r.gate = null;
+      r.found = Number.isFinite(Number(b.found)) ? Number(b.found) : undefined;
+      r.total = Number.isFinite(Number(b.total)) ? Number(b.total) : undefined;
+      return { ok: true };
+    },
+    failed(r, b) {
+      r.status = 'failed'; r.gate = null; r.reason = str(b.reason) || 'unknown';
+      return { ok: true };
+    },
+  };
+  route('POST', '/api/agent/event', 'control', async (req) => {
+    // {event: <kind>, payload: {...}} — the payload may carry its own "kind" (a gate's kind).
+    const body = await U.readJSON(req);
+    const b = body.payload && typeof body.payload === 'object' ? body.payload : {};
+    const handler = Object.prototype.hasOwnProperty.call(agentEvents, body.event) ? agentEvents[body.event] : null;
+    if (!handler) return { status: 400, body: { ok: false, error: 'unknown-kind' } };
+    const r = current();
+    if (!r || b.runId !== r.runId) return { status: 409, body: { ok: false, error: 'stale-run', runId: r ? r.runId : null } };
+    const out = handler(r, b);
+    return { status: out.ok || out.error === 'refused' || out.error === 'not-consented' ? 200 : 400, body: out };
+  });
+  // The bridge hands the captured token over loopback; it is held in memory until approval and
+  // never appears in any response.
+  route('POST', '/api/agent/token', 'control', async (req) => {
+    const b = await U.readJSON(req);
+    if (typeof b.token !== 'string' || !b.token || b.token.length > 16384) return { status: 400, body: { ok: false, error: 'bad-token' } };
+    const scheme = b.scheme === 'apiKey' ? 'apiKey' : 'bearer';
+    let apiOrigin = null;
+    try { apiOrigin = typeof b.apiOrigin === 'string' && /^https?:\/\//i.test(b.apiOrigin) ? new URL(b.apiOrigin).origin : null; } catch { apiOrigin = null; }
+    wz.token = { value: b.token, scheme, headerName: typeof b.headerName === 'string' ? b.headerName.slice(0, 100) : (scheme === 'bearer' ? 'Authorization' : 'X-API-Key'),
+      user: typeof b.user === 'string' && b.user ? b.user.slice(0, 100) : wz.user, capturedAt: new Date().toISOString(), apiOrigin };
+    state.log('wizard: a session token was handed over (value not shown)');
+    return { body: { ok: true } };
+  });
 }
 
 module.exports = { mount, freshWizard, suggestBaseUrl, coerceTyped };
