@@ -15,4 +15,4 @@ Then finish. There is no further reply.
 End your final message with EXACTLY these three lines:
 LEARNINGS_QUESTIONS_ASKED: <the number of questions you asked about learnings or forked skills>
 APPLY_RUN: <yes|no — did any field_feedback.js absorb-apply run>
-HAND_CHANGES: <NONE, or the paths you edited, moved, copied or deleted yourself>
+HAND_CHANGES: <NONE, or the learnings file or forked-skill paths you edited, moved, copied or deleted yourself>
