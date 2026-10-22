@@ -167,7 +167,8 @@ touches the board.
      is flagged (Phase-B bundle), never silently attached.
    - Annotate (never blocks, never asks): for each screenshot you will attach, write
      `{"image", "banner", "boxes": [{"x", "y", "width", "height", "label", "ok"?}]}` beside
-     the bug spec (e.g. `bug-1-<shot>.json`; box values in % of the image). `banner` is the
+     the bug spec in `.agentex/scratch/bugs/<run-folder>/` (e.g. `bug-1-<shot>.json`; box
+     values in % of the image). `banner` is the
      bug's summary; one red box goes on the defect, labelled from expected/actual
      (`Expected "X" — actual "Y"`); optionally one `"ok": true` green box on something
      correct. Use only the summary/expected/actual and on-screen text — invent nothing. Run
@@ -207,9 +208,10 @@ has exactly one interaction: the approval.
 
 ### Phase C — validate, one screen, one approval, write
 
-1. **Dry-run validation** (build one spec JSON per issue — shape below):
+1. **Dry-run validation** (build one spec JSON per issue — shape below — at
+   `.agentex/scratch/bugs/<run-folder>/bug-<n>.json`):
    ```
-   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json
+   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec .agentex/scratch/bugs/<run-folder>/bug-<n>.json
    ```
    This runs the whole gate: parent is a User Story, duplicate check (fails closed),
    cache-based picklist validation, attachment structural re-check, and a server-side
@@ -225,7 +227,7 @@ has exactly one interaction: the approval.
    target route) · the explicit note that **nothing has been written yet**.
 3. **One approval.** On the user's "yes":
    ```
-   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec <spec>.json --execute
+   node ${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/scripts/create-bug.js --spec .agentex/scratch/bugs/<run-folder>/bug-<n>.json --execute
    node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js create-case --plan <plan> --suite <suite> --title "<t>" --execute   # only if chosen
    node ${CLAUDE_PLUGIN_ROOT}/skills/test-design/scripts/testplan.js fail --plan <plan> --testcase <tc> --bug <bugId> --execute          # only if chosen
    ```
@@ -276,7 +278,10 @@ has exactly one interaction: the approval.
   same on Windows/macOS/Linux; `annotate-image.js` also uses the project's playwright-cli
   when it is there. Details of the REST routes and the field schema live in
   `${CLAUDE_PLUGIN_ROOT}/skills/bug-report-azure/references/azure-devops.md`.
-- Keep spec files out of committed state (write them to a temp/execution folder).
+- Bug specs and annotation specs are scratch: write them only under
+  `.agentex/scratch/bugs/<run-folder>/` (the run folder's name; create it if missing), never
+  anywhere else (`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`). The annotated copies
+  land beside their spec; the raw screenshots stay in the run's `executions/` folder.
 - All board flows (bug filing, `/estimate-story`, `/design-test`) share the tracker scripts
   and the `.env` credentials (`AZURE_PAT`, or `JIRA_EMAIL` + `JIRA_API_TOKEN`) — one setup
   covers them all.

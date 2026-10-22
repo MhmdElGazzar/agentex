@@ -47,7 +47,7 @@ mid-run interaction.
   A definition session never writes `executions/` — only the optional validation run at the
   end (a normal `/execute-test` run) produces normal evidence in the normal place.
 - **The user's existing files are never edited.** A definition session writes exactly two
-  things: its draft in the transient scratch, and the new spec file the user confirms at
+  things: its draft in `.agentex/scratch/define-flow/`, and the new spec file the user confirms at
   ASSEMBLE. An existing spec is *input* — walkthrough mode reads it and produces a NEW file
   beside it. It is never rewritten, reformatted, re-numbered, or silently annotated. The one
   line that may ever be added to an original is the cross-reference offered in walkthrough
@@ -89,8 +89,9 @@ Repeat until the user says the flow is complete:
    including for add/edit/delete steps.
 3. **Assert.** The user confirms the expected result or corrects the step.
    - On **confirmation**, record the step as a natural-language spec line with its expected
-     result, and **append it immediately to the draft spec file** in the session's transient
-     scratch (default `.playwright-cli/define-flow-draft.md`) — incremental assemble: a
+     result, and **append it immediately to the draft spec file**
+     `.agentex/scratch/define-flow/<flow>-draft.md` (create the folder if it is missing; agent
+     scratch, see `${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`) — incremental assemble: a
      crash or disconnect at step 14 loses nothing already confirmed. Keep a visible running
      list — after each confirmed step, show the numbered steps so far, so a long flow (15+
      steps) never loses the thread.
@@ -134,8 +135,8 @@ When the user says the flow is complete:
 2. Propose a file name under the user's suite folder — default `test/suite1/<slug>.md`, slug
    derived from the flow's goal. Save only on the user's confirmation.
 3. Close the session's browser (`-s=<session> close` — only your own session, never
-   `close-all`/`kill-all`), then clean the transient `.playwright-cli/` scratch — draft
-   included — once the final spec is saved.
+   `close-all`/`kill-all`), then clean the transient `.playwright-cli/` scratch and delete the
+   draft (`.agentex/scratch/define-flow/<flow>-draft.md`) once the final spec is saved.
 
 ## 4. VALIDATE (offered, not forced)
 

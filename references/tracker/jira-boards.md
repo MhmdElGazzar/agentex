@@ -83,8 +83,9 @@ The Jira counterparts of the ADO WIQL pitfalls, as `scripts/tracker.js` handles 
   narrow the query.
 - **Sub-tasks come inline** with the story read (`tracker.js relations --kind child` costs
   one request per story, never one per sub-task).
-- **Never pipe text through a CLI.** Use `--out .agentex/scratch/<name>.json` and Read the
-  file for anything you will analyse.
+- **Never pipe text through a CLI.** Use `--out .agentex/scratch/tracker/<name>.json` and Read
+  the file for anything you will analyse. Such files live only under `.agentex/scratch/`
+  ([project-layout.md](../project-layout.md)).
 - **`key in (…)` fails on one unknown key.** To read many issues use `tracker.js batch`,
   which reports unknown keys under `missing` (and moved issues under `moved`) instead of
   failing the whole read.

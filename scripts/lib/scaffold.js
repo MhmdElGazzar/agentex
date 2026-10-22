@@ -5,7 +5,8 @@
 // conventions" has exactly one definition and init/migrate cannot drift apart.
 //
 // Every action is idempotent and non-destructive: an existing file is never
-// overwritten; CLAUDE.md and .gitignore are append-only. Functions accept
+// overwritten; .gitignore is append-only, and CLAUDE.md is append-only outside the
+// AgenTeX block (scripts/lib/layout.js owns the bytes between its markers). Functions accept
 // { dryRun: true } to report what WOULD change without writing, and return action
 // objects { kind: 'created'|'skipped', path: <project-relative>, note } instead of
 // printing — callers own the report format.
@@ -13,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { isDeepStrictEqual } = require('util');
 const { ENV_KEY_MAP } = require('./env_key_map.js');
+const layout = require('./layout.js');
 
 // The executions/ guidance appended to the consumer's CLAUDE.md.
 const CLAUDE_MD_BULLET = [
@@ -151,15 +153,21 @@ function ensureGitignore(projectRoot, { dryRun = false } = {}) {
 }
 
 // ── CLAUDE.md: the executions/ guidance bullet (append-only) ─────────────────
+// Judged on the user's text only: the AgenTeX block names executions/ as a write
+// destination, so its bytes must never make the bullet look present (or absent).
 function claudeMdHasBullet(projectRoot) {
   const claudeMd = path.join(projectRoot, 'CLAUDE.md');
   if (!fs.existsSync(claudeMd)) return false;
-  const content = fs.readFileSync(claudeMd, 'utf8');
+  const content = layout.stripManagedBlock(fs.readFileSync(claudeMd, 'utf8'));
   return content.includes('executions/') && content.includes('test-run artifacts');
 }
 
+// A symlinked CLAUDE.md is appended through to its target (the link stays a link); a
+// dangling one gets the layout block's [flag] action and zero writes.
 function ensureClaudeMdBullet(projectRoot, { dryRun = false } = {}) {
   const claudeMd = path.join(projectRoot, 'CLAUDE.md');
+  const dangling = layout.danglingAction(claudeMd, 'the executions/ guidance');
+  if (dangling) return dangling;
   if (fs.existsSync(claudeMd)) {
     if (claudeMdHasBullet(projectRoot)) {
       return { kind: 'skipped', path: rel(projectRoot, claudeMd), note: 'equivalent guidance already present' };
@@ -174,8 +182,17 @@ function ensureClaudeMdBullet(projectRoot, { dryRun = false } = {}) {
   return { kind: 'created', path: rel(projectRoot, claudeMd), note: 'created with executions/ guidance' };
 }
 
+// ── CLAUDE.md: the AgenTeX layout block (scripts/lib/layout.js) ──────────────
+// Inserted at the end, refreshed in place while pristine, flagged (never overwritten)
+// once the user edits inside it. Returns an action; kind 'flag' carries `message`.
+function ensureLayoutBlock(projectRoot, { dryRun = false } = {}) {
+  return layout.ensureLayoutBlock(projectRoot, { dryRun });
+}
+
 // ── Full scaffold — the exact set of actions /init-test performs ─────────────
-function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
+// layoutBlock: false leaves the AgenTeX block out — migration 07's gap-fill uses it, so the
+// block stays migration 13's (its own report lines and its [flag] for an edited block).
+function scaffoldProject(projectRoot, pluginRoot, { dryRun = false, layoutBlock = true } = {}) {
   const actions = [];
   const push = (kind, f, note) => actions.push({ kind, path: rel(projectRoot, f), note });
 
@@ -252,8 +269,10 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
                      path.join(projectRoot, 'environments', 'qc.json'));
   }
 
-  // 5. CLAUDE.md guidance (append-only)
+  // 5. CLAUDE.md guidance: the executions/ bullet, then the AgenTeX layout block — the
+  //    same two calls, in the same order, as migrations 06 and 13 (fresh == migrated).
   actions.push(ensureClaudeMdBullet(projectRoot, { dryRun }));
+  if (layoutBlock) actions.push(ensureLayoutBlock(projectRoot, { dryRun }));
 
   return actions;
 }
@@ -439,6 +458,6 @@ module.exports = {
   hasSpecFiles, hasEnvFiles, scaffoldProject, hasLegacySignals,
   sampleEnvShapes, isPristineSampleEnv, isPristineProjectConfig,
   GITIGNORE_ENTRIES, gitignoreMissing, ensureGitignore,
-  claudeMdHasBullet, ensureClaudeMdBullet,
+  claudeMdHasBullet, ensureClaudeMdBullet, ensureLayoutBlock,
   stampPath, readVersionStamp, writeVersionStamp, readPluginVersion,
 };

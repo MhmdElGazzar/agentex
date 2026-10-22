@@ -94,7 +94,7 @@ All examples assume `$BASE=http://127.0.0.1:4723` and `$SID` holds the active se
   `appium_client.js send-keys --text-env <NAME>` instead (see `appium-client-wrapper.md`).
 - **Get text** — `GET $BASE/session/$SID/element/<elementId>/text`.
 - **Screenshot** — `GET $BASE/session/$SID/screenshot` → `{"value":"<base64 PNG>"}`. Decode and
-  save, e.g.: `curl -s $BASE/session/$SID/screenshot | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8"));require("fs").writeFileSync(process.argv[1],Buffer.from(d.value,"base64"))' <out.png>`.
+  save, e.g.: `curl -s $BASE/session/$SID/screenshot | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8"));require("fs").writeFileSync(process.argv[1],Buffer.from(d.value,"base64"))' <SESSION_DIR>/screenshots/<name>.png`.
 - **Page source** (accessibility tree, for locating elements) — `GET $BASE/session/$SID/source`.
 - **Back** — `POST $BASE/session/$SID/back`.
 - **Swipe** — no dedicated endpoint; use the W3C Actions API,
@@ -116,8 +116,9 @@ All examples assume `$BASE=http://127.0.0.1:4723` and `$SID` holds the active se
 - Android: `adb logcat -d` (or filtered by package) for app crashes/errors; treat unexpected
   stack traces or ANRs as defects even if the screen looks fine.
 - iOS: `xcrun simctl spawn booted log stream --level info` for simulator logs.
-- The Appium server's own stdout/stderr is also useful evidence — redirect it to a log file
-  under the run's `mobile-sessions/<session>/logs/` when starting the server for a session.
+- The Appium server's own stdout/stderr is also useful evidence — redirect it to
+  `<SESSION_DIR>/logs/appium-server.log` (the run's `mobile-sessions/<session>/logs/`) when
+  starting the server for a session.
 
 ## Concurrency
 Each session needs its own real emulator/device/simulator — there is no equivalent of

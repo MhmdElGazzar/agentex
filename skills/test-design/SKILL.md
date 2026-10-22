@@ -193,7 +193,7 @@ conventions file + config answer everything, the approval is the only interactio
 1. Build the spec (`storyId`, `assignee`, `cases` with structured steps), write it to
    `.agentex/scratch/cases.json` — intermediate files go **only** in `.agentex/scratch/`
    (create the folder if it is missing; it is gitignored agent scratch), never anywhere else
-   in the project — and dry-run:
+   in the project (`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`) — and dry-run:
    ```bash
    node …/create-cases.js --spec ".agentex/scratch/cases.json" [--allow-duplicate]
    ```

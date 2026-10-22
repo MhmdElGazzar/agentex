@@ -7,7 +7,9 @@
 //
 // Usage: node migrate.js [projectDir]   (default: current working directory)
 //        consent flags, passed only after the user's explicit yes: --remove-phantom-sample,
-//        --install-pre-commit-hook (the optional secret-scan hook; offered on every run as a [hook] line)
+//        --install-pre-commit-hook (the optional secret-scan hook; offered on every run as a [hook] line),
+//        --move-strays=<plan digest> [--stray-to-knowledge=<path>::<one-line description> …]
+//        (the stray-files check; reported on every run as [stray] lines)
 //
 // Apply-then-report, no preview gate. A clean git tree is required — git is the
 // rollback; the one gitignored file the engine rewrites (.env) is handled loss-proof
@@ -73,6 +75,16 @@ try {
     ? hook.install(projectRoot, { pluginRoot }) : hook.status(projectRoot, { pluginRoot });
   console.log(hook.engineLine(r));
 } catch { console.log('[hook] status unavailable - the migration continues'); }
+
+// Project layout: stray-files report, or the consented moves. Never a migration; runs before
+// the fast path so up-to-date projects get it; never touches report counters, so it can never
+// withhold the stamp. stampCurrent only words the one-preceding-step message.
+try {
+  const strays = require('./lib/strays.js');
+  const s = scaffold.readVersionStamp(projectRoot);
+  const stampCurrent = s !== null && compareVersions(s, scaffold.readPluginVersion(pluginRoot)) === 0;
+  for (const line of strays.engineLines(projectRoot, { pluginRoot, flagArgs, stampCurrent })) console.log(line);
+} catch { console.log('[stray] check unavailable - the migration continues'); }
 
 // ── Version gate fast paths (they write nothing, so they need no clean tree;
 //    the clean-tree guard below protects only actual migration work) ──────────

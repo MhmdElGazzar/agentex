@@ -191,5 +191,40 @@ test('qa-records.md: the four kinds, the QA watchlist, formats, lazy + committed
   assert.ok(fs.existsSync(path.join(ROOT, 'scripts', 'qa-records.js')));
 });
 
+test('qa-records.md and task-lifecycle.md: a settled closure carries its answer into knowledge/ (project-layout-contract R3)', () => {
+  const md = read('references/tracker/qa-records.md');
+  const kinds = section(md, /kinds/i);
+  const onClose = (kinds.split(/\*\*On close\.\*\*/)[1] || '');
+  assert.ok(onClose, 'an "On close" paragraph in the kinds section');
+  const rows = [...onClose.matchAll(/^\| `(\w+)` \| (.+?) \| (.+?) \|$/gm)].map((m) => m[1]);
+  assert.deepStrictEqual([...rows].sort(), [...QA_KINDS].sort(), 'one row per kind');
+  assert.match(section(md, /read-thread/i), /settles a lasting fact, add it\s+to the matching `knowledge\/` file/);
+  const retest = section(read('references/tracker/task-lifecycle.md'), /retest close/i);
+  assert.match(retest, /adds nothing to `knowledge\/` unless the retest settled a behaviour/);
+});
+
+// ---- project-layout.md (the shared layout reference, project-layout-contract R5.1) ----
+test('project-layout.md: the four sections, in order (layout, knowledge/, lifecycle, scratch)', () => {
+  const md = read('references/project-layout.md');
+  const heads = [...md.matchAll(/^## (.+)$/gm)].map((m) => m[1].toLowerCase());
+  const want = [/^1\. the layout/, /^2\. knowledge\//, /^3\. lifecycle/, /^4\. scratch/];
+  assert.strictEqual(heads.length, want.length, `exactly four sections (have: ${heads.join(' | ')})`);
+  want.forEach((re, i) => assert.match(heads[i], re));
+});
+
+test('project-layout.md: the kind → knowledge-file table names exactly the four qaRecords kinds', () => {
+  const md = read('references/project-layout.md');
+  const sec = section(md, /lifecycle/i);
+  const kinds = [...sec.matchAll(/^\s*\| `(\w+)` \|/gm)].map((m) => m[1]);
+  assert.deepStrictEqual([...kinds].sort(), [...QA_KINDS].sort());
+});
+
+test('project-layout.md: linked by a skill (never dormant), and it links no dormant reference', () => {
+  assert.ok(linked('project-layout.md'), 'no skill, command or agent links references/project-layout.md');
+  assert.ok(!('project-layout.md' in DORMANT));
+  const md = read('references/project-layout.md');
+  for (const r of Object.keys(DORMANT)) assert.ok(!md.includes(r), `it names the dormant ${r}, which would wake it`);
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;

@@ -43,6 +43,18 @@ What each kind records, who appends it, and when it is resolved:
   yet). **Appended** when the decision is made. **Resolved** when the condition is tested,
   or dropped by the owner's decision, and the resolution says which.
 
+**On close.** A resolved entry stays in its file (history is kept). When the resolution
+settles a lasting fact, also add that fact to the project's `knowledge/` folder, as one entry
+with its source and date (the format and rules are in the AgenTeX block of the project's
+`CLAUDE.md` and in [project-layout.md](../project-layout.md)). Kind by kind:
+
+| Kind resolved | Carry to `knowledge/` when… | File |
+|---|---|---|
+| `pendingQuestions` | the reply decides a rule or expected behaviour | `business-rules.md` (a rule) or `app-map.md` (how a page or flow behaves) |
+| `envIssues` | the problem is **recurring** and has a known workaround; a one-off outage carries nothing | `gotchas.md` |
+| `pendingRechecks` | normally never (a passed retest is not a fact) | none |
+| `deferredConditions` | it was dropped by the owner's decision (a scope rule) | `business-rules.md` |
+
 ## 2. Files and format
 
 - **Lazy.** Nothing exists until a kind's first `append`. That call creates the folder and
@@ -78,9 +90,9 @@ Use this to decide whether an open `pendingQuestions` entry has been answered. R
 start of any run that touches the entry's story.
 
 1. **Read every thread, merged by date.** Read the story's discussion with
-   `tracker.js comments --id <story> --out .agentex/scratch/<name>.json` and Read the file.
-   Find its bugs with `tracker.js relations --id <story> --kind related,child --out
-   .agentex/scratch/<name>.json`. Read each bug's thread the same way. Merge all comments
+   `tracker.js comments --id <story> --out .agentex/scratch/tracker/<story>-comments.json` and
+   Read the file. Find its bugs with `tracker.js relations --id <story> --kind related,child
+   --out .agentex/scratch/tracker/<story>-relations.json`. Read each bug's thread the same way. Merge all comments
    by date. Text always goes through `--out` and Read, never through a pipe, which can drop
    non-ASCII.
 2. **Keep only what came after the question.** Ignore comments dated before the entry's
@@ -92,8 +104,10 @@ start of any run that touches the entry's story.
    - **Vague**: it defers ("let's discuss"), restates the question, answers only part of
      it, or comes from someone who can't decide.
 
-   A decisive reply resolves the entry. Use `qa-records.js resolve`, with a resolution that
-   quotes the author, the date and the chosen option. For a vague reply, leave the entry
+   A decisive reply resolves the entry, and, when the reply settles a lasting fact, add it
+   to the matching `knowledge/` file (format and rules: the AgenTeX block in `CLAUDE.md`).
+   Use `qa-records.js resolve`, with a resolution that quotes the author, the date and the
+   chosen option. For a vague reply, leave the entry
    open and propose a follow-up phrased per `../question-format.md`, shown to the user before
    anything is posted.
 4. **Never resolve on silence.** No reply, or no decisive reply, leaves the entry open. Say
@@ -111,17 +125,20 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" append --kind pendingQuestion
   --text "Story 1204, criterion 3: (A) all nine columns; (B) the six in the sample. Which one?"
 # -> {"ok":true,"kind":"pendingQuestions","file":"…","id":"question-…","createdAt":"…","created":true}
 
-# long or non-Latin text: write it to a scratch file first (.agentex/scratch/ only)
-node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" append --kind envIssues --text-file .agentex/scratch/blocker.txt
+# long or non-Latin text: write it to a scratch file first (.agentex/scratch/qa-records/ only)
+node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" append --kind envIssues --text-file .agentex/scratch/qa-records/blocker.txt
 
 # what is still open (the default is every kind, status open), into a file to Read
-node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" list --out .agentex/scratch/watchlist.json
+node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" list --out .agentex/scratch/qa-records/watchlist.json
 node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" list --kind pendingQuestions --ref 1204 --status all
 
 # a decisive reply arrived
 node "${CLAUDE_PLUGIN_ROOT}/scripts/qa-records.js" resolve --kind pendingQuestions --id question-20261009080706-a1b2 \
   --resolution "PO, 2026-10-10: (A) all nine columns"
 ```
+
+The `--text-file`, `--data`, `--resolution-file` and `--out` files live under
+`.agentex/scratch/qa-records/`, never anywhere else in the project ([project-layout.md](../project-layout.md)).
 
 - `append --kind <k> (--text "<t>" | --text-file <f>) [--ref <id>] [--data <json file>]`
   returns the new entry's `id`, and `created: true` when this call created the file.

@@ -13,7 +13,8 @@ Arguments: $ARGUMENTS
     SwaggerHub lookup via the **Swagger MCP connector**: `swagger_search_apis_and_domains`
     (or `swagger_list_organizations` first, if the owner is ambiguous) to find the API, then
     `swagger_get_api_definition(owner, api, version, resolved: true)` to fetch its JSON. Write
-    the result to a temp file and use that file's path as the source below.
+    the result to `.agentex/scratch/swagger/<api>.json` (agent scratch, see
+    `${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`) and use that path as the source below.
 - Optional `--name <service>`: slug for the generated files and env-var prefix. If omitted,
   derive it from the spec's `info.title`.
 - If no source is given, ask the user for one rather than guessing.

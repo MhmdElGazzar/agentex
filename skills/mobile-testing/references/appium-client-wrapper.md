@@ -33,7 +33,7 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/mobile-testing/scripts/appium_client.js <subco
 | `click` | `--session <id>` `--element <elementId>` | `{}` |
 | `send-keys` | `--session <id>` `--element <elementId>` `--text <text>` **or** `--text-env <NAME>` | `{}` |
 | `get-text` | `--session <id>` `--element <elementId>` | `{"text":"..."}` |
-| `screenshot` | `--session <id>` `--out <path.png>` | `{"path":"<path.png>"}` |
+| `screenshot` | `--session <id>` `--out <SESSION_DIR>/screenshots/<name>.png` | `{"path":"<path.png>"}` |
 | `swipe` | `--session <id>` `--from <x>,<y>` `--to <x>,<y>` | `{}` |
 | `back` | `--session <id>` | `{}` |
 | `source` | `--session <id>` | `{"source":"<xml>"}` |
@@ -82,6 +82,6 @@ node appium_client.js find --session abc123 --using "accessibility id" --value l
 # -> {"result":"PASS","element":"elem-1"}
 node appium_client.js click --session abc123 --element elem-1
 node appium_client.js send-keys --session abc123 --element elem-2 --text-env QA_TESTER_PASSWORD
-node appium_client.js screenshot --session abc123 --out s1-login.png
+node appium_client.js screenshot --session abc123 --out <SESSION_DIR>/screenshots/s1-login.png
 node appium_client.js close-session --session abc123
 ```
