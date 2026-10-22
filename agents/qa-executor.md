@@ -49,8 +49,21 @@ WHERE TO SAVE EVIDENCE (your session slice only)
     npx playwright-cli -s={{SESSION}} console error > {{SESSION_DIR}}/logs/s1-console.log
   Save network / run-code captures the same way.
 
-TEST_DATA is your test input (users, default OTP/password). A `{ "envSecret": "NAME" }` value =
-read `NAME` from the project's `.env` at use time; never print or log it.
+TEST_DATA is your test input (users, default OTP/password). A `{ "envSecret": "NAME" }` value is
+never resolved by you:
+- SECRETS: type it ONLY with the bundled script (mechanics in
+  `${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/references/tools/fill-secret.md`; read it first):
+    node ${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/scripts/fill_secret.js --session {{SESSION}} --target <ref> --env-var NAME --env {{ENVIRONMENT}} --submit
+  (omit `--env` when ENVIRONMENT is empty). Never resolve, read, echo, or pass the value
+  yourself, and never try another way (`fill`, `type`, `run-code`, `$NAME`, reading `.env`).
+  A refused command is not a puzzle to solve.
+- Snapshot BEFORE filling and fill secrets last. Run no other playwright-cli command between
+  the first secret fill and the submit (a snapshot shows input values in clear, passwords
+  included, and every action writes one to `.playwright-cli/`): submit in the last call with
+  `--submit` or `--submit-target <pre-fill ref>`; it clears every secret field still filled.
+- Segmented boxes (OTP digits): one call with one `--target` per box, in order.
+- `secret-unavailable` → the scenario is BLOCKED (report the NAME, never a value), never FAIL,
+  never `captcha-or-otp`. In `api:`/`db:` steps the runners resolve secrets themselves.
 
 INTEGRATION STEPS (`api:` / `db:` in the spec)
 - `api:` steps → the **api-integration** skill; `db:` steps → the **db-integration** skill
