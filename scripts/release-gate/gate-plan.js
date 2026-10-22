@@ -217,7 +217,9 @@ function plan(cwd, opts) {
   gitText(cwd, ['rev-parse', '--show-toplevel']);
   const baseRef = opts.base || lastBump(cwd);
   if (!baseRef) throw new Error('no commit with a subject starting "chore: bump to" — pass --base <ref>');
-  const base = gitText(cwd, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${baseRef}^{commit}`]);
+  let base;
+  try { base = gitText(cwd, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${baseRef}^{commit}`]); }
+  catch { throw new Error(`--base ${JSON.stringify(baseRef)} is not a commit in this repo`); }
   const head = gitText(cwd, ['rev-parse', '--verify', 'HEAD^{commit}']);
   const changed = gitText(cwd, ['diff', '--name-only', '--no-renames', `${base}..${head}`]).split('\n').filter(Boolean);
   const short = (sha) => gitText(cwd, ['rev-parse', '--short', sha]);
