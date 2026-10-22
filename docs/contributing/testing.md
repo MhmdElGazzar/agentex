@@ -44,8 +44,44 @@ totals and wall time on stderr, and one JSON line on stdout
 side by side, so a test must not hold a fixed port or a fixed temp path (take port `0`,
 `fs.mkdtempSync`); one that truly cannot goes in the runner's documented `SERIAL_ONLY` list.
 
+To run only the tests a change can reach, see
+[Running only what a change affects](#running-only-what-a-change-affects).
+
 **Minimum coverage:** the success path, each `FAIL` mode, each `BLOCKED` precondition, and any
 safety rule enforced in code (catalog-only lookup, DDL ban, param sanitization, secret-header
 presence/absence).
+
+## Running only what a change affects
+
+**What:** `scripts/dev/affected.js` reads what changed since `main` (commits, uncommitted
+edits and untracked files) and lists the script tests and evals that change can affect.
+
+```
+node scripts/dev/affected.js            # list what to run
+node scripts/dev/affected.js --run      # run the selected script tests, in parallel
+```
+
+Also `--base <ref>` (default `main`), `--files a,b` (skip the git lookup) and `--json`.
+
+**How it picks:**
+
+- **Script tests** — from each test's dependency graph: what it `require()`s, every path it
+  builds from `__dirname` (spawned runners, templates, fixture folders), and transitively what
+  those files depend on. A changed code or data file that no test reaches selects **every**
+  script test, so a missed edge costs time, never coverage.
+- **Evals** — from `evals/coverage.json`, which maps each case to the paths it exercises. A
+  changed `.js` file also counts for every file that requires or spawns it. A changed
+  `description` in any `skills/*/SKILL.md` or `commands/*.md` selects every `trigger-*` and
+  `negative-*` case, since triggering depends on all descriptions together. Evals are only
+  listed, never started — each `claude plugin eval` run is slow and paid.
+- **No impact** — anything outside `skills/`, `scripts/`, `commands/`, `agents/`,
+  `templates/`, `hosts/`, `references/`, `evals/`, `test/` and `.claude-plugin/` (docs,
+  CHANGELOG).
+
+**When you add an eval case:** add its entry to `evals/coverage.json`;
+`scripts/dev/affected.test.js` fails until you do.
+
+**Releases still run everything:** `node scripts/run-tests.js` for the script tests, and the full
+eval suite. `--run` reuses that runner's parallel pool, and also picks up untracked new tests.
 
 Next: [PR Workflow](./pr-workflow.md).
