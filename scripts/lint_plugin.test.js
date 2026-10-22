@@ -285,6 +285,7 @@ const KNOWN = {
     'tests scripts/migrations/10-phantom-sample-env.js',
     'tests scripts/migrations/11-user-field-schema.js',
     'tests scripts/migrations/12-qa-records-and-workflow.js',
+    'tests scripts/migrations/13-claude-md-layout-block.js',
     'tests scripts/precommit_hook.js',
     'tests skills/task-estimation/scripts/estimation/defaults.js',
     'tests skills/task-estimation/scripts/strategies/ado.js',

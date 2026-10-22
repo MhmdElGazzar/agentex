@@ -186,7 +186,9 @@ function ensureLayoutBlock(projectRoot, { dryRun = false } = {}) {
 }
 
 // ── Full scaffold — the exact set of actions /init-test performs ─────────────
-function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
+// layoutBlock: false leaves the AgenTeX block out — migration 07's gap-fill uses it, so the
+// block stays migration 13's (its own report lines and its [flag] for an edited block).
+function scaffoldProject(projectRoot, pluginRoot, { dryRun = false, layoutBlock = true } = {}) {
   const actions = [];
   const push = (kind, f, note) => actions.push({ kind, path: rel(projectRoot, f), note });
 
@@ -266,7 +268,7 @@ function scaffoldProject(projectRoot, pluginRoot, { dryRun = false } = {}) {
   // 5. CLAUDE.md guidance: the executions/ bullet, then the AgenTeX layout block — the
   //    same two calls, in the same order, as migrations 06 and 13 (fresh == migrated).
   actions.push(ensureClaudeMdBullet(projectRoot, { dryRun }));
-  actions.push(ensureLayoutBlock(projectRoot, { dryRun }));
+  if (layoutBlock) actions.push(ensureLayoutBlock(projectRoot, { dryRun }));
 
   return actions;
 }
