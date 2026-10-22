@@ -22,7 +22,7 @@ executors. This page explains the parts of it that need more than one table row.
 ├── .agentex/            plugin state (version stamp, test template)
 │   ├── plugin-learnings.md   gaps in AgenTeX itself that this project worked around (committed)
 │   ├── scratch/         every temp, probe, dump or intermediate file (gitignored)
-│   └── cache/           tracker field metadata (gitignored)
+│   └── cache/           tracker caches: field metadata, the Bug mirror (gitignored)
 └── executions/          run output: reports, screenshots, logs
 ```
 
