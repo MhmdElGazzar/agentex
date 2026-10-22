@@ -295,6 +295,35 @@ test('A-2: a freshly scaffolded, git add-ed project scans with no plain-string w
   assert.strictEqual(out.result, 'CLEAN');
 });
 
+// ---- pristine project config across the plugin-block seeding (SCF R6/R7) ----
+// The template gained the four plugin-owned blocks; migration 12 and the wizard
+// save add them (at their defaults) to an older scaffold. Neither makes an
+// untouched scaffold the user's: an older shipped shape is pristine with or
+// without the seeded defaults; a customized block is the user's.
+const PLUGIN_BLOCK_KEYS = ['testingTasks', 'testDesign', 'estimation', 'qaRecords'];
+const withoutPluginBlocks = (cfg) => Object.fromEntries(Object.entries(cfg).filter(([k]) => !PLUGIN_BLOCK_KEYS.includes(k)));
+
+test('pristine: the template shipped before the plugin blocks (0.25) is pristine, bare or after m12/wizard seeding', () => {
+  const { withPluginConfigBlocks } = require('./project_config.js');
+  const before = withoutPluginBlocks(TEMPLATE_PROJECT);
+  assert.strictEqual(scaffold.isPristineProjectConfig(before, PLUGIN_ROOT), true, 'the outgoing shape is a historical shape');
+  assert.strictEqual(scaffold.isPristineProjectConfig(withPluginConfigBlocks(before), PLUGIN_ROOT), true, 'seeded = the current template');
+  const preA2 = withoutPluginBlocks(PRE_A2_PROJECT_TEMPLATE);
+  assert.strictEqual(scaffold.isPristineProjectConfig(preA2, PLUGIN_ROOT), true);
+  assert.strictEqual(scaffold.isPristineProjectConfig(withPluginConfigBlocks(preA2), PLUGIN_ROOT), true, 'an older scaffold after m12 is still scaffolding');
+});
+
+test('pristine: a customized plugin block, or a provider block, makes the config the user\'s', () => {
+  const custom = JSON.parse(JSON.stringify(TEMPLATE_PROJECT));
+  custom.testingTasks = [{ stage: 'automation', enabled: false }];
+  assert.strictEqual(scaffold.isPristineProjectConfig(custom, PLUGIN_ROOT), false);
+  const partial = withoutPluginBlocks(TEMPLATE_PROJECT);
+  partial.qaRecords = { pendingQuestions: 'notes/questions.md' };
+  assert.strictEqual(scaffold.isPristineProjectConfig(partial, PLUGIN_ROOT), false);
+  const tracked = { ...JSON.parse(JSON.stringify(TEMPLATE_PROJECT)), azure: { org: 'exampleorg', project: 'Sample Project' } };
+  assert.strictEqual(scaffold.isPristineProjectConfig(tracked, PLUGIN_ROOT), false);
+});
+
 // ---- config/estimation.json: the user's file, committed, never scaffolded ----
 const ESTIMATION = 'config/estimation.json';
 const ESTIMATION_BYTES = '{\n  "schemaVersion": 1,\n  "tasks": [ { "name": "Exploratory Pass", "enabled": true, "minHours": 1, "maxHours": 3 } ],\n  "factors": { "Scope": 1 }\n}\n';

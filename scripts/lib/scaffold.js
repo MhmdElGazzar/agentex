@@ -311,10 +311,26 @@ const HISTORICAL_SAMPLE_ENV_SHAPES = [
 // HISTORICAL_PROJECT_TEMPLATE_SHAPES — the same rule for templates/config/project.json:
 // the wizard's "pristine project" check (server.js) judges against the current
 // template plus every shipped revision, so a project scaffolded by an older version
-// and never configured is still recognised as scaffolding. Currently one:
+// and never configured is still recognised as scaffolding. Currently two:
 //   1. the template shipped until Decision A-2 (2026-10-19): the shared test password
 //      was a plain descriptor with the Test@1234 default; A-2 made it secret.
-// When the template changes, append the outgoing shape here.
+//   2. the template shipped until the plugin-owned config blocks (skill-consolidation-
+//      foundation, 1.0.0): shape 1's fields with A-2's secret password, and no
+//      testingTasks / testDesign / estimation / qaRecords.
+// When the template changes, append the outgoing shape here. Each shape also counts
+// with the plugin blocks seeded at their defaults (withPluginConfigBlocks — what
+// migration 12 and the wizard save add), so an older scaffold stays scaffolding
+// after an upgrade.
+const PRE_A2_PASSWORD_FIELD = {
+  key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
+  hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
+  hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)',
+};
+const A2_PASSWORD_FIELD = {
+  key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', secret: true,
+  hint: 'كلمة مرور حسابات الاختبار المشتركة — قيمتها تُحفظ في \u200e.env فقط، وملف البيئة يشير إليها باسم المتغير',
+  hintEn: 'The shared test-account password — its value is kept in .env only; the environment file refers to it by variable name',
+};
 const HISTORICAL_PROJECT_TEMPLATE_SHAPES = [
   {
     name: 'my-project',
@@ -329,13 +345,15 @@ const HISTORICAL_PROJECT_TEMPLATE_SHAPES = [
       { key: 'notes', label: 'ملاحظات', labelEn: 'Notes', type: 'text', placeholder: 'for negative login scenarios' },
     ],
     defaultsFields: [
-      { key: 'password', label: 'كلمة المرور الافتراضية', labelEn: 'Default Password', default: 'Test@1234',
-        hint: 'كلمة مرور حسابات الاختبار المشتركة — تُكتب كما هي في ملف البيئة (ليست سرًّا حقيقيًا)',
-        hintEn: 'The shared test-account password — written as-is into the environment file (not a real secret)' },
+      PRE_A2_PASSWORD_FIELD,
       { key: 'otp', label: 'OTP الافتراضي', labelEn: 'Default OTP', default: '0000' },
     ],
   },
 ];
+HISTORICAL_PROJECT_TEMPLATE_SHAPES.push({
+  ...HISTORICAL_PROJECT_TEMPLATE_SHAPES[0],
+  defaultsFields: [A2_PASSWORD_FIELD, HISTORICAL_PROJECT_TEMPLATE_SHAPES[0].defaultsFields[1]],
+});
 
 // Is this parsed config/project.json structurally identical to a shipped template?
 function isPristineProjectConfig(parsed, pluginRoot) {
@@ -344,7 +362,10 @@ function isPristineProjectConfig(parsed, pluginRoot) {
   try {
     shapes.push(JSON.parse(fs.readFileSync(path.join(pluginRoot, 'templates', 'config', 'project.json'), 'utf8')));
   } catch { /* unreadable template — historical shapes still apply */ }
-  return shapes.concat(HISTORICAL_PROJECT_TEMPLATE_SHAPES).some(shape => isDeepStrictEqual(parsed, shape));
+  // Required here, not at the top: project_config.js stays free of scaffold.js.
+  const { withPluginConfigBlocks } = require('./project_config.js');
+  return shapes.concat(HISTORICAL_PROJECT_TEMPLATE_SHAPES)
+    .some(shape => isDeepStrictEqual(parsed, shape) || isDeepStrictEqual(parsed, withPluginConfigBlocks(shape)));
 }
 
 // Every sample-environment shape ever shipped: current template first (read from
