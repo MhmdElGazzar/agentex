@@ -1,0 +1,10 @@
+{
+  "portalUrl": "https://portal.example.test",
+  "defaults": {
+    "password": { "envSecret": "QA_PASSWORD" },
+    "otp": { "envSecret": "QA_OTP" }
+  },
+  "users": {
+    "valid_user": { "email": "qa.tester@example.com" }
+  }
+}
