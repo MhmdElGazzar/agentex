@@ -54,7 +54,7 @@ See [docs/](./docs/) for the full reference on any feature.
 
 ### What you run, and what it uses
 
-11 commands, 17 skills and 3 subagents. Solid arrows: a command runs a skill. Dotted arrows: work handed to a subagent.
+11 commands, 18 skills and 3 subagents. Solid arrows: a command runs a skill. Dotted arrows: work handed to a subagent.
 
 ```mermaid
 flowchart LR
@@ -76,6 +76,7 @@ flowchart LR
     s_browser_driver["browser-driver"]
     s_define_flow["define-flow"]
     s_endpoint_testing["endpoint-testing"]
+    s_field_feedback["field-feedback"]
     s_mobile_testing["mobile-testing"]
     s_swagger_import["swagger-import"]
     s_task_estimation["task-estimation"]
@@ -107,6 +108,7 @@ flowchart LR
   c_execute_test --> s_test_execution
   c_import_swagger --> s_swagger_import
   c_test_endpoints --> s_endpoint_testing
+  c_update_agentex --> s_field_feedback
   s_endpoint_testing -.-> a_api_executor
   s_endpoint_testing -.-> a_qa_executor
   s_mobile_testing -.-> a_mobile_qa_executor
@@ -128,9 +130,11 @@ flowchart LR
   s_define_flow["define-flow"]
   s_endpoint_testing["endpoint-testing"]
   s_extent_report["extent-report"]
+  s_field_feedback["field-feedback"]
   s_mobile_testing["mobile-testing"]
   s_optimize_login["optimize-login"]
   s_swagger_import["swagger-import"]
+  s_task_estimation["task-estimation"]
   s_test_design["test-design"]
   s_test_execution["test-execution"]
   s_ui_check["ui-check"]
@@ -143,6 +147,7 @@ flowchart LR
   s_define_flow --> s_test_execution
   s_endpoint_testing --> s_api_integration
   s_endpoint_testing --> s_swagger_import
+  s_field_feedback --> s_task_estimation
   s_mobile_testing --> s_ask_kb
   s_mobile_testing --> s_db_integration
   s_mobile_testing --> s_extent_report

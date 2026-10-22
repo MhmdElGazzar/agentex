@@ -86,6 +86,9 @@ const INTERNAL_ENV = new Set([
   'AGENTEX_FILL_TMP', 'AGENTEX_PWCLI_CMD',
   // test seam: browser_bridge.js's tests point it at golden/fake_playwright_cli.js
   'AGENTEX_PLAYWRIGHT_CLI',
+  // scripts/dev/reproof_fill_secret_rerender.js (maintainer re-proof, never shipped): where to
+  // find @playwright/cli, and verbose output
+  'AGENTEX_REPROOF_NODE_MODULES', 'REPROOF_DEBUG',
 ]);
 
 // Secret shapes. Written so this file's own source never matches them.
