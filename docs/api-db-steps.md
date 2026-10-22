@@ -41,7 +41,7 @@ own service's requests/queries.
   nested under `integration/api_test_suites/<service>/` for a `swagger-import`ed service);
   each catalog `"name"` must be unique (a duplicate is BLOCKED)
 - Runner: `skills/api-integration/scripts/run_api.js`
-- Standalone runs: `/agentex:test-endpoints` runs every `*_suite.json` case without a browser spec; `/agentex:import-swagger` generates the catalog + suite from a Swagger/OpenAPI file
+- Standalone runs: `/agentex:test-endpoints` runs every `*_suite.json` case without a browser spec; `/agentex:import-swagger` generates the catalog + suite from a Swagger/OpenAPI file (`--wizard` and `--edit`: see "API suites: wizard and editor" below)
 - Catalog sample: `skills/api-integration/templates/sample_api.json`
 - Config: the active environment's `api` block (`baseUrl`, `token`); legacy
   `API_BASE_URL`/`API_TOKEN` in `.env` as fallback. Which catalogs it targets: `"target":
@@ -58,6 +58,49 @@ own service's requests/queries.
 - Config: the active environment's `db` block (`server`, `port`, `name`, `user`,
   `password`); legacy `DB_*` in `.env` as fallback
 - Reference: `skills/db-integration/references/sqlcmd.md`
+
+## API suites: wizard and editor
+
+Two local pages turn a Swagger into basic API checks you can see, fix and re-run. Both run on
+your machine only (127.0.0.1, a per-run access token, nothing loaded from the internet). Both
+are in Arabic by default; add `--lang=en` for English.
+
+**`/agentex:import-swagger --wizard [spec]`: "New suite from Swagger"**
+1. **Swagger:** the spec URL or file, a suite name, and an environment you pick (there is no
+   default). Only the spec is fetched; nothing is written yet.
+2. **Endpoints:** every operation with its auth need and the data it needs. DELETE and other
+   destructive writes start unselected; other writes arrive skipped; public ones get no 401
+   case.
+3. **Test data:** Claude looks in the project first (test data, past runs, read-only DB
+   queries). Then it signs in to the application's UI as a user you pick. The password comes
+   from `.env` and is never shown. It reads real IDs, bodies and the session token from the
+   application's own network calls. A captcha or OTP is handed to you. A value nobody finds can
+   be typed or left as a placeholder.
+   - Creating missing data through the UI needs your one consent on the exact list, and only on
+     an environment marked `"nonProduction": true` (see [configuration](./configuration.md)).
+4. **Cases:** a preview of four basic checks per endpoint: happy path (2xx + required fields),
+   not found (404), no token (401), missing required field (400).
+5. **Approve:** one approval writes the catalog and the suite (never over an existing file),
+   then opens the editor. "Approve and run now" also runs the new suite.
+
+**`/agentex:test-endpoints --edit`: the suite editor**
+- Every suite under `integration/api_test_suites/`, with a source badge on each value (UI ·
+  Project · Auto · Placeholder · Manual) and Needs review / Failing / Skipped filters.
+- Edit a case in the drawer, then Save. If the file changed on disk after you opened it, Save
+  refuses and keeps both your edits and the file.
+- Run all or Run this case go through the same runner as `/agentex:test-endpoints` and leave the same
+  evidence in `executions/`.
+- A case whose value is still a placeholder is reported BLOCKED ("needs a real value") and is
+  never sent.
+
+**Where things land:** the catalog and suite are yours to commit. The collected values
+(`.agentex/cache/api-data/`) and a captured token (`test/.auth/api-tokens/`) stay local and
+gitignored. The token is used only when the catalog's token variable is not set in `.env`. To
+refresh an expired token, ask Claude in chat.
+
+New suite-case fields for hand-written suites too: `"auth": "none"` (send with no credential),
+`"omit": ["field"]` (send without it) and `"expect": {"contains": {"message": "text"}}`. See
+`skills/endpoint-testing/references/suite-format.md`.
 
 **Reference:**
 - Skills: `skills/api-integration/SKILL.md`, `skills/db-integration/SKILL.md`

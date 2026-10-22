@@ -1,6 +1,6 @@
 ---
 name: test-endpoints
-description: "Run the standalone API test pass (\"api-tests\") over every cataloged case, independent of any browser test spec."
+description: "Run the standalone API test pass (\"api-tests\") over every cataloged case, independent of any browser test spec. --edit opens the local suite editor."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,11 @@ disable-model-invocation: true
 Use the **endpoint-testing** skill to run the standalone API tests.
 
 Arguments: (the argument text the user typed after the command's name)
+
+**Editor form — `--edit [--lang=ar|en]`:** open the local suite editor instead of running.
+Follow `<agentex-root>/skills/endpoint-testing/references/suite-editor.md`. The editor
+needs no agent; its Run goes through `run_suite.js` directly. Every other form below is
+unchanged.
 
 **Parse the arguments:** optional environment — `--env <name>`, `env: <name>` or "on <name>"
 selects `environments/<name>.json` (same as `/agentex:execute-test`) for the whole run; omitted = the

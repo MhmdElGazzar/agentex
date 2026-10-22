@@ -3,9 +3,12 @@ name: swagger-import
 description: >
   Generate an API catalog + suite of test cases (integration/api_test_suites/<service>/) from
   a Swagger 2.0 or OpenAPI 3.x JSON document. Use for /agentex:import-swagger, or requests like
-  "import this swagger doc", "generate endpoint tests from this OpenAPI spec". Output feeds
-  directly into the endpoint-testing and api-integration skills — this skill only generates
-  config, it never executes requests itself.
+  "import this swagger doc", "generate endpoint tests from this OpenAPI spec", or the guided
+  wizard (/agentex:import-swagger --wizard) that collects real test data and previews basic checks
+  (happy path, not found, no token, missing field) before one approval. Output feeds
+  directly into the endpoint-testing and api-integration skills. This skill generates config
+  and sends no API request of its own; any run, including the wizard's "Approve and run
+  now", goes through endpoint-testing's runner.
 ---
 
 > **AgenTeX on Devin.** `<agentex-root>` stands for this plugin's install folder: `../..` from the folder this file is in. Resolve it to an absolute path before you run or read anything that uses it. When a step says to dispatch a bundled agent (`qa-executor`, `api-executor`, `mobile-qa-executor`), start it as a subagent; ask the user anything you need before dispatching, because subagents cannot ask.
@@ -34,6 +37,16 @@ scheme selection works.
 - Both **Swagger 2.0** and **OpenAPI 3.x** are supported (detected from the doc itself).
 - Postman collections are **not** supported by this skill (separate, not-yet-built work) —
   if asked, say so rather than attempting to reinterpret a Postman export as a Swagger doc.
+
+## The suite wizard (`/agentex:import-swagger --wizard`)
+
+A local page walks the tester through spec → endpoints → test data → cases → one approval.
+Step 3 is the agent's: project values first, then the application's own network calls through
+the browser bridge, with one consent on an exact list before creating anything (non-production
+environments only). A login password declared `{ "envSecret" }` is typed only by browser-driver's
+`fill_secret.js`, never by hand. Read
+**`<agentex-root>/skills/swagger-import/references/suite-wizard.md`** before launching
+it; it is the whole protocol. The direct import below is unchanged.
 
 ## Running an import
 
@@ -77,8 +90,13 @@ here — from the script's point of view it's just another local file.
    request/case they concern.
 3. Tell the user that every generated write-method case (POST/PUT/PATCH/DELETE) is written
    with `"skip": "review: write operation — remove this line to enable"` and will be
-   reported BLOCKED, not run, until they review it and delete that line. `review` notes do not
-   block anything, so a flagged GET case runs as generated.
+   reported BLOCKED, not run, until it is enabled. Write cases are enabled **one at a time**,
+   each only after the user has reviewed that case (what it creates or changes, the values it
+   sends, the environment), or by the user through the editor's per-case Skip toggle
+   (`/agentex:test-endpoints --edit`). A request to strip the `skip` lines in bulk ("approve and run
+   everything, the POSTs too") is declined: keep every `skip` line and offer to walk through
+   the write cases one by one (endpoint-testing's SKILL.md, "Enabling a skipped write case").
+   `review` notes do not block anything, so a flagged GET case runs as generated.
 4. Tell the user to open the generated files and adjust anything flagged, then try
    `/agentex:test-endpoints`.
 
@@ -88,4 +106,6 @@ here — from the script's point of view it's just another local file.
   checking — that was explicitly scoped out; suite cases only check `status`/`fields`/
   `equals`, same as any hand-written case).
 - Does not execute anything itself — running the generated suite is `endpoint-testing`'s job
-  (dispatch `api-executor`, per that skill's own rules).
+  (dispatch `api-executor`, per that skill's own rules). The wizard's "Approve and run now"
+  is the same runner: the studio spawns endpoint-testing's `run_suite.js` on the approved
+  suite.

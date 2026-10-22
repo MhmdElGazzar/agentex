@@ -32,9 +32,13 @@ generated files before trusting suite results.**
 
 **Write operations are opt-in.** Every generated POST/PUT/PATCH/DELETE case is written with
 `"skip": "review: write operation — remove this line to enable"`. `run_suite.js` never
-executes a case carrying `skip` — it reports it BLOCKED with the reason quoted. Delete the line
-once you've reviewed the case. `review` notes themselves don't block anything, so a generated
-case with review notes runs as-is only if it is a GET.
+executes a case carrying `skip` — it reports it BLOCKED with the reason quoted. A write case
+is enabled one at a time: its `skip` line is removed only after the user has reviewed that
+case (what it creates or changes, the values it sends, the environment), or by the user
+through the editor's per-case Skip toggle (`/agentex:test-endpoints --edit`). A request to strip the
+`skip` lines in bulk is declined, with an offer to walk through the write cases one by one.
+`review` notes themselves don't block anything, so a generated case with review notes runs
+as-is only if it is a GET.
 
 ## `$ref` resolution
 
@@ -148,6 +152,39 @@ guessing "all of them" when nothing is actually guaranteed present.
   in its `review` as a guess.
 - **Array-typed 2xx responses** — `expect.fields` isn't generated for these (no top-level
   object properties to check); only `expect.status` is set.
+
+## The wizard's generator (`/agentex:import-swagger --wizard`) vs this import
+
+The direct import above keeps its own case set (one happy-path case, plus an error case when a
+4xx is documented). The suite wizard shares the same spec model (`swagger_model.js`) but
+generates the four basic checks, from the values collected in its step 3:
+
+| Kind | When | Expect |
+|---|---|---|
+| `happy` | every selected operation | the first documented 2xx (else 200, flagged) + the response schema's `required[]` fields |
+| `not-found` | an operation with a path param (the last one gets an Auto non-existent ID: `999999999`, a nil-style UUID, or `agentex-does-not-exist`) | 404, plus `equals` on the message when the spec documents a 404 example |
+| `no-token` | an operation whose `security` (operation-level, else global) is non-empty | 401, case `auth: "none"` |
+| `missing-field` | the first required query param, else the first required top-level body field | 400 with that param in `omit`, plus `contains` on the message when the spec documents a 400 example |
+
+- **Messages come only from the spec's own examples**: OpenAPI 3 `content.<json>.example` /
+  `examples.*.value` / schema `example`, or Swagger 2 `examples["application/json"]`. The
+  message field is the first string among `message`, `error.message`, `detail`, `title`,
+  `error`. Without an example the case checks the status only and carries a review note. An
+  observed response is never copied in as the expectation.
+- **Params are the operation's needs only**: path params, required query params, and required
+  top-level body fields. A body field becomes a typed `{"$param": …}` node, so it is editable
+  like any other value.
+- **`sources`** records where each value came from (`ui`, `project`, `manual`, or `auto` for
+  the not-found ID). A value nobody found or typed is `placeholder`: the case shows as "needs
+  review" (unless it is skipped: a skipped case counts under Skipped only) and is BLOCKED at
+  run time until it gets a real value.
+- **Write operations** arrive with the same `skip` line. In step 2, a DELETE, an operation with
+  `x-destructive: true`, or one whose summary / operationId uses a destructive verb (delete,
+  remove, destroy, purge, erase, wipe, drop, truncate, terminate, revoke, reset, cancel) starts
+  unselected.
+- **Auth**: the catalog gets `auth.tokenStore: "<suite>"` when its auth is bearer or apiKey (or
+  when a token was captured from the UI), so a captured token is used when `tokenEnv` is unset.
+  A public operation (`security: []`) in a token catalog gets `auth: "none"` on its cases.
 
 ## Never overwrite
 
