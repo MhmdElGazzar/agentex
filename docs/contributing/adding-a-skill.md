@@ -215,7 +215,8 @@ If this were a real skill (it isn't — it's this guide's running example), the 
 be:
 
 - Add a row to `docs/README.md`'s feature table and the root `README.md` feature table.
-- Add a `CHANGELOG.md` entry under `[Unreleased]`:
+- Add a changelog fragment `changelog.d/<slug>.md` (never edit `CHANGELOG.md`; the release
+  assembles the fragments — see [pr-workflow.md](./pr-workflow.md)):
   ```markdown
   ### Added
   - `url-healthcheck` skill: `/check-url <url>` confirms a URL returns HTTP 200 before
