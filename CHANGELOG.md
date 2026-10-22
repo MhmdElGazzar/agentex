@@ -29,9 +29,26 @@ All notable changes to AgenTeX are documented here.
   `references/question-format.md` and `references/tracker/capabilities.md` (the operation
   × tracker matrix, checked against the adapters by a test), plus WIQL and JQL gotchas in
   `ado-boards.md` / `jira-boards.md`.
+- **The QA watchlist: `scripts/qa-records.js append | list | resolve`** and its reference
+  `references/tracker/qa-records.md`. Four kinds of record — questions awaiting a decisive
+  answer, items awaiting a retest, environment blockers, conditions deferred on purpose —
+  each in a Markdown file under a committed `qa-watchlist/` folder at the project root
+  (paths from `qaRecords` in `config/project.json`). A file is created the first time
+  something is recorded, never by `/init-test` or a migration; `resolve` changes exactly one
+  line and leaves every other byte of the file as it was.
+- **New projects and upgrades get the plugin-owned config blocks.** `/init-test`'s
+  `config/project.json` carries `testingTasks`, `testDesign`, `estimation` and `qaRecords`
+  at their defaults; `/update-agentex` runs **migration 12** (`qa-records-and-workflow`),
+  which adds any missing block and an empty `workflow` to the one configured tracker block
+  — it never rewrites a block you already have and never creates a tracker block. The
+  setup wizard's save adds the same blocks through the same function, so a fresh project
+  and an upgraded one end up identical. The wizard shows no new fields.
 - **Release gate: suite-membership check** (`scripts/release-gate/suite-check.js`) — a real
   add of a non-member pooled test case, an independent re-read, ledgered and removed at
   teardown as an association only.
+- **Maintainer check: `scripts/generic-denylist.test.js`** — fails when a tracked file
+  carries an identifier from a consumer's private skill forks; the denylist is compiled in
+  memory from an untracked folder (`AGENTEX_DENYLIST_SRC`) and never printed.
 
 ### Changed
 - **Azure DevOps comments are supported** by `tracker.js comment` (the comments API;
