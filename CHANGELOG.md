@@ -21,10 +21,11 @@ All notable changes to AgenTeX are documented here.
   writes nothing) and record any outcome on a test point with `fail`'s ledger (`fail`
   stays as its exact alias). Refused upfront on Jira (`testPlans: false`).
 - **One structured config getter** (`getStructured` in `scripts/lib/project_config.js`)
-  for the plugin-owned blocks `testingTasks`, `workflow` (in the configured tracker's
-  block), `reproSummaryRow`, `testDesign`, `estimation` and `qaRecords` — typed, merged
-  per key over defaults that reproduce today's behaviour, and strictly validated (a
-  malformed value is an exit-2 config error naming the key). Nothing reads it yet.
+  for the plugin-owned blocks `workflow` (in the configured tracker's block),
+  `reproSummaryRow`, `testDesign` and `qaRecords` — typed, merged per key over defaults
+  that reproduce today's behaviour, and strictly validated (a malformed value is an
+  exit-2 config error naming the key). Nothing reads it yet. The `[Testing]` task list
+  stays in `config/estimation.json` `tasks[]`, its one source.
 - **Shared references** `references/tracker/task-lifecycle.md`,
   `references/question-format.md` and `references/tracker/capabilities.md` (the operation
   × tracker matrix, checked against the adapters by a test), plus WIQL and JQL gotchas in
@@ -37,10 +38,10 @@ All notable changes to AgenTeX are documented here.
   something is recorded, never by `/init-test` or a migration; `resolve` changes exactly one
   line and leaves every other byte of the file as it was.
 - **New projects and upgrades get the plugin-owned config blocks.** `/init-test`'s
-  `config/project.json` carries `testingTasks`, `testDesign`, `estimation` and `qaRecords`
-  at their defaults; `/update-agentex` runs **migration 12** (`qa-records-and-workflow`),
-  which adds any missing block and an empty `workflow` to the one configured tracker block
-  — it never rewrites a block you already have and never creates a tracker block. The
+  `config/project.json` carries `testDesign` and `qaRecords` at their defaults;
+  `/update-agentex` runs **migration 12** (`qa-records-and-workflow`), which adds any
+  missing block and an empty `workflow` to the one configured tracker block — it never
+  rewrites a block you already have and never creates a tracker block. The
   setup wizard's save adds the same blocks through the same function, so a fresh project
   and an upgraded one end up identical. The wizard shows no new fields.
 - **Release gate: suite-membership check** (`scripts/release-gate/suite-check.js`) — a real
