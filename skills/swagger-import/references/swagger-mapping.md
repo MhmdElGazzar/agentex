@@ -14,7 +14,8 @@ first `/import-swagger` invocation in a session.
 - **SwaggerHub-hosted specs** go through the **Swagger MCP connector**
   (`swagger_search_apis_and_domains` / `swagger_get_api_definition`) rather than a file/URL —
   the connector only fetches the spec JSON, it doesn't generate catalog/suite files. The
-  fetched definition is staged to a temp file before `import_swagger.js` ever sees it, so as
+  fetched definition is staged to `.agentex/scratch/swagger/<api>.json` (agent scratch, see
+  [project-layout.md](../../../references/project-layout.md)) before `import_swagger.js` ever sees it, so as
   far as the importer is concerned it's just another local file (see the relative
   `servers[].url` note below for the one consequence of that).
 - **Format detection**: `"swagger": "2.0"` or `"openapi": "3.x"` at the document root. Anything
@@ -123,7 +124,7 @@ request's `review` — rename them to something meaningful.
 - **Relative `servers[].url`** (e.g. `"/api/v3"`, common in real specs) is resolved against
   the spec's own host when the source was a URL; when the source is a local file, there's no
   origin to resolve against, so it's flagged in `review` instead of guessed. A SwaggerHub-
-  fetched spec counts as a local file here (it's staged to a temp file before the importer
+  fetched spec counts as a local file here (it's staged to `.agentex/scratch/swagger/` before the importer
   runs) — SwaggerHub's own registry host isn't the API's real origin anyway, so this is the
   correct outcome, not a regression, but it does mean these specs always need a manual base
   URL check when `servers[].url` is relative.

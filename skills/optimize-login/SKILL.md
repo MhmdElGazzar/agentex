@@ -32,6 +32,8 @@ Find out by looking, not by assuming.
    `defaults.password`; `login.mode` in `config/project.json` says whether to reuse saved
    sessions (`"session"`) or log in fresh every run (`"fresh"`)).
 2. **Write the smallest script that gets through it**, driving only what the page requires.
+   The script is agent scratch: it goes under `.agentex/scratch/login/` and nowhere else in the
+   project (`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`).
 3. **Prove you are in** — by a landmark, never by the URL (see below).
 4. **Save the session** (`storageState`).
 5. **Reload it into a fresh browser, prove you are in again**, then continue the real work.
@@ -84,15 +86,16 @@ Most login scripts fail for a reason the page will state plainly if you ask it.
 
 Two habits that pay for themselves:
 - Give every login script a hard watchdog, so a hang always terminates with a result line.
-- Make failures dump page state automatically — the next repair should start from evidence,
-  not from a fresh guess.
+- Make failures dump page state automatically, into `.agentex/scratch/login/` — the next
+  repair should start from evidence, not from a fresh guess.
 
 ## Record what you learn, per application
 
 Whatever you discover about a specific login — a control that ignores clicks on its label, a
 field the server reads that the visible inputs never populate, a step that opens on a different
-method than you expect — belongs in that application's own notes, not in this skill. In a
-project using the AgenTeX page map, that means the page's `gotchas`.
+method than you expect — belongs in the project's `knowledge/gotchas.md` (or
+`knowledge/app-map.md` for how the login flow works) once the working login proves it, never in
+this skill. The entry format and rules are in the AgenTeX block of the project's `CLAUDE.md`.
 
 This is deliberate. A shipped list of somebody else's surprises invites you to read the next
 login through the wrong lens; the surprises are findings from exploring one application, and
@@ -120,8 +123,10 @@ invoked it:
   and exits 0/1 to match.
 - A successful run leaves a session file at `test/.auth/<app>-<environment>-state.json` for
   later runs to reload.
+- The login script and any failure dumps stay in `.agentex/scratch/login/` (ignored; they
+  may carry a credential literal, so they are never committed).
 - Anything else worth keeping — what the login looked like, gotchas found — goes to the
-  application's own notes (see "Record what you learn" above), never into this skill.
+  project's `knowledge/` (see "Record what you learn" above), never into this skill.
 
 ## Session files are credentials
 

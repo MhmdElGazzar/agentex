@@ -25,7 +25,8 @@ scheme selection works.
   public URL), use the **Swagger MCP connector** instead of asking for a file/URL:
   `swagger_search_apis_and_domains` (or `swagger_list_organizations` first, if the owner is
   ambiguous) to find the API, then `swagger_get_api_definition(owner, api, version, resolved:
-  true)` to fetch its JSON. Write the result to a temp file and pass that file's path to
+  true)` to fetch its JSON. Write the result to `.agentex/scratch/swagger/<api>.json` (agent
+  scratch, see `${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`) and pass that path to
   `import_swagger.js` below — the script only understands local paths and `http(s)://` URLs,
   so this is a fetch-side step, not a script change. The connector is a spec **source**, not a
   generator — it doesn't produce catalog/suite files itself.
@@ -57,8 +58,8 @@ user to pick a different `--name` or remove/rename the existing file is expected
 not a bug.
 
 `<path-or-url>` is either a local file or an `http(s)://` URL. For SwaggerHub-hosted specs,
-resolve via the MCP connector first (see Scope above) and pass the staged temp file's path
-here — from the script's point of view it's just another local file.
+resolve via the MCP connector first (see Scope above) and pass the staged
+`.agentex/scratch/swagger/<api>.json` path here — from the script's point of view it's just another local file.
 
 ## After a successful import
 

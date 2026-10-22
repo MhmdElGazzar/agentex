@@ -105,8 +105,8 @@ What to look at for the default factors (rate a user-added factor from its name)
 
 Scratch files (the proposal, the spec) go **only** in `.agentex/scratch/` under the project
 root, never anywhere else in the project. Create the folder if it is missing; it is gitignored
-agent scratch, and the file names below are overwritten on each run. Never use a shell
-variable such as `$TMP` for it: it is unset on some systems.
+agent scratch, and the file names below are overwritten on each run. Never use a system temp
+location for it (`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`).
 
 1. **The estimation file, first:**
    ```bash

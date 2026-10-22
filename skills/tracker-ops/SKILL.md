@@ -47,10 +47,12 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/tracker.js <subcommand> …
 into the tracker's real mention (an ADO mention anchor, a Jira mention node) or refuses with
 exit 2 and the candidates — it never posts a bare `@name`.
 
-One JSON line out, exit 0/1/2. Intermediate files — specs, body/text files, id lists and
-every `--out` file — go **only** in `.agentex/scratch/` under the project root (create the
-folder if it is missing; it is gitignored agent scratch), never anywhere else in the project.
-Never use a shell variable such as `$TMP` for it: it is unset on some systems.
+One JSON line out, exit 0/1/2. Every file argument (`--out`, `--spec`, `--ids-file`,
+`--body-file`, `--discussion-file`) is a path under `.agentex/scratch/tracker/` in the project
+root, for example `--out .agentex/scratch/tracker/1204-comments.json`. Create the folder if it
+is missing; it is gitignored agent scratch. Never write such a file anywhere else in the
+project, and never in a system temp location
+(`${CLAUDE_PLUGIN_ROOT}/references/project-layout.md`).
 
 ## The one gate
 
