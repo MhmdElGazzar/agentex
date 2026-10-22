@@ -238,6 +238,191 @@ const catalog = port => ({
     assert.strictEqual(code, 0, JSON.stringify(out));
   });
 
+  // ---- swagger-suite-wizard: case auth / contains / omit / sources, subset runs, suite-result.json ----
+  function recorder(respond) {
+    const seen = [];
+    return new Promise(resolve => {
+      const srv = http.createServer((req, res) => {
+        let b = '';
+        req.on('data', d => (b += d));
+        req.on('end', () => {
+          seen.push({ method: req.method, url: req.url, headers: req.headers, body: b });
+          if (respond) return respond(req, res, b);
+          res.setHeader('content-type', 'application/json');
+          if (!req.headers.authorization) { res.writeHead(401); res.end('{"message":"a token is required"}'); return; }
+          res.end('{"id":1,"message":"status must be one of open, closed"}');
+        });
+      });
+      srv.listen(0, '127.0.0.1', () => resolve({ srv, port: srv.address().port, seen }));
+    });
+  }
+  const ordersCat = port => ({
+    name: 'orders', target: 'catalog', baseUrl: `http://127.0.0.1:${port}`, auth: { type: 'bearer', tokenEnv: 'ORDERS_TOKEN' },
+    requests: [
+      { name: 'list', method: 'GET', path: '/orders', params: ['status', 'page'], query: ['status', 'page'] },
+      { name: 'create', method: 'POST', path: '/orders', params: ['item'], body: { item: { $param: 'item', type: 'json' } } },
+    ],
+  });
+  const S = 'integration/api_test_suites/orders/orders_suite.json';
+  const ordersProj = (port, cases, extra = {}) => proj({
+    'integration/api_test_suites/orders/orders_api.json': ordersCat(port),
+    [S]: { cases },
+    '.env': 'ORDERS_TOKEN=tok-suite\n',
+    ...extra,
+  });
+
+  await test('case auth "none" -> run_api.js --no-auth: no credential sent, 401 can pass', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = ordersProj(port, [{ name: 'no-token', entry: 'orders.list', auth: 'none', params: { status: 'open', page: 1 }, expect: { status: 401 } }]);
+    const { code, out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(seen[0].headers.authorization, undefined);
+  });
+
+  await test('case auth with any other value -> BLOCKED naming the case and the value, not sent', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = ordersProj(port, [{ name: 'weird', entry: 'orders.list', auth: 'user-b', params: { status: 'open', page: 1 }, expect: { status: 200 } }]);
+    const { out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.strictEqual(out.cases[0].result, 'BLOCKED');
+    assert.strictEqual(out.cases[0].reason, 'case "weird": "auth" must be "none" or absent (got "user-b")');
+    assert.strictEqual(seen.length, 0);
+  });
+
+  await test('expect.contains is forwarded and counts as an expectation', async () => {
+    const { srv, port } = await recorder();
+    const dir = ordersProj(port, [
+      { name: 'contains-pass', entry: 'orders.list', params: { status: 'x', page: 1 }, expect: { contains: { message: 'status' } } },
+      { name: 'contains-fail', entry: 'orders.list', params: { status: 'x', page: 1 }, expect: { contains: { message: 'quantity' } } },
+    ]);
+    const { out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.deepStrictEqual(out.cases.map(c => c.result), ['PASS', 'FAIL']);
+  });
+
+  await test('omit is forwarded: the param is left out of the request', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = ordersProj(port, [{ name: 'missing-status', entry: 'orders.list', omit: ['status'], params: { status: 'open', page: 1 }, expect: { status: 200 } }]);
+    const { out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.strictEqual(out.cases[0].result, 'PASS', JSON.stringify(out));
+    assert.strictEqual(seen[0].url, '/orders?page=1');
+  });
+
+  await test('a placeholder source -> BLOCKED reasonCode placeholder, zero requests at the server', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = ordersProj(port, [{ name: 'happy', entry: 'orders.list', params: { status: 'example', page: 1 }, sources: { status: 'placeholder', page: 'manual' }, expect: { status: 200 } }]);
+    const { code, out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.strictEqual(code, 2);
+    assert.strictEqual(out.cases[0].result, 'BLOCKED');
+    assert.strictEqual(out.cases[0].reasonCode, 'placeholder');
+    assert.strictEqual(out.cases[0].reason, 'needs a real value: param "status" is still a placeholder — set it in the editor or the suite file');
+    assert.strictEqual(seen.length, 0);
+  });
+
+  const twoSuites = port => ordersProj(port, [
+    { name: 'a', entry: 'orders.list', params: { status: 'open', page: 1 }, expect: { status: 200 } },
+    { name: 'b', entry: 'orders.list', params: { status: 'open', page: 2 }, expect: { status: 200 } },
+    { name: 'c', entry: 'orders.list', params: { status: 'open', page: 3 }, expect: { status: 200 } },
+  ], { 'integration/api_test_suites/other/other_suite.json': { cases: [{ name: 'z', entry: 'orders.list', params: { status: 'z', page: 9 }, expect: { status: 200 } }] } });
+
+  await test('--suite runs only that suite file', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = twoSuites(port);
+    const { code, out } = await run(dir, ['--suite', S, '--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.deepStrictEqual(out.cases.map(c => c.name), ['a', 'b', 'c']);
+    assert.strictEqual(seen.length, 3);
+  });
+
+  await test('--suite outside --suites -> BLOCKED, nothing sent', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = twoSuites(port);
+    fs.writeFileSync(path.join(dir, 'stray_suite.json'), JSON.stringify({ cases: [{ name: 'x', entry: 'orders.list', params: { status: 'a', page: 1 }, expect: { status: 200 } }] }));
+    const { code, out } = await run(dir, ['--suite', 'stray_suite.json', '--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.strictEqual(code, 2);
+    assert.strictEqual(out.result, 'BLOCKED');
+    assert.match(out.reason, /not under/);
+    assert.strictEqual(seen.length, 0);
+  });
+
+  await test('--case n runs only the nth case of the suite', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = twoSuites(port);
+    const { code, out } = await run(dir, ['--suite', S, '--case', '2', '--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.deepStrictEqual(out.cases.map(c => [c.name, c.index]), [['b', 2]]);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].url, '/orders?status=open&page=2');
+  });
+
+  await test('--case without --suite -> BLOCKED', async () => {
+    const dir = twoSuites(9);
+    const { code, out } = await run(dir, ['--case', '1', '--run-dir', path.join(dir, 'run')]);
+    assert.strictEqual(code, 2);
+    assert.match(out.reason, /--case needs --suite/);
+  });
+
+  await test('--case out of range -> BLOCKED naming the case count', async () => {
+    const dir = twoSuites(9);
+    const { code, out } = await run(dir, ['--suite', S, '--case', '4', '--run-dir', path.join(dir, 'run')]);
+    assert.strictEqual(code, 2);
+    assert.match(out.reason, /has 3 cases/);
+  });
+
+  await test('suite-result.json equals the stdout summary plus schemaVersion and run metadata', async () => {
+    const { srv, port } = await recorder();
+    const dir = twoSuites(port);
+    const runDir = path.join(dir, 'run');
+    const { out } = await run(dir, ['--suite', S, '--case', '1', '--env', 'qc', '--run-dir', runDir].filter(a => a !== '--env' && a !== 'qc'));
+    srv.close();
+    const file = JSON.parse(fs.readFileSync(path.join(runDir, 'suite-result.json'), 'utf8'));
+    assert.strictEqual(file.schemaVersion, 1);
+    assert.strictEqual(file.suite, S);
+    assert.strictEqual(file.case, 1);
+    assert.ok(!Number.isNaN(Date.parse(file.startedAt)));
+    const { schemaVersion, suite, case: c, env, startedAt, ...rest } = file;
+    assert.deepStrictEqual(rest, out);
+  });
+
+  await test('every case result carries suite (relative path) and index (1-based)', async () => {
+    const { srv, port } = await recorder();
+    const dir = twoSuites(port);
+    const { out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    const byName = Object.fromEntries(out.cases.map(c => [c.name, c]));
+    assert.strictEqual(byName.c.suite, S);
+    assert.strictEqual(byName.c.index, 3);
+    assert.strictEqual(byName.z.suite, 'integration/api_test_suites/other/other_suite.json');
+    assert.strictEqual(byName.z.index, 1);
+    assert.strictEqual(typeof byName.a.ms, 'number');
+  });
+
+  await test('an object param is passed as JSON text', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = ordersProj(port, [{ name: 'create', entry: 'orders.create', params: { item: { sku: 'A-1', qty: 2 } }, expect: { status: 200 } }]);
+    const { out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.strictEqual(out.cases[0].result, 'PASS', JSON.stringify(out));
+    assert.deepStrictEqual(JSON.parse(seen[0].body), { item: { sku: 'A-1', qty: 2 } });
+  });
+
+  await test('legacy suite: per-case outcome identical to the snapshot taken on main', async () => {
+    const fx = require('./fixtures/legacy_suite_fixture.js');
+    const snapshot = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'legacy-suite-snapshot.json'), 'utf8'));
+    const srv = http.createServer(fx.handler);
+    await new Promise(r => srv.listen(0, '127.0.0.1', r));
+    const dir = proj(fx.files(srv.address().port));
+    const { out } = await run(dir, ['--run-dir', path.join(dir, 'run')]);
+    srv.close();
+    assert.deepStrictEqual(fx.outcome(out), snapshot);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();
