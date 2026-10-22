@@ -1,0 +1,12 @@
+{
+  "portalUrl": "https://example.com",
+  "defaults": {
+    "otp": "0000"
+  },
+  "users": {
+    "valid_user": {
+      "phone": "0550000001",
+      "role": "customer"
+    }
+  }
+}

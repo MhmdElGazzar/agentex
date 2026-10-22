@@ -20,3 +20,4 @@ quick tour.
 | [Configuration](./configuration.md) | Environment variables, permissions, and secret handling. |
 | [Putting your project in git](./putting-your-project-in-git.md) | What to commit and what stays local, setting a remote safely, the secret scan, the optional pre-commit hook, and fixing findings. |
 | [Project layout](./project-layout.md) | Where everything the agent writes goes: the AgenTeX block in `CLAUDE.md`, `knowledge/`, the QA watchlist, scratch, and the stray-file check in `/update-agentex`. |
+| [Field feedback](./field-feedback.md) | How AgenTeX records gaps in itself in `.agentex/plugin-learnings.md`, `/update-agentex feedback` (a sanitized export you review and send by hand), and retiring learnings a new version covers. |

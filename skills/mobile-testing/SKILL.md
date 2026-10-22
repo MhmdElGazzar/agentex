@@ -159,6 +159,9 @@ done.
    (`bug-list.md` + copy the bug-evidence screenshots each subagent flagged) inside the
    execution folder. Use the defect format below. Optionally generate an interactive
    `extent-report.html` next to `report.md` via the **extent-report** skill.
+   Then relay one line per LEARNINGS id in the merged summary ("Recorded an AgenTeX learning
+   `<id>` in `.agentex/plugin-learnings.md`."); none → nothing to relay. Never ask about
+   them.
 5. **PRESENT** — Show the merged summary.
 
 Autonomy boundary (applies in parallel mode): still never modify app source, never create real

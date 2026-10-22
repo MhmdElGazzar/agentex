@@ -107,6 +107,18 @@ EXECUTION RULES
   do not assume text merely exists in the accessibility tree means it's the visible state.
 - Teardown: close the Appium session (`close-session` / `DELETE /session/<id>`) when finished,
   even on failure, so the device/emulator is released for the next run.
+- If you work around an AgenTeX skill, command or script, write your own helper
+  script for something AgenTeX should do, or find an AgenTeX skill copied into `.claude/skills/`,
+  record it with `node ${CLAUDE_PLUGIN_ROOT}/scripts/field_feedback.js capture --mode parallel
+  --session {{SESSION}} …` (text as JSON on stdin, env-var names only), then continue. Never ask.
+  The `…` is `--trigger workaround|self-written-script|forked-skill` and `--affected <the
+  AgenTeX skill or command name, or unknown>`, plus `--script <path>` or `--fork <path>`
+  (project-relative); the text goes in through a quoted heredoc:
+    node ${CLAUDE_PLUGIN_ROOT}/scripts/field_feedback.js capture --trigger workaround --affected <name> --mode parallel --session {{SESSION}} <<'EOF'
+    {"problem": "<what the plugin could not do>", "workaround": "<what you did instead>"}
+    EOF
+  Exit 0 → keep the `id` from its JSON line for your LEARNINGS line. Exit 1 or 2 → keep a
+  one-line capture-failed note with the reason. Either way, continue the run.
 
 WHEN A SCENARIO FAILS: DEFECT OR FLAKE
 - Default: ONE attempt per scenario. A scenario that passed is never re-run "to be sure".
@@ -140,6 +152,8 @@ OUTPUT (your final message only — it is consumed by the orchestrator, not a hu
   Severity (Critical|High|Medium|Low) / Evidence.
 - BUG EVIDENCE: an explicit list of screenshot paths (under SESSION_DIR/screenshots/) that
   prove each defect, so the orchestrator can copy them into the run's bugs/ folder.
+- LEARNINGS: `LEARNINGS: <id>, …`, one id per AgenTeX learning you recorded (omit the line
+  when there are none), plus one note per failed capture ("capture failed: <reason>").
 - A final one-line tally: "<n> pass / <m> fail / <b> blocked, <k> defects" (append
   ", <f> flaky" when any scenario only passed on a retry). A FLAKY or BLOCKED scenario is in
   neither the pass nor the fail count.

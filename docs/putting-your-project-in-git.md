@@ -20,6 +20,7 @@ history. Where each kind of file belongs in the first place is described in
 | `.gitignore` | Committed | Keeps the local-only paths below out of commits. |
 | `.agentex/version.json` | Committed | The plugin version this project was set up for (`/update-agentex` reads it). |
 | `.agentex/test-template.md` | Committed | Your test-design conventions. |
+| `.agentex/plugin-learnings.md` | Committed | Gaps in AgenTeX itself that this project worked around; created on first use. Commit it before running `/update-agentex` — see [Field feedback](./field-feedback.md). |
 | `.claude/settings.json` | Committed | The shared permissions block. |
 | `knowledge/` | Committed | Settled facts about the application under test — see [Project layout](./project-layout.md). |
 | `.env` | **Local** | Secrets only. Never commit it. |

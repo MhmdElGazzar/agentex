@@ -1,0 +1,20 @@
+# NOTE: `claude plugin eval` is early access; field names follow the CLI help text
+# (runs, max_turns, timeout_seconds, scaffold_script, tags) and may need renaming
+# when the schema is published.
+#
+# field-feedback triggering (AC 3): a bundled AgenTeX script cannot do the job (the swagger
+# importer reads JSON only) and the agent works around it with the JSON copy. Exactly one
+# learning must land in .agentex/plugin-learnings.md through field_feedback.js capture, with a
+# one-line notice and no question.
+name: trigger-field-feedback
+tags: [trigger, field-feedback]
+runs: 3
+max_turns: 20
+timeout_seconds: 300
+scaffold_script: |
+  cp -r "$CASE_DIR/fixture/." .
+  printf 'API_TOKEN=\nDEFAULT_PASSWORD=\n' > .env
+  node -e 'const v=require(process.argv[1]).version;require("fs").mkdirSync(".agentex",{recursive:true});require("fs").writeFileSync(".agentex/version.json",JSON.stringify({version:v},null,2)+"\n")' "$CASE_DIR/../../.claude-plugin/plugin.json"
+  git init -q
+  git add -A
+  git -c user.email=eval@example.test -c user.name=eval commit -qm fixture
