@@ -159,7 +159,7 @@ function resolveApiTarget(cwd, envName) {
 //     block (azure.* or jira.*, the same shape on both); no tracker -> workflow null
 //
 // The defaults reproduce today's behaviour exactly: the five [Testing] tasks in
-// task-estimation SKILL.md's order (a test pins the table), workflow states
+// the order of estimation_config.js STARTER_TASKS (a test pins them), workflow states
 // EMPTY (a lifecycle step whose state is unset names the key and skips — never
 // guesses), the repro summary row on, consolidated approval, no independent
 // coverage check.

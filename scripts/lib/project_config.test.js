@@ -410,11 +410,14 @@ test('existing azure/jira keys are not validated more strictly (only the new nes
   assert.deepStrictEqual(getStructured(dir, 'workflow'), D.workflow);
 });
 
-test('pin: the testingTasks default mirrors task-estimation SKILL.md "Task template" (titles and order)', () => {
-  const md = fs.readFileSync(path.join(__dirname, '..', '..', 'skills', 'task-estimation', 'SKILL.md'), 'utf8');
-  const section = md.split(/^## Task template\s*$/m)[1].split(/^## /m)[0];
-  const titles = [...section.matchAll(/^\|\s*`(\[Testing\][^`]*)`\s*\|/gm)].map((m) => m[1]);
-  assert.deepStrictEqual(titles, D.testingTasks.map((t) => t.title));
+// Since 0.24 the shipped task set lives in estimation_config.js (STARTER_TASKS —
+// what an estimation run uses when config/estimation.json does not exist yet),
+// no longer in a task-estimation SKILL.md table. The getter's default stays
+// pinned to it: same titles ('[Testing] ' + name), same order, all enabled.
+test('pin: the testingTasks default mirrors estimation_config STARTER_TASKS (titles, order, enabled)', () => {
+  const { STARTER_TASKS } = require('./estimation_config.js');
+  assert.deepStrictEqual(D.testingTasks.map((t) => t.title), STARTER_TASKS.map((t) => `[Testing] ${t.name}`));
+  assert.deepStrictEqual(D.testingTasks.map((t) => t.enabled), STARTER_TASKS.map((t) => t.enabled));
 });
 
 test('pin: rules.js TITLE_PREFIX is the prefix the getter enforces', () => {
