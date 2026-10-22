@@ -40,9 +40,9 @@ On a `schemaVersion: 2` input the dashboard also shows:
 
 Note: executor reports emit PASS / FAIL / FLAKY / BLOCKED per scenario. NEEDS-USER is an
 interim executor outcome the orchestrator resolves with the user at MERGE; it never reaches
-this report. The orchestrator's own plan supplies Blocked for scenarios stopped upstream,
-N/A-De-scoped for scenarios intentionally excluded from scope, and Not Run for scenarios
-planned but never reached.
+this report. The orchestrator's own plan supplies Blocked for scenarios it could not attempt
+(blocked upstream in a stateful chain, or an environment/prerequisite gap), N/A-De-scoped for
+scenarios intentionally excluded from scope, and Not Run for scenarios planned but never reached.
 Warning and View Mismatch come from `ui-check:` step verdicts (see the ui-check skill) —
 they are first-class statuses, never disguised as `passed`/`blocked`. Flaky comes from the
 test-execution Flake rules (Principles → Verdicts): a scenario that failed on infrastructure and passed only
