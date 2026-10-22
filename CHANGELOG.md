@@ -27,6 +27,11 @@ All notable changes to AgenTeX are documented here.
     and lists your unsaved edits. Unknown fields, review notes and case order are kept.
   - Run all / Run this case go through the same runner as `/test-endpoints`, with the same
     evidence in `executions/`.
+  - The page answers only `127.0.0.1:<port>` / `localhost:<port>` (no DNS rebinding).
+- **Generated write cases are enabled one at a time.** Each POST/PUT/PATCH/DELETE case stays
+  skipped until you review it (what it creates or changes, the values it sends, the
+  environment) or flip its Skip toggle in the editor; a request to strip the skip lines in
+  bulk is declined.
 - **Runner gaps closed (backward compatible).**
   - `run_api.js`: `--no-auth`, `--expect-contains`, `--omit`, typed `$param` body nodes,
     `auth.tokenStore` (BLOCKED `token-missing` / `token-expired`, never a 401 FAIL), an `ms`
