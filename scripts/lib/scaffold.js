@@ -162,8 +162,12 @@ function claudeMdHasBullet(projectRoot) {
   return content.includes('executions/') && content.includes('test-run artifacts');
 }
 
+// A symlinked CLAUDE.md is appended through to its target (the link stays a link); a
+// dangling one gets the layout block's [flag] action and zero writes.
 function ensureClaudeMdBullet(projectRoot, { dryRun = false } = {}) {
   const claudeMd = path.join(projectRoot, 'CLAUDE.md');
+  const dangling = layout.danglingAction(claudeMd, 'the executions/ guidance');
+  if (dangling) return dangling;
   if (fs.existsSync(claudeMd)) {
     if (claudeMdHasBullet(projectRoot)) {
       return { kind: 'skipped', path: rel(projectRoot, claudeMd), note: 'equivalent guidance already present' };

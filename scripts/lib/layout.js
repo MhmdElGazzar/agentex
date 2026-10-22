@@ -108,7 +108,7 @@ const WRAP = 92;
 
 const EDITED_FLAG = 'CLAUDE.md: the AgenTeX block was edited by hand, so it was not refreshed — move your own lines outside the block, delete the block (both marker lines too), then re-run /update-agentex to get the current one (docs/project-layout.md#the-agentex-block-in-claudemd)';
 const MALFORMED_FLAG = 'duplicate or broken AgenTeX block markers in CLAUDE.md — keep one begin/end pair, then re-run /update-agentex (docs/project-layout.md#the-agentex-block-in-claudemd)';
-const danglingFlag = (target) => `CLAUDE.md is a symlink to ${target}, which does not exist, so the AgenTeX block was not written — create the target file (or replace the link with a file), then re-run /update-agentex (docs/project-layout.md#the-agentex-block-in-claudemd)`;
+const danglingFlag = (target, what = 'the AgenTeX block') => `CLAUDE.md is a symlink to ${target}, which does not exist, so ${what} was not written — create the target file (or replace the link with a file), then re-run /update-agentex (docs/project-layout.md#the-agentex-block-in-claudemd)`;
 
 // Greedy word wrap; continuation lines carry `indent`.
 function wrap(text, { first = '', indent = '' } = {}) {
@@ -218,17 +218,25 @@ function separator(buf, eol) {
   return buf.length > cut && buf[buf.length - cut - 1] === 0x0a ? '' : eol;
 }
 
+// A CLAUDE.md that is a dangling symlink is never replaced by a file, and its target is
+// never created (it may point anywhere, even outside the project): every writer of
+// CLAUDE.md (this block, the executions/ bullet) returns this [flag] action instead and
+// writes nothing. null when CLAUDE.md is absent, a file, or a link to an existing file.
+function danglingAction(file, what) {
+  let link;
+  try { if (!fs.lstatSync(file).isSymbolicLink()) return null; link = fs.readlinkSync(file); } catch { return null; }
+  if (fs.existsSync(file)) return null; // follows the link: the target exists
+  return { path: 'CLAUDE.md', kind: 'flag', state: 'dangling', note: 'CLAUDE.md is a dangling symlink, not written', message: danglingFlag(link, what) };
+}
+
 // Insert, refresh or leave the block; never writes outside the markers.
 // Returns { kind: 'created'|'skipped'|'flag', state, path, note, message? }.
 function ensureLayoutBlock(projectRoot, { dryRun = false, routes, rules } = {}) {
   const file = path.join(projectRoot, 'CLAUDE.md');
   const base = { path: 'CLAUDE.md' };
-  let link = null;
-  try { if (fs.lstatSync(file).isSymbolicLink()) link = fs.readlinkSync(file); } catch { /* no CLAUDE.md */ }
-  const existed = fs.existsSync(file); // follows a link: false for a dangling one
-  // A dangling link is never replaced by a file, and its target is never created (it may
-  // point anywhere, even outside the project): flagged, zero writes.
-  if (link !== null && !existed) return { ...base, kind: 'flag', state: 'dangling', note: 'CLAUDE.md is a dangling symlink, not written', message: danglingFlag(link) };
+  const dangling = danglingAction(file);
+  if (dangling) return dangling;
+  const existed = fs.existsSync(file);
   const buf = existed ? fs.readFileSync(file) : Buffer.alloc(0);
   const p = parseBlock(buf, { routes, rules });
   if (p.state === 'current') return { ...base, kind: 'skipped', state: 'current', note: 'AgenTeX layout block already current' };
@@ -352,7 +360,7 @@ function definedPaths(projectRoot, { routes = ROUTES } = {}) {
 
 module.exports = {
   ROUTES, RULES, BEGIN_PREFIX, END_MARKER, EDITED_FLAG, MALFORMED_FLAG,
-  renderBody, renderBlock, parseBlock, stripManagedBlock, ensureLayoutBlock,
+  renderBody, renderBlock, parseBlock, stripManagedBlock, ensureLayoutBlock, danglingAction,
   KNOWLEDGE_DIR, INDEX_HEADER, KNOWLEDGE_FILES, appendIndexLine,
   PROTECTED, PROTECTED_RE, PLUGIN_DEFINED, OS_METADATA, ROOT_ALLOWLIST, LITTER_NAMES, LITTER_DIRS,
   ROOT_DUMP, ROOT_SCRIPT, definedPaths,

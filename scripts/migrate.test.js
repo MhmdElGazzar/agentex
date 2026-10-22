@@ -1295,6 +1295,22 @@ test('m13: broken markers → [flag], zero writes', () => {
   assert.strictEqual(readText(dir, 'CLAUDE.md'), start);
 });
 
+test('m06 + m13 through the engine: a dangling CLAUDE.md link → one [flag] each, zero writes, the stamp still moves', () => {
+  const dir = previousRelease(USER_MD);
+  fs.rmSync(path.join(dir, 'CLAUDE.md'));
+  try { fs.symlinkSync('docs/AGENTS.md', path.join(dir, 'CLAUDE.md')); } catch { console.log('  (skipped: no symlinks here)'); return; }
+  commitAll(dir);
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.out);
+  const flags = r.out.split('\n').filter((l) => l.startsWith('[flag] CLAUDE.md is a symlink to docs/AGENTS.md, which does not exist'));
+  assert.strictEqual(flags.length, 2, r.out);
+  assert.ok(flags[0].includes('the executions/ guidance was not written') && flags[1].includes('the AgenTeX block was not written'), r.out);
+  assert.ok(!/\[migrated\] claude-md-(bullet|layout-block)/.test(r.out), r.out);
+  assert.strictEqual(fs.readlinkSync(path.join(dir, 'CLAUDE.md')), 'docs/AGENTS.md', 'the link is untouched');
+  assert.ok(!fs.existsSync(path.join(dir, 'docs')), 'no target (or its folder) was created');
+  assert.strictEqual(readJson(dir, '.agentex/version.json').version, INSTALLED, 'a flag never withholds the stamp');
+});
+
 test('m13: a project with no CLAUDE.md gets one with the executions/ bullet and the block', () => {
   const dir = previousRelease(null);
   const r = run(dir);

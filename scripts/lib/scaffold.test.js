@@ -383,5 +383,50 @@ test('the scaffold\'s .gitignore does not ignore config/estimation.json or confi
   }
 });
 
+// ---- CLAUDE.md as a symlink: the executions/ bullet has the layout block's guard ----
+// Where the OS cannot create symlinks (Windows without the privilege), these cases skip.
+const CAN_SYMLINK = (() => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-sc-link-'));
+  try { fs.symlinkSync('target', path.join(d, 'link')); return true; } catch { return false; }
+})();
+function linkTest(name, fn) {
+  if (CAN_SYMLINK) test(name, fn);
+  else console.log(`  skip - ${name} (this OS cannot create symlinks here)`);
+}
+
+linkTest('ensureClaudeMdBullet: a symlinked CLAUDE.md gets the bullet in its target; the link stays a link', () => {
+  const dir = proj({ 'AGENTS.md': '# Agents\n' });
+  fs.symlinkSync('AGENTS.md', path.join(dir, 'CLAUDE.md'));
+  const r = scaffold.ensureClaudeMdBullet(dir);
+  assert.strictEqual(r.kind, 'created');
+  assert.ok(fs.lstatSync(path.join(dir, 'CLAUDE.md')).isSymbolicLink(), 'still a symlink');
+  assert.strictEqual(fs.readlinkSync(path.join(dir, 'CLAUDE.md')), 'AGENTS.md');
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), `# Agents\n\n${scaffold.CLAUDE_MD_BULLET}`);
+  assert.strictEqual(scaffold.ensureClaudeMdBullet(dir).kind, 'skipped', 'read through the link on the next run');
+});
+
+linkTest('ensureClaudeMdBullet: a dangling CLAUDE.md link → [flag] naming the target, zero writes, never a throw', () => {
+  for (const target of ['AGENTS.md', 'shared/AGENTS.md']) {
+    const dir = proj();
+    fs.symlinkSync(target, path.join(dir, 'CLAUDE.md'));
+    for (const dryRun of [true, false]) {
+      const r = scaffold.ensureClaudeMdBullet(dir, { dryRun });
+      assert.strictEqual(r.kind, 'flag', `${target} dryRun=${dryRun}`);
+      assert.strictEqual(r.state, 'dangling');
+      assert.strictEqual(r.message, `CLAUDE.md is a symlink to ${target}, which does not exist, so the executions/ guidance was not written — create the target file (or replace the link with a file), then re-run /update-agentex (docs/project-layout.md#the-agentex-block-in-claudemd)`);
+      assert.strictEqual(fs.readlinkSync(path.join(dir, 'CLAUDE.md')), target, 'the link is untouched');
+      assert.ok(!fs.existsSync(path.join(dir, target)), 'no target was created');
+    }
+  }
+});
+
+linkTest('scaffoldProject (/init-test): a dangling CLAUDE.md link → two [flag] actions, no target created', () => {
+  const dir = proj();
+  fs.symlinkSync('AGENTS.md', path.join(dir, 'CLAUDE.md'));
+  const flags = scaffold.scaffoldProject(dir, PLUGIN_ROOT).filter((a) => a.kind === 'flag');
+  assert.deepStrictEqual(flags.map((a) => a.state), ['dangling', 'dangling']);
+  assert.ok(!fs.existsSync(path.join(dir, 'AGENTS.md')), 'no target was created');
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;
