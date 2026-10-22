@@ -72,6 +72,10 @@ Close the retest stage only when all three hold:
 
 If any fails, report which one and leave the stage open.
 
+Closing a retest adds nothing to `knowledge/` unless the retest settled a behaviour the team
+will rely on (then add it to the matching `knowledge/` file with its source and date; see
+[project-layout.md](../project-layout.md)).
+
 ## 5. Story close-out proposal
 
 When every enabled `[Testing]` task is in `taskClosedState`, **propose** moving the story to

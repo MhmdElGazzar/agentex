@@ -43,6 +43,18 @@ What each kind records, who appends it, and when it is resolved:
   yet). **Appended** when the decision is made. **Resolved** when the condition is tested,
   or dropped by the owner's decision, and the resolution says which.
 
+**On close.** A resolved entry stays in its file (history is kept). When the resolution
+settles a lasting fact, also add that fact to the project's `knowledge/` folder, as one entry
+with its source and date (the format and rules are in the AgenTeX block of the project's
+`CLAUDE.md` and in [project-layout.md](../project-layout.md)). Kind by kind:
+
+| Kind resolved | Carry to `knowledge/` when… | File |
+|---|---|---|
+| `pendingQuestions` | the reply decides a rule or expected behaviour | `business-rules.md` (a rule) or `app-map.md` (how a page or flow behaves) |
+| `envIssues` | the problem is **recurring** and has a known workaround; a one-off outage carries nothing | `gotchas.md` |
+| `pendingRechecks` | normally never (a passed retest is not a fact) | none |
+| `deferredConditions` | it was dropped by the owner's decision (a scope rule) | `business-rules.md` |
+
 ## 2. Files and format
 
 - **Lazy.** Nothing exists until a kind's first `append`. That call creates the folder and
@@ -92,8 +104,10 @@ start of any run that touches the entry's story.
    - **Vague**: it defers ("let's discuss"), restates the question, answers only part of
      it, or comes from someone who can't decide.
 
-   A decisive reply resolves the entry. Use `qa-records.js resolve`, with a resolution that
-   quotes the author, the date and the chosen option. For a vague reply, leave the entry
+   A decisive reply resolves the entry, and, when the reply settles a lasting fact, add it
+   to the matching `knowledge/` file (format and rules: the AgenTeX block in `CLAUDE.md`).
+   Use `qa-records.js resolve`, with a resolution that quotes the author, the date and the
+   chosen option. For a vague reply, leave the entry
    open and propose a follow-up phrased per `../question-format.md`, shown to the user before
    anything is posted.
 4. **Never resolve on silence.** No reply, or no decisive reply, leaves the entry open. Say

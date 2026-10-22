@@ -191,6 +191,18 @@ test('qa-records.md: the four kinds, the QA watchlist, formats, lazy + committed
   assert.ok(fs.existsSync(path.join(ROOT, 'scripts', 'qa-records.js')));
 });
 
+test('qa-records.md and task-lifecycle.md: a settled closure carries its answer into knowledge/ (project-layout-contract R3)', () => {
+  const md = read('references/tracker/qa-records.md');
+  const kinds = section(md, /kinds/i);
+  const onClose = (kinds.split(/\*\*On close\.\*\*/)[1] || '');
+  assert.ok(onClose, 'an "On close" paragraph in the kinds section');
+  const rows = [...onClose.matchAll(/^\| `(\w+)` \| (.+?) \| (.+?) \|$/gm)].map((m) => m[1]);
+  assert.deepStrictEqual([...rows].sort(), [...QA_KINDS].sort(), 'one row per kind');
+  assert.match(section(md, /read-thread/i), /settles a lasting fact, add it\s+to the matching `knowledge\/` file/);
+  const retest = section(read('references/tracker/task-lifecycle.md'), /retest close/i);
+  assert.match(retest, /adds nothing to `knowledge\/` unless the retest settled a behaviour/);
+});
+
 // ---- project-layout.md (the shared layout reference, project-layout-contract R5.1) ----
 test('project-layout.md: the four sections, in order (layout, knowledge/, lifecycle, scratch)', () => {
   const md = read('references/project-layout.md');
