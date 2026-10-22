@@ -305,17 +305,21 @@ const ROOT_ALLOWLIST = [
   /^tsconfig.*\.json$/, /^jsconfig.*\.json$/, /^\.eslintrc/, /^\.prettierrc/,
   /^global-(setup|teardown)\.[^.]+$/, /^\.pre-commit-config\.ya?ml$/, /^renovate\.json5?$/, /^biome\.jsonc?$/,
   /^(cspell|\.cspell)\.json$/, /^\.browserslistrc$/, /^nuget\.config$/i, /^sonar-project\.properties$/,
+  /^jest\.setup\.[cm]?[jt]s$/, /^cucumber\.([cm]?js|json|ya?ml)$/, /^nodemon\.json$/,
+  /^cypress\.env\.json$/, /^appsettings(\.[A-Za-z0-9_-]+)?\.json$/, // appsettings.json, appsettings.<Environment>.json
   // manifests and lockfiles
   /^package\.json$/, /^package-lock\.json$/, /^npm-shrinkwrap\.json$/, /^yarn\.lock$/, /^pnpm-lock\.yaml$/,
   /^pnpm-workspace\.yaml$/, /^bun\.lockb?$/, /^bunfig\.toml$/, /^deno\.jsonc?$/, /^deno\.lock$/,
   /^lerna\.json$/, /^nx\.json$/, /^turbo\.json$/, /^vercel\.json$/, /^netlify\.toml$/,
-  /^requirements.*\.txt$/, /^constraints.*\.txt$/, /^pyproject\.toml$/, /^setup\.cfg$/, /^setup\.py$/, /^tox\.ini$/,
-  /^pytest\.ini$/, /^conftest\.py$/, /^Pipfile(\.lock)?$/, /^poetry\.lock$/, /^uv\.lock$/,
+  // requirements: one name segment (requirements-dev.txt), so requirements-probe-output.txt stays a dump
+  /^requirements([-_.][A-Za-z0-9]+)?\.txt$/, /^constraints.*\.txt$/, /^pyproject\.toml$/, /^setup\.cfg$/, /^setup\.py$/, /^tox\.ini$/,
+  /^pytest\.ini$/, /^conftest\.py$/, /^Pipfile(\.lock)?$/, /^poetry\.lock$/, /^uv\.lock$/, /\.lock\.hcl$/,
   /^Gemfile(\.lock)?$/, /^go\.(mod|sum|work)$/, /^Cargo\.(toml|lock)$/, /^composer\.(json|lock)$/,
   /^pom\.xml$/, /^(build|settings)\.gradle(\.kts)?$/, /^gradle\.properties$/, /^gradlew(\.bat)?$/, /^mvnw(\.cmd)?$/,
   /\.sln$/i, /\.(cs|fs|vb)proj$/i, /^global\.json$/, /^Directory\.(Build|Packages)\.(props|targets)$/,
   // build, containers, CI
-  /^Makefile$/, /^Procfile$/, /^Jenkinsfile/, /^Dockerfile/, /^Containerfile/,
+  /^Makefile$/, /^[Tt]askfile(\.dist)?\.ya?ml$/, /^\.?[Jj]ustfile$/, /^Procfile$/, /^Jenkinsfile/, /^Dockerfile/,
+  /^Containerfile/,
   /^docker-compose.*\.ya?ml$/, /^compose.*\.ya?ml$/,
   /^azure-pipelines.*\.ya?ml$/, /^\.gitlab-ci\.ya?ml$/, /^bitbucket-pipelines\.ya?ml$/, /^\.travis\.ya?ml$/,
   /^appveyor\.ya?ml$/, /^\.?codecov\.ya?ml$/,

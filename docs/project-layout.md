@@ -144,12 +144,16 @@ files that sit outside this layout. It never affects the migration or the versio
 anything your `.gitignore` ignores, ordinary root files, OS files such as `.DS_Store`, and the
 contents of folders you created yourself (only litter-named files inside them are reported).
 Ordinary root files are `README.md`, `LICENSE` and the like; package manifests and lockfiles
-(`package.json`, `requirements*.txt`, `pyproject.toml`, `pom.xml`, …); tool configuration by
-its shape (`*.config.*`, `*.conf.*`, `.*rc`, `.*rc.*`, `.*ignore`, `tsconfig*.json`,
-`global-setup.*`, `sonar-project.properties`, `renovate.json`, …); and build, container and CI
-files (`Makefile`, `Dockerfile*`, `docker-compose*.yml`, `azure-pipelines*.yml`, …). A
-litter-named file stays litter even when it looks like tool config: `probe-jest.config.js` and
-`jest.config.js.tmp` are both reported.
+(`package.json`, `requirements.txt`, `requirements-dev.txt`, `pyproject.toml`, `pom.xml`,
+`.terraform.lock.hcl`, …); tool configuration by its shape (`*.config.*`, `*.conf.*`, `.*rc`,
+`.*rc.*`, `.*ignore`, `tsconfig*.json`, `global-setup.*`, `jest.setup.js`, `cucumber.js`,
+`nodemon.json`, `cypress.env.json`, `appsettings.json`, `appsettings.<Environment>.json`,
+`sonar-project.properties`, `renovate.json`, …); and build, container and CI files
+(`Makefile`, `Taskfile.yml`, `justfile`, `Dockerfile*`, `docker-compose*.yml`,
+`azure-pipelines*.yml`, …). A litter-named file stays litter even when it looks like tool
+config: `probe-jest.config.js` and `jest.config.js.tmp` are both reported, and so is a dump
+such as `requirements-probe-output.txt` (a requirements file has one name part after
+`requirements`).
 
 **The guarantees:**
 

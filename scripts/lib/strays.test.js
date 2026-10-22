@@ -120,6 +120,25 @@ test('a litter name still wins over a tool-config shape; a tmp copy of a config 
     'probe-login.mjs', 'tmp-requirements.txt']);
 });
 
+// More real root files (plugin-tester follow-up): test/runtime setup that is a script or a
+// JSON by extension, and task runners / lockfiles that match no litter class.
+const ROOT_TOOL_CONFIG_2 = ['jest.setup.js', 'cucumber.js', 'nodemon.json', 'appsettings.json',
+  'appsettings.Development.json', 'cypress.env.json', 'Taskfile.yml', 'justfile', '.terraform.lock.hcl',
+  'requirements-dev.txt', 'requirements_test.txt', 'requirements/dev.txt'];
+
+test('more root tool configuration is never reported: setup scripts, app settings, task runners, *.lock.hcl', () => {
+  const dir = repo({ tracked: Object.fromEntries(ROOT_TOOL_CONFIG_2.map((n) => [n, 'x\n'])) });
+  const r = list(dir);
+  assert.deepStrictEqual(r.candidates.map((c) => c.path), [], 'none is litter or unplaced');
+});
+
+test('the requirements shape covers one name segment only: an agent dump named requirements-* is still litter', () => {
+  const dir = repo({ untracked: { 'requirements.txt': 'x', 'requirements-dev.txt': 'x', 'requirements-probe-output.txt': 'x',
+    'requirements_pip_freeze_dump.txt': 'x', 'appsettings.probe.dump.json': '{}' } });
+  assert.deepStrictEqual(paths(list(dir), 'litter'), ['appsettings.probe.dump.json', 'requirements-probe-output.txt',
+    'requirements_pip_freeze_dump.txt']);
+});
+
 test('protected subtrees and files are never listed, even with litter-named files in them', () => {
   const files = {
     'test/probe-x.mjs': 'x', 'test/suite1/tmp-a.json': 'x', 'config/probe.json': '{}', 'environments/tmp-qc.json': '{}',
