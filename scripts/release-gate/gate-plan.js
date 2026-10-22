@@ -36,6 +36,7 @@ const INERT = [
   'evals/**', '**/*.test.js', 'skills/*/scripts/golden/**',
   '.github/**', '.gitattributes', '.gitignore',
   'scripts/hosts/**', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/release-gate/README.md',
+  'scripts/dev/**', 'scripts/lint_plugin.js',
 ];
 
 // The full gate (Q16): the execution core — browser-testing, qa-executor, run

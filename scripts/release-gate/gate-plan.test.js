@@ -69,6 +69,14 @@ test('docs, evals and tests only → docsOnly, every lane off (the gate is skipp
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan), plan.unmapped], [true, false, [], []]);
 });
 
+test('every path no host ships (build_host COMMON_EXCLUDES) is inert — maintainer tooling never forces a lane', () => {
+  const { COMMON_EXCLUDES } = require('../hosts/build_host.js');
+  const sample = (p) => (p.includes('*') ? p.replace('**/*', 'x/y').replace(/\*\*?/g, 'x') : p) + (/\.(js|json|md)$/.test(p) ? '' : '/x.js');
+  const files = COMMON_EXCLUDES.filter((p) => p !== '.gitattributes').map(sample);
+  const out = gp.planLanes(files);
+  assert.deepStrictEqual([out.unmapped, out.full], [[], false], JSON.stringify(files));
+});
+
 test('an empty diff is docsOnly too — nothing to gate', () => {
   const plan = gp.planLanes([]);
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan)], [true, false, []]);
