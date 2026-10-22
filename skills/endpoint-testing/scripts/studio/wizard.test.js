@@ -1,7 +1,7 @@
 'use strict';
 // Tests for studio/wizard.js — "New suite from Swagger": steps 1, 2, 4, 5 on the server alone.
 // Run: node skills/endpoint-testing/scripts/studio/wizard.test.js
-const { assert, fs, path, http, harness, proj, treeOf, studio, waitRun } = require('../golden/studio_helpers.js');
+const { assert, fs, path, http, harness, proj, treeOf, req, studio, waitRun } = require('../golden/studio_helpers.js');
 const { test, done } = harness();
 
 const PET = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'golden', 'import', 'petstore-oa3', 'spec.json'), 'utf8'));
@@ -309,6 +309,73 @@ const ALL_SAFE = ['GET /pets', 'POST /pets', 'GET /pets/{petId}', 'GET /store/in
     assert.deepStrictEqual(a.json.notIgnored, ['test/.auth/api-tokens/pets-qc.json', '.agentex/cache/api-data/pets.json']);
     assert.ok(!fs.existsSync(path.join(dir, 'test')) && !fs.existsSync(path.join(dir, '.agentex')));
     assert.ok(fs.existsSync(path.join(dir, 'integration/api_test_suites/pets/pets_suite.json')));
+  });
+
+  // N10: a skipped case counts under Skipped only — never under Needs review — on both pages.
+  // One suite: GET /items (public, required query q, nothing collected) gives an unskipped
+  // placeholder case; POST /items (a write, so skipped, required body field name) gives a
+  // skipped placeholder case. Wizard step 4, the landing filter, the editor's list counts, its
+  // filter rows and the editor page's own predicate must all say 1.
+  const ITEMS_SPEC = {
+    openapi: '3.0.0', info: { title: 'Items' }, servers: [{ url: 'http://127.0.0.1:1/v1' }],
+    paths: { '/items': {
+      get: { operationId: 'listItems', parameters: [{ name: 'q', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: {} } },
+      post: { operationId: 'addItem', requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['name'], properties: { name: { type: 'string' } } } } } }, responses: { 201: {} } },
+    } },
+  };
+  const itemsSpec = () => new Promise(resolve => {
+    const srv = http.createServer((q, res) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(ITEMS_SPEC)); });
+    srv.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${srv.address().port}/openapi.json`, close: () => { srv.close(); srv.closeAllConnections(); } }));
+  });
+  const vm = require('node:vm');
+
+  await test('N10: "Needs review" excludes skipped cases — wizard step 4, landing filter, editor counts, rows and page agree (1)', async () => {
+    const sp = await itemsSpec();
+    const dir = project();
+    const s = await studio(dir, { mode: 'wizard' });
+    await s.page('POST', '/api/wizard/spec', { source: sp.url, suiteName: 'Items', env: 'qc' });
+    await s.page('POST', '/api/wizard/select', { selection: ['GET /items', 'POST /items'] });
+    sp.close();
+    const sm = (await s.page('GET', '/api/wizard/preview')).json.summary;
+    const flagged = sm.endpoints.flatMap(e => e.cases).filter(c => c.needsReview);
+    assert.strictEqual(sm.review, 1, JSON.stringify(sm));
+    assert.strictEqual(flagged.length, 1, JSON.stringify(sm.endpoints));
+    assert.ok(flagged.every(c => !c.skipped), 'a skipped case is never flagged needs review');
+    const a = await s.page('POST', '/api/wizard/approve', {});
+    assert.strictEqual(a.status, 200, a.text);
+    assert.strictEqual(a.json.filter, 'needs-review');
+    const suite = JSON.parse(fs.readFileSync(path.join(dir, a.json.suitePath), 'utf8'));
+    const placeholder = c => Object.values(c.sources || {}).includes('placeholder');
+    assert.ok(suite.cases.some(c => c.skip && placeholder(c)) && suite.cases.some(c => !c.skip && placeholder(c)), 'fixture has both kinds');
+
+    const listed = (await s.page('GET', '/api/suites')).json.suites.find(x => x.path === a.json.suitePath);
+    assert.strictEqual(listed.needsReview, 1, JSON.stringify(listed));
+    const S = require('./suite_store.js');
+    assert.strictEqual(suite.cases.filter(c => S.matchesFilter(c, null, 'needs-review')).length, 1);
+
+    // the editor page counts with the predicate the server injects into it
+    const html = (await req(s.st.port, 'GET', '/editor')).text;
+    const at = html.indexOf('const needsReview = ');
+    assert.ok(at > 0, 'the page declares needsReview');
+    const src = html.slice(at, html.indexOf('; // shared', at));
+    const pageNeedsReview = vm.runInNewContext(`(${src.slice('const needsReview = '.length)})`);
+    assert.strictEqual(suite.cases.filter(pageNeedsReview).length, 1);
+    assert.match(html, /if \(f === 'needs-review'\) return needsReview\(c\);/);
+    s.close();
+  });
+
+  await test('N10: a suite whose only placeholder case is skipped lands on the "all" filter (AC18)', async () => {
+    const sp = await itemsSpec();
+    const dir = project();
+    const s = await studio(dir, { mode: 'wizard' });
+    await s.page('POST', '/api/wizard/spec', { source: sp.url, suiteName: 'Items', env: 'qc' });
+    await s.page('POST', '/api/wizard/select', { selection: ['POST /items'] });
+    sp.close();
+    assert.strictEqual((await s.page('GET', '/api/wizard/preview')).json.summary.review, 0);
+    const a = await s.page('POST', '/api/wizard/approve', {});
+    assert.strictEqual(a.json.filter, 'all');
+    assert.strictEqual((await s.page('GET', '/api/suites')).json.suites[0].needsReview, 0);
+    s.close();
   });
 
   done();

@@ -55,7 +55,8 @@ function load(root, rel) {
   return { path: posix(path.relative(root, full)), json, etag: sha(buf), canonical: buf.toString('utf8') === canonicalText(json) };
 }
 
-const isPlaceholderCase = c => Object.entries((c && c.sources) || {}).some(([p, s]) => s === 'placeholder' && !((c.omit || []).includes(p)));
+// The one "Needs review" predicate (not skipped, still a placeholder value), shared with the wizard.
+const { needsReview } = require(path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'swagger_model.js'));
 
 // The newest result per case index of one suite, from executions/*/api-tests/suite-result.json.
 function lastResults(root, rel, limit = RUNS_SCANNED) {
@@ -86,7 +87,7 @@ const lastFor = (c, index, last) => (last[index] && last[index].name === c.name 
 
 function matchesFilter(c, last, filter) {
   switch (filter) {
-    case 'needs-review': return isPlaceholderCase(c);
+    case 'needs-review': return needsReview(c);
     case 'failing': return !!last && last.result === 'FAIL';
     case 'skipped': return !!c.skip;
     default: return true;
@@ -98,7 +99,7 @@ function countsOf(json, last) {
   return {
     endpoints: new Set(cases.map(c => c.entry)).size,
     cases: cases.length,
-    needsReview: cases.filter(isPlaceholderCase).length,
+    needsReview: cases.filter(needsReview).length,
     skipped: cases.filter(c => c.skip).length,
     failing: cases.filter((c, i) => { const l = lastFor(c, i + 1, last); return l && l.result === 'FAIL'; }).length,
   };
@@ -197,4 +198,4 @@ function save(root, rel, etag, edits, opts = {}) {
   return { status: 'ok', etag: sha(Buffer.from(text)) };
 }
 
-module.exports = { SUITES_DIR, RUNS_SCANNED, sha, canonicalText, resolveSuite, findSuiteFiles, load, listSuites, lastResults, lastFor, matchesFilter, countsOf, isPlaceholderCase, applyEdits, save };
+module.exports = { SUITES_DIR, RUNS_SCANNED, sha, canonicalText, resolveSuite, findSuiteFiles, load, listSuites, lastResults, lastFor, matchesFilter, countsOf, needsReview, applyEdits, save };

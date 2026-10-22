@@ -260,10 +260,10 @@ function viewCases() {
   });
   return cases.filter(c => !deleted.has(c));
 }
-const isPlaceholder = c => Object.entries(c.sources || {}).some(([p, s]) => s === 'placeholder' && !(c.omit || []).includes(p));
+const needsReview = __STUDIO_NEEDS_REVIEW__; // shared with the wizard and suite_store: swagger_model.js needsReview (N10)
 const lastOf = c => (c.__i && ED.last[c.__i] && ED.last[c.__i].name === (ED.doc.cases[c.__i - 1] || {}).name ? ED.last[c.__i] : null);
 function matches(c, f) {
-  if (f === 'needs-review') return isPlaceholder(c);
+  if (f === 'needs-review') return needsReview(c);
   if (f === 'failing') { const l = lastOf(c); return !!l && l.result === 'FAIL'; }
   if (f === 'skipped') return !!c.skip;
   return true;

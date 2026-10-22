@@ -152,6 +152,19 @@ test('collected values carry their source; a missing value is a placeholder', ()
   assert.strictEqual(out2.summary.ready, 1); // the missing-field case omits the placeholder
 });
 
+test('needsReview (N10): not skipped and still a placeholder value; a skipped case is Skipped only', () => {
+  const ph = { sources: { id: 'placeholder' } };
+  assert.strictEqual(M.needsReview(ph), true);
+  assert.strictEqual(M.needsReview({ ...ph, skip: 'review: write operation — remove this line to enable' }), false);
+  assert.strictEqual(M.needsReview({ ...ph, omit: ['id'] }), false);
+  assert.strictEqual(M.needsReview({ sources: { id: 'ui' } }), false);
+  assert.strictEqual(M.needsReview(undefined), false);
+  const out = M.generate(model3(), ['POST /pets'], {}, { name: 'petstore' });
+  assert.ok(out.suite.cases.some(c => c.skip && Object.values(c.sources || {}).includes('placeholder')));
+  assert.strictEqual(out.summary.review, 0);
+  assert.ok(out.summary.endpoints[0].cases.every(c => c.skipped && !c.needsReview));
+});
+
 test('$param body nodes are typed from the schema; params are the needs only', () => {
   const out = M.generate(model3(), ['POST /pets'], { name: { value: 'Rex', source: 'manual' }, status: { value: 'sold', source: 'ui' } }, { name: 'petstore' });
   const req = out.catalog.requests[0];

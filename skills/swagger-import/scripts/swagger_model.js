@@ -570,8 +570,11 @@ function generate(model, selection, values, opts) {
       tokenVar: auth.tokenEnv || `${envPrefix}_TOKEN`, specReview },
   };
 }
+// "Needs review": a case that is not skipped and still sends a placeholder value. A skipped case
+// counts under Skipped only (N10). The one definition: the wizard's step 4, suite_store's counts
+// and filter, and the editor page (the studio server injects this source into it) all use it.
 function needsReview(c) {
-  return Object.entries(c.sources || {}).some(([p, s]) => s === 'placeholder' && !(c.omit || []).includes(p));
+  return !!c && !c.skip && Object.entries(c.sources || {}).some(([p, s]) => s === 'placeholder' && !(c.omit || []).includes(p));
 }
 
 module.exports = {

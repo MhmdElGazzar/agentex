@@ -152,8 +152,8 @@ async function createStudio(opts) {
     if (caseN !== undefined && (caseN < 1 || caseN > cases.length)) return { status: 400, body: { ok: false, error: 'bad-case' } };
     const targets = caseN !== undefined ? [cases[caseN - 1]] : cases;
     const skipped = targets.filter(c => c && c.skip).length;
-    const review = targets.filter(c => c && !c.skip && S.isPlaceholderCase(c)).length;
-    if (!targets.some(c => c && !c.skip && !S.isPlaceholderCase(c))) {
+    const review = targets.filter(S.needsReview).length;
+    if (!targets.some(c => c && !c.skip && !S.needsReview(c))) {
       return { status: 200, body: { ok: false, nothing: true, skipped, review } };
     }
     let base = `executions/execu_${stamp()}`;
@@ -254,6 +254,7 @@ async function createStudio(opts) {
       const lang = ['ar', 'en'].includes(asked) ? asked : state.lang;
       const html = fs.readFileSync(HTML, 'utf8')
         .replace('__STUDIO_TOKEN__', state.pageToken)
+        .replace('__STUDIO_NEEDS_REVIEW__', () => S.needsReview.toString())
         .replace('__STUDIO_LANG__', lang)
         .replace('__STUDIO_VIEW__', view)
         .replace('__STUDIO_SUITE__', JSON.stringify(state.initialSuite || '').slice(1, -1))

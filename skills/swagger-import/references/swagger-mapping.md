@@ -172,7 +172,8 @@ generates the four basic checks, from the values collected in its step 3:
   like any other value.
 - **`sources`** records where each value came from (`ui`, `project`, `manual`, or `auto` for
   the not-found ID). A value nobody found or typed is `placeholder`: the case shows as "needs
-  review" and is BLOCKED at run time until it gets a real value.
+  review" (unless it is skipped: a skipped case counts under Skipped only) and is BLOCKED at
+  run time until it gets a real value.
 - **Write operations** arrive with the same `skip` line. In step 2, a DELETE, an operation with
   `x-destructive: true`, or one whose summary / operationId uses a destructive verb (delete,
   remove, destroy, purge, erase, wipe, drop, truncate, terminate, revoke, reset, cancel) starts

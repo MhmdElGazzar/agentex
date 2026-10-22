@@ -30,7 +30,9 @@ From the project root, in the background:
   unsaved-changes marker, Run all.
 - **Cases tab:** cases grouped by endpoint. Each value carries a source badge (UI · Project ·
   Auto · Placeholder · Manual); a value with no recorded source shows as Manual. Filters: All ·
-  Needs review (a value still a placeholder) · Failing · Skipped.
+  Needs review (a case that is not skipped and still sends a placeholder value) · Failing ·
+  Skipped. A skipped case counts under Skipped only, so the rail, the filters and the wizard's
+  step 4 give the same Needs review number for the same suite.
 - **Drawer:** rename; suite token or no token; per value: pick from the collected data, type
   one (Manual), or leave it out (never a path param); status, required fields, one message
   check (equals / contains; other `equals` entries are kept and shown as "+N other checks");
