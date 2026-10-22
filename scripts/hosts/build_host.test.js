@@ -78,6 +78,8 @@ function pluginRepo() {
   write(dir, 'scripts/run-tests.js');                 // maintainer tooling (delivery-speed)
   write(dir, 'scripts/release-gate/gate-plan.js');
   write(dir, 'scripts/release-gate/prepare.js');      // a gate script that does ship
+  write(dir, 'scripts/harvest/harvest.js');           // the maintainer harvest (field-feedback-loop)
+  write(dir, 'scripts/harvest/README.md');
   write(dir, 'hosts/claude/host.json', JSON.stringify(CLAUDE_HOST));
   write(dir, 'hosts/demo/host.json', JSON.stringify(DEMO_HOST));
   write(dir, 'hosts/demo/overlay/DEMO.md', 'demo only\n');
@@ -99,7 +101,7 @@ const CLAUDE_KEPT = ['.claude-plugin/plugin.json', 'README.md', 'commands/go.md'
   'scripts/release-gate/prepare.js',
   'skills/legacy/scripts/old.js', 'skills/run-it/SKILL.md', 'skills/run-it/scripts/run.js'];
 
-test('claude host: main minus evals, tests and golden fixtures, .github, .gitattributes, hosts/, scripts/hosts and the maintainer runners', () => {
+test('claude host: main minus evals, tests and golden fixtures, .github, .gitattributes, hosts/, scripts/hosts, scripts/harvest and the maintainer runners', () => {
   const dir = pluginRepo();
   const res = buildHostCommit({ cwd: dir, source: 'main', host: 'claude' });
   assert.strictEqual(res.ok, true, JSON.stringify(res.findings));
@@ -319,6 +321,30 @@ test('this repo: every host in hosts/ builds from HEAD with no guard findings', 
     const res = buildTree({ cwd: REPO, source: 'HEAD', host });
     assert.deepStrictEqual(res.findings, [], `${host}: ${JSON.stringify(res.findings.slice(0, 5))}`);
   }
+});
+
+test('this repo: no host tree holds scripts/harvest/ (the maintainer harvest never ships), and the consumer script does', () => {
+  const hosts = git(REPO, 'ls-tree', '--name-only', 'HEAD:hosts').split('\n').filter(Boolean).map((p) => p.replace(/^hosts\//, ''));
+  assert.ok(fs.existsSync(path.join(REPO, 'scripts', 'harvest', 'harvest.js')), 'the harvest script exists in the source tree');
+  for (const host of hosts) {
+    const b = repoBuild(host);
+    assert.deepStrictEqual(b.paths.filter((p) => p === 'scripts/harvest' || p.startsWith('scripts/harvest/')), [], host);
+    assert.ok(b.has('scripts/field_feedback.js') && b.has('scripts/lib/learnings.js') && b.has('scripts/lib/feedback_sanitize.js') && b.has('scripts/lib/plugin_inventory.js'), `${host}: the consumer runtime ships`);
+  }
+});
+
+test('this repo: the Codex manifest carries repository (plugin.json has it, the pick list keeps it)', () => {
+  const src = JSON.parse(git(REPO, 'show', 'HEAD:.claude-plugin/plugin.json'));
+  assert.strictEqual(typeof src.repository, 'string');
+  const manifest = JSON.parse(repoBuild('codex').read('.codex-plugin/plugin.json'));
+  assert.strictEqual(manifest.repository, src.repository);
+});
+
+test('this repo: the field-feedback skill, once present, keeps its description within every host guard (<= 1024 chars) and builds clean on every host', () => {
+  const file = path.join(REPO, 'skills', 'field-feedback', 'SKILL.md');
+  if (!fs.existsSync(file)) { console.log('    (skills/field-feedback/SKILL.md is not in this tree yet — covered by "every host builds" once it lands)'); return; }
+  const fm = require('./transforms.js').parseFrontmatter(fs.readFileSync(file, 'utf8'));
+  assert.ok(String(fm.description || '').length <= 1024, `description is ${String(fm.description || '').length} chars`);
 });
 
 test('this repo, claude: the `store` branch content — unconverted, no dev-only paths', () => {

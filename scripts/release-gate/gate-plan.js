@@ -37,6 +37,7 @@ const INERT = [
   '.github/**', '.gitattributes', '.gitignore',
   'scripts/hosts/**', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/release-gate/README.md',
   'scripts/dev/**', 'scripts/lint_plugin.js',
+  'scripts/harvest/**',   // the maintainer's field-feedback harvest: reads consumer projects, never shipped
 ];
 
 // The full gate (Q16): the execution core — browser-testing, qa-executor, run
@@ -71,6 +72,12 @@ const LANE_MAP = [
   ['test/suite1/**', ['setup']],
   ['.env.example', ['setup', 'wizard']],
   ['settings.example.json', ['setup']],
+  // field feedback: capture, export and the absorption step of /update-agentex (setup lane)
+  ['scripts/field_feedback.js', ['setup']],
+  ['scripts/lib/learnings.js', ['setup']],
+  ['scripts/lib/plugin_inventory.js', ['setup']],
+  ['scripts/lib/feedback_sanitize.js', ['setup']],
+  ['skills/field-feedback/**', ['setup']],
   ['scripts/release-gate/prepare.js', ['setup']],
   ['scripts/release-gate/scan-secrets.js', ['setup']],
   // wizard

@@ -216,6 +216,13 @@ test('env: runtime-provided variables, comment-documented names and test files a
   assert.deepStrictEqual(of(r.json.errors, 'env'), []);
 });
 
+test('env: the maintainer-only AGENTEX_HARVEST_ROOTS is allowlisted without a .env.example key; the real .env.example never names it', () => {
+  const r = run(tree({ 'scripts/harvest/harvest.js': 'const roots = process.env.AGENTEX_HARVEST_ROOTS;\n' }));
+  assert.deepStrictEqual(of(r.json.errors, 'env'), []);
+  const example = fs.readFileSync(path.join(__dirname, '..', '.env.example'), 'utf8');
+  assert.ok(!example.includes('AGENTEX_HARVEST_ROOTS'), 'a consumer .env.example never carries the maintainer variable');
+});
+
 // ── 5. secrets + denylist ───────────────────────────────────────────────────
 test('secrets: each token shape in a tracked file is an error; values are never echoed', () => {
   const body = Object.values(TOKENS).map((t, i) => `line ${i}: ${t}`).join('\n') + '\n';
