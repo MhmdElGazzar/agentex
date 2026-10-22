@@ -54,6 +54,10 @@ writes a file.
   `/update-agentex`.
 - If the file ends up with two blocks, or a marker without its partner, nothing is written and a
   `[flag]` asks you to keep one begin/end pair.
+- **A `CLAUDE.md` that is a symlink stays a symlink.** If your `CLAUDE.md` links to another
+  file (for example `AGENTS.md`), the block is written into that file, and the file keeps its
+  permissions. If the link points to a file that does not exist, nothing is written, no
+  file is created, and a `[flag]` names the missing target.
 
 ## Where things go
 

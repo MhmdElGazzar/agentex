@@ -108,6 +108,7 @@ const WRAP = 92;
 
 const EDITED_FLAG = 'CLAUDE.md: the AgenTeX block was edited by hand, so it was not refreshed — move your own lines outside the block, delete the block (both marker lines too), then re-run /update-agentex to get the current one (docs/project-layout.md#the-agentex-block-in-claudemd)';
 const MALFORMED_FLAG = 'duplicate or broken AgenTeX block markers in CLAUDE.md — keep one begin/end pair, then re-run /update-agentex (docs/project-layout.md#the-agentex-block-in-claudemd)';
+const danglingFlag = (target) => `CLAUDE.md is a symlink to ${target}, which does not exist, so the AgenTeX block was not written — create the target file (or replace the link with a file), then re-run /update-agentex (docs/project-layout.md#the-agentex-block-in-claudemd)`;
 
 // Greedy word wrap; continuation lines carry `indent`.
 function wrap(text, { first = '', indent = '' } = {}) {
@@ -191,10 +192,21 @@ function stripManagedBlock(content) {
   return Buffer.isBuffer(content) ? out : out.toString('utf8');
 }
 
+// tmp + rename against the real file: a CLAUDE.md that is a symlink (to AGENTS.md, say)
+// stays a link and its target gets the bytes; the tmp sits next to the target (same
+// filesystem, so the rename is atomic) and takes the target's mode. `file` must exist.
 function writeAtomic(file, buf) {
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, buf);
-  fs.renameSync(tmp, file);
+  const real = fs.realpathSync(file);
+  const mode = fs.statSync(real).mode & 0o7777;
+  const tmp = `${real}.tmp`;
+  try {
+    fs.writeFileSync(tmp, buf, { mode });
+    fs.chmodSync(tmp, mode); // writeFileSync's mode is masked by the umask
+    fs.renameSync(tmp, real);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch { /* never created */ }
+    throw e;
+  }
 }
 
 // The separator before an appended block (R1.4): a blank-line ending → nothing; one EOL
@@ -210,10 +222,15 @@ function separator(buf, eol) {
 // Returns { kind: 'created'|'skipped'|'flag', state, path, note, message? }.
 function ensureLayoutBlock(projectRoot, { dryRun = false, routes, rules } = {}) {
   const file = path.join(projectRoot, 'CLAUDE.md');
-  const existed = fs.existsSync(file);
+  const base = { path: 'CLAUDE.md' };
+  let link = null;
+  try { if (fs.lstatSync(file).isSymbolicLink()) link = fs.readlinkSync(file); } catch { /* no CLAUDE.md */ }
+  const existed = fs.existsSync(file); // follows a link: false for a dangling one
+  // A dangling link is never replaced by a file, and its target is never created (it may
+  // point anywhere, even outside the project): flagged, zero writes.
+  if (link !== null && !existed) return { ...base, kind: 'flag', state: 'dangling', note: 'CLAUDE.md is a dangling symlink, not written', message: danglingFlag(link) };
   const buf = existed ? fs.readFileSync(file) : Buffer.alloc(0);
   const p = parseBlock(buf, { routes, rules });
-  const base = { path: 'CLAUDE.md' };
   if (p.state === 'current') return { ...base, kind: 'skipped', state: 'current', note: 'AgenTeX layout block already current' };
   if (p.state === 'edited') return { ...base, kind: 'flag', state: 'edited', note: 'AgenTeX block edited by hand, not refreshed', message: EDITED_FLAG };
   if (p.state === 'malformed') return { ...base, kind: 'flag', state: 'malformed', note: 'AgenTeX block markers broken, not refreshed', message: MALFORMED_FLAG };
@@ -229,7 +246,8 @@ function ensureLayoutBlock(projectRoot, { dryRun = false, routes, rules } = {}) 
   const eol = firstNl > 0 && buf[firstNl - 1] === 0x0d ? '\r\n' : '\n';
   if (!dryRun) {
     const add = `${separator(buf, eol)}${renderBlock({ eol, routes, rules })}${eol}`;
-    writeAtomic(file, Buffer.concat([buf, Buffer.from(add, 'utf8')]));
+    if (existed) writeAtomic(file, Buffer.concat([buf, Buffer.from(add, 'utf8')]));
+    else fs.writeFileSync(file, add, { flag: 'wx' }); // no CLAUDE.md at all (not a link): created
   }
   return { ...base, kind: 'created', state: 'created', note: existed ? 'AgenTeX layout block appended' : 'created with the AgenTeX layout block' };
 }

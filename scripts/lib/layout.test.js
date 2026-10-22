@@ -228,6 +228,97 @@ test('malformed markers: zero writes and the [flag] text', () => {
   assert.match(r.message, /duplicate or broken AgenTeX block markers in CLAUDE\.md — keep one begin\/end pair, then re-run/);
 });
 
+// ── a CLAUDE.md that is a symlink (invariant #11: the link is the user's) ────
+// Where the OS cannot create symlinks (Windows without the privilege), these cases skip.
+const CAN_SYMLINK = (() => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-layout-link-'));
+  try { fs.symlinkSync('target', path.join(d, 'link')); return true; } catch { return false; }
+})();
+const POSIX_MODES = process.platform !== 'win32';
+function linkTest(name, fn) {
+  if (CAN_SYMLINK) test(name, fn);
+  else console.log(`  skip - ${name} (this OS cannot create symlinks here)`);
+}
+const modeOf = (f) => fs.statSync(f).mode & 0o777;
+// CRLF + non-ASCII user content, and a link CLAUDE.md → <target>.
+function linkedProject(target, content, mode = 0o640) {
+  const dir = proj({ [target]: content });
+  fs.chmodSync(path.join(dir, target), mode);
+  fs.symlinkSync(target, path.join(dir, 'CLAUDE.md'));
+  return dir;
+}
+function assertStillLink(dir, target) {
+  const l = path.join(dir, 'CLAUDE.md');
+  assert.ok(fs.lstatSync(l).isSymbolicLink(), 'CLAUDE.md is still a symlink');
+  assert.strictEqual(fs.readlinkSync(l), target, 'the link still points where the user pointed it');
+}
+const noTmp = (dir) => {
+  const left = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, e.name);
+      if (e.isDirectory()) walk(full); else if (e.name.endsWith('.tmp')) left.push(path.relative(dir, full));
+    }
+  })(dir);
+  assert.deepStrictEqual(left, [], 'no tmp file outlives the call');
+};
+
+linkTest('symlink (absent): the block is appended to the link target; the link stays a link; bytes before it and the mode kept', () => {
+  const user = Buffer.from('# وكلاء — Ünïcødé\r\n- user rule: café\r\n', 'utf8');
+  const dir = linkedProject('AGENTS.md', user);
+  const r = layout.ensureLayoutBlock(dir);
+  assert.strictEqual(r.state, 'created');
+  assertStillLink(dir, 'AGENTS.md');
+  const out = fs.readFileSync(path.join(dir, 'AGENTS.md'));
+  assert.ok(out.subarray(0, user.length).equals(user), 'every user byte kept');
+  assert.strictEqual(out.subarray(user.length).toString(), `\r\n${currentBlock(CRLF)}\r\n`);
+  assert.strictEqual(parse(out), 'current');
+  if (POSIX_MODES) assert.strictEqual(modeOf(path.join(dir, 'AGENTS.md')), 0o640, 'the target keeps its mode');
+  noTmp(dir);
+  assert.strictEqual(layout.ensureLayoutBlock(dir).state, 'current', 'read through the link on the next run');
+});
+
+linkTest('symlink (stale): the block is refreshed inside the target (a sub-folder); bytes outside the markers and the mode kept', () => {
+  const { before, after, file } = refreshFixture(CRLF);
+  const dir = linkedProject('shared/AGENTS.md', file, 0o600);
+  const r = layout.ensureLayoutBlock(dir);
+  assert.strictEqual(r.state, 'refreshed');
+  assertStillLink(dir, 'shared/AGENTS.md');
+  const out = fs.readFileSync(path.join(dir, 'shared', 'AGENTS.md'));
+  assert.ok(out.subarray(0, before.length).equals(before), 'bytes before the block');
+  assert.ok(out.subarray(out.length - after.length).equals(after), 'bytes after the block');
+  assert.strictEqual(out.subarray(before.length, out.length - after.length).toString(), currentBlock(CRLF));
+  if (POSIX_MODES) assert.strictEqual(modeOf(path.join(dir, 'shared', 'AGENTS.md')), 0o600, 'the target keeps its mode');
+  noTmp(dir);
+});
+
+linkTest('symlink (dangling): a [flag] naming the missing target, zero writes — the link is never replaced and no target is created', () => {
+  const dir = proj();
+  fs.symlinkSync('AGENTS.md', path.join(dir, 'CLAUDE.md'));
+  for (const dryRun of [true, false]) {
+    const r = layout.ensureLayoutBlock(dir, { dryRun });
+    assert.strictEqual(r.kind, 'flag');
+    assert.strictEqual(r.state, 'dangling');
+    assert.strictEqual(r.message, 'CLAUDE.md is a symlink to AGENTS.md, which does not exist, so the AgenTeX block was not written — create the target file (or replace the link with a file), then re-run /update-agentex (docs/project-layout.md#the-agentex-block-in-claudemd)');
+    assertStillLink(dir, 'AGENTS.md');
+    assert.ok(!fs.existsSync(path.join(dir, 'AGENTS.md')), 'no target was created');
+  }
+  noTmp(dir);
+});
+
+test('a regular CLAUDE.md keeps its file mode across append and refresh', () => {
+  if (!POSIX_MODES) return;
+  const dir = proj({ 'CLAUDE.md': `# Mine\n\n${staleBlock()}\n` });
+  const file = path.join(dir, 'CLAUDE.md');
+  fs.chmodSync(file, 0o640);
+  assert.strictEqual(layout.ensureLayoutBlock(dir).state, 'refreshed');
+  assert.strictEqual(modeOf(file), 0o640, 'refresh');
+  const b = proj({ 'CLAUDE.md': '# Mine\n' });
+  fs.chmodSync(path.join(b, 'CLAUDE.md'), 0o600);
+  assert.strictEqual(layout.ensureLayoutBlock(b).state, 'created');
+  assert.strictEqual(modeOf(path.join(b, 'CLAUDE.md')), 0o600, 'append');
+});
+
 // ── extension point (R1.6) ──────────────────────────────────────────────────
 test('an extra route reaches a pristine block and leaves an edited block alone', () => {
   const routes = [...layout.ROUTES, EXTRA_ROUTE];
