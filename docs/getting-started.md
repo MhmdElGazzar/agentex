@@ -51,6 +51,10 @@ Plugin manifests can't ship permission rules, so copy the `permissions` block fr
 so Claude doesn't have to ask before every single one during a run — and denies secret reads /
 destructive actions.
 
+Planning to share the project through git? [Putting your project in git](./putting-your-project-in-git.md)
+says what to commit and what stays local, and how the secret scan and the optional pre-commit
+hook (offered by `/init-test`) keep a secret out of your history.
+
 ## 5. Run your first test
 
 ```
@@ -98,4 +102,6 @@ instead (or as well), see [Mobile Testing](./mobile-testing.md) for the equivale
 - [Mobile Testing](./mobile-testing.md) — the same flow for native Android/iOS apps, via Appium.
 - [Configuration](./configuration.md) — the three config files (`config/project.json`,
   `environments/<env>.json`, `.env`) and secret handling.
+- [Putting your project in git](./putting-your-project-in-git.md) — what to commit, setting a
+  remote safely, the secret scan and the optional pre-commit hook.
 - [docs/](./README.md) — the full feature reference.

@@ -103,15 +103,16 @@ What to look at for the default factors (rate a user-added factor from its name)
 
 ### Phase A — collect & read (no user interaction, no writes)
 
-Scratch files (the proposal, the spec) go in the OS temp dir. Get its absolute path once with
-`node -p "require('os').tmpdir()"` and write that path in full wherever `<os-temp>` appears
-below. Never use a shell variable such as `$TMP` for it: it is unset on some systems.
+Scratch files (the proposal, the spec) go **only** in `.agentex/scratch/` under the project
+root, never anywhere else in the project. Create the folder if it is missing; it is gitignored
+agent scratch, and the file names below are overwritten on each run. Never use a shell
+variable such as `$TMP` for it: it is unset on some systems.
 
 1. **The estimation file, first:**
    ```bash
-   node ${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/scripts/create-tasks.js estimation --out "<os-temp>/estimation-proposal.json" [--sprints N]
+   node ${CLAUDE_PLUGIN_ROOT}/skills/task-estimation/scripts/create-tasks.js estimation --out ".agentex/scratch/estimation-proposal.json" [--sprints N]
    ```
-   `--out` is an OS-temp scratch file (like the spec), never a project path; the script
+   `--out` is a scratch file in `.agentex/scratch/` (like the spec), never any other path; the script
    refuses a path that holds anything but a previous proposal. Pass
    `--sprints N` only when the user's ask names how many past sprints to read (default 2).
    Branch on `source`:
@@ -159,15 +160,15 @@ approval.
 
 ### Phase C — validate, one screen, one approval, write
 
-1. Build the **ratings spec** (stories the user chose to skip are absent), write it to the OS
-   temp dir, and dry-run it:
+1. Build the **ratings spec** (stories the user chose to skip are absent), write it to
+   `.agentex/scratch/tasks.json`, and dry-run it:
    ```json
    { "assignee": "qa.engineer@example.com",
      "estimation": { "proposalFile": "<the --out file>" },
      "stories": [ { "id": 2101, "ratings": { "Scenarios / ACs": 1, "UI elements": 2, "…": 0 } } ] }
    ```
    ```bash
-   node …/create-tasks.js --spec "<os-temp>/tasks.json" [--allow-existing]
+   node …/create-tasks.js --spec ".agentex/scratch/tasks.json" [--allow-existing]
    ```
    `estimation.proposalFile` is for a first run only. Never send `tasks` or hours — the script
    derives them (`tasks-not-from-file` otherwise). Add these only on the user's words:

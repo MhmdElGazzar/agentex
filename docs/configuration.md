@@ -81,7 +81,7 @@ your board, delete or move it; the next estimation run proposes a new one.
 | Key | Purpose |
 |---|---|
 | `portalUrl` | The target under test (required). |
-| `defaults` | Non-secret static test values: `otp`, `password` (shared test credential), `captcha`, plus any project-specific keys. |
+| `defaults` | Static test values: `otp`, `captcha` and project-specific keys. `password`, the shared test credential, is a secret field: the wizard writes `{ "envSecret": "DEFAULT_PASSWORD" }` and puts the value in `.env`. A plain string still works and the scan warns on it. |
 | `users` | Test accounts keyed by a descriptive handle (`valid_user`, `expired_user`, …) that specs refer to ("login as expired_user"). Fields free-form: `phone`, `role`, `idNumber`, `password`, `notes`, … A user without `password` uses `defaults.password`. |
 | `db` | `server`, `port`, `name`, `user`, `password` — for cataloged `db:` steps. |
 | `api` | `baseUrl`, `token` — for cataloged `api:` steps. |
