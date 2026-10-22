@@ -76,7 +76,9 @@ KB QUESTIONS (`kb:` in the spec)
   skill (read the skill + `references/kb-ask-api.md` before the first such step). Execute via
   the bundled runner:
     node ${CLAUDE_PLUGIN_ROOT}/skills/ask-kb/scripts/ask_kb.js --question "<text>" [--project <id>] --log {{SESSION_DIR}}/logs/<scenario>-kb.log
-  Step syntax: `kb: <question>` uses the default project from `agentex.config.json`;
+  Step syntax: `kb: <question>` passes no `--project`; the runner resolves the default itself,
+  in this order: `kb.project` in `config/project.json`, then `KB_PROJECT` (shell env or `.env`,
+  read by the runner), then legacy `agentex.config.json`.
   `kb:<project>: <question>` overrides it (pass the project as `--project`).
 - Prints {"result":"OK|NOT_COVERED|BLOCKED", ...} as JSON (exit 0 OK/NOT_COVERED, 2 BLOCKED).
   OK → read the `answer` as advisory context. NOT_COVERED → treat as "not documented in the KB".
