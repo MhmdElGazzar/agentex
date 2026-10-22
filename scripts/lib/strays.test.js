@@ -10,6 +10,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const strays = require('./strays.js');
+const { STRUCTURED_DEFAULTS } = require('./project_config.js');
+// The default QA watchlist file and folder, read from the one constant (never a literal).
+const QA_FILE = STRUCTURED_DEFAULTS.qaRecords.pendingQuestions;
+const QA_DIR = path.posix.dirname(QA_FILE);
 
 const PLUGIN_ROOT = path.resolve(__dirname, '..', '..');
 
@@ -101,18 +105,18 @@ test('plugin-defined paths are never listed; a non-configured file in a qaRecord
     tracked: {
       'config/project.json': { qaRecords: { envIssues: 'notes/env.md' } },
       'notes/env.md': '# env\n', 'notes/decisions.md': '# settled\n',
-      'qa-watchlist/awaiting-answers.md': '# q\n', 'qa-watchlist/decisions.md': '# settled\n',
+      [QA_FILE]: '# q\n', [`${QA_DIR}/decisions.md`]: '# settled\n',
       '.agentex/version.json': '{}', '.agentex/test-template.md': '#', 'CLAUDE.md': '# me\n',
       'agentex.config.json': '{}', 'integrations/x_api.json': '{}',
     },
     untracked: {
       '.agentex/cache/tracker-fields-ado.json': '{}', '.agentex/scratch/probe-x.mjs': 'x',
-      'notes/env.md.lock': '1', 'qa-watchlist/awaiting-answers.md.tmp': 'x', 'config/estimation.json': '{}',
+      'notes/env.md.lock': '1', [`${QA_FILE}.tmp`]: 'x', 'config/estimation.json': '{}',
     },
   });
   const r = list(dir);
   assert.deepStrictEqual(paths(r, 'litter'), []);
-  assert.deepStrictEqual(paths(r, 'unplaced'), ['notes/decisions.md', 'qa-watchlist/decisions.md']);
+  assert.deepStrictEqual(paths(r, 'unplaced'), ['notes/decisions.md', `${QA_DIR}/decisions.md`].sort());
 });
 
 test('paths the project ignores are never listed (untracked and tracked-but-ignored)', () => {
@@ -194,10 +198,10 @@ test('report: paths only — no file content ever reaches the output', () => {
 });
 
 test('report: a custom qaRecords block that does not validate falls back to the defaults with one note', () => {
-  const dir = repo({ tracked: { 'config/project.json': { qaRecords: { envIssues: '/abs/x.md' } }, 'qa-watchlist/decisions.md': '#' } });
+  const dir = repo({ tracked: { 'config/project.json': { qaRecords: { envIssues: '/abs/x.md' } }, [`${QA_DIR}/decisions.md`]: '#' } });
   const lines = report(dir);
   assert.strictEqual(lines.filter((l) => l.startsWith('[stray] note ')).length, 1);
-  assert.ok(lines.includes('[stray]     qa-watchlist/decisions.md (tracked)'));
+  assert.ok(lines.includes(`[stray]     ${QA_DIR}/decisions.md (tracked)`));
 });
 
 test('report: MAX_LISTED caps the printed paths, never the counts or the digest', () => {
