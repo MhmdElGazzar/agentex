@@ -1,10 +1,16 @@
 ---
-description: Generate an API catalog + suite of test cases from a Swagger 2.0 / OpenAPI 3.x JSON document (local file or URL).
+description: Generate an API catalog + suite of test cases from a Swagger 2.0 / OpenAPI 3.x JSON document (local file or URL). --wizard opens the guided page that collects real test data first.
 ---
 
 Use the **swagger-import** skill to import endpoints from a spec.
 
 Arguments: $ARGUMENTS
+
+**Wizard form — `--wizard [source] [--lang=ar|en]`:** open the "New suite from Swagger"
+page instead of importing directly. Follow
+`${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/references/suite-wizard.md` (launch the studio,
+stay attached through its channel, collect test data in step 3). A given source is only
+pre-filled on the page. Everything below is the direct import and is unchanged.
 
 **Parse the arguments:**
 - First token: the spec source.
@@ -39,6 +45,8 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/scripts/import_swagger.js" <so
   placeholder "not found" values, or unsupported auth schemes that need manual verification.
   The same notes are written into the generated files (`review: [...]` per request/case).
 - Tell them every generated write-method case (POST/PUT/PATCH/DELETE) carries a `skip` line
-  and is reported BLOCKED, not run, until they review it and delete that line.
+  and is reported BLOCKED, not run, until it is enabled — one case at a time, after that case
+  is reviewed, or through the editor's per-case Skip toggle. Decline a bulk strip of the
+  `skip` lines and offer to walk through the write cases one by one.
 - Tell them to review the generated files, then try `/test-endpoints` once the env
   vars are set.

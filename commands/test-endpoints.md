@@ -1,10 +1,15 @@
 ---
-description: Run the standalone API test pass ("api-tests") over every cataloged case, independent of any browser test spec.
+description: Run the standalone API test pass ("api-tests") over every cataloged case, independent of any browser test spec. --edit opens the local suite editor.
 ---
 
 Use the **endpoint-testing** skill to run the standalone API tests.
 
 Arguments: $ARGUMENTS
+
+**Editor form — `--edit [--lang=ar|en]`:** open the local suite editor instead of running.
+Follow `${CLAUDE_PLUGIN_ROOT}/skills/endpoint-testing/references/suite-editor.md`. The editor
+needs no agent; its Run goes through `run_suite.js` directly. Every other form below is
+unchanged.
 
 **Parse the arguments:** optional environment — `--env <name>`, `env: <name>` or "on <name>"
 selects `environments/<name>.json` (same as `/execute-test`) for the whole run; omitted = the
