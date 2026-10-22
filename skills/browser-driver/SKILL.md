@@ -21,6 +21,7 @@ reports) belongs to the **test-execution** skill.
 - Screenshot every scenario, pass and fail, with `--filename=` (never a positional path).
 - A "success" check reads the element's computed display/visibility. Text existing in the DOM is not proof.
 - Run headless unless told otherwise. `--headed` is for demos only.
+- **Secret fields.** Type every `{ "envSecret": "NAME" }` value (password, OTP, national ID, any field) ONLY with `node <agentex-root>/skills/browser-driver/scripts/fill_secret.js --session <s> --target <ref> --env-var NAME [--env <env>] --submit` (read `references/tools/fill-secret.md` first). Never resolve, read, echo, or pass the value yourself, and never try another way (`fill`, `type`, `run-code`, `$NAME`): a refused command is not a puzzle to solve. Snapshot BEFORE filling and fill secrets last. A snapshot shows input values in clear text, passwords included, and every playwright-cli action writes one to `.playwright-cli/`, so run no other playwright-cli command between the first secret fill and the submit: submit in the last call with `--submit` (Enter) or `--submit-target <pre-fill ref>`, which then clears every secret field still holding its value. Segmented boxes (OTP digits): one call, one `--target` per box, in order. If the submitting call never ran, take no `snapshot`, `eval` or `screenshot` of that page ("evidence withheld: secret field still filled"). `secret-unavailable` → the scenario is BLOCKED, never FAIL, never `captcha-or-otp`.
 
 ## Executing a browser step
 1. Before the first command in a session, read `references/tools/playwright-cli.md`.
@@ -45,5 +46,6 @@ Per browser step, hand back: the screenshot path, console and network notes, and
 | File | Knowledge | Read when |
 |---|---|---|
 | `references/tools/playwright-cli.md` | Tool | Before the first command in a session |
+| `references/tools/fill-secret.md` | Tool | Before the first `{ "envSecret" }` field |
 | `references/techniques/browser-checks.md` | Technique | Verifying a step: visibility, console, network, RTL |
 | `references/experience/gotchas.md` | Experience | A command fails or behaves unexpectedly |

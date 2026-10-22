@@ -154,7 +154,8 @@ function killTree(child) {
 // Run a child, stream its output to stderr (stdout stays ours alone), resolve on close.
 function run(command, { cwd, env, budgetMs }) {
   return new Promise((resolve) => {
-    const child = spawn(command, { shell: true, cwd, env, detached: process.platform !== 'win32' });
+    // stdin closed: a headless claude otherwise waits 3s for piped input on every attempt
+    const child = spawn(command, { shell: true, cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     let out = ''; let timedOut = false;
     child.stdout.on('data', (d) => { out += d; process.stderr.write(d); });
     child.stderr.on('data', (d) => process.stderr.write(d));
@@ -264,11 +265,19 @@ async function main() {
         '--output-format', 'json',
       ].join(' ');
       log(`attempt ${n}/${maxAttempts} — spawning headless session: ${prompt}`);
-      const session = await run(command, {
-        cwd,
-        env: { ...process.env, AGENTEX_CI: '1', AGENTEX_VERDICT_PATH: handshakePath, AGENTEX_CI_POLICY: JSON.stringify(policy) },
-        budgetMs,
-      });
+      // fill_secret.js writes its 0600 code file under this per-attempt dir; removing it after the
+      // attempt covers a fill that the budget kill (SIGKILL) interrupted.
+      const fillTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-ci-fill-'));
+      let session;
+      try {
+        session = await run(command, {
+          cwd,
+          env: { ...process.env, AGENTEX_CI: '1', AGENTEX_VERDICT_PATH: handshakePath, AGENTEX_CI_POLICY: JSON.stringify(policy), AGENTEX_FILL_TMP: fillTmp },
+          budgetMs,
+        });
+      } finally {
+        try { fs.rmSync(fillTmp, { recursive: true, force: true }); } catch { /* best effort */ }
+      }
       if (session.timedOut) {
         attempts.push({
           attempt: n, verdict: null, runDir: null,
