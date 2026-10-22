@@ -337,8 +337,10 @@ test('buildResult: CLEAN/WARN/LEAK, exit codes, findings cap with exact counts',
 const FILL = 'EvalShapeSentinel0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const body = (n, chars = FILL) => chars.repeat(Math.ceil(n / chars.length)).slice(0, n);
 const PK = (kind) => ['-----BEG', 'IN ', kind, 'PRIV', 'ATE KEY-----'].join('');
+// An armored PGP key reads "BEGIN PGP PRIVATE KEY BLOCK", not "BEGIN PGP PRIVATE KEY".
+const PGP = ['-----BEG', 'IN PGP ', 'PRIV', 'ATE KEY BLOCK-----'].join('');
 const PLANTED = {
-  'private-key-block': [PK(''), PK('RSA '), PK('EC '), PK('OPENSSH '), PK('DSA '), PK('PGP '), PK('ENCRYPTED ')],
+  'private-key-block': [PK(''), PK('RSA '), PK('EC '), PK('OPENSSH '), PK('DSA '), PGP, PK('ENCRYPTED ')],
   'github-token': ['p', 'o', 'u', 's', 'r'].map(c => ['gh', c, '_', body(36)].join(''))
     .concat([['github', '_pat_', body(60, FILL + '_')].join(''), ['gh', 'p_', body(52)].join('')]),
   'aws-access-key-id': [['AK', 'IA', body(16, 'EVALSHAPE0123456789')].join(''), ['AS', 'IA', body(16, 'Z9Y8X7W6V5')].join('')],

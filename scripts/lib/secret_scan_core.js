@@ -341,7 +341,7 @@ const SHAPE_LEFT = '(?<![A-Za-z0-9_])';
 const SHAPE_RIGHT = '(?![A-Za-z0-9_])';
 const shapeRe = (src) => new RegExp(SHAPE_LEFT + '(?:' + src + ')' + SHAPE_RIGHT, 'g');
 const SHAPE_PATTERNS = Object.freeze([
-  { label: 'private-key-block', re: shapeRe('-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY-----') },
+  { label: 'private-key-block', re: shapeRe('-----BEGIN (?:(?:RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY|PGP PRIVATE KEY BLOCK)-----') },
   { label: 'github-token', re: shapeRe('gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,}') },
   { label: 'aws-access-key-id', re: shapeRe('(?:AKIA|ASIA)[A-Z0-9]{16}') },
   { label: 'atlassian-api-token', re: shapeRe('ATATT3[A-Za-z0-9_\\-=]{30,}') },
