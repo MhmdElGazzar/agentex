@@ -2,6 +2,38 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [Unreleased]
+### Added
+- **The secret scan warns about credential shapes, then asks.** Besides the project's own
+  values, `scripts/secret_scan.js` now recognizes public credential formats wherever they sit:
+  private-key blocks (including armored PGP keys), GitHub tokens, AWS access key IDs, Atlassian
+  API tokens and Figma tokens, plus a token used as a git remote URL's username. A shape match is
+  a `credential-shape` warning with file, line and pattern label, never the matched text, and it
+  runs even with no `.env` on the machine. In the pre-commit hook, when a terminal is available,
+  it asks `Continue the commit anyway? [y/N]`; No refuses the commit through the hooks projects
+  already have installed (no re-install), Yes or no terminal (an IDE commit button, CI) lets it
+  through with the warning. A real leak of the project's own values still refuses as before.
+- **Three new behavioral evals:** `discipline-envsecret-never-printed` (an `envSecret` value
+  never reaches a reply, a narrated command or a written file), `discipline-update-agentex-phantom-sample-relay`
+  (the leftover sample environment is offered for removal, never deleted without consent) and
+  `discipline-browser-session-isolation` (every scenario gets its own browser session; no global
+  `close-all` / `kill-all`). Plus `discipline-secret-scan-shape-warning`.
+
+### Changed
+- **The CI settings template works on Windows runners as shipped.** `ci-settings.json` now carries
+  a `PowerShell(...)` twin for every `Bash(...)` rule, allow and deny alike, plus PowerShell's own
+  spellings of the denied verbs (`rm`, `del`, `rd`, `Invoke-WebRequest`, `iwr`, `Invoke-RestMethod`,
+  `irm`), so a Windows runner gets nothing a Linux runner is denied. The retired `MultiEdit` rule
+  is gone. `docs/ci-quality-gate.md` says local trials must export `envSecret` names into the
+  process environment, since a `.env` alone never reaches the headless session.
+
+### Maintainers
+- `scripts/lint_plugin.js` checks the plugin repo itself: frontmatter integrity, referenced
+  plugin paths, `plugin.json` vs the README badge, `process.env` reads vs `.env.example`, secret
+  shapes, and an optional gitignored org-term denylist. plugin-tester's structural check runs it.
+- `scripts/dev/affected.js` picks the script tests and evals a change can affect;
+  `evals/coverage.json` maps every eval case to the paths it exercises.
+
 ## [0.25.0] — 2026-10-22
 ### Added
 - **A consumer project can go into git without leaking a secret.** New `scripts/secret_scan.js`

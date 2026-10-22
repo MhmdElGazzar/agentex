@@ -75,8 +75,10 @@ const RUNTIME_ENV = new Set([
 const INTERNAL_ENV = new Set([
   // set by ci_gate.js for the run it spawns (the CI handshake), never by the user
   'AGENTEX_CI', 'AGENTEX_VERDICT_PATH', 'AGENTEX_CI_POLICY',
-  // test seams: a script's tests point it at a fake (probe command, retry delay, API base)
+  // test seams: a script's tests point it at a fake (probe command, retry delay, API base,
+  // the secret scan's hook terminal)
   'AGENTEX_CI_RETRY_DELAY_MS', 'AGENTEX_PWCLI_PROBE_CMD', 'AGENTEX_SQLCMD_PROBE_CMD', 'FIGMA_API_BASE',
+  'AGENTEX_SECRET_SCAN_TTY',
 ]);
 
 // Secret shapes. Written so this file's own source never matches them.
