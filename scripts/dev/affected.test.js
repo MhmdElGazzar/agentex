@@ -31,12 +31,15 @@ const FIXTURE = {
   'skills/s/SKILL.md': SKILL('Does s.', 'Body.'),
   'skills/s/references/r.md': 'ref\n',
   'skills/s/scripts/run.js': "require('../../../scripts/lib/a.js');\n",
+  'skills/s/scripts/other.js': 'module.exports = 0;\n',
+  'skills/s/scripts/other.test.js': '\n',
   'agents/lonely.md': 'agent\n',
   'docs/x.md': 'doc\n',
   'evals/trigger-s/prompt.md': 'p\n',
   'evals/disc-s/prompt.md': 'p\n',
   'evals/disc-t/prompt.md': 'p\n',
-  'evals/coverage.json': JSON.stringify({ cases: { 'trigger-s': [], 'disc-s': ['skills/s'], 'disc-t': ['templates'] } }),
+  'evals/disc-u/prompt.md': 'p\n',
+  'evals/coverage.json': JSON.stringify({ cases: { 'trigger-s': [], 'disc-s': ['skills/s', 'skills/s/scripts/run.js'], 'disc-t': ['templates'], 'disc-u': ['skills/s/scripts'] } }),
 };
 
 const git = (dir, ...args) => execFileSync('git', ['-C', dir, '-c', 'user.email=qa@example.test', '-c', 'user.name=QA Test', ...args],
@@ -129,6 +132,39 @@ test('a .js change selects the evals covering any file that requires it', () => 
   assert.deepStrictEqual(evals(json), ['disc-s']);
 });
 
+test('a folder pattern never matches a changed script', () => {
+  const dir = repo();
+  write(dir, 'skills/s/scripts/other.js', 'module.exports = 1;\n');
+  const { json } = run(dir, '--json');
+  assert.deepStrictEqual(evals(json), []);
+});
+
+test('a folder pattern never matches a script through a dependent either', () => {
+  const dir = repo();
+  write(dir, 'scripts/lib/a.js', 'module.exports = 1; // changed\n');
+  const { json } = run(dir, '--json');
+  // skills/s/scripts/run.js requires a.js and sits under disc-u's folder pattern: no match.
+  assert.ok(!evals(json).includes('disc-u'));
+  // disc-s names run.js itself, so that dependent still selects it.
+  assert.deepStrictEqual(evals(json), ['disc-s']);
+});
+
+test('a pattern naming a file still matches that file when it changes', () => {
+  const dir = repo();
+  write(dir, 'skills/s/scripts/run.js', "require('../../../scripts/lib/a.js'); // changed\n");
+  const { json } = run(dir, '--json');
+  assert.deepStrictEqual(evals(json), ['disc-s']);
+});
+
+test('a folder pattern still matches markdown and prompt files, and a changed *.test.js', () => {
+  let dir = repo();
+  write(dir, 'skills/s/references/r.md', 'ref changed\n');
+  assert.deepStrictEqual(evals(run(dir, '--json').json), ['disc-s']);
+  dir = repo();
+  write(dir, 'skills/s/scripts/other.test.js', '// changed\n');
+  assert.deepStrictEqual(evals(run(dir, '--json').json), ['disc-s', 'disc-u']);
+});
+
 test('a SKILL.md body change selects covering evals only', () => {
   const dir = repo();
   write(dir, 'skills/s/SKILL.md', SKILL('Does s.', 'Body, reworded.'));
@@ -170,8 +206,8 @@ test('a prompt file no eval covers is reported, not escalated', () => {
 test('--all selects every test and every case', () => {
   const dir = repo();
   const { json } = run(dir, '--json', '--all');
-  assert.strictEqual(json.tests.selected.length, 4);
-  assert.deepStrictEqual(evals(json), ['disc-s', 'disc-t', 'trigger-s']);
+  assert.strictEqual(json.tests.selected.length, 5);
+  assert.deepStrictEqual(evals(json), ['disc-s', 'disc-t', 'disc-u', 'trigger-s']);
 });
 
 test('--run runs only the selected tests and exits 1 when one fails', () => {

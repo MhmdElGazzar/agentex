@@ -1,0 +1,13 @@
+{
+  "name": "basicsvc-suite",
+  "cases": [
+    {
+      "name": "listitems-happy-path",
+      "entry": "basicsvc.listitems",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    }
+  ]
+}

@@ -29,7 +29,9 @@ It loads the catalog, validates params, resolves env vars, performs the request,
 evidence log, checks expectations, and prints one JSON line:
 `{"result":"PASS|FAIL|BLOCKED", ...}` (exit 0/1/2). Read
 **`${CLAUDE_PLUGIN_ROOT}/skills/api-integration/references/api-requests.md`** for the catalog
-format, curl fallback (if node/script fails), and assertion details.
+format, curl fallback (if node/script fails), and assertion details — including
+`--no-auth`, `--expect-contains`, `--omit`, typed `$param` body nodes and `auth.tokenStore`
+(a token captured by the suite wizard).
 
 ## The catalog — the ONLY requests you may execute
 

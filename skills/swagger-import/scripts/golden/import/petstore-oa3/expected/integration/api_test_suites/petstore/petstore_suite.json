@@ -1,0 +1,129 @@
+{
+  "name": "petstore-suite",
+  "cases": [
+    {
+      "name": "listpets-happy-path",
+      "entry": "petstore.listpets",
+      "params": {
+        "status": "available",
+        "limit": 20
+      },
+      "expect": {
+        "status": 200
+      },
+      "review": [
+        "param \"status\" = \"available\" is inferred (the spec gives no example/default) — replace it with a value that exists in your target"
+      ]
+    },
+    {
+      "name": "listpets-error-case",
+      "entry": "petstore.listpets",
+      "params": {
+        "status": "__REPLACE_ME__",
+        "limit": 999999999
+      },
+      "expect": {
+        "status": 400
+      },
+      "review": [
+        "error case uses a placeholder param value — verify it actually produces 400"
+      ]
+    },
+    {
+      "name": "addpet-happy-path",
+      "entry": "petstore.addpet",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {},
+      "expect": {
+        "status": 201,
+        "fields": [
+          "id",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "getpetbyid-happy-path",
+      "entry": "petstore.getpetbyid",
+      "params": {
+        "petId": 1
+      },
+      "expect": {
+        "status": 200,
+        "fields": [
+          "id",
+          "name"
+        ]
+      },
+      "review": [
+        "param \"petId\" = 1 is inferred (the spec gives no example/default) — replace it with a value that exists in your target"
+      ]
+    },
+    {
+      "name": "getpetbyid-error-case",
+      "entry": "petstore.getpetbyid",
+      "params": {
+        "petId": 999999999
+      },
+      "expect": {
+        "status": 404
+      },
+      "review": [
+        "error case uses a placeholder param value — verify it actually produces 404"
+      ]
+    },
+    {
+      "name": "deletepet-happy-path",
+      "entry": "petstore.deletepet",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {
+        "petId": 1
+      },
+      "expect": {
+        "status": 204
+      },
+      "review": [
+        "param \"petId\" = 1 is inferred (the spec gives no example/default) — replace it with a value that exists in your target"
+      ]
+    },
+    {
+      "name": "deletepet-error-case",
+      "entry": "petstore.deletepet",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {
+        "petId": 999999999
+      },
+      "expect": {
+        "status": 404
+      },
+      "review": [
+        "error case uses a placeholder param value — verify it actually produces 404"
+      ]
+    },
+    {
+      "name": "archivepet-happy-path",
+      "entry": "petstore.archivepet",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {
+        "petId": "example"
+      },
+      "expect": {
+        "status": 200
+      },
+      "review": [
+        "param \"petId\" = \"example\" is inferred (the spec gives no example/default) — replace it with a value that exists in your target"
+      ]
+    },
+    {
+      "name": "getinventory-happy-path",
+      "entry": "petstore.getinventory",
+      "params": {},
+      "expect": {
+        "status": 200,
+        "fields": [
+          "total"
+        ]
+      }
+    }
+  ]
+}

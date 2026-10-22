@@ -1,0 +1,77 @@
+{
+  "name": "petstore",
+  "description": "A petstore-shaped fixture service.",
+  "target": "catalog",
+  "baseUrl": "${PETSTORE_BASE_URL}",
+  "auth": {
+    "type": "bearer",
+    "tokenEnv": "PETSTORE_TOKEN"
+  },
+  "requests": [
+    {
+      "name": "listpets",
+      "description": "List pets by status",
+      "method": "GET",
+      "path": "/pets",
+      "params": [
+        "status",
+        "limit"
+      ],
+      "query": [
+        "status",
+        "limit"
+      ]
+    },
+    {
+      "name": "addpet",
+      "description": "Add a pet",
+      "method": "POST",
+      "path": "/pets",
+      "params": [],
+      "body": {
+        "name": "example",
+        "status": "available",
+        "photoUrls": [
+          "example"
+        ]
+      },
+      "review": [
+        "request body generated from schema — verify/adjust values"
+      ]
+    },
+    {
+      "name": "getpetbyid",
+      "description": "Find a pet by ID",
+      "method": "GET",
+      "path": "/pets/{petId}",
+      "params": [
+        "petId"
+      ]
+    },
+    {
+      "name": "deletepet",
+      "description": "Delete a pet",
+      "method": "DELETE",
+      "path": "/pets/{petId}",
+      "params": [
+        "petId"
+      ]
+    },
+    {
+      "name": "archivepet",
+      "description": "Archive a pet",
+      "method": "POST",
+      "path": "/pets/{petId}/archive",
+      "params": [
+        "petId"
+      ]
+    },
+    {
+      "name": "getinventory",
+      "description": "Public inventory counts",
+      "method": "GET",
+      "path": "/store/inventory",
+      "params": []
+    }
+  ]
+}

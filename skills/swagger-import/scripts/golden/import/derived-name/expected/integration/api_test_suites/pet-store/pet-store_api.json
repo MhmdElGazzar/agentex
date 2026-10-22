@@ -1,0 +1,17 @@
+{
+  "name": "pet-store",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${PET_STORE_BASE_URL}",
+  "auth": {
+    "type": "none"
+  },
+  "requests": [
+    {
+      "name": "a",
+      "method": "GET",
+      "path": "/a",
+      "params": []
+    }
+  ]
+}

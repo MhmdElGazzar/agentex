@@ -43,7 +43,8 @@ const { runGuards } = require('./guards.js');
 // build machinery itself, the maintainer runners (parallel test runner, gate-lane
 // planner) and maintainer dev tooling (scripts/dev).
 const COMMON_EXCLUDES = ['evals', '**/*.test.js', 'skills/*/scripts/golden', 'scripts/golden', '.github', '.gitattributes',
-  'hosts', 'scripts/hosts', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/dev', 'scripts/lint_plugin.js'];
+  'hosts', 'scripts/hosts', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/dev', 'scripts/lint_plugin.js',
+  'changelog.d'];
 
 // Markers a builder-made commit carries in its message. The legacy line is the
 // pre-hosts store sync (scripts/store/sync_store_branch.js), whose commits `store`

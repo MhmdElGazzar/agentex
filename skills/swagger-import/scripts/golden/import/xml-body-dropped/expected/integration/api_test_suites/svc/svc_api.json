@@ -1,0 +1,20 @@
+{
+  "name": "svc",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${SVC_BASE_URL}",
+  "auth": {
+    "type": "none"
+  },
+  "requests": [
+    {
+      "name": "up",
+      "method": "POST",
+      "path": "/a",
+      "params": [],
+      "review": [
+        "request body dropped — only JSON bodies are supported, the spec declares application/xml; add the body manually if this call needs one"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "petstore-suite",
+  "cases": [
+    {
+      "name": "getpet-happy-path",
+      "entry": "petstore.getpet",
+      "params": {
+        "id": 1
+      },
+      "expect": {
+        "status": 200
+      },
+      "review": [
+        "param \"id\" = 1 is inferred (the spec gives no example/default) — replace it with a value that exists in your target"
+      ]
+    },
+    {
+      "name": "addpet-happy-path",
+      "entry": "petstore.addpet",
+      "skip": "review: write operation — remove this line to enable",
+      "params": {},
+      "expect": {
+        "status": 200
+      }
+    }
+  ]
+}

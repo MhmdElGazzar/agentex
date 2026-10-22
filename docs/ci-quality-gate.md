@@ -92,7 +92,7 @@ Field by field:
 | `durationMs` | int | Wall-clock duration of the whole gate invocation (all attempts). |
 | `runDir` | string | The final attempt's run folder, relative to the project root. |
 | `reportPath` | string | The human report (`report.md`) inside `runDir`. May not exist when the run died before REPORT — the partial artifacts in `runDir` are still preserved. |
-| `blockedReasons` | array | `{ code, detail }` entries from the vocabulary below; `[]` unless the verdict is BLOCKED. The `unstable` reason additionally carries `retryable: false`. Never a secret value; for `needs-user` the detail is the question only, never an answer. |
+| `blockedReasons` | array | `{ code, detail }` entries from the vocabulary below; `[]` unless the verdict is BLOCKED. Optional additive fields: `retryable: false` marks a reason the gate never retries (`unstable`, and the two named causes below); `cause` (`not-authenticated` \| `tool-denied` \| `unknown`) says why a session left no verdict; `tools` lists the denied tool names (deduplicated, first-seen order, at most 10) when `cause` is `tool-denied`. Never a secret value; for `needs-user` the detail is the question only, never an answer. The `detail` of a `cause` reason is fixed wording: it never echoes the session's own output or a tool's input. |
 | `attempt` | int | The 1-based number of the final attempt. |
 | `maxAttempts` | int | `1 + retries` policy. |
 | `retries` | int | Retries actually performed (attempts − 1). |
@@ -115,6 +115,16 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
 `preflight-secrets` · `preflight-browser` · `preflight-plugin-version` · `preflight-driver` · `needs-user` ·
 `interaction-required` · `captcha-or-otp` · `secret-unavailable` · `blocked-scenarios` · `view-mismatch` ·
 `incomplete` · `timeout` · `no-verdict` · `session-error` · `unstable` · `ci-mode`
+
+When the session ends without a verdict, the gate names the cause on the reason itself,
+with no `schemaVersion` bump (the codes above are unchanged, so a pipeline that matches
+`no-verdict` keeps working):
+
+| Reason | Means | Retried |
+|---|---|---|
+| `{ code: "session-error", cause: "not-authenticated", retryable: false }` | The session could not log in (e.g. "Not logged in", "Invalid API key", or API status 401). | No |
+| `{ code: "no-verdict", cause: "tool-denied", tools: [...], retryable: false }` | The CI settings denied one or more tools the session tried to use. | No |
+| `{ code: "no-verdict", cause: "unknown" }` | Anything else: no output, unparseable output, or an error the gate does not recognise (rate limit, credit, 5xx). The cause is never guessed. | Yes |
 
 ### Verdict mapping (fixed order)
 
@@ -139,9 +149,31 @@ reconciled as a superset or an explicit `schemaVersion` bump — never as silent
   fixed 30-second pause; the CI preflight re-runs first (token-free — a flapping target
   heals without burning a session). Still BLOCKED after the budget → concludes BLOCKED
   with `retries` and `attemptHistory` visible in the verdict.
-- **The `unstable` carve-out:** a BLOCKED whose *only* reason is `unstable`
-  (`flakyFailsGate` tripped) is **never auto-retried** — re-running to clear instability
-  is exactly the silent-retry anti-pattern the Flake doctrine prohibits, one level up.
+- **No retry when every reason is `retryable: false`.** Re-running cannot change these
+  attempts, so the gate concludes BLOCKED (exit 2) after the one attempt, with the named
+  reason. Three cases carry the flag:
+  - **`unstable`** (`flakyFailsGate` tripped): re-running to clear instability is exactly
+    the silent-retry anti-pattern the Flake doctrine prohibits, one level up.
+  - **`session-error` / `not-authenticated`:** the runner has no Claude auth source.
+  - **`no-verdict` / `tool-denied`:** the CI settings deny a tool the run needs; the next
+    session would be denied the same tool.
+
+  A `preflight-driver` BLOCKED is never retried either (it is deterministic). A
+  `no-verdict` with `cause: "unknown"` is retried as before.
+- **How the gate names a missing verdict.** When the session closes, a valid verdict file
+  always wins: a PASS or FAIL stays as written (exit 0 or 1, never retried), even if the
+  session also reported denied tools, and a BLOCKED verdict keeps its own reasons. Only when no valid verdict exists does the gate read
+  the session's own result JSON, in this order:
+  1. Result not parseable (or empty) → `no-verdict`, `cause: "unknown"`.
+  2. An error with a login signature → `session-error`, `cause: "not-authenticated"`.
+  3. Any permission denials → `no-verdict`, `cause: "tool-denied"`, `tools` = the tool
+     names only.
+  4. Anything else → `no-verdict`, `cause: "unknown"`.
+
+  For a named cause the gate prints one stderr line that names the cause and the fix, and
+  says the attempt is not retried. Not authenticated: set `ANTHROPIC_API_KEY` (or your
+  auth source) on the gate step. Tool denied: the runner's tool is not allowed by
+  `ci-settings.json`. An unknown cause prints the usual retry line.
 - **`flakyFailsGate` defaults to `false`:** FLAKY stays a visible finding in `counts`
   (and in the reports) without failing the gate. Enable it to conclude BLOCKED (exit 2 —
   instability is environment-flavored, never a product verdict).
@@ -249,8 +281,11 @@ installed — the settings allowlist reads only the consumer project, and the se
 read e.g. `references/procedures/ci-run.md` to conclude deterministically;
 the shipped `templates/ci/ci-settings.json` is a deny-by-default allowlist — under
 `dontAsk`, anything not allowed is denied, and a denied tool degrades to BLOCKED
-`no-verdict` (exit 2), never a wrong PASS/FAIL. A non-bare session that inherits the
-runner's own `~/.claude` also works as a documented fallback, at the cost of
+`no-verdict` (exit 2), never a wrong PASS/FAIL. The reason then carries
+`cause: "tool-denied"` and `tools` (the denied tool names, e.g. `["PowerShell", "Read"]`),
+and the gate does not retry it: add a matching allow rule to your `ci-settings.json` (or
+run on a runner whose shell the settings already allow) and re-run. A non-bare session
+that inherits the runner's own `~/.claude` also works as a documented fallback, at the cost of
 runner-to-runner determinism. Note that claude's own process exit code reflects session
 completion, not the run verdict — only `ci_gate.js`'s exit code and the verdict JSON are
 the contract.

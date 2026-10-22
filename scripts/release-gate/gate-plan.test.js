@@ -82,6 +82,11 @@ test('maintainer dev tooling (scripts/dev) is inert — never shipped, so it gat
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan), plan.unmapped], [true, false, [], []]);
 });
 
+test('changelog fragments (changelog.d) are inert — never shipped, so they gate nothing', () => {
+  const plan = gp.planLanes(['changelog.d/some-feature.md', 'changelog.d/.gitkeep']);
+  assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan), plan.unmapped], [true, false, [], []]);
+});
+
 test('an empty diff is docsOnly too — nothing to gate', () => {
   const plan = gp.planLanes([]);
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan)], [true, false, []]);

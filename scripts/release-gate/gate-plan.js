@@ -32,7 +32,7 @@ const REQUIRES = { reporting: ['ui'] };
 
 // No lane: nothing here runs in a consumer flow.
 const INERT = [
-  'docs/**', 'README.md', 'CHANGELOG.md', 'LICENSE', 'executions/README.md',
+  'docs/**', 'README.md', 'CHANGELOG.md', 'changelog.d/**', 'LICENSE', 'executions/README.md',
   'evals/**', '**/*.test.js', 'skills/*/scripts/golden/**', 'scripts/golden/**',
   '.github/**', '.gitattributes', '.gitignore',
   'scripts/hosts/**', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/release-gate/README.md',

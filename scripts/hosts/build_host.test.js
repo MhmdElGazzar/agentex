@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
-const { buildTree, buildHostCommit } = require('./build_host.js');
+const { buildTree, buildHostCommit, COMMON_EXCLUDES } = require('./build_host.js');
+const { matcher } = require('./transforms.js');
 
 const SCRIPT = path.join(__dirname, 'build_host.js');
 let passed = 0; const failures = [];
@@ -328,6 +329,12 @@ test('this repo, claude: the `store` branch content — unconverted, no dev-only
   assert.ok(!b.paths.some((p) => /^(evals|hosts|\.github)\//.test(p) || p.endsWith('.test.js') || p === '.gitattributes'));
   assert.ok(!b.has('scripts/run-tests.js') && !b.has('scripts/release-gate/gate-plan.js'), 'maintainer runners never ship');
   assert.ok(b.read('skills/test-execution/SKILL.md').includes('${CLAUDE_PLUGIN_ROOT}'), 'Claude keeps its own variable');
+});
+
+test('COMMON_EXCLUDES drops changelog fragments and the maintainer tooling that reads them', () => {
+  const drop = matcher(COMMON_EXCLUDES);
+  assert.ok(drop('changelog.d/a.md') && drop('changelog.d/.gitkeep') && drop('scripts/dev/changelog.js'));
+  assert.ok(!drop('CHANGELOG.md'), 'the changelog itself still ships');
 });
 
 test('this repo, copilot: Claude layout kept, root placeholder, explicit agents/commands in the manifest', () => {

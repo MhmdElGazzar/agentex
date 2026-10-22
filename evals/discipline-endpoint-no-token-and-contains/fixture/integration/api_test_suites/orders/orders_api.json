@@ -1,0 +1,50 @@
+{
+  "name": "orders",
+  "target": "catalog",
+  "baseUrl": "${ORDERS_BASE_URL}",
+  "auth": {
+    "type": "bearer",
+    "tokenEnv": "ORDERS_TOKEN",
+    "tokenStore": "orders"
+  },
+  "requests": [
+    {
+      "name": "get-order",
+      "method": "GET",
+      "path": "/orders/{orderId}",
+      "params": [
+        "orderId"
+      ]
+    },
+    {
+      "name": "list-orders",
+      "method": "GET",
+      "path": "/orders",
+      "params": [
+        "status"
+      ],
+      "query": [
+        "status"
+      ]
+    },
+    {
+      "name": "create-order",
+      "method": "POST",
+      "path": "/orders",
+      "params": [
+        "item",
+        "qty"
+      ],
+      "body": {
+        "item": {
+          "$param": "item",
+          "type": "string"
+        },
+        "qty": {
+          "$param": "qty",
+          "type": "integer"
+        }
+      }
+    }
+  ]
+}

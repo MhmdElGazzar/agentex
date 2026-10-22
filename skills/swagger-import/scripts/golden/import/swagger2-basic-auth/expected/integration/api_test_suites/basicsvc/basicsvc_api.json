@@ -1,0 +1,19 @@
+{
+  "name": "basicsvc",
+  "description": "Imported from spec.json",
+  "target": "catalog",
+  "baseUrl": "${BASICSVC_BASE_URL}",
+  "auth": {
+    "type": "basic",
+    "userEnv": "BASICSVC_USER",
+    "passEnv": "BASICSVC_PASS"
+  },
+  "requests": [
+    {
+      "name": "listitems",
+      "method": "GET",
+      "path": "/items",
+      "params": []
+    }
+  ]
+}
