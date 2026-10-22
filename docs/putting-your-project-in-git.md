@@ -22,9 +22,11 @@ history.
 | `.claude/settings.json` | Committed | The shared permissions block. |
 | `.env` | **Local** | Secrets only. Never commit it. |
 | `test/.auth/` | **Local** | Saved login sessions — each file is a live session token. |
+| `test/.auth/api-tokens/` | **Local** | API tokens the suite wizard captured from the app's UI, one file per suite and environment (mode 0600). Already covered by `test/.auth/`. |
 | `.playwright-cli/` | **Local** | The browser's scratch profile — the same cookies, on disk. |
 | `test/.ui-baselines/` | **Local** | A cache of design baselines; `ui-check` re-fetches them. |
 | `.agentex/cache/` | **Local** | Tracker field metadata, rebuilt on demand. To commit it anyway, add the line `!.agentex/cache/` to `.gitignore`. |
+| `.agentex/cache/api-data/` | **Local** | Test-data values the suite wizard collected, with where each came from. Deleting it loses nothing committed: the suite keeps each value and its source. |
 | `.agentex/scratch/` | **Local** | Agent scratch: intermediate files of test-design and estimation runs. Safe to delete. |
 | `executions/` | Your team's choice | Run reports and evidence — see below. |
 | `.claude/worktrees/`, `.claude/settings.local.json` | **Local** (recommended) | Created by Claude Code itself — see below. |

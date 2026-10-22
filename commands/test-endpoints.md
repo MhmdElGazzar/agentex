@@ -1,5 +1,5 @@
 ---
-description: Run the standalone API test pass ("api-tests") over every cataloged case, independent of any browser test spec.
+description: Run the standalone API test pass ("api-tests") over every cataloged case, independent of any browser test spec. --edit opens the local suite editor.
 ---
 
 > **AgenTeX on GitHub Copilot.** `<agentex-root>` stands for this plugin's install folder: `..` from the folder this file is in. Resolve it to an absolute path before you run or read anything that uses it. When a step says to dispatch a bundled agent (`qa-executor`, `api-executor`, `mobile-qa-executor`), start it as a subagent.
@@ -7,6 +7,11 @@ description: Run the standalone API test pass ("api-tests") over every cataloged
 Use the **endpoint-testing** skill to run the standalone API tests.
 
 Arguments: $ARGUMENTS
+
+**Editor form — `--edit [--lang=ar|en]`:** open the local suite editor instead of running.
+Follow `<agentex-root>/skills/endpoint-testing/references/suite-editor.md`. The editor
+needs no agent; its Run goes through `run_suite.js` directly. Every other form below is
+unchanged.
 
 **Parse the arguments:** optional environment — `--env <name>`, `env: <name>` or "on <name>"
 selects `environments/<name>.json` (same as `/execute-test`) for the whole run; omitted = the
