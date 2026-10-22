@@ -38,6 +38,7 @@
     "discipline-run-summary-persists": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
     "discipline-run-timing-captured": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
     "discipline-scratch-only": ["scripts/lib/layout.js", "references/project-layout.md", "references/tracker/qa-records.md", "scripts/qa-records.js"],
+    "discipline-secret-fill-via-script": ["skills/browser-driver", "skills/test-execution", "commands/execute-test.md", "agents/qa-executor.md"],
     "discipline-secret-scan-relay": ["commands/init-test.md", "scripts/secret_scan.js", "scripts/lib/secret_scan_core.js"],
     "discipline-secret-scan-shape-warning": ["commands/init-test.md", "scripts/secret_scan.js", "scripts/lib/secret_scan_core.js"],
     "discipline-stray-check-consent": ["commands/update-agentex.md", "scripts/migrate.js", "scripts/lib/strays.js", "scripts/lib/layout.js"],

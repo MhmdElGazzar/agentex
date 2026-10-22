@@ -295,6 +295,50 @@ const codes = (j) => (j.blockedReasons || []).map((b) => b.code);
     assert.ok(!src.includes('process.exit('), 'ci_preflight.js must not force-exit (exitCode + drain)');
   });
 
+  // ---- secret sources (ci-secret-field-fill, batch decision #4) ------------------------------
+  // "In the process env" reaches the headless session; "only in .env" works for a local trial
+  // (the bundled scripts read .env) but a real runner has no .env. Report-only, never a gate.
+  const SRC_ENV = { portalUrl: base, users: { a: { password: { envSecret: 'CIPF_SRC_PROC' } }, b: { password: { envSecret: 'CIPF_SRC_DOTENV' } } } };
+
+  await test('sources: process-env vs dotenv attributed per NAME; dotenv-only → one stderr note, never a gate', async () => {
+    const r = await runPreflight(proj({ envFile: SRC_ENV, dotenv: `CIPF_SRC_DOTENV=${SENTINEL}\n` }), [], { CIPF_SRC_PROC: SENTINEL });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.deepStrictEqual(r.json.checks.secrets.sources, { CIPF_SRC_DOTENV: 'dotenv', CIPF_SRC_PROC: 'process-env' });
+    const notes = r.stderr.split('\n').filter((l) => /found only in \.env/.test(l));
+    assert.strictEqual(notes.length, 1, r.stderr);
+    assert.match(notes[0], /CIPF_SRC_DOTENV/);
+    assert.ok(!notes[0].includes('CIPF_SRC_PROC'), 'a process-env name is not in the note');
+    assert.match(notes[0], /secret store/);
+    assert.ok(!r.stdout.includes(SENTINEL) && !r.stderr.includes(SENTINEL));
+  });
+
+  await test('no .env-only names → no note', async () => {
+    const r = await runPreflight(proj({ envFile: SRC_ENV, dotenv: '' }), [], { CIPF_SRC_PROC: SENTINEL, CIPF_SRC_DOTENV: SENTINEL });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.ok(!/found only in \.env/.test(r.stderr), r.stderr);
+  });
+
+  await test('an EMPTY / whitespace value counts as missing → exit 2 preflight-secrets, listed under empty', async () => {
+    const r = await runPreflight(proj({ envFile: SRC_ENV, dotenv: '' }), [], { CIPF_SRC_PROC: '   ', CIPF_SRC_DOTENV: SENTINEL });
+    assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+    assert.ok(codes(r.json).includes('preflight-secrets'));
+    assert.deepStrictEqual(r.json.checks.secrets.empty, ['CIPF_SRC_PROC']);
+    assert.ok(r.json.checks.secrets.missing.includes('CIPF_SRC_PROC'), 'empty folds into missing for gating');
+    assert.ok(!('CIPF_SRC_PROC' in r.json.checks.secrets.sources), 'an empty value has no source');
+    assert.ok(!r.stdout.includes(SENTINEL) && !r.stderr.includes(SENTINEL));
+  });
+
+  await test('scaffold default figma block (empty fileKey) is not a required secret; a configured one is', async () => {
+    const figma = (fileKey) => ({ name: 'sample', defaultEnvironment: 'qc', figma: { fileKey, token: { envSecret: 'CIPF_FIGMA_TOKEN' } } });
+    const env = { portalUrl: base, users: { valid_user: { password: { envSecret: 'QA_TESTER_PASSWORD' } } } };
+    const unused = await runPreflight(proj({ config: figma(''), envFile: env }), [], {});
+    assert.strictEqual(unused.status, 0, unused.stdout + unused.stderr);
+    assert.ok(!unused.json.checks.secrets.missing.includes('CIPF_FIGMA_TOKEN'));
+    const used = await runPreflight(proj({ config: figma('AbC123'), envFile: env }), [], {});
+    assert.strictEqual(used.status, 2, used.stdout + used.stderr);
+    assert.ok(used.json.checks.secrets.missing.includes('CIPF_FIGMA_TOKEN'));
+  });
+
   server.close();
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;

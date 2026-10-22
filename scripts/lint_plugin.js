@@ -79,6 +79,8 @@ const INTERNAL_ENV = new Set([
   // the secret scan's hook terminal)
   'AGENTEX_CI_RETRY_DELAY_MS', 'AGENTEX_PWCLI_PROBE_CMD', 'AGENTEX_SQLCMD_PROBE_CMD', 'FIGMA_API_BASE',
   'AGENTEX_SECRET_SCAN_TTY',
+  // set by ci_gate.js per attempt: the dir fill_secret.js writes its temp code file under
+  'AGENTEX_FILL_TMP', 'AGENTEX_PWCLI_CMD',
 ]);
 
 // Secret shapes. Written so this file's own source never matches them.

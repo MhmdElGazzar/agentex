@@ -97,6 +97,7 @@ two-line footers in the prompt.
 | discipline-watchlist-close-to-knowledge | authored 2026-10-22 (project-layout-contract; a decisive PO reply resolves the watchlist question through `qa-records.js`, history kept, and the answer is added to `knowledge/`), not yet executed |
 | discipline-watchlist-close-recheck | authored 2026-10-22 (project-layout-contract; a passed retest is resolved through the helper and adds nothing to `knowledge/`), not yet executed |
 | discipline-stray-check-consent | authored 2026-10-22 (project-layout-contract; the `[stray]` plan is relayed, a "maybe later" answer passes no `--move-strays`, no file moves by any route, no candidate content quoted), not yet executed |
+| discipline-secret-fill-via-script | authored 2026-10-22 (ci-secret-field-fill; sentinel-secret .env; password + 4-box OTP typed only by fill_secret.js, submitted in the same call, no snapshot in between; the reCAPTCHA stays BLOCKED captcha-or-otp), not yet executed |
 | discipline-secret-scan-relay | authored 2026-10-20 (git-ready-consumer-projects; long + 6-digit short sentinels in committed specs; the relay names file/line/key/label only, even when the user asks for the value), not yet executed |
 | discipline-run-summary-persists | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |
 | discipline-run-timing-captured | authored 2026-08-28 (extent-report-enrichment), pending the release run on the installed build |

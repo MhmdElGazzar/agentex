@@ -23,8 +23,10 @@ pass or fail, never a guess.
   check as PASS or FAIL, and never drop the question. Count the scenario as `blocked`
   in the run summary.
 - **Captcha or unobtainable OTP**: a live captcha, an OTP nobody can supply, or any
-  blocking gate → the scenario is BLOCKED and the run-level reason `captcha-or-otp`
-  is passed to the verdict step. Never defeated, never worked around (invariant: gates
+  other real blocking gate → the scenario is BLOCKED and the run-level reason `captcha-or-otp`
+  is passed to the verdict step. A password or OTP the environment declares as
+  `{ envSecret }` is not a gate: `fill_secret.js` types it (below). When that variable is
+  missing or empty the reason is `secret-unavailable`, never `captcha-or-otp`. Never defeated, never worked around (invariant: gates
   are surfaced). A FIXED test-environment captcha or OTP whose value comes from the
   spec or the environment's `defaults` is normal test data — type it as usual.
 - **A confirmation gate of any kind** (anything a skill says to ask about first) →
@@ -72,8 +74,9 @@ At the end of MERGE (after `report.md` and `bugs/`), always:
    ```
 
    Pass one `--run-reason` per run-level condition encountered: `needs-user` (one per
-   deferred question, the question verbatim), `captcha-or-otp`, `interaction-required`,
-   `session-error`. Do NOT pass policy flags — policy arrives via the `AGENTEX_CI_POLICY`
+   deferred question, the question verbatim), `captcha-or-otp`, `secret-unavailable`
+   (one per variable, `secret-unavailable:<NAME>`, the name never the value),
+   `interaction-required`, `session-error`. Do NOT pass policy flags — policy arrives via the `AGENTEX_CI_POLICY`
    env var (set by `ci_gate.js`) or the project's `ci` config block; the script resolves
    it itself.
 4. `run-summary.json` and `verdict.json` in the run folder are both retained artifacts —
@@ -87,6 +90,12 @@ to change a verdict.
 
 - Never print secret values — `{ envSecret: NAME }` names and env vars only. CI logs
   are long-lived; a leaked value cannot be unshipped.
+- **Secret fields**: executors type every `{ envSecret }` browser field ONLY through
+  `node ${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/scripts/fill_secret.js` (browser-driver's
+  Secret fields rule; the CI settings' `Bash(node:*)` allow rule covers it). Any other way
+  is denied under `dontAsk`, and repeated denials can lock the session's shell. A script
+  result `secret-unavailable` → the scenario is BLOCKED and the run reason
+  `secret-unavailable:<NAME>` goes to the verdict step.
 - All outputs land under `executions/execu_<ts>/` in the consumer project.
 - The Flake doctrine applies unchanged: FLAKY is reported, never resolved; one retry
   for infrastructure failures only; never re-dispatch an executor for a cleaner report.
