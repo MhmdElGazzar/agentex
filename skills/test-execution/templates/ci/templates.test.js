@@ -47,6 +47,59 @@ test('ci-settings.json DENIES .env reads, key material and test/.auth (settings.
   assert.ok(deny.some((r) => r.includes('git push')), 'git push denied');
 });
 
+// Windows runners expose a PowerShell shell tool instead of Bash: both rule sets ship
+// side by side, and the PowerShell set must be neither narrower (spurious BLOCKED) nor
+// broader (Windows gains what Linux is denied) than the Bash set.
+const shellRules = (rules, tool) => rules
+  .map((r) => r.match(new RegExp(`^${tool}\\((.*)\\)$`)))
+  .filter(Boolean)
+  .map((m) => m[1]);
+
+test('ci-settings.json: every Bash allow rule has a PowerShell twin with the same prefix, and vice versa', () => {
+  const { allow } = JSON.parse(read(SETTINGS)).permissions;
+  const bash = shellRules(allow, 'Bash');
+  const ps = shellRules(allow, 'PowerShell');
+  assert.ok(bash.length > 0, 'the Bash allow set is present (Linux runners unchanged)');
+  assert.deepStrictEqual([...ps].sort(), [...bash].sort(),
+    'the PowerShell allow set mirrors the Bash allow set exactly — nothing more, nothing less');
+  for (const rule of ['npx playwright-cli:*', 'node:*', 'npm install:*']) {
+    assert.ok(bash.includes(rule), `Bash(${rule}) allowed`);
+    assert.ok(ps.includes(rule), `PowerShell(${rule}) allowed`);
+  }
+});
+
+test('ci-settings.json: every Bash deny rule has a PowerShell twin', () => {
+  const { deny } = JSON.parse(read(SETTINGS)).permissions;
+  const ps = new Set(shellRules(deny, 'PowerShell'));
+  const bash = shellRules(deny, 'Bash');
+  assert.ok(bash.length > 0, 'the Bash deny set is present (Linux runners unchanged)');
+  for (const rule of bash) assert.ok(ps.has(rule), `PowerShell(${rule}) must mirror Bash(${rule})`);
+});
+
+test('ci-settings.json: the PowerShell spellings of the denied destructive verbs are denied', () => {
+  const { deny } = JSON.parse(read(SETTINGS)).permissions;
+  const ps = new Set(shellRules(deny, 'PowerShell'));
+  for (const verb of ['Remove-Item', 'rm', 'del', 'rd', 'rmdir', // the rm -r / Remove-Item / rmdir twins
+    'Invoke-WebRequest', 'iwr', 'Invoke-RestMethod', 'irm', // the curl twins
+    'git push', 'git reset --hard', 'git clean']) {
+    assert.ok(ps.has(`${verb}:*`), `PowerShell(${verb}:*) must be denied`);
+  }
+});
+
+test('ci-settings.json names no retired tool (MultiEdit is gone — startup warning)', () => {
+  const { allow, deny } = JSON.parse(read(SETTINGS)).permissions;
+  for (const r of [...allow, ...deny]) assert.ok(!/^MultiEdit\b/.test(r), `retired tool rule: ${r}`);
+  for (const rule of ['Edit(./src/**)', 'Write(./src/**)', 'NotebookEdit(./src/**)']) {
+    assert.ok(deny.includes(rule), `${rule} stays denied`);
+  }
+});
+
+test('ci-settings.json notes say both shell rule sets ship and the runner\'s shell tool picks one', () => {
+  const notes = JSON.parse(read(SETTINGS))['//notes'].join('\n');
+  assert.match(notes, /PowerShell/);
+  assert.match(notes, /Windows/);
+});
+
 // ---- pipeline YAMLs ---------------------------------------------------------------
 
 for (const [label, file] of [['azure-pipelines.yml', AZ], ['github-actions.yml', GH]]) {
