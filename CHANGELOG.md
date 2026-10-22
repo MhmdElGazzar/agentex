@@ -65,6 +65,9 @@ All notable changes to AgenTeX are documented here.
   Subcommands, flags, output and exit codes are unchanged apart from the script name in
   the usage text — pinned by a golden suite recorded from the 0.23.0 script before the
   move.
+- **`settings.example.json` no longer warns at startup.** The `Write`, `MultiEdit` and
+  `NotebookEdit` path rules are gone: Claude Code consults only `Edit(path)` rules for file edits,
+  and `Edit(./src/**)` already covers every file-editing tool, so protection is unchanged.
 
 ## [0.25.0] — 2026-10-22
 ### Added
