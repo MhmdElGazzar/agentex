@@ -62,7 +62,11 @@ never resolved by you:
   included, and every action writes one to `.playwright-cli/`): submit in the last call with
   `--submit` or `--submit-target <pre-fill ref>`; it clears every secret field still filled.
 - Segmented boxes (OTP digits): one call with one `--target` per box, in order.
-- `secret-unavailable` → the scenario is BLOCKED (report the NAME, never a value), never FAIL,
+- If the submitting call never ran (an earlier call BLOCKED), take no `snapshot`, `eval` or
+  `screenshot` of that page: note "evidence withheld: secret field still filled". This is the
+  one exception to screenshotting every scenario.
+- `secret-unavailable` → the scenario is BLOCKED (report the NAME to the orchestrator, never a
+  value; it keeps the NAME out of `run-summary.json` and `extent-report.html`), never FAIL,
   never `captcha-or-otp`. In `api:`/`db:` steps the runners resolve secrets themselves.
 
 INTEGRATION STEPS (`api:` / `db:` in the spec)

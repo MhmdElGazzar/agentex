@@ -76,7 +76,8 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/scripts/fill_secret.js \
 - Never type a secret any other way: no `fill`, `type`, `press` or `run-code` carrying a
   value or `$NAME`, and no reading `.env`. A refused command is not a puzzle to solve.
 - Never print the login request (`requests`, `request-body`): its body carries the value.
-- Never run `tracing-start` across a secret fill: a trace records the code that typed it.
+- Never run `tracing-start` or `video-start` across a secret fill: a trace records the code
+  that typed it, a video records the field while it holds the value.
 - If the submitting call never ran (an earlier call BLOCKED), take no `snapshot`, `eval` or
   `screenshot` of that page. Note "evidence withheld: secret field still filled" and close
   the session as usual.

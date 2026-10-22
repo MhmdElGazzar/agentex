@@ -55,6 +55,12 @@ const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'pro
 const { collectEnvSecretNames } = require(path.join(__dirname, '..', '..', 'test-execution', 'scripts', 'ci_preflight.js'));
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_TIMEOUT_MS = 120_000;
+// A temp code file can outlive its run only when the process is killed outright (SIGKILL —
+// ci_gate kills the session tree when an attempt's budget runs out). Every run first removes
+// `agentex-fill-*` dirs older than this, so a leftover never survives long. ci_gate also hands
+// each attempt its own base dir (AGENTEX_FILL_TMP) and removes it after the attempt.
+const STALE_MS = 10 * 60_000;
 const SETTLE_MS = 500;
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -111,7 +117,7 @@ function parseArgs(argv) {
   if (!a.envVar) throw usage('--env-var is required');
   if (!NAME_RE.test(a.envVar)) throw usage('--env-var expects an environment variable NAME (letters, digits, _), not a value or $NAME');
   if (a.submit && a.submitTarget) throw usage('pass --submit or --submit-target, not both');
-  if (!Number.isFinite(a.timeoutMs) || a.timeoutMs <= 0) throw usage('--timeout-ms must be a positive number');
+  if (!Number.isFinite(a.timeoutMs) || a.timeoutMs <= 0 || a.timeoutMs > MAX_TIMEOUT_MS) throw usage(`--timeout-ms must be a positive number up to ${MAX_TIMEOUT_MS}`);
   return a;
 }
 
@@ -192,11 +198,28 @@ function cliCommand(cliArgs) {
 
 const INFRA_RE = /is not open|not running|no such session|ECONNREFUSED|ECONNRESET|has been closed|browser has disconnected|Target closed/i;
 
+function sweepStale(base, now = Date.now()) {
+  let names = [];
+  try { names = fs.readdirSync(base); } catch { return; }
+  for (const n of names) {
+    if (!n.startsWith('agentex-fill-')) continue;
+    const p = path.join(base, n);
+    try { if (fs.statSync(p).isDirectory() && now - fs.statSync(p).mtimeMs > STALE_MS) fs.rmSync(p, { recursive: true, force: true }); } catch { /* raced or not ours */ }
+  }
+}
+
 function runInSession(session, code, timeoutMs) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-fill-'));
+  const base = process.env.AGENTEX_FILL_TMP || os.tmpdir();
+  sweepStale(base);
+  const dir = fs.mkdtempSync(path.join(base, 'agentex-fill-'));
   const file = path.join(dir, 'fill.js');
   const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ } };
+  // SIGTERM/SIGINT/SIGHUP: the handler runs once spawnSync returns (watchdog-bounded), removes
+  // the file and exits. SIGKILL cannot be caught — the stale sweep above covers it.
+  const onSignal = (sig) => { cleanup(); process.exit(128 + (os.constants.signals[sig] || 15)); };
+  const SIGNALS = process.platform === 'win32' ? ['SIGINT', 'SIGTERM'] : ['SIGTERM', 'SIGINT', 'SIGHUP'];
   process.once('exit', cleanup); // a signal-free crash still removes it
+  for (const sig of SIGNALS) process.once(sig, onSignal);
   try {
     fs.writeFileSync(file, code, { mode: 0o600, flag: 'wx' });
     const { cmd, args, shell } = cliCommand([`-s=${session}`, 'run-code', '--raw', `--filename=${file}`]);
@@ -221,6 +244,7 @@ function runInSession(session, code, timeoutMs) {
   } finally {
     cleanup();
     process.removeListener('exit', cleanup);
+    for (const sig of SIGNALS) process.removeListener(sig, onSignal);
   }
 }
 
@@ -291,4 +315,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { buildCode, parseArgs, toSelector };
+module.exports = { sweepStale, STALE_MS, MAX_TIMEOUT_MS, buildCode, parseArgs, toSelector };

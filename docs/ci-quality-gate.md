@@ -229,8 +229,10 @@ field later in the flow. The whole path, by name only:
    browser-driver's bundled `fill_secret.js` with the NAME and the field's ref. The
    script reads the value from its own environment and types it into the field through
    a temp file that is deleted right away. It submits in the same call and then clears
-   the field, so no snapshot, screenshot, log or report can capture the value. The
-   shipped `ci-settings.json` already allows the call (`Bash(node:*)`).
+   the field, so a snapshot or screenshot taken afterwards does not show it. Four paths
+   are closed by the agent's rules, not by code: the page echoing the value back, console
+   logs, request bodies, and traces or video. The agent never captures any of them across
+   a secret fill. The shipped `ci-settings.json` already allows the call (`Bash(node:*)`).
 4. **Never printed.** The value never appears on a command line, in tool output, in
    `executions/`, or in the verdict. Only the NAME can appear. If the variable is
    missing or empty when the field is filled, the scenario is BLOCKED with the run

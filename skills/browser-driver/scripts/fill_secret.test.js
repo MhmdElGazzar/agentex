@@ -197,6 +197,42 @@ test('watchdog: a hung CLI is killed, BLOCKED driver-error (infrastructure), tem
   assertNoLeak(r);
 });
 
+test('stale sweep: an agentex-fill-* dir older than STALE_MS is removed, a fresh one is kept', () => {
+  const { sweepStale, STALE_MS } = require(SCRIPT);
+  const base = tmp('agentex-fs-sweep-');
+  const old = path.join(base, 'agentex-fill-old'); const fresh = path.join(base, 'agentex-fill-new'); const other = path.join(base, 'unrelated');
+  for (const d of [old, fresh, other]) { fs.mkdirSync(d); fs.writeFileSync(path.join(d, 'fill.js'), SENTINEL); }
+  const past = (Date.now() - STALE_MS - 60_000) / 1000;
+  fs.utimesSync(old, past, past); fs.utimesSync(other, past, past);
+  sweepStale(base);
+  assert.deepStrictEqual([fs.existsSync(old), fs.existsSync(fresh), fs.existsSync(other)], [false, true, true]);
+});
+
+test('--timeout-ms is capped (no unbounded wait while a value sits in a temp file)', () => {
+  const { MAX_TIMEOUT_MS } = require(SCRIPT);
+  const r = run([...BASE, '--timeout-ms', String(MAX_TIMEOUT_MS + 1)]);
+  assert.strictEqual(r.status, 2);
+  assert.strictEqual(r.json.reason, 'usage');
+  assertNoLeak(r);
+});
+
+test('SIGTERM during a fill: the temp code file is removed before exit', () => {
+  if (process.platform === 'win32') return; // POSIX signal delivery
+  const rec = tmp('agentex-fs-rec-'); const tdir = tmp('agentex-fs-tmp-');
+  const env = { ...process.env, TMPDIR: tdir, TEMP: tdir, TMP: tdir, FAKE_REC: rec, FAKE_MODE: 'hang', FAKE_PAGE: JSON.stringify(LOGIN_PAGE), FAKE_VAR: 'QA_PASSWORD', QA_PASSWORD: SENTINEL, AGENTEX_PWCLI_CMD: FAKE };
+  const driver = `const { spawn } = require('node:child_process');
+    const c = spawn(process.execPath, ${JSON.stringify([SCRIPT, ...BASE, '--timeout-ms', '3000'])}, { cwd: ${JSON.stringify(proj())}, env: process.env, stdio: 'ignore' });
+    setTimeout(() => c.kill('SIGTERM'), 1200);
+    c.on('exit', (code, sig) => { process.stdout.write(JSON.stringify({ code, sig })); });`;
+  const r = spawnSync(process.execPath, ['-e', driver], { env, encoding: 'utf8', timeout: 20000 });
+  const out = JSON.parse(r.stdout);
+  // With a handler installed the default kill is suppressed: the watchdog-bounded spawnSync
+  // returns, `finally` removes the file, and the script exits BLOCKED (2) or via the handler (143).
+  assert.ok([2, 143].includes(out.code), `exit ${JSON.stringify(out)}`);
+  const left = fs.readdirSync(tdir).filter((n) => n.startsWith('agentex-fill-'));
+  assert.deepStrictEqual(left, [], 'no agentex-fill-* dir left behind');
+});
+
 // ---- 4-5: allowlist and lookup --------------------------------------------------------------
 
 test('an undeclared name → secret-unavailable naming the NAME, before any browser call', () => {
