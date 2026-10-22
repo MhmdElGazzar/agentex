@@ -55,7 +55,8 @@ example "no application URL is configured for qc") and stop. The wizard goes on.
      `node swagger-import/scripts/browser_bridge.js fill-secret --session agentex-collect --locator <password field> --env <env> --user <user> --submit <submit button>`.
      `--submit` is required: without it the bridge types nothing (`"error":"submit-required"`).
      It refuses an `envSecret` password (`"error":"use-fill-secret"`) before touching the
-     browser and gives the `fill_secret.js` call to run instead in `command`: run it as given.
+     browser and gives the `fill_secret.js` call to run instead: run it as given, from the
+     project root (`cwd`), as `command` in a POSIX shell or `commandPowerShell` in PowerShell.
    Rules:
    - Never type, read or echo a password: no `fill`, `type`, `press` or `run-code` carrying it,
      no `$NAME`, no reading `.env`.

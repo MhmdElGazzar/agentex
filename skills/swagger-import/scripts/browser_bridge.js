@@ -22,7 +22,9 @@
 //       environments/<e>.json).
 //       - { "envSecret": NAME }: refused before the browser is touched (exit 2,
 //         "error":"use-fill-secret"); the result names NAME and the exact fill_secret.js call
-//         (--target <loc>, --submit-target <submit> or --submit), which reads the value itself.
+//         (--target <loc>, --submit-target <submit> or --submit), which reads the value itself:
+//         "command" for a POSIX shell, "commandPowerShell" for PowerShell, both run from the
+//         project root ("cwd").
 //       - A plain string (legacy; the secret scan warns on it): --submit is required (without
 //         it: exit 2, "error":"submit-required", nothing typed). Resolved in this process and
 //         served ONCE from an ephemeral 127.0.0.1 listener on a random path; the run-code reads
@@ -232,14 +234,19 @@ function userPassword(root, envName, user) {
   return { value };
 }
 
-// browser-driver's fill_secret.js call for an { envSecret } password, as one shell line. It
-// carries the variable NAME and locators only, never a value.
+// browser-driver's fill_secret.js call for an { envSecret } password, as one shell line in two
+// quotings: POSIX sh (bash, zsh) and PowerShell. It carries the variable NAME and locators only,
+// never a value. fill_secret.js reads .env and the environment from its working directory, so
+// the call runs from the project root. (Windows PowerShell 5.1 drops a double quote inside an
+// argument passed to a native program; PowerShell 7.3+ passes it through.)
 const FILL_SECRET = path.join(__dirname, '..', '..', 'browser-driver', 'scripts', 'fill_secret.js');
 const shq = s => (/^[A-Za-z0-9_./:=@%+-]+$/.test(s) ? s : `'${String(s).replace(/'/g, `'\\''`)}'`);
-function fillSecretCommand({ session, locator, envVar, env, submit }) {
-  return ['node', FILL_SECRET, '--session', session, '--target', locator, '--env-var', envVar, '--env', env,
-    ...(submit ? ['--submit-target', submit] : ['--submit'])].map(shq).join(' ');
-}
+const psq = s => (/^[A-Za-z0-9_.\/\\:=%+-]+$/.test(s) ? s : `'${String(s).replace(/'/g, "''")}'`);
+const fillSecretArgv = ({ session, locator, envVar, env, submit }) =>
+  ['node', FILL_SECRET, '--session', session, '--target', locator, '--env-var', envVar, '--env', env,
+    ...(submit ? ['--submit-target', submit] : ['--submit'])];
+const fillSecretCommand = o => fillSecretArgv(o).map(shq).join(' ');
+const fillSecretCommandPowerShell = o => fillSecretArgv(o).map(psq).join(' ');
 
 async function main(argv) {
   const args = argv.slice(2);
@@ -263,9 +270,10 @@ async function main(argv) {
     const pw = userPassword(root, env, user);
     if (pw.error) return emit({ ok: false, error: 'no-password', message: pw.error }, 2);
     if (pw.envVar) {
-      return emit({ ok: false, error: 'use-fill-secret', user, envVar: pw.envVar,
-        command: fillSecretCommand({ session, locator, envVar: pw.envVar, env, submit }),
-        message: `the password of "${user}" is { "envSecret": "${pw.envVar}" }: type it with browser-driver's fill_secret.js — run "command" as given (it reads the value itself and submits in the same call); nothing was typed` }, 2);
+      const call = { session, locator, envVar: pw.envVar, env, submit };
+      return emit({ ok: false, error: 'use-fill-secret', user, envVar: pw.envVar, cwd: root,
+        command: fillSecretCommand(call), commandPowerShell: fillSecretCommandPowerShell(call),
+        message: `the password of "${user}" is { "envSecret": "${pw.envVar}" }: type it with browser-driver's fill_secret.js. Run it from the project root (${root}), exactly as given: "command" in a POSIX shell (bash, zsh), "commandPowerShell" in PowerShell. It reads the value itself and submits in the same call; nothing was typed` }, 2);
     }
     if (!submit) {
       return emit({ ok: false, error: 'submit-required', user,
@@ -338,4 +346,4 @@ async function main(argv) {
 }
 
 if (require.main === module) main(process.argv);
-module.exports = { serveOnce, sinkOnce, redactCalls, redactString, findToken, captureCode, fillCode, findCli, userPassword, fillSecretCommand };
+module.exports = { serveOnce, sinkOnce, redactCalls, redactString, findToken, captureCode, fillCode, findCli, userPassword, fillSecretCommand, fillSecretCommandPowerShell, psq };

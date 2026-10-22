@@ -209,6 +209,7 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
       assert.strictEqual(r.json.error, 'use-fill-secret');
       assert.strictEqual(r.json.envVar, 'QA_PASSWORD');
       assert.strictEqual(r.json.command, `node ${FILL_SECRET} --session agentex-collect --target '#password' --env-var QA_PASSWORD --env qc --submit-target 'button[type=submit]'`);
+      assert.strictEqual(r.json.commandPowerShell, `node ${FILL_SECRET} --session agentex-collect --target '#password' --env-var QA_PASSWORD --env qc --submit-target 'button[type=submit]'`);
       assert.strictEqual(r.argv, '', 'the browser was driven');
       assert.ok(!r.out.includes(PASSWORD) && !r.err.includes(PASSWORD));
     }
@@ -216,6 +217,26 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     const dir = proj({ 'environments/qc.json': { defaults: { password: { envSecret: 'QA_PASSWORD' } }, users: { qa_user_a: {} } } });
     const r = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', 'e4', '--env', 'qc', '--user', 'qa_user_a']);
     assert.strictEqual(r.json.command, `node ${FILL_SECRET} --session agentex-collect --target e4 --env-var QA_PASSWORD --env qc --submit`);
+    assert.strictEqual(r.json.commandPowerShell, `node ${FILL_SECRET} --session agentex-collect --target e4 --env-var QA_PASSWORD --env qc --submit`);
+  });
+
+  await test('use-fill-secret: the text says to run from the project root and gives a POSIX and a PowerShell form', async () => {
+    const dir = proj({ 'environments/qc.json': { defaults: { password: { envSecret: 'QA_PASSWORD' } }, users: { qa_user_a: {} } } });
+    const r = await bridge(dir, ['fill-secret', '--session', 'agentex-collect', '--locator', '#password', '--env', 'qc', '--user', 'qa_user_a', '--submit', 'button[type=submit]']);
+    assert.strictEqual(r.json.error, 'use-fill-secret');
+    assert.strictEqual(r.json.cwd, dir);
+    assert.ok(r.json.message.includes(`from the project root (${dir})`), r.json.message);
+    assert.match(r.json.message, /"command" in a POSIX shell/);
+    assert.match(r.json.message, /"commandPowerShell" in PowerShell/);
+    // PowerShell quoting: single quotes, an embedded ' doubled; a leading # or @ is quoted
+    const locator = `input[name='pass word']`, submit = `text="Sign in"`;
+    const fs1 = 'C:\\Tools\\agentex\\fill_secret.js';
+    assert.strictEqual(B.fillSecretCommandPowerShell({ session: 'agentex-collect', locator, envVar: 'QA_PASSWORD', env: 'qc', submit }).replace(/^node \S+/, 'node X'),
+      `node X --session agentex-collect --target 'input[name=''pass word'']' --env-var QA_PASSWORD --env qc --submit-target 'text="Sign in"'`);
+    assert.strictEqual(B.psq(fs1), fs1, 'a Windows path with no space needs no quotes');
+    assert.strictEqual(B.psq('C:\\Program Files\\x.js'), `'C:\\Program Files\\x.js'`);
+    assert.strictEqual(B.psq('@e4'), `'@e4'`);
+    assert.strictEqual(B.psq('#p'), `'#p'`);
   });
 
   if (process.platform !== 'win32') {
