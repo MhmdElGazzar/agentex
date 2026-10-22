@@ -48,7 +48,7 @@ const path = require('node:path');
 const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 
 const COUNT_KEYS = ['passed', 'failed', 'blocked', 'warnings', 'viewMismatch', 'flaky', 'naDescoped', 'notRun'];
-const RUN_REASON_CODES = ['needs-user', 'interaction-required', 'captcha-or-otp', 'timeout', 'session-error'];
+const RUN_REASON_CODES = ['needs-user', 'interaction-required', 'captcha-or-otp', 'secret-unavailable', 'timeout', 'session-error'];
 const DEFAULTS = { warningsFailGate: true, retries: 3, timeoutMinutes: 60, flakyFailsGate: false };
 
 function parseArgs(argv) {

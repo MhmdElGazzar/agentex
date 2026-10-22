@@ -14,7 +14,7 @@ Run end to end without per-checkpoint approval, and present the final report whe
    - First run with no specs: copy `<agentex-root>/test/suite1/` into `./test/suite1/` as an editable starting point, and tell the user to adapt it before a real regression.
 3. **DISPATCH**
    - One **qa-executor** per test file. Inject `SESSION`, `SESSION_DIR` (`…/browser-sessions/<session>`), `WORKING_DIR` (the consumer project root, where every command runs), `TARGET_URL` (empty when the file has no browser steps), `ENVIRONMENT` (empty for legacy projects), `TEST_DATA`, `LOGIN_MODE`, `DRIVERS` (that file's drivers from `spec_drivers.js`), and `TEST_SPEC` (the file's full text).
-   - `TEST_DATA` is the environment's `defaults` + `users` JSON, with secrets left as `envSecret` refs. The executor resolves them only at use time and never prints them.
+   - `TEST_DATA` is the environment's `defaults` + `users` JSON, with secrets left as `envSecret` refs. The executor never resolves them: browser fields are typed by browser-driver's `fill_secret.js`, `api:`/`db:` runners resolve their own.
    - `LOGIN_MODE` is injected even when it resolved to the default, so no executor has to guess.
    - **Waves, not one unbounded batch.** Never have more than 6 executors running at once (each browser executor is a real Chromium). Launch up to 6 together, then start the next file's executor each time one returns, until every file has run.
    - A spawn refused with `Concurrent subagent limit reached` is not a result. Nothing queues automatically: wait for a running executor to return, then dispatch that file again.

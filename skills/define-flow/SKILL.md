@@ -55,7 +55,8 @@ mid-run interaction.
   line that may ever be added to an original is the cross-reference offered in walkthrough
   mode step 3, and only after the user says yes to it.
 - Never modify application source code. Config files may be read to resolve the target;
-  never print, log, or pass secret values.
+  never print, log, or pass secret values. A `{ "envSecret" }` field is typed only with
+  browser-driver's `fill_secret.js` (its Secret fields rule), never with `fill` or `type`.
 
 ## 1. SETUP
 
