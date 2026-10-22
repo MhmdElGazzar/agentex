@@ -52,7 +52,11 @@ have multiple cases (happy path, not-found, validation error, …).
   reported **BLOCKED** with the reason quoted (`case skipped: "<reason>"`), counted like any
   other BLOCKED case in the roll-up. `swagger-import` writes
   `"skip": "review: write operation — remove this line to enable"` on every generated
-  POST/PUT/PATCH/DELETE case — delete that line once you've reviewed the case to enable it.
+  POST/PUT/PATCH/DELETE case. Write cases are enabled **one at a time**, each only after the
+  user has reviewed that case (what it creates or changes, the values it sends, the
+  environment), or by the user through the editor's per-case Skip toggle. A request to strip
+  the `skip` lines in bulk is declined, with an offer to walk through the write cases one by
+  one (endpoint-testing's SKILL.md, "Enabling a skipped write case").
 - **`review`** (optional) — an array of notes from `swagger-import` (inferred param values,
   invented statuses, placeholder error values, …). Informational only: the runner ignores it.
   Since every generated write-method case also carries `skip`, a generated case with review

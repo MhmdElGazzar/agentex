@@ -45,6 +45,8 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/swagger-import/scripts/import_swagger.js" <so
   placeholder "not found" values, or unsupported auth schemes that need manual verification.
   The same notes are written into the generated files (`review: [...]` per request/case).
 - Tell them every generated write-method case (POST/PUT/PATCH/DELETE) carries a `skip` line
-  and is reported BLOCKED, not run, until they review it and delete that line.
+  and is reported BLOCKED, not run, until it is enabled — one case at a time, after that case
+  is reviewed, or through the editor's per-case Skip toggle. Decline a bulk strip of the
+  `skip` lines and offer to walk through the write cases one by one.
 - Tell them to review the generated files, then try `/test-endpoints` once the env
   vars are set.

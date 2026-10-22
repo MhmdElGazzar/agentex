@@ -32,9 +32,13 @@ generated files before trusting suite results.**
 
 **Write operations are opt-in.** Every generated POST/PUT/PATCH/DELETE case is written with
 `"skip": "review: write operation — remove this line to enable"`. `run_suite.js` never
-executes a case carrying `skip` — it reports it BLOCKED with the reason quoted. Delete the line
-once you've reviewed the case. `review` notes themselves don't block anything, so a generated
-case with review notes runs as-is only if it is a GET.
+executes a case carrying `skip` — it reports it BLOCKED with the reason quoted. A write case
+is enabled one at a time: its `skip` line is removed only after the user has reviewed that
+case (what it creates or changes, the values it sends, the environment), or by the user
+through the editor's per-case Skip toggle (`/test-endpoints --edit`). A request to strip the
+`skip` lines in bulk is declined, with an offer to walk through the write cases one by one.
+`review` notes themselves don't block anything, so a generated case with review notes runs
+as-is only if it is a GET.
 
 ## `$ref` resolution
 

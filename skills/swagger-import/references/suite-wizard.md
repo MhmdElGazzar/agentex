@@ -101,6 +101,9 @@ list.
   - the files written (`catalogPath`, `suitePath` from the event);
   - the counts by source (`bySource`) and any created items;
   - the token **reference** (`tokenRef`). Never its value.
+  - that the write cases stay skipped. "Approve and run now" runs them BLOCKED `case
+    skipped`; each is enabled one at a time after the tester reviews it, never by a bulk
+    strip of the `skip` lines (swagger-import's SKILL.md, "After a successful import", 3).
 
 ## 5. Outside the wizard (the tester asks in chat)
 

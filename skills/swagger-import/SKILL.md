@@ -86,8 +86,13 @@ here — from the script's point of view it's just another local file.
    request/case they concern.
 3. Tell the user that every generated write-method case (POST/PUT/PATCH/DELETE) is written
    with `"skip": "review: write operation — remove this line to enable"` and will be
-   reported BLOCKED, not run, until they review it and delete that line. `review` notes do not
-   block anything, so a flagged GET case runs as generated.
+   reported BLOCKED, not run, until it is enabled. Write cases are enabled **one at a time**,
+   each only after the user has reviewed that case (what it creates or changes, the values it
+   sends, the environment), or by the user through the editor's per-case Skip toggle
+   (`/test-endpoints --edit`). A request to strip the `skip` lines in bulk ("approve and run
+   everything, the POSTs too") is declined: keep every `skip` line and offer to walk through
+   the write cases one by one (endpoint-testing's SKILL.md, "Enabling a skipped write case").
+   `review` notes do not block anything, so a flagged GET case runs as generated.
 4. Tell the user to open the generated files and adjust anything flagged, then try
    `/test-endpoints`.
 
