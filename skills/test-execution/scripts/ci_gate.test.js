@@ -44,7 +44,8 @@ const PWCLI = pwcliOkStub();
 const BROWSERS = browsersDir();
 
 // The fake claude: a node script driven by STUB_PLAN (one behavior per attempt,
-// last repeats): pass | fail | blocked | unstable | silent | double | hang.
+// last repeats): pass | fail | blocked | unstable | silent | double | hang |
+// noauth | invalidkey | auth401 | denied | denied-many | apierror | denied-pass | nothing | garbage.
 // Records every invocation's argv + relevant env into STUB_STATE.
 const STUB_SRC = `
 'use strict';
@@ -61,6 +62,10 @@ fs.writeFileSync(path.join(state, 'argv-' + n + '.json'), JSON.stringify({
 const plan = (process.env.STUB_PLAN || 'pass').split(',');
 const mode = plan[Math.min(n - 1, plan.length - 1)];
 const runDir = 'executions/execu_2026-01-01_00-00-0' + n;
+const SENT = 'SENTINEL-7c1e5a';
+let custom = null; // a session result line other than the default success line
+const result = (o) => ({ type: 'result', subtype: 'success', is_error: false, api_error_status: null, result: '', permission_denials: [], ...o });
+const denial = (tool_name, tool_input) => ({ tool_name, tool_input });
 function emit(v, code, reasons) {
   fs.mkdirSync(runDir, { recursive: true });
   fs.writeFileSync(path.join(runDir, 'report.md'), '# run report (attempt ' + n + ')\\n');
@@ -88,12 +93,40 @@ else if (mode === 'double') {
   emit('PASS', 0);
   fs.mkdirSync('executions/execu_2026-01-01_09-09-09', { recursive: true });
   fs.writeFileSync('executions/execu_2026-01-01_09-09-09/verdict.json', JSON.stringify({ schemaVersion: 1, verdict: 'PASS', exitCode: 0 }));
+} else if (mode === 'noauth') {
+  // the real 2.1.267 capture, no auth source: exit 1, is_error, api_error
+  custom = result({ is_error: true, terminal_reason: 'api_error', result: 'Not logged in · Please run /login ' + SENT });
+  process.exitCode = 1;
+} else if (mode === 'invalidkey') {
+  custom = result({ is_error: true, terminal_reason: 'api_error', result: 'Invalid API key · Please run /login ' + SENT });
+  process.exitCode = 1;
+} else if (mode === 'auth401') {
+  custom = result({ is_error: true, terminal_reason: 'api_error', api_error_status: 401, result: 'authentication_error ' + SENT });
+  process.exitCode = 1;
+} else if (mode === 'apierror') {
+  custom = result({ is_error: true, terminal_reason: 'api_error', api_error_status: 529, result: 'Overloaded ' + SENT });
+  process.exitCode = 1;
+} else if (mode === 'denied') {
+  // the 2026-08-28 shape: no verdict, PowerShell x2 and Read x1 denied
+  custom = result({ permission_denials: [
+    denial('PowerShell', { command: 'Get-Content ' + SENT }),
+    denial('Read', { file_path: 'C:/' + SENT + '/secret.txt' }),
+    denial('PowerShell', { command: 'node ' + SENT }) ] });
+} else if (mode === 'denied-many') {
+  custom = result({ permission_denials: Array.from({ length: 12 }, (_, i) => denial('Tool' + i, { command: SENT })) });
+} else if (mode === 'denied-pass') {
+  emit('PASS', 0);
+  custom = result({ permission_denials: [denial('PowerShell', { command: SENT })] });
+} else if (mode === 'nothing') {
+  custom = false; // prints nothing at all
+} else if (mode === 'garbage') {
+  custom = 'this is not json ' + SENT;
 } else if (mode === 'hang') {
   fs.mkdirSync(runDir, { recursive: true });
   fs.writeFileSync(path.join(runDir, 'report.md'), '# partial report — preserved evidence\\n');
   setInterval(() => {}, 1000);
 }
-console.log(JSON.stringify({ type: 'result', subtype: 'success' }));
+if (custom !== false) console.log(typeof custom === 'string' ? custom : JSON.stringify(custom || { type: 'result', subtype: 'success' }));
 `;
 function makeStub() {
   const dir = tmp('agentex-cg-stub-');
@@ -431,6 +464,137 @@ function runGate(cwd, args, { plan = 'pass', envExtra = {}, noHandshake = false,
     assert.notStrictEqual(i, -1, `--add-dir missing from the spawn args: ${argv.join(' ')}`);
     assert.strictEqual(argv[i + 1], installRoot, 'the grant must follow the installed plugin root');
     assert.match(argv.join(' '), /--permission-mode dontAsk/, 'the read grant never relaxes the deny-by-default mode');
+  });
+
+  // ---- named causes for a session that left no verdict (ci-blocked-reason) -----------------
+  const SENTINEL = 'SENTINEL-7c1e5a';
+  const gateLog = (r) => r.stderr.split(/\r?\n/).filter((l) => l.startsWith('ci_gate:'));
+  const causeLines = (r, cause) => gateLog(r).filter((l) => l.includes(cause));
+  const noSentinelOutside = (dir, r) => {
+    assert.ok(!r.stdout.includes(SENTINEL), 'sentinel leaked into the stdout line');
+    const vf = path.join(dir, r.json.runDir, 'verdict.json');
+    assert.ok(!fs.readFileSync(vf, 'utf8').includes(SENTINEL), 'sentinel leaked into verdict.json');
+    assert.ok(!gateLog(r).join('\n').includes(SENTINEL), 'sentinel leaked into a ci_gate log line');
+  };
+
+  await test('AC1 not logged in: session-error / not-authenticated, retryable:false, ONE attempt despite --retries 3, exit 2', async () => {
+    const dir = proj(base);
+    const r = await runGate(dir, ['--suite', 'test/suite1/', '--retries', '3'], { plan: 'noauth' });
+    assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+    assert.strictEqual(r.json.verdict, 'BLOCKED');
+    assert.strictEqual(r.calls, 1, 'no retry on an auth failure');
+    assert.strictEqual(r.json.attemptHistory.length, 1);
+    assert.strictEqual(r.json.blockedReasons.length, 1);
+    const b = r.json.blockedReasons[0];
+    assert.strictEqual(b.code, 'session-error');
+    assert.strictEqual(b.cause, 'not-authenticated');
+    assert.strictEqual(b.retryable, false);
+    assert.strictEqual(typeof b.detail, 'string');
+    assert.deepStrictEqual(r.json.attemptHistory[0].reasonCodes, ['session-error']);
+  });
+
+  await test('AC2 the auth signature also matches "Invalid API key" and api_error_status 401', async () => {
+    for (const plan of ['invalidkey', 'auth401']) {
+      const r = await runGate(proj(base), ['--suite', 'test/suite1/', '--retries', '3'], { plan });
+      assert.strictEqual(r.status, 2, `${plan}: ${r.stdout + r.stderr}`);
+      assert.strictEqual(r.calls, 1, plan);
+      assert.strictEqual(r.json.blockedReasons[0].cause, 'not-authenticated', plan);
+    }
+  });
+
+  await test('AC2 another is_error status (529), no denials → cause unknown, retried as today', async () => {
+    const r = await runGate(proj(base), ['--suite', 'test/suite1/', '--retries', '2'], { plan: 'apierror' });
+    assert.strictEqual(r.status, 2);
+    assert.strictEqual(r.calls, 3, '1 + 2 retries');
+    const b = r.json.blockedReasons[0];
+    assert.strictEqual(b.code, 'no-verdict');
+    assert.strictEqual(b.cause, 'unknown');
+    assert.notStrictEqual(b.retryable, false);
+  });
+
+  await test('AC3 denied tools: no-verdict / tool-denied, names deduped in first-seen order, no retry (Fork 1 A)', async () => {
+    const r = await runGate(proj(base), ['--suite', 'test/suite1/', '--retries', '3'], { plan: 'denied' });
+    assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+    assert.strictEqual(r.calls, 1, 'a settings-denied tool is not retried');
+    assert.strictEqual(r.json.attemptHistory.length, 1);
+    assert.strictEqual(r.json.blockedReasons.length, 1);
+    const b = r.json.blockedReasons[0];
+    assert.strictEqual(b.code, 'no-verdict');
+    assert.strictEqual(b.cause, 'tool-denied');
+    assert.deepStrictEqual(b.tools, ['PowerShell', 'Read']);
+    assert.strictEqual(b.retryable, false);
+    assert.strictEqual(typeof b.detail, 'string');
+  });
+
+  await test('AC3 tool names are capped at 10', async () => {
+    const r = await runGate(proj(base), ['--suite', 'test/suite1/', '--retries', '0'], { plan: 'denied-many' });
+    assert.strictEqual(r.status, 2);
+    assert.deepStrictEqual(r.json.blockedReasons[0].tools, Array.from({ length: 10 }, (_, i) => `Tool${i}`));
+  });
+
+  await test('AC4 sentinel in tool_input and in the auth result appears nowhere in stdout, verdict.json or the ci_gate log lines', async () => {
+    for (const plan of ['denied', 'noauth', 'invalidkey', 'auth401', 'apierror', 'garbage']) {
+      const dir = proj(base);
+      const r = await runGate(dir, ['--suite', 'test/suite1/', '--retries', '1'], { plan });
+      assert.strictEqual(r.status, 2, plan);
+      noSentinelOutside(dir, r);
+    }
+  });
+
+  await test('AC5 a session that prints nothing, or unparseable output → no-verdict / unknown, today\'s detail, retried (1 + retries)', async () => {
+    for (const plan of ['nothing', 'garbage', 'silent']) {
+      const r = await runGate(proj(base), ['--suite', 'test/suite1/', '--retries', '2'], { plan });
+      assert.strictEqual(r.status, 2, plan);
+      assert.strictEqual(r.calls, 3, `${plan}: retried`);
+      const b = r.json.blockedReasons[0];
+      assert.strictEqual(b.code, 'no-verdict', plan);
+      assert.strictEqual(b.cause, 'unknown', plan);
+      assert.match(b.detail, /the session did not conclude deterministically/, plan);
+    }
+  });
+
+  await test('AC6 a valid PASS verdict wins over reported denials: PASS, exit 0, no cause added', async () => {
+    const r = await runGate(proj(base), ['--suite', 'test/suite1/', '--retries', '3'], { plan: 'denied-pass' });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.strictEqual(r.json.verdict, 'PASS');
+    assert.strictEqual(r.calls, 1);
+    assert.deepStrictEqual(r.json.blockedReasons, []);
+    assert.ok(!JSON.stringify(r.json).includes('tool-denied'));
+  });
+
+  await test('AC7 every new path exits 2 and never 1 (1-vs-2 matrix)', async () => {
+    for (const plan of ['noauth', 'invalidkey', 'auth401', 'denied', 'denied-many', 'apierror', 'nothing', 'garbage']) {
+      const r = await runGate(proj(base), ['--suite', 'test/suite1/', '--retries', '0'], { plan });
+      assert.notStrictEqual(r.status, 1, plan);
+      assert.strictEqual(r.status, 2, plan);
+      assert.strictEqual(r.json.exitCode, 2, plan);
+      assert.strictEqual(r.lines.length, 1, `${plan}: ONE stdout line`);
+    }
+  });
+
+  await test('AC8 each named cause logs exactly one human line: the cause, the fix, and whether it is retried', async () => {
+    const auth = await runGate(proj(base), ['--suite', 'test/suite1/', '--retries', '3'], { plan: 'noauth' });
+    const al = causeLines(auth, 'not-authenticated');
+    assert.strictEqual(al.length, 1, gateLog(auth).join('\n'));
+    assert.match(al[0], /ANTHROPIC_API_KEY/);
+    assert.match(al[0], /not retried/);
+
+    const den = await runGate(proj(base), ['--suite', 'test/suite1/', '--retries', '3'], { plan: 'denied' });
+    const dl = causeLines(den, 'tool-denied');
+    assert.strictEqual(dl.length, 1, gateLog(den).join('\n'));
+    assert.match(dl[0], /ci-settings\.json/);
+    assert.match(dl[0], /PowerShell/);
+    assert.match(dl[0], /not retried/);
+    assert.ok(!gateLog(den).some((l) => /retrying in/.test(l)), 'no retry line on a stopped attempt');
+  });
+
+  await test('classifySession (pure, exported): unknown for anything it does not recognise, never guessed', async () => {
+    const { classifySession } = require(SCRIPT);
+    for (const out of ['', 'nope', '{"type":"result"}', '{"type":"result","is_error":true,"api_error_status":500,"result":"boom"}',
+      '{"type":"result","is_error":false,"result":"Not logged in","permission_denials":[]}']) {
+      assert.strictEqual(classifySession(out).cause, 'unknown', out);
+    }
+    assert.strictEqual(classifySession('log line\n{"type":"result","is_error":true,"result":"Not logged in"}\n').cause, 'not-authenticated');
   });
 
   // ---- structural pin ----------------------------------------------------------------------

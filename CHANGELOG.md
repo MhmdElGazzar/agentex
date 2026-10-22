@@ -42,6 +42,19 @@ All notable changes to AgenTeX are documented here.
     `--case <n>` subset runs, and a `suite-result.json` in every run folder.
   - Existing suites run unchanged; a legacy-suite snapshot test guards it.
 
+### Changed
+- **A CI BLOCKED that left no verdict now says why.** Before, the verdict said only
+  `no-verdict`, and the gate spent up to 4 sessions and 90 s of pauses on it. Now
+  `ci_gate.js` reads the session's own result and names the cause on the reason, plus one
+  stderr line with the fix. A runner with no Claude auth gives `session-error` with
+  `cause: "not-authenticated"`; set `ANTHROPIC_API_KEY` on the gate step. A tool the CI
+  settings denied gives `no-verdict` with `cause: "tool-denied"` and `tools` (names only, never
+  the tool's input); allow it in `ci-settings.json`. Neither is retried (`retryable: false`),
+  so the run stops after one session. Anything else stays `no-verdict` with
+  `cause: "unknown"` and is retried as before. A verdict file the session did write always
+  wins. The new fields are optional and additive to verdict contract v1 (no `schemaVersion`
+  bump); `docs/ci-quality-gate.md` documents them and the no-retry cases.
+
 ## [0.26.0] — 2026-10-22
 ### Added
 - **A password-gated login can pass in CI.** Until now, every way to type an
