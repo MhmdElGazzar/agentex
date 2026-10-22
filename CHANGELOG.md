@@ -35,6 +35,14 @@ All notable changes to AgenTeX are documented here.
   `NotebookEdit` path rules are gone: Claude Code consults only `Edit(path)` rules for file edits,
   and `Edit(./src/**)` already covers every file-editing tool, so protection is unchanged.
 
+### Fixed
+- **CI preflight no longer fails on a fresh project that does not use Figma.** The scaffold's
+  `figma` block (empty `fileKey`, token `{ "envSecret": "FIGMA_TOKEN" }`) counted as a required
+  secret, so every new project's first CI run ended `preflight-secrets`. With no `fileKey`,
+  Figma is not configured and its token is not required.
+- The CI gate closes the headless session's stdin, so each attempt no longer waits 3 seconds
+  for piped input.
+
 ## [0.25.0] — 2026-10-22
 ### Added
 - **A consumer project can go into git without leaking a secret.** New `scripts/secret_scan.js`

@@ -131,10 +131,18 @@ async function checkApiTarget(cwd, environment) {
   return probeUrl(api.baseUrl);
 }
 
+// The scaffold ships `figma: { fileKey: "", token: { envSecret } }` for projects that may use
+// ui-check later. With no fileKey Figma is not configured, so its token is not a required secret.
+function withoutUnusedFigma(config) {
+  if (!config || typeof config !== 'object' || !config.figma || String(config.figma.fileKey || '').trim()) return config;
+  const { figma, ...rest } = config;
+  return rest;
+}
+
 function checkSecrets(cwd, environment) {
   const names = new Set();
   if (environment.ok && environment.env) collectEnvSecretNames(environment.env, names);
-  collectEnvSecretNames(pc.loadProjectConfig(cwd), names);
+  collectEnvSecretNames(withoutUnusedFigma(pc.loadProjectConfig(cwd)), names);
   const intDir = path.join(cwd, 'integration');
   if (fs.existsSync(intDir)) {
     for (const f of fs.readdirSync(intDir).filter((f) => f.endsWith('.json'))) {
@@ -265,4 +273,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { collectEnvSecretNames };
+module.exports = { collectEnvSecretNames, withoutUnusedFigma };
