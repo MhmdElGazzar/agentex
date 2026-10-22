@@ -51,6 +51,14 @@ To run only the tests a change can reach, see
 safety rule enforced in code (catalog-only lookup, DDL ban, param sanitization, secret-header
 presence/absence).
 
+## Checking the plugin's structure
+
+`node scripts/lint_plugin.js` checks the repo itself: frontmatter parses, referenced plugin paths
+exist, `plugin.json` matches the README badge, every `process.env` read is in `.env.example`, no
+secret shapes, and (when a gitignored `.agentex-lint-denylist` exists) no org terms. Errors exit 1;
+warnings (CHANGELOG drift, a script without a sibling test) exit 0. `--json` for one JSON line.
+`scripts/lint_plugin.test.js` pins today's known warnings, so a new one shows up as a failing test.
+
 ## Running only what a change affects
 
 **What:** `scripts/dev/affected.js` reads what changed since `main` (commits, uncommitted

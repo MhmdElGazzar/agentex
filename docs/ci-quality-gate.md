@@ -192,7 +192,12 @@ Usable from any CI system, without either shipped template.
 4. The browser driver, inside the project:
    `npm install -D @playwright/cli && npx playwright-cli install-browser chromium`.
 5. Every `{ "envSecret": "NAME" }` your environment files reference, injected as env
-   vars by the secret store (a checked-in `.env` is never needed).
+   vars by the secret store (a checked-in `.env` is never needed). Local trials must
+   export the `envSecret` names into the process environment too; never put the values
+   on the command line or in logs. A local `.env` alone is not enough: preflight finds
+   the name there and reports ok, but the headless session cannot read `.env`, so a
+   browser-typed secret such as a login password never reaches it and the run ends
+   BLOCKED.
 
 **The invocation** (from the AgenTeX project root):
 
@@ -226,6 +231,14 @@ runner's own `~/.claude` also works as a documented fallback, at the cost of
 runner-to-runner determinism. Note that claude's own process exit code reflects session
 completion, not the run verdict — only `ci_gate.js`'s exit code and the verdict JSON are
 the contract.
+
+**Windows runners.** On Windows the headless session runs shell commands through the
+PowerShell tool, not Bash. The shipped `ci-settings.json` carries both rule sets side by
+side: every `Bash(...)` rule has a `PowerShell(...)` twin, and the deny set also names
+the PowerShell spellings of the denied commands (`Remove-Item` and its aliases,
+`Invoke-WebRequest`, `Invoke-RestMethod`). The runner's shell tool decides which set
+applies, so the same template works on Linux and Windows runners with no override. If
+you copy the template and change a shell rule, change its twin too.
 
 ## Advisory vs blocking
 

@@ -1,0 +1,63 @@
+{
+  "name": "demo-shop",
+  "defaultEnvironment": "uat",
+  "kb": {
+    "baseUrl": "",
+    "project": ""
+  },
+  "figma": {
+    "fileKey": "",
+    "token": {
+      "envSecret": "FIGMA_TOKEN"
+    }
+  },
+  "login": {
+    "mode": "fresh"
+  },
+  "userFields": [
+    {
+      "key": "phone",
+      "label": "رقم الهاتف",
+      "labelEn": "Phone",
+      "type": "text",
+      "placeholder": "0550000001"
+    },
+    {
+      "key": "email",
+      "label": "البريد الإلكتروني",
+      "labelEn": "Email",
+      "type": "email",
+      "placeholder": "test@example.com"
+    },
+    {
+      "key": "role",
+      "label": "الدور",
+      "labelEn": "Role",
+      "type": "text",
+      "placeholder": "customer"
+    },
+    {
+      "key": "notes",
+      "label": "ملاحظات",
+      "labelEn": "Notes",
+      "type": "text",
+      "placeholder": "for negative login scenarios"
+    }
+  ],
+  "defaultsFields": [
+    {
+      "key": "password",
+      "label": "كلمة المرور الافتراضية",
+      "labelEn": "Default Password",
+      "secret": true,
+      "hint": "كلمة مرور حسابات الاختبار المشتركة — قيمتها تُحفظ في ‎.env فقط، وملف البيئة يشير إليها باسم المتغير",
+      "hintEn": "The shared test-account password — its value is kept in .env only; the environment file refers to it by variable name"
+    },
+    {
+      "key": "otp",
+      "label": "OTP الافتراضي",
+      "labelEn": "Default OTP",
+      "default": "0000"
+    }
+  ]
+}

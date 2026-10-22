@@ -16,6 +16,10 @@ test/.auth/
 .env.*
 !.env.example
 
+# Local lint denylist: employer/org terms scripts/lint_plugin.js flags as errors. The terms
+# can never be committed to this generic repo, so the file stays local.
+.agentex-lint-denylist
+
 # Claude Code local dev config — machine settings, per-branch worktrees, and the pipeline
 # agents / /pm / project-manager skill. Untracked on purpose: everything committed here ships
 # to every consumer through the marketplace. Snapshotted each release into .planning/dev-agents/.

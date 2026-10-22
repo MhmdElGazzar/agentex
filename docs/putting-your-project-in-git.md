@@ -67,6 +67,10 @@ with Git for Windows, or the macOS keychain helper).
 > ```
 >
 > and then rotate the token — treat it as leaked.
+>
+> A token used as the *username* (`https://TOKEN@…`) is caught too: when it has the shape of a
+> well-known credential, the scan warns (`credential-shape`, naming the remote); when it is one
+> of your own `.env` values, it stops (`remote-credential`). The fix is the same.
 
 ## Claude Code's own files
 
@@ -90,8 +94,10 @@ committed, and nothing in the scaffold ignores it.
 ## Running the scan on demand
 
 The secret scan checks your project's own secret values — every value in `.env`, plus every
-variable an `{ "envSecret": "NAME" }` field refers to — and a few structural mistakes. It never
-prints a value: findings name the file, the line and the key, field or label only.
+variable an `{ "envSecret": "NAME" }` field refers to — and a few structural mistakes. It also
+looks for the shapes of well-known credentials (see `credential-shape` below), with or without a
+`.env`. It never prints a value: findings name the file, the line and the key, field, label or
+pattern only.
 
 It runs in two modes:
 
@@ -122,7 +128,10 @@ sh .git/hooks/pre-commit --tracked
 
 The optional pre-commit hook runs the staged scan on every commit — from a terminal, an IDE, or
 Claude. A real leak refuses the commit and tells you the file, line and key, and where the fix
-is documented. Warnings and a skipped value check are shown, and the commit goes ahead. If the
+is documented. Warnings and a skipped value check are shown, and the commit goes ahead — with
+one exception: when a warning is a `credential-shape` and you commit from a terminal, the hook
+asks `Continue the commit anyway? [y/N]` first (see `credential-shape` below); if no answer can
+be read at all, the commit goes ahead with the warning. If the
 scan cannot run (Node.js missing, the plugin uninstalled, a scan error), the commit goes ahead
 and the hook says loudly that the secret scan did **not** run.
 
@@ -219,11 +228,43 @@ the value in `.env` and reference it: `{ "envSecret": "NAME" }` — the warning 
 `…Env` field (such as `tokenEnv`) holds something that is not a variable name — probably the
 value itself. Put the value in `.env` under a name and set the field to that name.
 
+### `credential-shape` (warning)
+
+Something in that file (or in a remote URL's user part) has the shape of a well-known
+credential, even though it is not one of your own `.env` values — for example a token copied
+from an API client or a teammate, or a key from another tool. The finding names the file, the
+line and the pattern; never the text it matched. The patterns are public, documented formats
+only:
+
+| Pattern | What it looks like |
+|---|---|
+| `private-key-block` | the header line of a PEM private key (`BEGIN … PRIVATE KEY`) |
+| `github-token` | a GitHub token (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, or a fine-grained `github_pat_`) |
+| `aws-access-key-id` | an AWS access key id (`AKIA…` / `ASIA…`, 20 characters) |
+| `atlassian-api-token` | an Atlassian (Jira / Confluence) API token (`ATATT3…`) |
+| `figma-token` | a Figma personal access token (`figd_…`) |
+
+Azure DevOps PATs have no recognisable shape; they are covered only when they are one of your
+`.env` values.
+
+**What to do.** Open the file at that line. If it is a real credential, remove it, keep it in
+`.env` under a name and refer to that name (in a spec, describe it: "the GitHub token from
+`.env`"), and **rotate it** if it was ever committed or pushed. If it is not a credential (a
+documentation example, a made-up value), it is safe to leave: a shape is a warning, never a stop
+on its own. There is no allowlist to maintain.
+
+**At commit time.** With the pre-commit hook installed and a commit made from a terminal, the
+hook lists the warnings and asks `Continue the commit anyway? [y/N]`. Enter or `n` (the default)
+refuses the commit — nothing is committed; fix the line and commit again. `y` lets it through
+with the warnings. From an IDE commit button or CI there is no terminal to ask in, so the
+warnings are shown and the commit proceeds. When Claude runs the scan for you (`/init-test`,
+`/update-agentex`), it relays the warnings and asks nothing extra.
+
 ### "value check skipped"
 
 There is no `.env` (or it has no values yet, or every value is excluded), so no value could be
-checked. The structural checks — `.env` tracked, remote credentials, plain-string fields — still
-ran. Fill in `.env` and scan again.
+checked. The structural checks — `.env` tracked, remote credentials, plain-string fields — and
+the credential-shape check still ran. Fill in `.env` and scan again.
 
 ### Values not checked
 
@@ -247,6 +288,10 @@ An environment or catalog file is not valid JSON, so the plain-string field chec
 (its text was still scanned for values). Fix the JSON.
 
 ## A commit was refused for a value I know is not a secret
+
+If the hook asked `Continue the commit anyway? [y/N]` and you answered No (or just pressed
+Enter), it was a `credential-shape` warning: commit again and answer `y` if the flagged text is
+not a credential. Otherwise:
 
 The hook refuses a commit only when a value from your `.env` appears in a committed file. `.env`
 holds secrets only, so a non-secret value there — a URL, a team name, a test phone number — is

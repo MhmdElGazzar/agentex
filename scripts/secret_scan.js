@@ -11,20 +11,34 @@
 //   --tracked  every file git tracks (working-tree copy; the index blob when absent)
 //   --project  the AgenTeX project folder (default: the current directory); its .env,
 //              config/project.json, environments/ and integration/ are read from there
-//   --hook     wording for the pre-commit hook ("commit REFUSED")
+//   --hook     the pre-commit hook's mode: "commit REFUSED" wording, and the
+//              credential-shape confirmation (below)
 //   The three numeric flags override the tunable defaults (1 MiB file cap, 8-char
 //   substring cut-off, 4-char label-check floor) — for tests and tuning.
 //
 // Checks (the same in both modes): the project's own secret values in a file, a
 // short known value right after a password label, .env in the index, a credential
 // in a remote URL — each a LEAK; a plain string in a secret-capable field of
-// environments/*.json or integration/**/*.json — a warning, never a block.
+// environments/*.json or integration/**/*.json, and a public credential shape
+// (private-key block, GitHub, AWS, Atlassian, Figma token) in any file or in a
+// remote URL's user part — warnings, never a block on their own. The shape check
+// runs with or without .env.
+//
+// The confirmation (--hook only): when nothing is a leak and at least one warning
+// is a credential shape, and an interactive terminal can be opened (/dev/tty;
+// CONIN$/CONOUT$ on Windows), the warnings are shown and the user is asked
+// "Continue the commit anyway? [y/N]" (default No). No → exit 1 with
+// "result":"LEAK" and "reason":"declined" (the contract installed hooks already
+// honour). Yes, or no terminal (IDE commit button, CI) → exit 0 with the warnings.
+// Test seam: AGENTEX_SECRET_SCAN_TTY=none (no terminal) or =<file> (the answer is
+// that file's first line; the question goes to stderr).
 //
 // Output: exactly ONE JSON line on stdout; a human summary on stderr. Exit 0
-// clean/warnings/skipped, 1 leak, 2 could not run. Values are never printed — only
-// file, line and key/field/label names, and a remote's name. Read-only: no file,
-// index or config write. The installed pre-commit hook relies on this file's name,
-// --staged, --project, --hook and the "result":"LEAK" marker — a stable contract.
+// clean/warnings/skipped, 1 leak (or a declined confirmation), 2 could not run.
+// Values are never printed — only file, line and key/field/label/pattern names, and
+// a remote's name. Read-only: no file, index or config write. The installed
+// pre-commit hook relies on this file's name, --staged, --project, --hook and the
+// "result":"LEAK" marker — a stable contract.
 const fs = require('fs');
 const path = require('path');
 const core = require('./lib/secret_scan_core.js');
@@ -178,11 +192,79 @@ function main() {
   const known = new Set(needles.all.map(n => n.value));
   for (const r of gp.remoteUrls(projectDir)) {
     if (core.remoteHasCredential(r.url, known)) findings.push({ severity: 'leak', kind: 'remote-credential', remote: r.remote, field: r.field });
+    for (const pattern of core.remoteShapes(r.url)) findings.push({ severity: 'warn', kind: 'credential-shape', remote: r.remote, field: r.field, pattern });
   }
 
   const result = core.buildResult({ mode, valueCheck: needles.valueCheck, counts, findings });
-  emit(result);
   process.stderr.write(summary(result, opts, prefix));
+  emit(core.shapeConfirmationNeeded({ hook: opts.hook, findings }) ? confirm(result, findings) : result);
+}
+
+// ── The --hook confirmation for credential-shape warnings ──────────────────
+// The terminal: { inFd, outFd } or null. Never stdin — git gives a hook none.
+function openTerminal() {
+  const seam = process.env.AGENTEX_SECRET_SCAN_TTY;
+  if (seam === 'none') return null;
+  try {
+    if (seam) return { inFd: fs.openSync(seam, 'r'), outFd: 2 };
+    if (process.platform === 'win32') {
+      // A git started by an IDE or a CI runner can still own a hidden console, so CONIN$ would
+      // open and the read would block with nobody to answer. Ask only when stderr — which the
+      // hook leaves attached — is an interactive console; under an IDE it is a pipe.
+      if (!process.stderr.isTTY) return null;
+      const inFd = fs.openSync('\\\\.\\CONIN$', 'r');
+      try { return { inFd, outFd: fs.openSync('\\\\.\\CONOUT$', 'w') }; }
+      catch (e) { fs.closeSync(inFd); throw e; }
+    }
+    const fd = fs.openSync('/dev/tty', 'r+');
+    return { inFd: fd, outFd: fd };
+  } catch { return null; }
+}
+
+// One line from the terminal; null when nothing could be read (end of input before any
+// answer, or a read error) — nobody answered, which is not a No.
+function readAnswer(fd) {
+  const buf = Buffer.alloc(256);
+  let s = '';
+  for (;;) {
+    let n = 0;
+    try { n = fs.readSync(fd, buf, 0, buf.length, null); } catch { return s ? s : null; }
+    if (!n) return s ? s : null;
+    s += buf.toString('utf8', 0, n);
+    if (s.includes('\n') || s.length > 1024) break;
+  }
+  return s;
+}
+
+function confirm(result, findings) {
+  const term = openTerminal();
+  if (!term) {
+    process.stderr.write('  no terminal to ask in (IDE commit button or CI) - the commit proceeds with the credential-shape warning(s) above.\n');
+    return result;
+  }
+  const shapes = findings.filter(f => f.kind === 'credential-shape');
+  const lines = [];
+  // the warnings were printed on stderr; repeat them only when stderr is not this terminal
+  if (term.outFd !== 2 && !process.stderr.isTTY) for (const f of shapes) lines.push(shapeLine(f));
+  lines.push(`AgenTeX secret scan: ${shapes.length} possible credential(s) by shape (value not shown). Continue the commit anyway? [y/N] `);
+  let answer = '';
+  try {
+    fs.writeSync(term.outFd, lines.join('\n'));
+    answer = readAnswer(term.inFd);
+  } finally {
+    for (const fd of new Set([term.inFd, term.outFd])) if (fd !== 2) { try { fs.closeSync(fd); } catch { /* closed */ } }
+  }
+  if (term.outFd === 2) process.stderr.write('\n');
+  if (answer === null) {
+    process.stderr.write('  no answer could be read from the terminal - the commit proceeds with the credential-shape warning(s) above.\n');
+    return result;
+  }
+  if (core.confirmAnswerIsYes(answer)) {
+    process.stderr.write('  you confirmed - the commit proceeds with the warning(s) above.\n');
+    return result;
+  }
+  process.stderr.write('  commit REFUSED - you answered No (the default). Nothing was committed. Remove the flagged credential(s), then commit again.\n');
+  return core.declinedResult(result);
 }
 
 function fail(mode, code) {
@@ -192,6 +274,12 @@ function fail(mode, code) {
 }
 
 // ── Human summary (stderr): fixed text, paths and key names only ───────────
+function shapeLine(f) {
+  if (f.remote !== undefined) {
+    return `  WARN remote "${ascii(f.remote)}" ${f.field} user part looks like a ${f.pattern} - git remote set-url ${ascii(f.remote)} <URL without credentials>, then rotate that token if it is real`;
+  }
+  return `  WARN ${f.file}:${f.line}  looks like a ${f.pattern} (credential shape, value not shown) - if it is a real credential, remove it, keep it in .env, and rotate it`;
+}
 const ascii = (s) => String(s).replace(/[^\x20-\x7E]/g, '?');
 function summary(r, opts, prefix) {
   const out = [];
@@ -209,6 +297,8 @@ function summary(r, opts, prefix) {
         L(`  LEAK remote "${ascii(f.remote)}" ${f.field} carries a credential - git remote set-url ${ascii(f.remote)} <URL without credentials>, then rotate that token`); break;
       case 'plain-secret-field':
         L(`  WARN ${f.file}:${f.line}  ${f.field} holds a plain string - suggested: ${JSON.stringify(f.suggest)} with the value in .env`); break;
+      case 'credential-shape':
+        L(shapeLine(f)); break;
       case 'unparseable-config':
         L(`  WARN ${f.file} is not valid JSON - plain-string field check skipped for this file (its text was still value-scanned)`); break;
       default: L(`  ${f.severity.toUpperCase()} ${f.kind}`);
@@ -218,7 +308,7 @@ function summary(r, opts, prefix) {
   const vc = r.valueCheck;
   if (vc.status === 'skipped') {
     const why = { 'no-env-file': `no ${prefix}.env file and no secret in the environment`, 'no-values': `${prefix}.env has no values yet`, 'all-excluded': 'every value is a non-secret config key or too short' }[vc.reason];
-    L(`  value check SKIPPED: ${why} - only the structural checks ran (.env tracked, remote URL credentials, plain-string fields)`);
+    L(`  value check SKIPPED: ${why} - only the structural checks and credential shapes ran (.env tracked, remote URL credentials, plain-string fields, credential shapes)`);
   }
   if (vc.notChecked.shortValue.length) {
     L(`  short values not substring-checked: ${vc.notChecked.shortValue.join(', ')} - checked only right after a password label${vc.labelChecked.length ? '' : ' (too short even for that)'}`);

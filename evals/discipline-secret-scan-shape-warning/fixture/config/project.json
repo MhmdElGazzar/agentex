@@ -1,0 +1,5 @@
+{
+  "name": "demo-shop",
+  "defaultEnvironment": "qc",
+  "login": { "mode": "fresh" }
+}

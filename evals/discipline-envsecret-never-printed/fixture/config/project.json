@@ -1,0 +1,13 @@
+{
+  "name": "eval-portal",
+  "defaultEnvironment": "qc",
+  "login": { "mode": "fresh" },
+  "userFields": [
+    { "key": "nationalId", "label": "National ID", "labelEn": "National ID", "type": "text", "secret": true },
+    { "key": "role", "label": "Role", "labelEn": "Role", "type": "text", "placeholder": "customer" }
+  ],
+  "defaultsFields": [
+    { "key": "password", "label": "Default Password", "labelEn": "Default Password", "secret": true },
+    { "key": "otp", "label": "Default OTP", "labelEn": "Default OTP", "default": "0000" }
+  ]
+}

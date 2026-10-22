@@ -106,6 +106,10 @@ two-line footers in the prompt.
 | discipline-estimation-hand-edited-file | authored 2026-10-18 (task-estimation-config; a hand-edited config/estimation.json with three enabled tasks and a user-added factor — the estimation read runs offline), pending the release run on the installed build |
 | discipline-estimation-invalid-file | authored 2026-10-18 (task-estimation-config; an invalid config/estimation.json — fully offline, the real estimation read refuses before any request), pending the release run on the installed build |
 | discipline-estimation-no-history | authored 2026-10-18 (task-estimation-config; Jira hours mode `none` — pre-baked starter-defaults proposal, no live tracker), pending the release run on the installed build |
+| discipline-envsecret-never-printed | authored 2026-10-22 (eval-coverage-batch; no-network fixture with two envSecret sentinels), pending the batch QA run and its seeded-violation arm |
+| discipline-update-agentex-phantom-sample-relay | authored 2026-10-22 (eval-coverage-batch; phantom qc.json beside a configured uat — engine path confirmed to fire), pending the batch QA run |
+| discipline-browser-session-isolation | authored 2026-10-22 (eval-coverage-batch; three specs + another execution in progress, no real browser), pending the batch QA run |
+| discipline-secret-scan-shape-warning | authored 2026-10-22 (consumer-secret-scan-token-patterns; a token assembled at scaffold time), pending the batch QA run |
 
 ## define-flow validation lanes
 

@@ -1,0 +1,5 @@
+{
+  "name": "eval-shop",
+  "defaultEnvironment": "qc",
+  "login": { "mode": "fresh" }
+}
