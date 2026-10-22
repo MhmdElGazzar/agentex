@@ -72,6 +72,26 @@ function get(port, p, headers = {}) {
     srv.close();
   });
 
+  await test('hostAllowed: only 127.0.0.1:<port> or localhost:<port> (DNS rebinding, N12)', async () => {
+    const r = host => ({ headers: host === undefined ? {} : { host } });
+    assert.strictEqual(U.hostAllowed(r('127.0.0.1:7380'), 7380), true);
+    assert.strictEqual(U.hostAllowed(r('localhost:7380'), 7380), true);
+    assert.strictEqual(U.hostAllowed(r('LOCALHOST:7380'), 7380), true);
+    for (const bad of ['evil.example:7380', '127.0.0.1:7381', '127.0.0.1', 'localhost', 'attacker.test', '', '[::1]:7380', '127.0.0.1:7380.evil.example', undefined]) {
+      assert.strictEqual(U.hostAllowed(r(bad), 7380), false, String(bad));
+    }
+  });
+
+  await test('originAllowed: absent, or the same loopback origin as the Host', async () => {
+    const r = (host, origin) => ({ headers: origin === undefined ? { host } : { host, origin } });
+    assert.strictEqual(U.originAllowed(r('127.0.0.1:7380')), true);
+    assert.strictEqual(U.originAllowed(r('127.0.0.1:7380', 'http://127.0.0.1:7380')), true);
+    assert.strictEqual(U.originAllowed(r('localhost:7380', 'http://localhost:7380')), true);
+    for (const bad of ['http://evil.example', 'http://evil.example:7380', 'http://localhost:7380', 'https://127.0.0.1:7380', 'http://127.0.0.1:7381', 'null', '']) {
+      assert.strictEqual(U.originAllowed(r('127.0.0.1:7380', bad)), false, bad);
+    }
+  });
+
   await test('timing-safe token comparison rejects different lengths', async () => {
     assert.strictEqual(U.sameToken('abc', 'abc'), true);
     assert.strictEqual(U.sameToken('abc', 'abcd'), false);

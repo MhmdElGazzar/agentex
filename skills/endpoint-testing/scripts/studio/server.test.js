@@ -24,6 +24,30 @@ const { test, done } = harness();
     s.close();
   });
 
+  await test('a Host other than 127.0.0.1:<port> / localhost:<port> gets 403 on every route; a foreign Origin on /api/* gets 403 (N12)', async () => {
+    const dir = editorProject(9);
+    const s = await studio(dir);
+    const port = s.st.port;
+    const tok = { 'x-studio-token': s.st.state.pageToken };
+    const evil = { host: `rebind.example:${port}` };
+    for (const p of ['/', '/editor', '/wizard', '/favicon.ico', '/nope']) {
+      const r = await req(port, 'GET', p, { headers: evil });
+      assert.strictEqual(r.status, 403, p);
+      assert.ok(!r.text.includes(s.st.state.pageToken), `${p} leaks the page token`);
+    }
+    assert.strictEqual((await req(port, 'GET', '/api/suites', { headers: { ...tok, ...evil } })).status, 403);
+    assert.strictEqual((await req(port, 'GET', '/api/agent/next?timeout=10', { headers: { 'x-studio-control': s.st.state.controlToken, ...evil } })).status, 403);
+    assert.strictEqual((await req(port, 'GET', '/editor', { headers: { host: `127.0.0.1:${port + 1}` } })).status, 403);
+    // the loopback names on the right port are served
+    assert.strictEqual((await req(port, 'GET', '/editor', { headers: { host: `localhost:${port}` } })).status, 200);
+    assert.strictEqual((await req(port, 'GET', '/api/suites', { headers: { ...tok, host: `localhost:${port}` } })).status, 200);
+    // Origin on /api/*: absent or the same loopback origin only
+    assert.strictEqual((await req(port, 'GET', '/api/suites', { headers: { ...tok, origin: `http://127.0.0.1:${port}` } })).status, 200);
+    assert.strictEqual((await req(port, 'GET', '/api/suites', { headers: { ...tok, origin: 'http://evil.example' } })).status, 403);
+    assert.strictEqual((await req(port, 'POST', '/api/suite/save', { body: {}, headers: { ...tok, origin: 'null' } })).status, 403);
+    s.close();
+  });
+
   await test('the session file sits in the OS temp dir, mode 0600, never under the project; removed on close', async () => {
     const dir = editorProject(9);
     const s = await studio(dir);

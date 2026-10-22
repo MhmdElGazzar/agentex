@@ -244,6 +244,8 @@ async function createStudio(opts) {
 
   // ---- server ----
   const server = http.createServer(async (req, res) => {
+    // N12: every route, the HTML pages included, answers only the loopback names on our port.
+    if (!U.hostAllowed(req, server.address().port)) return U.forbid(res);
     state.lastRequestAt = Date.now();
     let url;
     try { url = new URL(req.url, `http://${U.HOST}`); } catch { return U.respondJSON(res, 400, { error: 'bad url' }); }
@@ -264,6 +266,7 @@ async function createStudio(opts) {
     }
     if (method === 'GET' && url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
     if (!url.pathname.startsWith('/api/')) return U.respond(res, 404, 'text/plain; charset=utf-8', 'Not found');
+    if (!U.originAllowed(req)) return U.forbid(res);
     const role = U.roleOf(req, { page: state.pageToken, control: state.controlToken });
     if (!role) return U.forbid(res);
     for (const r of routes) {

@@ -34,6 +34,22 @@ function roleOf(req, tokens) {
   return null;
 }
 
+// DNS rebinding (N12): a page on attacker.example can re-point its own name at 127.0.0.1 and
+// then read /editor (with the per-run token) and call /api/* as a "same-origin" page. Binding
+// to loopback does not stop that; checking the Host header does. Only the two loopback names
+// on the studio's own port are served.
+function hostAllowed(req, port) {
+  const host = String(req.headers.host || '').toLowerCase();
+  return host === `127.0.0.1:${port}` || host === `localhost:${port}`;
+}
+// An Origin on /api/* (browsers send one on cross-origin and non-GET calls) must be the page's
+// own origin; Host has already been checked by hostAllowed. Absent = a non-browser client.
+function originAllowed(req) {
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  return origin === `http://${String(req.headers.host || '').toLowerCase()}`;
+}
+
 function readBody(req, max = MAX_BODY) {
   return new Promise((resolve, reject) => {
     const chunks = []; let size = 0; let over = false;
@@ -61,4 +77,4 @@ function openBrowser(url) {
 
 const newToken = () => crypto.randomBytes(24).toString('hex');
 
-module.exports = { HOST, MAX_BODY, respond, respondJSON, forbid, sameToken, roleOf, readBody, readJSON, portInUseMessage, openBrowser, newToken };
+module.exports = { HOST, MAX_BODY, respond, respondJSON, forbid, sameToken, roleOf, hostAllowed, originAllowed, readBody, readJSON, portInUseMessage, openBrowser, newToken };

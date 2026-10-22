@@ -16,7 +16,8 @@ From the project root, in the background:
 - `"error":"port-in-use"`: relay the message (it names the next port). `"already-running"`:
   give the tester that URL instead.
 - The server binds 127.0.0.1 only, refuses every API call without the page's per-run token,
-  loads nothing from the internet, and stops by itself after 120 minutes without use (or when
+  answers only `http://127.0.0.1:<port>` or `http://localhost:<port>` (any other host name
+  gets 403, so give the tester the printed URL), loads nothing from the internet, and stops by itself after 120 minutes without use (or when
   the tester presses "Close").
 - "Import another Swagger" opens the wizard on the same server. No agent is attached there,
   so its step 3 tells the tester to ask in chat (`/import-swagger --wizard` is the path that
