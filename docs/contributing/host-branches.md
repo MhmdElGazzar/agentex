@@ -74,8 +74,8 @@ node scripts/hosts/build_host.js --host codex --list   # see exactly what a host
 builds, then:
 
 1. Exports the tree and drops what no host ships: `evals/`, `*.test.js`, test golden
-   fixtures (`skills/*/scripts/golden/`), `.github/`, `.gitattributes`, `hosts/`,
-   `scripts/hosts/`. Then it drops the host's own `exclude` list. The non-Claude hosts also
+   fixtures (`skills/*/scripts/golden/`, `scripts/golden/`), `.github/`, `.gitattributes`,
+   `hosts/`, `scripts/hosts/`. Then it drops the host's own `exclude` list. The non-Claude hosts also
    drop `docs/contributing/`, because it documents `main` and the converters would rewrite its
    Claude examples, and `skills/browser-testing/`, a deprecated CI forwarder with no
    `SKILL.md` that their stores reject.

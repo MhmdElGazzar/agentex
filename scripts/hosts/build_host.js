@@ -42,7 +42,7 @@ const { runGuards } = require('./guards.js');
 // line-ending pin (directory validation stops on a root .gitattributes), the host
 // build machinery itself and the maintainer runners (parallel test runner, gate-lane
 // planner).
-const COMMON_EXCLUDES = ['evals', '**/*.test.js', 'skills/*/scripts/golden', '.github', '.gitattributes',
+const COMMON_EXCLUDES = ['evals', '**/*.test.js', 'skills/*/scripts/golden', 'scripts/golden', '.github', '.gitattributes',
   'hosts', 'scripts/hosts', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js'];
 
 // Markers a builder-made commit carries in its message. The legacy line is the
