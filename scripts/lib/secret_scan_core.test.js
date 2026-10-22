@@ -331,5 +331,164 @@ test('buildResult: CLEAN/WARN/LEAK, exit codes, findings cap with exact counts',
   assert.deepStrictEqual(Object.keys(leak).slice(0, 5), ['tool', 'schemaVersion', 'mode', 'result', 'exit']);
 });
 
+// ── Credential shapes ────────────────────────────────────────────────────────
+// Planted credentials are built at runtime from parts, so no real-looking token is
+// ever committed to this repository. Each body is a fixed, obviously fake filler.
+const FILL = 'EvalShapeSentinel0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const body = (n, chars = FILL) => chars.repeat(Math.ceil(n / chars.length)).slice(0, n);
+const PK = (kind) => ['-----BEG', 'IN ', kind, 'PRIV', 'ATE KEY-----'].join('');
+// An armored PGP key reads "BEGIN PGP PRIVATE KEY BLOCK", not "BEGIN PGP PRIVATE KEY".
+const PGP = ['-----BEG', 'IN PGP ', 'PRIV', 'ATE KEY BLOCK-----'].join('');
+const PLANTED = {
+  'private-key-block': [PK(''), PK('RSA '), PK('EC '), PK('OPENSSH '), PK('DSA '), PGP, PK('ENCRYPTED ')],
+  'github-token': ['p', 'o', 'u', 's', 'r'].map(c => ['gh', c, '_', body(36)].join(''))
+    .concat([['github', '_pat_', body(60, FILL + '_')].join(''), ['gh', 'p_', body(52)].join('')]),
+  'aws-access-key-id': [['AK', 'IA', body(16, 'EVALSHAPE0123456789')].join(''), ['AS', 'IA', body(16, 'Z9Y8X7W6V5')].join('')],
+  'atlassian-api-token': [['ATA', 'TT3', body(30, FILL + '_-=')].join(''), ['ATA', 'TT3', body(180)].join('')],
+  'figma-token': [['fi', 'gd_', body(30, FILL + '-_')].join(''), ['fi', 'gd_', body(41)].join('')],
+};
+const ALL_PLANTED = Object.values(PLANTED).flat();
+
+test('SHAPE_PATTERNS: exactly the five published-prefix labels of the first slice (invariant #7)', () => {
+  assert.deepStrictEqual(core.SHAPE_PATTERNS.map(p => p.label),
+    ['private-key-block', 'github-token', 'aws-access-key-id', 'atlassian-api-token', 'figma-token']);
+  assert.ok(Object.isFrozen(core.SHAPE_PATTERNS));
+});
+
+test('scanShapes: every planted credential is found with its line and label, never its text', () => {
+  for (const [label, list] of Object.entries(PLANTED)) {
+    for (const tok of list) {
+      const text = `# notes\n\nuse it: Bearer ${tok} here\n`;
+      const got = core.scanShapes(text);
+      assert.deepStrictEqual(got, [{ line: 3, pattern: label }], `${label} #${list.indexOf(tok)}`);
+      assert.ok(!JSON.stringify(got).includes(tok));
+    }
+  }
+});
+
+test('scanShapes: tokens in quotes, JSON, URLs, after = and at the edges of the text are found', () => {
+  const gh = PLANTED['github-token'][0];
+  const aws = PLANTED['aws-access-key-id'][0];
+  const fig = PLANTED['figma-token'][0];
+  assert.deepStrictEqual(core.scanShapes(gh), [{ line: 1, pattern: 'github-token' }]);
+  assert.deepStrictEqual(core.scanShapes(`{ "token": "${gh}" }`), [{ line: 1, pattern: 'github-token' }]);
+  assert.deepStrictEqual(core.scanShapes(`x\nAWS_ACCESS_KEY_ID=${aws}`), [{ line: 2, pattern: 'aws-access-key-id' }]);
+  assert.deepStrictEqual(core.scanShapes(`see https://example.test/?t=${fig}&a=1`), [{ line: 1, pattern: 'figma-token' }]);
+  assert.deepStrictEqual(core.scanShapes(`\`${gh}\`\r\n`), [{ line: 1, pattern: 'github-token' }]);
+});
+
+test('scanShapes: one finding per line and label; two labels on a line are two findings, sorted by line then label', () => {
+  const gh = PLANTED['github-token'][0];
+  const aws = PLANTED['aws-access-key-id'][0];
+  const text = `a ${gh} b ${gh}\n${aws} ${gh}\nclean\n${PK('')}\n`;
+  assert.deepStrictEqual(core.scanShapes(text), [
+    { line: 1, pattern: 'github-token' },
+    { line: 2, pattern: 'aws-access-key-id' }, { line: 2, pattern: 'github-token' },
+    { line: 4, pattern: 'private-key-block' },
+  ]);
+});
+
+test('scanShapes negatives: near misses, word boundaries, other PEM blocks and prose about tokens', () => {
+  const near = [
+    ['gh', 'p_', body(35)].join(''),                       // one character short
+    ['xgh', 'p_', body(36)].join(''),                      // no left word boundary
+    ['gh', 'x_', body(36)].join(''),                       // not a published GitHub prefix
+    ['github', '_pat_', body(59)].join(''),                // fine-grained, one short
+    ['AK', 'IA', body(15, 'EVALSHAPE0123456789')].join(''),  // 15 after the prefix
+    ['AK', 'IA', body(17, 'EVALSHAPE0123456789')].join(''),  // 17: no right boundary
+    ['ak', 'ia', body(16, 'evalshape0123456789')].join(''),  // lower case
+    ['AK', 'IA', body(16, 'evalshape0123456789')].join(''),  // lower-case body
+    ['ATA', 'TT3', body(29)].join(''),
+    ['fi', 'gd_', body(29)].join(''),
+    ['zfi', 'gd_', body(30)].join(''),
+    ['-----BEG', 'IN PUBLIC KEY-----'].join(''),
+    ['-----BEG', 'IN CERTIFICATE-----'].join(''),
+    ['-----BEG', 'IN OPENSSH PUBLIC KEY-----'].join(''),
+    'Paste your GitHub token (it starts with gh' + 'p_) into .env as GITHUB_TOKEN.',
+    'A Figma token starts with fi' + 'gd_ and an Atlassian API token with ATA' + 'TT3.',
+  ];
+  for (const s of near) assert.deepStrictEqual(core.scanShapes(`${s}\n`), [], s.slice(0, 12));
+  // the pattern sources themselves (as they would sit in this plugin's code or docs)
+  for (const p of core.SHAPE_PATTERNS) assert.deepStrictEqual(core.scanShapes(p.re.source), [], p.label);
+});
+
+test('scanShapes: stateless across calls (global regexes reset)', () => {
+  const gh = PLANTED['github-token'][0];
+  for (let k = 0; k < 3; k++) assert.deepStrictEqual(core.scanShapes(`${gh}\n`), [{ line: 1, pattern: 'github-token' }]);
+  assert.deepStrictEqual(core.scanShapes(''), []);
+});
+
+test('scanFile: credential-shape warnings with file, line, pattern — with or without .env needles', () => {
+  const gh = PLANTED['github-token'][0];
+  const text = `# spec\nheader: Authorization: token ${gh}\n${PK('OPENSSH ')}\n`;
+  for (const env of [null, `API_TOKEN=${S}\n`]) {
+    const f = core.scanFile({ file: 'test/suite1/api.md', text, needles: needles(env) });
+    assert.deepStrictEqual(f, [
+      { severity: 'warn', kind: 'credential-shape', file: 'test/suite1/api.md', line: 2, pattern: 'github-token' },
+      { severity: 'warn', kind: 'credential-shape', file: 'test/suite1/api.md', line: 3, pattern: 'private-key-block' },
+    ]);
+    assert.ok(!JSON.stringify(f).includes(gh));
+  }
+});
+
+test('scanFile: a known .env value that also has a token shape → the leak stays, the shape warning is added', () => {
+  const gh = PLANTED['github-token'][1];
+  const f = core.scanFile({ file: 'n.md', text: `x\n${gh}\n`, needles: needles(`GITHUB_TOKEN=${gh}\n`) });
+  assert.deepStrictEqual(f.map(x => [x.severity, x.kind, x.line]), [['leak', 'secret-value', 2], ['warn', 'credential-shape', 2]]);
+});
+
+test('remoteShapes: a token-shaped userinfo part → its labels; clean, ssh and scp URLs → none', () => {
+  const gh = PLANTED['github-token'][0];
+  const at = PLANTED['atlassian-api-token'][0];
+  assert.deepStrictEqual(core.remoteShapes(`https://${gh}@git.example.test/r.git`), ['github-token']);
+  assert.deepStrictEqual(core.remoteShapes(`https://x-access-token:${gh}@git.example.test/r.git`), ['github-token']);
+  assert.deepStrictEqual(core.remoteShapes(`https://qa%40example.test:${encodeURIComponent(at)}@jira.example.test/x`), ['atlassian-api-token']);
+  assert.deepStrictEqual(core.remoteShapes(`https://${gh}:${at}@h.example.test/`), ['atlassian-api-token', 'github-token']);
+  assert.deepStrictEqual(core.remoteShapes('https://git.example.test/team/repo.git'), []);
+  assert.deepStrictEqual(core.remoteShapes('https://myorg@git.example.test/team/repo.git'), []);
+  assert.deepStrictEqual(core.remoteShapes(`https://git.example.test/${gh}/repo.git`), [], 'path, not userinfo');
+  assert.deepStrictEqual(core.remoteShapes(`ssh://git@git.example.test/r.git`), []);
+  assert.deepStrictEqual(core.remoteShapes('git@git.example.test:team/repo.git'), []);
+  assert.deepStrictEqual(core.remoteShapes(undefined), []);
+});
+
+test('shape confirmation: asked only in hook mode, only when every problem is a warning and one is a shape', () => {
+  const shape = { severity: 'warn', kind: 'credential-shape', file: 'a.md', line: 1, pattern: 'github-token' };
+  const plain = { severity: 'warn', kind: 'plain-secret-field', file: 'e.json', line: 2, field: 'api.token', suggest: {} };
+  const leak = { severity: 'leak', kind: 'secret-value', file: 'a.md', line: 3, key: 'K' };
+  assert.strictEqual(core.shapeConfirmationNeeded({ hook: true, findings: [shape] }), true);
+  assert.strictEqual(core.shapeConfirmationNeeded({ hook: true, findings: [plain, shape] }), true);
+  assert.strictEqual(core.shapeConfirmationNeeded({ hook: false, findings: [shape] }), false);
+  assert.strictEqual(core.shapeConfirmationNeeded({ hook: true, findings: [plain] }), false);
+  assert.strictEqual(core.shapeConfirmationNeeded({ hook: true, findings: [leak, shape] }), false, 'a leak refuses anyway');
+  assert.strictEqual(core.shapeConfirmationNeeded({ hook: true, findings: [] }), false);
+});
+
+test('shape confirmation: only y / yes (any case, surrounding space) continues; everything else is the default No', () => {
+  for (const a of ['y', 'Y', 'yes', 'YES', ' y \r\n', 'yes\nno\n']) assert.strictEqual(core.confirmAnswerIsYes(a), true, JSON.stringify(a));
+  for (const a of ['', '\n', 'n', 'no', 'N', 'yep', 'ye s', 'sure', null, undefined]) assert.strictEqual(core.confirmAnswerIsYes(a), false, JSON.stringify(a));
+});
+
+test('declinedResult: the installed hook\'s refusal contract — exit 1, "result":"LEAK", reason declined, warnings kept', () => {
+  const vc = { status: 'skipped', reason: 'no-env-file', keysChecked: [], labelChecked: [], notChecked: { shortValue: [], nonSecretKeys: [], baseUrlKeys: [] } };
+  const counts = { filesConsidered: 1, filesScanned: 1, skipped: { binary: 0, oversize: 0, symlink: 0, submodule: 0 } };
+  const shape = { severity: 'warn', kind: 'credential-shape', file: 'a.md', line: 1, pattern: 'github-token' };
+  const warn = core.buildResult({ mode: 'staged', valueCheck: vc, counts, findings: [shape] });
+  const d = core.declinedResult(warn);
+  assert.deepStrictEqual([d.result, d.exit, d.reason], ['LEAK', 1, 'declined']);
+  assert.deepStrictEqual(Object.keys(d).slice(0, 6), ['tool', 'schemaVersion', 'mode', 'result', 'exit', 'reason']);
+  assert.deepStrictEqual(d.findings, [shape]);
+  assert.deepStrictEqual(d.counts, warn.counts, 'counts stay true: zero leaks, the warnings');
+  assert.ok(JSON.stringify(d).includes('"result":"LEAK"'), 'the marker the installed hook greps for');
+  assert.strictEqual(warn.result, 'WARN', 'the input is not mutated');
+});
+
+test('sentinel: no planted credential appears in any core output', () => {
+  const text = ALL_PLANTED.join('\n');
+  const out = JSON.stringify([core.scanShapes(text), core.scanFile({ file: 'x.md', text, needles: needles(null) }),
+    ALL_PLANTED.map(t => core.remoteShapes(`https://${encodeURIComponent(t)}@h.example.test/`))]);
+  for (const t of ALL_PLANTED) assert.ok(!out.includes(t), t.slice(0, 6));
+});
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

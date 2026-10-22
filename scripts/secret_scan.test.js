@@ -43,7 +43,9 @@ function baseEnv(extra = {}) {
     if (/^(AZURE_|JIRA_|SQLCMD|API_|KB_|FIGMA_|DEFAULT_|MY_)/.test(k)) continue;
     env[k] = v;
   }
-  return { ...env, GIT_CONFIG_GLOBAL: EMPTY_GLOBAL, GIT_CONFIG_NOSYSTEM: '1', ...extra };
+  // No test may ever wait on the developer's real terminal: the --hook confirmation
+  // sees "no terminal" unless a test points the seam at an answer file.
+  return { ...env, GIT_CONFIG_GLOBAL: EMPTY_GLOBAL, GIT_CONFIG_NOSYSTEM: '1', AGENTEX_SECRET_SCAN_TTY: 'none', ...extra };
 }
 
 function tmp() { return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-scan-'))); }
@@ -491,10 +493,184 @@ test('findings are capped at 200 with exact counts and findingsTruncated', () =>
   assert.deepStrictEqual([r.json.counts.leaks, r.json.findings.length, r.json.findingsTruncated], [250, 200, 50]);
 });
 
+// ── Credential shapes (token-patterns design) ────────────────────────────────
+// Planted credentials are built at runtime from parts, so no real-looking token is
+// ever committed to this repository. The bodies are fixed, obviously fake fillers.
+const FILL = 'EvalShapeSentinel0123456789abcdefghijklmnopqrstuvwxyz';
+const fill = (n, chars = FILL) => chars.repeat(Math.ceil(n / chars.length)).slice(0, n);
+const SHAPE = {
+  'private-key-block': ['-----BEG', 'IN OPENSSH ', 'PRIV', 'ATE KEY-----'].join(''),
+  'github-token': ['gh', 'p_', fill(40)].join(''),
+  'aws-access-key-id': ['AK', 'IA', fill(16, 'EVALSHAPE0123456789')].join(''),
+  'atlassian-api-token': ['ATA', 'TT3', fill(64)].join(''),
+  'figma-token': ['fi', 'gd_', fill(44)].join(''),
+};
+const SHAPE_FILE = ['# Notes', ...Object.values(SHAPE).map(t => `- ${t}`)].join('\n') + '\n';
+const SHAPE_FINDINGS = (file) => Object.keys(SHAPE).map((pattern, k) => ({ severity: 'warn', kind: 'credential-shape', file, line: k + 2, pattern }));
+const shapeOnly = (r) => r.json.findings.filter(f => f.kind === 'credential-shape');
+const PLUGIN_ROOT = path.resolve(__dirname, '..');
+const QUESTION = 'Continue the commit anyway? [y/N]';
+function answerFile(text) { const f = path.join(tmp(), 'answer.txt'); fs.writeFileSync(f, text); return f; }
+
+test('shapes: one planted credential per pattern → file, line and pattern label; exit 0 WARN (tracked and staged)', () => {
+  const dir = repo({ env: `API_TOKEN=${S.token}\n`, files: { 'test/suite1/creds.md': SHAPE_FILE } });
+  const tracked = scan(dir, 'tracked');
+  assert.strictEqual(tracked.status, 0, tracked.stdout + tracked.stderr);
+  assert.strictEqual(tracked.json.result, 'WARN');
+  assert.deepStrictEqual(tracked.json.findings, SHAPE_FINDINGS('test/suite1/creds.md'));
+  write(dir, 'notes/new.md', SHAPE_FILE); git(dir, 'add', 'notes/new.md');
+  const staged = scan(dir, 'staged');
+  assert.strictEqual(staged.status, 0);
+  assert.deepStrictEqual(staged.json.findings, SHAPE_FINDINGS('notes/new.md'), 'staged: this commit\'s delta only');
+  for (const r of [tracked, staged]) {
+    for (const pattern of Object.keys(SHAPE)) assert.ok(r.stderr.includes(pattern), `stderr names ${pattern}`);
+    assert.match(r.stderr, /WARN test\/suite1\/creds\.md:3 |WARN notes\/new\.md:3 /);
+    assert.ok(!/LEAK/.test(r.stderr.split('\n').slice(1).join('\n')), 'a shape is never called a leak');
+  }
+});
+
+test('shapes: with no .env at all, shape detection still runs and the summary says so', () => {
+  const dir = repo({ files: { 'test/api.md': `call it with ${SHAPE['github-token']}\n` } });
+  const r = scan(dir, 'tracked');
+  assert.strictEqual(r.status, 0);
+  assert.deepStrictEqual([r.json.valueCheck.status, r.json.valueCheck.reason], ['skipped', 'no-env-file']);
+  assert.deepStrictEqual(r.json.findings, [{ severity: 'warn', kind: 'credential-shape', file: 'test/api.md', line: 1, pattern: 'github-token' }]);
+  assert.match(r.stderr, /value check SKIPPED[^\n]*credential shapes/);
+});
+
+test('shapes: a freshly scaffolded project (shipped samples, templates) gives no shape finding, staged or tracked', () => {
+  const scaffold = require('./lib/scaffold.js');
+  const dir = tmp();
+  scaffold.scaffoldProject(dir, PLUGIN_ROOT);
+  scaffold.ensureGitignore(dir);
+  scaffold.ensureClaudeMdBullet(dir);
+  git(dir, 'init', '-q'); git(dir, 'add', '-A');
+  const staged = scan(dir, 'staged');
+  assert.ok(staged.json.counts.filesScanned > 3, 'the samples were scanned');
+  assert.deepStrictEqual(shapeOnly(staged), []);
+  git(dir, 'commit', '-qm', 'scaffold');
+  assert.deepStrictEqual(shapeOnly(scan(dir, 'tracked')), []);
+});
+
+test('shapes: a token-shaped username in a remote URL → a warning naming the remote; a password part is still a LEAK', () => {
+  const dir = repo({ env: '' });
+  git(dir, 'remote', 'add', 'origin', `https://${SHAPE['github-token']}@${REMOTE_HOST}/team/repo.git`);
+  const r = scan(dir, 'tracked');
+  assert.strictEqual(r.status, 0, r.stdout);
+  assert.deepStrictEqual(r.json.findings, [{ severity: 'warn', kind: 'credential-shape', remote: 'origin', field: 'url', pattern: 'github-token' }]);
+  assert.match(r.stderr, /WARN remote "origin" url [^\n]*github-token/);
+  git(dir, 'config', 'remote.origin.pushurl', `https://qa:${SHAPE['figma-token']}@${REMOTE_HOST}/push.git`);
+  const both = scan(dir, 'staged');
+  assert.strictEqual(both.status, 1, 'the existing remote-credential check is unchanged');
+  assert.deepStrictEqual(both.json.findings.map(f => [f.severity, f.kind, f.field, f.pattern]),
+    [['leak', 'remote-credential', 'pushurl', undefined], ['warn', 'credential-shape', 'url', 'github-token'], ['warn', 'credential-shape', 'pushurl', 'figma-token']]);
+  for (const x of [r, both]) assert.ok(!(x.stdout + x.stderr).includes(REMOTE_HOST), 'never the URL');
+});
+
+function shapeRepoStaged() {
+  const dir = repo({ env: '' });
+  write(dir, 'test/api.md', `# api\ntoken ${SHAPE['github-token']}\n`); git(dir, 'add', 'test/api.md');
+  return dir;
+}
+
+test('--hook + a terminal: "n" refuses through the installed hook contract (exit 1, "result":"LEAK", reason declined)', () => {
+  const r = scan(shapeRepoStaged(), 'staged', { args: ['--hook', '--project', ''], env: { AGENTEX_SECRET_SCAN_TTY: answerFile('n\n') } });
+  assert.strictEqual(r.status, 1, r.stderr);
+  assert.strictEqual(r.lines.length, 1);
+  assert.ok(r.stdout.includes('"result":"LEAK"'), 'the marker the installed hook greps for');
+  assert.deepStrictEqual([r.json.result, r.json.exit, r.json.reason], ['LEAK', 1, 'declined']);
+  assert.deepStrictEqual(r.json.findings, [{ severity: 'warn', kind: 'credential-shape', file: 'test/api.md', line: 2, pattern: 'github-token' }]);
+  assert.deepStrictEqual([r.json.counts.leaks, r.json.counts.warnings], [0, 1]);
+  assert.ok(r.stderr.includes(QUESTION), r.stderr);
+  assert.match(r.stderr, /commit REFUSED/);
+});
+
+test('--hook + a terminal: Enter (empty) and anything but y/yes are the default No', () => {
+  for (const a of ['\n', '', 'nope\n', 'yy\n']) {
+    const r = scan(shapeRepoStaged(), 'staged', { args: ['--hook'], env: { AGENTEX_SECRET_SCAN_TTY: answerFile(a) } });
+    assert.deepStrictEqual([r.status, r.json.reason], [1, 'declined'], JSON.stringify(a));
+  }
+});
+
+test('--hook + a terminal: "y" → exit 0 with the warnings, the commit proceeds', () => {
+  for (const a of ['y\n', 'YES\r\n']) {
+    const r = scan(shapeRepoStaged(), 'staged', { args: ['--hook'], env: { AGENTEX_SECRET_SCAN_TTY: answerFile(a) } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(r.json.result, 'WARN');
+    assert.ok(!('reason' in r.json));
+    assert.ok(r.stderr.includes(QUESTION));
+    assert.ok(!/commit REFUSED/.test(r.stderr));
+  }
+});
+
+test('--hook without a terminal (IDE button, CI) → exit 0 with the warnings, nothing asked', () => {
+  const r = scan(shapeRepoStaged(), 'staged', { args: ['--hook'] });
+  assert.strictEqual(r.status, 0);
+  assert.strictEqual(r.json.result, 'WARN');
+  assert.ok(!r.stderr.includes(QUESTION));
+  assert.match(r.stderr, /no terminal/);
+});
+
+// POSIX only: a detached child has no controlling terminal, so /dev/tty cannot open.
+if (process.platform !== 'win32') test('--hook with no controlling terminal at all (real /dev/tty unavailable) → exit 0, never waits', () => {
+  const dir = shapeRepoStaged();
+  const env = baseEnv(); delete env.AGENTEX_SECRET_SCAN_TTY;
+  const r = spawnSync(process.execPath, [CLI, '--staged', '--hook'], { cwd: dir, encoding: 'utf8', env, detached: true, timeout: 30000 });
+  ALL_OUTPUT.push(r.stdout, r.stderr);
+  assert.strictEqual(r.status, 0, `${r.error || ''} ${r.stderr}`);
+  assert.strictEqual(JSON.parse(r.stdout).result, 'WARN');
+  assert.ok(!r.stderr.includes(QUESTION));
+});
+
+test('no question outside --hook, for a leak (refused anyway), or for non-shape warnings only', () => {
+  const no = { AGENTEX_SECRET_SCAN_TTY: answerFile('n\n') };
+  const plain = scan(shapeRepoStaged(), 'staged', { env: no });
+  assert.deepStrictEqual([plain.status, plain.json.result], [0, 'WARN']);
+  assert.ok(!plain.stderr.includes(QUESTION));
+  const dir = repo({ env: `API_TOKEN=${S.token}\n` });
+  write(dir, 'a.md', `${S.token}\n${SHAPE['aws-access-key-id']}\n`); git(dir, 'add', 'a.md');
+  const leak = scan(dir, 'staged', { args: ['--hook'], env: no });
+  assert.deepStrictEqual([leak.status, leak.json.result, leak.json.reason], [1, 'LEAK', undefined]);
+  assert.ok(!leak.stderr.includes(QUESTION));
+  const fields = repo({ env: '' });
+  write(fields, 'environments/qc.json', { api: { token: 'plain' } }); git(fields, 'add', '-A');
+  const warn = scan(fields, 'staged', { args: ['--hook'], env: no });
+  assert.deepStrictEqual([warn.status, warn.json.result], [0, 'WARN']);
+  assert.ok(!warn.stderr.includes(QUESTION));
+});
+
+test('real commit through the installed hook template (unchanged, v1): n refuses, y and no terminal commit', () => {
+  const hookLib = require('./lib/precommit_hook.js');
+  assert.strictEqual(hookLib.TEMPLATE_VERSION, 1, 'no hook version bump, no re-install');
+  const home = tmp();
+  const env = baseEnv({ HOME: home, USERPROFILE: home });
+  for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_')) delete env[k];
+  const commit = (dir, tty) => {
+    const r = spawnSync('git', ['-c', 'user.email=qa@example.test', '-c', 'user.name=QA', 'commit', '-m', 'x'],
+      { cwd: dir, encoding: 'utf8', env: { ...env, AGENTEX_SECRET_SCAN_TTY: tty } });
+    ALL_OUTPUT.push(r.stdout, r.stderr);
+    return r;
+  };
+  const count = (dir) => Number(git(dir, 'rev-list', '--count', 'HEAD').trim());
+  for (const [tty, committed] of [[answerFile('n\n'), false], [answerFile('y\n'), true], ['none', true]]) {
+    const dir = shapeRepoStaged();
+    fs.writeFileSync(path.join(dir, '.git', 'hooks', 'pre-commit'),
+      hookLib.renderHook({ projectPrefix: '', cacheParent: '', installRoot: PLUGIN_ROOT, nodePath: process.execPath }), { mode: 0o755 });
+    const before = count(dir);
+    const r = commit(dir, tty);
+    assert.ok(!/did NOT run/.test(r.stderr), r.stderr);
+    assert.match(r.stderr, /WARN test\/api\.md:2 /);
+    assert.strictEqual(count(dir) === before + 1, committed, `${path.basename(tty)}: ${r.stderr}`);
+    assert.strictEqual(r.status === 0, committed);
+  }
+});
+
 test('sentinel: no secret value and no remote URL ever reached stdout or stderr, in any case', () => {
   const all = ALL_OUTPUT.join('\n');
   assert.ok(ALL_OUTPUT.length > 40, 'the cases above ran');
   for (const v of Object.values(S)) assert.ok(!all.includes(v), `${v.slice(0, 22)}… never printed`);
+  for (const [label, v] of Object.entries(SHAPE)) assert.ok(!all.includes(v), `the planted ${label} never printed`);
+  assert.ok(!all.includes(fill(36)), 'not even a token body');
   assert.ok(!all.includes(SHORT), 'the short sentinel never printed');
   assert.ok(!all.includes(REMOTE_HOST), 'no remote URL printed');
 });
