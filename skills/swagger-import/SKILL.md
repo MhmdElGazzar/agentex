@@ -6,8 +6,9 @@ description: >
   "import this swagger doc", "generate endpoint tests from this OpenAPI spec", or the guided
   wizard (/import-swagger --wizard) that collects real test data and previews basic checks
   (happy path, not found, no token, missing field) before one approval. Output feeds
-  directly into the endpoint-testing and api-integration skills — this skill only generates
-  config, it never executes requests itself.
+  directly into the endpoint-testing and api-integration skills. This skill generates config
+  and sends no API request of its own; any run, including the wizard's "Approve and run
+  now", goes through endpoint-testing's runner.
 ---
 
 # Swagger Import — generate catalog + suite files from a spec
@@ -102,4 +103,6 @@ here — from the script's point of view it's just another local file.
   checking — that was explicitly scoped out; suite cases only check `status`/`fields`/
   `equals`, same as any hand-written case).
 - Does not execute anything itself — running the generated suite is `endpoint-testing`'s job
-  (dispatch `api-executor`, per that skill's own rules).
+  (dispatch `api-executor`, per that skill's own rules). The wizard's "Approve and run now"
+  is the same runner: the studio spawns endpoint-testing's `run_suite.js` on the approved
+  suite.
