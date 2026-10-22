@@ -336,5 +336,15 @@ test('definedPaths: an extra route\'s owns becomes plugin-defined', () => {
   assert.ok(paths.includes('extra/'));
 });
 
+// ── docs/project-layout.md mirrors the data (R7) ─────────────────────────────
+test('docs/project-layout.md: the "Where things go" table equals ROUTES, in order', () => {
+  const md = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'project-layout.md'), 'utf8');
+  const sec = (md.split(/^## Where things go\s*$/m)[1] || '').split(/^## /m)[0];
+  assert.ok(sec, 'section "## Where things go" is missing');
+  const rows = sec.split('\n').filter((l) => l.startsWith('| ') && !l.startsWith('| If you'));
+  assert.deepStrictEqual(rows, layout.ROUTES.map((r) => `| ${r.write} | ${r.to} |`));
+  assert.match(md, /^## The AgenTeX block in `CLAUDE\.md`$/m, 'the anchor the [flag] text links to');
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;

@@ -64,8 +64,39 @@ All notable changes to AgenTeX are documented here.
   (the leftover sample environment is offered for removal, never deleted without consent) and
   `discipline-browser-session-isolation` (every scenario gets its own browser session; no global
   `close-all` / `kill-all`). Plus `discipline-secret-scan-shape-warning`.
+- **One project layout, and one block in `CLAUDE.md` that says where everything goes.**
+  `/init-test` and migration 13 (`/update-agentex`) add an AgenTeX-managed block to the
+  project's `CLAUDE.md`, between `<!-- agentex:begin project-layout … -->` and
+  `<!-- agentex:end project-layout -->`: a routing table ("about to write X → put it in Y"),
+  the rule to read `knowledge/INDEX.md` first, and the knowledge/watchlist lifecycle. Lasting
+  project facts go to the project, never to personal memory. Every byte outside the markers
+  stays identical; a pristine block is refreshed in place on a later release, and a block
+  you edited is left alone with a `[flag]` and the fix. New page `docs/project-layout.md`.
+- **`knowledge/`** — settled facts about the application under test (`INDEX.md`,
+  `app-map.md`, `business-rules.md`, `gotchas.md`), committed and created on the first
+  recorded fact. The agent appends entries with their source and date and announces them,
+  and never rewrites or removes one without your yes. A watchlist question closed by a
+  decisive answer carries that answer into `knowledge/`.
+- **Stray-file check in `/update-agentex`.** Every run, including on an up-to-date project,
+  lists files outside the layout (paths only: probes, dumps, temp folders at the root or
+  under `.agentex/`, notes beside the watchlist files). Nothing moves until you say yes once;
+  then the engine moves exactly the listed set, byte-identical, never overwriting and never
+  deleting — litter to `.agentex/scratch/strays/<run>/`, and a whole Markdown file of settled
+  facts to `knowledge/` with its `INDEX.md` line. Ignored paths, `test/`, `config/`,
+  `environments/`, `integration/` and ordinary root files are never reported. Never affects
+  the stamp.
+- **Six new behavioral evals** for the layout rules: `discipline-knowledge-routing`
+  (+ `-first-fact`), `discipline-scratch-only`, `discipline-watchlist-close-to-knowledge`
+  (+ `discipline-watchlist-close-recheck`) and `discipline-stray-check-consent`.
 
 ### Changed
+- **Every temp, probe, dump or intermediate file goes under `.agentex/scratch/`.** Tracker
+  `--out`/`--spec`/text files (`.agentex/scratch/tracker/`), the QA watchlist helper's files
+  (`qa-records/`), bug and annotation specs (`bugs/<run>/`), a staged Swagger definition
+  (`swagger/`), optimize-login's script and failure dumps (`login/`) and define-flow's running
+  draft (`define-flow/`, was `.playwright-cli/define-flow-draft.md`). Mobile screenshots and
+  the Appium log are evidence under the run's `SESSION_DIR`. optimize-login's per-application
+  lessons go to `knowledge/gotchas.md`. Shared reference: `references/project-layout.md`.
 - **Azure DevOps comments are supported** by `tracker.js comment` (the comments API;
   previously refused upfront), and an ADO `search` whose WIQL names no project is now
   scoped to the configured project.
@@ -96,6 +127,11 @@ All notable changes to AgenTeX are documented here.
   shapes, and an optional gitignored org-term denylist. plugin-tester's structural check runs it.
 - `scripts/dev/affected.js` picks the script tests and evals a change can affect;
   `evals/coverage.json` maps every eval case to the paths it exercises.
+- `scripts/scratch-wording.test.js` fails the build when a skill, reference, command or agent
+  names a temp location other than `.agentex/scratch/` (an OS temp dir, `$TMP`, a bare
+  relative intermediate file, `.agentex/cache/` as scratch) or omits the link to
+  `references/project-layout.md`. The layout contract is data in `scripts/lib/layout.js`: a
+  later feature appends one `ROUTES` entry and every pristine block picks it up.
 
 ## [0.25.0] — 2026-10-22
 ### Added

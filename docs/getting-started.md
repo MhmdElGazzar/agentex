@@ -104,4 +104,6 @@ instead (or as well), see [Mobile Testing](./mobile-testing.md) for the equivale
   `environments/<env>.json`, `.env`) and secret handling.
 - [Putting your project in git](./putting-your-project-in-git.md) — what to commit, setting a
   remote safely, the secret scan and the optional pre-commit hook.
+- [Project layout](./project-layout.md) — where the agent writes everything, the block it keeps
+  in your `CLAUDE.md`, and `knowledge/`.
 - [docs/](./README.md) — the full feature reference.

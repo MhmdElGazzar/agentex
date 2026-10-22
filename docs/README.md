@@ -19,3 +19,4 @@ quick tour.
 | [CI Quality Gate](./ci-quality-gate.md) | Invoke runs from your CI/CD pipeline: the `ci_gate.js` entry point, exit-code semantics (0/1/2), the public verdict JSON contract, pipeline templates, advisory vs blocking modes. |
 | [Configuration](./configuration.md) | Environment variables, permissions, and secret handling. |
 | [Putting your project in git](./putting-your-project-in-git.md) | What to commit and what stays local, setting a remote safely, the secret scan, the optional pre-commit hook, and fixing findings. |
+| [Project layout](./project-layout.md) | Where everything the agent writes goes: the AgenTeX block in `CLAUDE.md`, `knowledge/`, the QA watchlist, scratch, and the stray-file check in `/update-agentex`. |

@@ -3,7 +3,8 @@
 Your AgenTeX project — specs, catalogs, config — is worth sharing with your team through git.
 This page says what to commit and what stays on your machine, how to set a remote safely, and
 how the plugin's secret scan and optional pre-commit hook keep a secret from reaching git
-history.
+history. Where each kind of file belongs in the first place is described in
+[Project layout](./project-layout.md).
 
 ## What to commit
 
@@ -15,20 +16,21 @@ history.
 | `integration/` | Committed | The API/DB catalogs: the only calls your test steps may make. |
 | `test/` (specs) | Committed | Your test specs. |
 | `test/baselines/` | Committed | Design baseline screenshots you chose for `ui-check:` steps. |
-| `CLAUDE.md` | Committed | Project guidance for Claude. |
+| `CLAUDE.md` | Committed | Project guidance for Claude, including the AgenTeX-managed block. |
 | `.gitignore` | Committed | Keeps the local-only paths below out of commits. |
 | `.agentex/version.json` | Committed | The plugin version this project was set up for (`/update-agentex` reads it). |
 | `.agentex/test-template.md` | Committed | Your test-design conventions. |
 | `.claude/settings.json` | Committed | The shared permissions block. |
+| `knowledge/` | Committed | Settled facts about the application under test — see [Project layout](./project-layout.md). |
 | `.env` | **Local** | Secrets only. Never commit it. |
 | `test/.auth/` | **Local** | Saved login sessions — each file is a live session token. |
 | `.playwright-cli/` | **Local** | The browser's scratch profile — the same cookies, on disk. |
 | `test/.ui-baselines/` | **Local** | A cache of design baselines; `ui-check` re-fetches them. |
 | `.agentex/cache/` | **Local** | Tracker field metadata, rebuilt on demand. To commit it anyway, add the line `!.agentex/cache/` to `.gitignore`. |
-| `.agentex/scratch/` | **Local** | Agent scratch: intermediate files of test-design and estimation runs. Safe to delete. |
+| `.agentex/scratch/` | **Local** | Agent scratch: every temp, probe, dump and intermediate file any AgenTeX skill or agent writes. Safe to delete. |
 | `executions/` | Your team's choice | Run reports and evidence — see below. |
 | `.claude/worktrees/`, `.claude/settings.local.json` | **Local** (recommended) | Created by Claude Code itself — see below. |
-| `qa-watchlist/` | Committed | Arrives with AgenTeX 1.0.0 — see below. |
+| `qa-watchlist/` | Committed | Open QA items with a trigger; created on first use — see below. |
 
 `/init-test` writes the `.gitignore` entries for every **Local** row that the plugin creates;
 `/update-agentex` adds any entry an older project is missing (existing lines are never changed).
