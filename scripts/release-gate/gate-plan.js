@@ -35,7 +35,7 @@ const INERT = [
   'docs/**', 'README.md', 'CHANGELOG.md', 'LICENSE', 'executions/README.md',
   'evals/**', '**/*.test.js', 'skills/*/scripts/golden/**',
   '.github/**', '.gitattributes', '.gitignore',
-  'scripts/hosts/**', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/release-gate/README.md',
+  'scripts/hosts/**', 'scripts/dev/**', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/release-gate/README.md',
 ];
 
 // The full gate (Q16): the execution core — browser-testing, qa-executor, run
