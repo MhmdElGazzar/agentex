@@ -59,6 +59,8 @@ If neither, post `ended` (§4) and stop.
   `ended`. The page preselects the user who owns most of the project values; the tester picks
   a user and collects again.
 - A user marked `disabled` never reaches you: the server refuses to collect with one.
+- If the environment has no `portalUrl`, skip `renew` (it needs `--url`) and go straight to the UI
+  step below, which posts `failed`.
 - Post `phase {runId, name:"session", text}`, then renew that user's saved session, headless:
   `node swagger-import/scripts/browser_bridge.js renew --env <env> --user <user> --url <portalUrl> --api-origin <apiOrigin> (--present <selector> | --absent "input[type=password]") --to-studio`
   - The landmark: `--present` an element only a signed-in user of this app sees, if you know
@@ -73,6 +75,9 @@ If neither, post `ended` (§4) and stop.
   - `"renewed": true`: if no value is still missing, post `ended`. Otherwise go on to the UI.
   - `"renewed": false` with a `reason` (`no-state-file`, `landmark-failed`, `no-token`,
     `playwright-missing`, `browser-failed`, `delivery-failed`): a normal miss. Go on to the UI.
+  - Exit 2 with `"ok": false` and an `error` (`usage`, `unknown-user`, `user-disabled`,
+    `no-studio`, `not-ignored`) is not a miss: post `failed {runId, reason}` with that error in
+    plain words and stop. Do not go on to the UI.
 
 **The UI last**, only for values still missing or a token `renew` did not deliver. If the
 environment has no `portalUrl`, post `failed {runId, reason}` in plain words (for example "no
@@ -191,7 +196,8 @@ list.
      `--to-studio`:
      `browser_bridge.js renew --env <env> --user <user> --url <portalUrl> --api-origin <origin> (--present <selector> | --absent "input[type=password]") --store <suite>`.
      The same rules hold: never open, print or edit a `*-state.json`; `renew` reads it by
-     itself. On `"renewed": true`, report the token as below and stop.
+     itself. On `"renewed": true`, report the token as below and stop. On exit 2
+     (`"ok": false`, an `error` word), report that error and stop: do not sign in.
   3. Only on `"renewed": false`: sign in as above, then
      `browser_bridge.js capture … --store <suite> --env <env> --user <user>`. It writes
      `test/.auth/api-tokens/<suite>-<env>.json` (0600; refused when that folder is not
