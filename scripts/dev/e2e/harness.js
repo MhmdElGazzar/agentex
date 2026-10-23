@@ -125,6 +125,35 @@ function releaseSync() {
   }
 }
 process.on('exit', releaseSync);
+// Every way this process can end runs the cleanup list first: a signal, an uncaught error, a rejected promise.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { releaseSync(); process.exit(128 + ({ SIGHUP: 1, SIGINT: 2, SIGTERM: 15 })[sig]); });
+process.on('uncaughtException', (e) => { process.stderr.write(`  FAIL - uncaught: ${mask(String((e && e.stack) || e).split('\n').slice(0, 3).join(' | '))}\n`); releaseSync(); process.exit(1); });
+process.on('unhandledRejection', (e) => { process.stderr.write(`  FAIL - unhandled rejection: ${mask(String((e && e.stack) || e).split('\n').slice(0, 3).join(' | '))}\n`); releaseSync(); process.exit(1); });
+
+// ---- process trees --------------------------------------------------------------------------------
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+function descendants(pid) {
+  if (process.platform === 'win32') return [];
+  const r = spawnSync('ps', ['-ax', '-o', 'pid=,ppid='], { encoding: 'utf8' });
+  const kids = new Map();
+  for (const line of String(r.stdout || '').split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)/.exec(line);
+    if (m) { if (!kids.has(+m[2])) kids.set(+m[2], []); kids.get(+m[2]).push(+m[1]); }
+  }
+  const out = []; const todo = [pid];
+  while (todo.length) for (const k of kids.get(todo.pop()) || []) { out.push(k); todo.push(k); }
+  return out;
+}
+// SIGKILL a process and everything below it, then wait (up to 3 s) until they are gone.
+function killTree(pid) {
+  if (!pid) return;
+  const all = [pid, ...descendants(pid)];
+  for (const p of all.reverse()) { try { process.kill(p, 'SIGKILL'); } catch { /* gone */ } }
+  const until = Date.now() + 3000;
+  while (all.some(alive) && Date.now() < until) spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},50)']);
+}
+// A process this file started that no `child.kill` reaches (a daemon): its whole tree is killed at cleanup.
+const adopt = (pid, name = 'process') => register(`${name} ${pid}`, () => killTree(pid));
 
 // Values that must never reach a FAIL line (a test registers its sentinels here).
 const masked = new Set();
@@ -247,10 +276,14 @@ function cliSession(proj) {
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   const shell = process.platform === 'win32';
   const pw = (...args) => exec(npx, ['playwright-cli', `-s=${name}`, ...args.map(String)], { cwd: proj.dir, env: proj.env(), shell });
+  let daemon = null;
   register(`cli session ${name}`, () => {
-    spawnSync(npx, ['playwright-cli', `-s=${name}`, 'close'], { cwd: proj.dir, env: proj.env(), stdio: 'ignore', timeout: 20000, shell, windowsHide: true });
+    spawnSync(npx, ['playwright-cli', `-s=${name}`, 'close'], { cwd: proj.dir, env: proj.env(), stdio: 'ignore', timeout: 10000, shell, windowsHide: true });
+    killTree(daemon); // the session daemon (and its browser) is detached: close may have failed or hung
   });
-  return { name, pw, open: (url) => pw('open', '--browser=chromium', ...(url ? [url] : [])), close: () => pw('close') };
+  return { name, pw,
+    open: async (url) => { const r = await pw('open', '--browser=chromium', ...(url ? [url] : [])); const m = /opened with pid (\d+)/.exec(r.out); if (m) daemon = +m[1]; return r; },
+    close: () => pw('close') };
 }
 
 // ---- the library browser ------------------------------------------------------------------------------
@@ -260,8 +293,14 @@ async function libBrowser(proj = null) {
   const p = proj || project();
   const S = require(SESSION_JS);
   const pw = S.loadPlaywright(p.dir);
+  const known = new Set(descendants(process.pid));
   const browser = await pw.chromium.launch({ headless: true });
-  register('library browser', () => browser.close());
+  // Playwright's launched browser is a child of this process (browser.process() is not in every version).
+  const bpids = descendants(process.pid).filter((x) => !known.has(x));
+  register('library browser', async (sync) => {
+    if (!sync) await Promise.race([browser.close().catch(() => {}), new Promise((r) => setTimeout(r, 5000))]);
+    bpids.forEach(killTree);
+  });
   const external = [];
   return {
     browser, pw,
@@ -328,5 +367,5 @@ async function run(cases, { watchdogMs = 120000 } = {}) {
 
 module.exports = {
   REPO_ROOT, HOST, find, requireDeps, skipOrFail, project, exec, startChild, freePort, startFixture, cliSession, libBrowser,
-  run, scanOutputs, mask, maskValues, register,
+  run, scanOutputs, mask, maskValues, register, adopt, killTree, alive,
 };
