@@ -68,10 +68,11 @@ function probePlaywrightCli() {
 }
 
 // The playwright PACKAGE, resolved the way session.js resolves it — from the project, not
-// from the plugin. Separate from playwright-cli above: only the library can load a saved
-// storageState, so a saved-login resume (login.mode "session", the optimize-login skill) needs this one, and finding out at preflight beats
-// finding out when a resume fails mid-run.
-const PLAYWRIGHT_MISSING_ERROR = 'not installed in this project — npm i -D playwright && npx playwright install chromium (needed only to resume a saved login: login.mode "session", the optimize-login skill; a normal run is not blocked)';
+// from the plugin. Separate from playwright-cli above: a run's saved login (login.mode "session")
+// goes through playwright-cli (login_state.js), so it does not need this one; only the
+// optimize-login skill's standalone session.js check does, and finding out at preflight beats
+// finding out when that check fails.
+const PLAYWRIGHT_MISSING_ERROR = 'not installed in this project — npm i -D playwright && npx playwright install chromium (needed only for the standalone session check of the optimize-login skill, login.mode "session"; a test run and its saved login do not need it, and a normal run is not blocked)';
 
 function probePlaywrightPackage(cwd = process.cwd()) {
   const path = require('path');
