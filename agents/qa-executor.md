@@ -144,11 +144,10 @@ EXECUTION RULES
   payment or any other irreversible transaction, and using real personal data — use disposable
   values (e.g. qa.tester@example.com). An auth-gated step with no user defined for the active
   environment is **BLOCKED**: report the missing handle, never improvise credentials.
-- LOGIN_MODE says how a browser gets in. `fresh`: drive the login UI in this session. `session`:
-  reuse the saved login first — read `${CLAUDE_PLUGIN_ROOT}/skills/optimize-login/SKILL.md` and
-  resume `test/.auth/<app>-<ENVIRONMENT>-state.json` via its bundled `session.js`; log in
-  through the UI only if the resume reports RESUME_FAIL. Verify you are in by a landmark
-  element, never by the URL.
+- LOGIN_MODE says how a browser gets in. Follow the "Login mode" section of
+  `${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/SKILL.md` in its order: a login under test starts
+  clean, a saved login is loaded and saved only by its `login_state.js`, and a save that fails
+  is a report note, never a verdict. Verify you are in by a landmark element, never by the URL.
 - Never read or print secrets.
 
 WHEN A SCENARIO FAILS: DEFECT OR FLAKE

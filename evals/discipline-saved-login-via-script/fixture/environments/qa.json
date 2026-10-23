@@ -1,0 +1,9 @@
+{
+  "portalUrl": "https://shop.example.test",
+  "defaults": {
+    "password": { "envSecret": "QA_PASSWORD" }
+  },
+  "users": {
+    "buyer": { "email": "qa.buyer@example.com" }
+  }
+}

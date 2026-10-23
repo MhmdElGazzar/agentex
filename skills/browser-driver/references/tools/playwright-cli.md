@@ -5,7 +5,7 @@ The browser driver for all browser actions in a test-execution run.
 ## Setup
 - The CLI is the npm package **`@playwright/cli`**. Invoke it as `npx playwright-cli <command>` (a local devDependency, not global).
 - Trust the `preflight.js` verdict for it: the probe judges by output, not exit code alone (see `../experience/gotchas.md`). If it reports `ok: false`: `npm install -D @playwright/cli`, then `npx playwright-cli install-browser chromium`.
-- `preflight.js` also reports **`playwright`**: the npm library, a different thing from this CLI. Only the optimize-login skill (`login.mode: "session"`) needs it, to resume a saved session (only the library can load a `storageState`). `ok: false` there does not block a normal run. To install it: `npm i -D playwright`, then `npx playwright install chromium`.
+- `preflight.js` also reports **`playwright`**: the npm library, a different thing from this CLI. A run does not need it: this CLI loads and saves a `storageState` itself, inside the run's session (see "Saved logins" below). Only optimize-login's standalone `session.js` check, which launches its own library browser, needs it. `ok: false` there does not block a run. To install it: `npm i -D playwright`, then `npx playwright install chromium`.
 - Headed (demos, watching): add `--headed`, e.g. `npx playwright-cli open <url> --headed`. Parallel and regression runs are headless.
 
 ## Commands
@@ -23,6 +23,7 @@ The browser driver for all browser actions in a test-execution run.
 ## Sessions
 - `-s=<session>` selects a named session. Every command in every run carries it.
 - Names are per-execution and unique: `init_run.js` generates them (label + time + random tag, collision-checked against existing executions; the label `default` is rejected).
+- **Saved logins.** `state-load` / `state-save` move a saved login (`test/.auth/*-state.json`, a credential) into and out of a session. Run them only through `login_state.js` (`login-state.md`, browser-driver's Login mode), never by hand.
 
 ## Capacity
 - Each session is a real Chromium, so the machine's CPU and RAM bound parallelism: plan for ~6–8 concurrent sessions.
