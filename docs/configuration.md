@@ -86,6 +86,7 @@ your board, delete or move it; the next estimation run proposes a new one.
 | `db` | `server`, `port`, `name`, `user`, `password` — for cataloged `db:` steps. |
 | `api` | `baseUrl`, `token` — for cataloged `api:` steps. |
 | `nonProduction` | Optional, `true` only. Marks the environment as safe for the suite wizard to create missing test data through the UI (after your one consent on the exact list). Anything else (absent, `false`, the string `"true"`) means no data is ever created there. Add it by hand; the setup wizard keeps it on re-save. |
+| `users.<name>.disabled` | Optional, a short reason string such as `"account locked after 5 failed sign-ins"` (`true` also works, with no reason). Marks a test account the suite wizard must never sign in as: the wizard lists it greyed out with the reason, never preselects it, and refuses to collect test data with it. Add it by hand; the setup wizard keeps it on re-save. Honoured by the suite wizard only; a UI run that names the user in a spec still uses it. |
 | `mobile` | `platformName`, `automationName`, `app` (or `appPackage`+`appActivity` / `bundleId`), `deviceName`, `platformVersion`, optional `udid` — the Appium target for [mobile testing](./mobile-testing.md). **Opt-in**: the scaffolded sample has no `mobile` block; add one only if you test a native app (example below). |
 
 An opt-in `mobile` block (Android emulator, local `.apk`):
