@@ -94,11 +94,21 @@ module.exports = { PLAYWRIGHT_MISSING_ERROR, probe, judgePlaywrightCliProbe, pro
 
 // --needs <list> (from spec_drivers.js): without browser, the playwright probes are skipped
 // (the CLI probe can take up to 60s). Default: every probe, as before.
+// The Node floor: Node 20+, the version the shipped CI templates (skills/test-execution/
+// templates/ci/*) and docs/ci-quality-gate.md declare (the repo has no package.json engines).
+const MIN_NODE_MAJOR = 20;
+function judgeNode(version) {
+  const major = parseInt(String(version).replace(/^v/, ''), 10);
+  const required = `>=${MIN_NODE_MAJOR}`;
+  if (!(major >= MIN_NODE_MAJOR)) return { ok: false, error: `Node ${version} found, ${required} required — upgrade Node`, version, required };
+  return { ok: true, version, required };
+}
+
 function inventory(needs) {
   const skip = { ok: null, skipped: 'not needed by this run' };
   const browser = !needs || needs.has('browser');
   return {
-    node: { ok: true, version: process.version },
+    node: judgeNode(process.version),
     'playwright-cli': browser ? probePlaywrightCli() : skip,
     playwright: browser ? probePlaywrightPackage() : skip,
     curl: probe('curl', ['--version']),
@@ -108,6 +118,8 @@ function inventory(needs) {
 }
 
 module.exports.inventory = inventory;
+module.exports.judgeNode = judgeNode;
+module.exports.MIN_NODE_MAJOR = MIN_NODE_MAJOR;
 
 if (require.main === module) {
   const i = process.argv.indexOf('--needs');

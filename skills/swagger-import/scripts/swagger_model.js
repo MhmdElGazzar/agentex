@@ -45,12 +45,19 @@ const DESTRUCTIVE_SKIP = 'review: destructive operation — remove this line to 
 const MESSAGE_PATHS = ['message', 'error.message', 'detail', 'title', 'error'];
 
 // ---- load (file or URL) ----
-async function loadSpec(source) {
+// A URL fetch is bounded (default 30 s, opts.timeoutMs overrides — the headers and the body
+// share the one bound), so a server that never answers ends here, not in a hung run.
+const FETCH_TIMEOUT_MS = 30000;
+async function loadSpec(source, opts = {}) {
   let raw;
   if (/^https?:\/\//i.test(source)) {
+    const timeoutMs = opts.timeoutMs || FETCH_TIMEOUT_MS;
     let res;
-    try { res = await fetch(source); raw = await res.text(); }
-    catch (e) { throw new SpecError(`could not fetch ${source}: ${e.message}`); }
+    try { res = await fetch(source, { signal: AbortSignal.timeout(timeoutMs) }); raw = await res.text(); }
+    catch (e) {
+      if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) throw new SpecError(`could not fetch ${source}: timed out after ${timeoutMs / 1000} s — the server did not answer`);
+      throw new SpecError(`could not fetch ${source}: ${e.message}`);
+    }
     if (!res.ok) throw new SpecError(`could not fetch ${source}: HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`, { status: res.status });
   } else {
     const fs = require('fs');
