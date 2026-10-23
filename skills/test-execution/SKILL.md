@@ -135,7 +135,7 @@ First ask: did the app ever answer? Each driver's infrastructure signatures are 
 | `references/concepts/spec-format.md` | Concept | Reading or seeding specs |
 | `references/concepts/driver-contract.md` | Concept | Deciding retry vs defect; adding a driver |
 
-Scripts in `${CLAUDE_SKILL_DIR}/scripts/` each print one JSON line:
+Scripts in `${CLAUDE_PLUGIN_ROOT}/skills/test-execution/scripts/` each print one JSON line:
 | Script | Use |
 |---|---|
 | `preflight.js [--needs <drivers>]` | Check the run's tools in one call at session start. Its JSON becomes `run.tools`. |
