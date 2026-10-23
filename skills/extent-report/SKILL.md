@@ -14,7 +14,7 @@ tally the results the run already produced.
 | Status | Meaning | Color |
 |---|---|---|
 | Passed | Scenario ran and met acceptance criteria | `#2E9E4F` (green) |
-| Warning | Scenario passed with a caveat — a `ui-check:` reference-mode layout drift or an unconfident design-variant pick | `#EAC54F` (yellow) |
+| Warning | Scenario passed with a caveat — a `ui-check:` reference-mode layout drift, an unconfident design-variant pick, or a cached (not live) baseline | `#EAC54F` (yellow) |
 | Failed | Scenario ran and did NOT meet acceptance criteria | `#D6293E` (red) |
 | Blocked | Scenario could not be completed (missing prerequisite, environment issue) | `#F2A93B` (orange) |
 | View Mismatch | A `ui-check:` step whose baseline form factor differs from the run's target — no PASS/FAIL was issued | `#4D9DE0` (blue) |
@@ -38,9 +38,11 @@ On a `schemaVersion: 2` input the dashboard also shows:
   **Issues only** filter that hides passed and N/A cards.
 - **Print styles** — a light palette with every card expanded, for print or Save as PDF.
 
-Note: executor reports only emit PASS/FAIL per scenario. Blocked, N/A-De-scoped, and Not Run
-come from the orchestrator's own plan — scenarios that couldn't be attempted (environment/
-prerequisite), were intentionally excluded from scope, or were planned but never reached.
+Note: executor reports emit PASS / FAIL / FLAKY / BLOCKED per scenario. NEEDS-USER is an
+interim executor outcome the orchestrator resolves with the user at MERGE; it never reaches
+this report. The orchestrator's own plan supplies Blocked for scenarios it could not attempt
+(blocked upstream in a stateful chain, or an environment/prerequisite gap), N/A-De-scoped for
+scenarios intentionally excluded from scope, and Not Run for scenarios planned but never reached.
 Warning and View Mismatch come from `ui-check:` step verdicts (see the ui-check skill) —
 they are first-class statuses, never disguised as `passed`/`blocked`. Flaky comes from the
 test-execution Flake rules (Principles → Verdicts): a scenario that failed on infrastructure and passed only

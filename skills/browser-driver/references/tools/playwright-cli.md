@@ -5,7 +5,7 @@ The browser driver for all browser actions in a test-execution run.
 ## Setup
 - The CLI is the npm package **`@playwright/cli`**. Invoke it as `npx playwright-cli <command>` (a local devDependency, not global).
 - Trust the `preflight.js` verdict for it: the probe judges by output, not exit code alone (see `../experience/gotchas.md`). If it reports `ok: false`: `npm install -D @playwright/cli`, then `npx playwright-cli install-browser chromium`.
-- `preflight.js` also reports **`playwright`**: the npm library, a different thing from this CLI. Only `/optimize-login` needs it, to resume a saved session (only the library can load a `storageState`). `ok: false` there does not block a normal run. To install it: `npm i -D playwright`, then `npx playwright install chromium`.
+- `preflight.js` also reports **`playwright`**: the npm library, a different thing from this CLI. Only the optimize-login skill (`login.mode: "session"`) needs it, to resume a saved session (only the library can load a `storageState`). `ok: false` there does not block a normal run. To install it: `npm i -D playwright`, then `npx playwright install chromium`.
 - Headed (demos, watching): add `--headed`, e.g. `npx playwright-cli open <url> --headed`. Parallel and regression runs are headless.
 
 ## Commands

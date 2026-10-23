@@ -71,8 +71,9 @@ Project precedence: `--project` flag â†’ `kb.project` in `config/project.json` â
 
 ## Guardrails
 
-- **Advisory, not evidence.** A KB answer must never become a PASS/FAIL verdict or feed the
-  execution skill's `VerifyEvidence`. It informs understanding only.
+- **Advisory, not evidence.** A KB answer is never a verdict, never a step's evidence: it never
+  becomes a PASS/FAIL (the test-execution driver contract: advisory only). It informs
+  understanding only.
 - **No improvised requests.** The runner only ever hits the one KB Ask endpoint with the
   documented body. It composes nothing else.
 - **The API key is the only real secret.** The runner also reads `kb.baseUrl` /
