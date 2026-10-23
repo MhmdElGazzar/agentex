@@ -122,6 +122,16 @@ const cases = [
     assert.deepStrictEqual(wp.seen.errors, []);
   }],
 
+  ['view helpers: the page\'s own token split clamps to the ready cases, and a user\'s disabled state changes the picker signature', async () => {
+    const r = await wp.page.evaluate(() => ({
+      few: V.tokenSplit({ ready: 5, tokenBlocked: 2 }), clamped: V.tokenSplit({ ready: 4, tokenBlocked: 9 }),
+      same: V.userSignature([{ name: 'a', disabled: null }]), locked: V.userSignature([{ name: 'a', disabled: 'x' }]),
+    }));
+    assert.deepStrictEqual(r.few, { ready: 3, blocked: 2 });
+    assert.deepStrictEqual(r.clamped, { ready: 0, blocked: 4 });
+    assert.notStrictEqual(r.same, r.locked);
+  }],
+
   ['wizard page: nothing leaves 127.0.0.1', () => {
     assert.ok(onlyLoopback(wp.seen), wp.seen.requests.join(' '));
     assert.deepStrictEqual(lb.external(), []);

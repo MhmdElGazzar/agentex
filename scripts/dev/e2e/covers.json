@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "skills/browser-driver/scripts/login_state.e2e.test.js": [
+    "skills/browser-driver/scripts/login_state.js#AUTH_REL,LOAD_LANDMARK_MS,SAVE_LANDMARK_MS,HANDLE_RE,INFRA_RE,handle,statePathFor,sidecarPathFor,emit,blocked,environmentOf,checkUser,cli,sessionGone,landmark,bareUrl,readSidecar,load,isIgnored,save,main"
+  ],
+  "skills/swagger-import/scripts/browser_bridge.e2e.test.js": [
+    "skills/swagger-import/scripts/browser_bridge.js#findCli,findToken,tokensOf,findRun,carriesBoth,pickStateFile,sleep,renew"
+  ],
+  "skills/endpoint-testing/scripts/studio/studio.e2e.test.js": [
+    "skills/endpoint-testing/scripts/studio/studio.html#STUDIO,t,tn,matches,rcText,resultCell,renderEditor,renderUserSel,renderStep3,refreshState,pollState",
+    "skills/endpoint-testing/scripts/studio/studio_view.js",
+    "skills/endpoint-testing/scripts/studio/server.js#jsStringBody"
+  ],
+  "scripts/wizard/ui.e2e.test.js": [
+    "scripts/wizard/ui.html#isPlainLiteral,keepsPlainLiteral,usersFromEnv,cloneUser,userSecretNameInput,buildUsersObj"
+  ]
+}
