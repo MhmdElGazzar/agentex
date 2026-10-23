@@ -12,6 +12,6 @@
     "skills/endpoint-testing/scripts/studio/server.js#jsStringBody"
   ],
   "scripts/wizard/ui.e2e.test.js": [
-    "scripts/wizard/ui.html#isPlainLiteral,keepsPlainLiteral,usersFromEnv,cloneUser,userSecretNameInput,buildUsersObj"
+    "scripts/wizard/ui.html#isPlainLiteral,keepsPlainLiteral,usersFromEnv,userSecretNameInput,buildUsersObj"
   ]
 }
