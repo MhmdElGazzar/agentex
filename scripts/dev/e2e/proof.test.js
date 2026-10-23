@@ -204,5 +204,12 @@ test('the real covers.json: valid, every e2e file and every covered file exists,
   }
 });
 
+test('--help prints the NEVER list (the single source) and exits 0', () => {
+  const { NEVER } = require(PROOF);
+  const r = spawnSync(process.execPath, [PROOF, '--help'], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  for (const g of NEVER) assert.ok(r.stdout.includes(g), g);
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;

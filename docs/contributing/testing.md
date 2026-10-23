@@ -139,8 +139,15 @@ that only a browser test covers); a skipped run is never evidence.
 (a change to the script it spawns selects it). A changed `*.e2e.test.js` or `scripts/dev/e2e/**`
 selects **no eval**: they test the plugin, they are not something an eval exercises.
 
-**Time.** Expect the default suite to grow from about 25 s to about 40-45 s on a 12-core machine
-when the browser is found (the saved-login file waits 15 s on its stale-session case); a skip
-costs under 1 s per file. Measured per-file times: filled in by the harness change.
+**Time.** Measured on a 12-core machine with the browser found: `login_state.e2e.test.js` 28.6 s
+(it waits 15 s on its stale-session case), `browser_bridge.e2e.test.js` 9.2 s, `studio.e2e.test.js`
+7.6 s, `scripts/wizard/ui.e2e.test.js` 8.2 s; the four together in the parallel pool about 27 s. The
+full suite (90 files) runs in about 36-52 s depending on load. A skip costs under 1 s per file.
+
+**Proof and coverage.** `scripts/dev/e2e/proof.js --base <last release>` reads the lanes
+`gate-plan.js` selects and says which ones the e2e files prove, so a release can record
+`proven by e2e @ <sha>` (policy Q31). `scripts/dev/e2e/covers.json` is its input: it maps each e2e
+file to the files, or `file#fn1,fn2` scopes, that its cases really assert on (never derived from the
+require graph). `proof.js --help` prints the files that are never proven by e2e.
 
 Next: [PR Workflow](./pr-workflow.md).

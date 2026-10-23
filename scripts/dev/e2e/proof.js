@@ -44,6 +44,7 @@ const PROMPT_RE = PROMPTS.map((g) => gate.globToRegExp(g));
 const any = (res, f) => res.some((re) => re.test(f));
 const E2E_TIMEOUT_MS = 300000;
 const USAGE = 'usage: proof.js --base <ref> [--root <repo>] [--covers <covers.json>]';
+const HELP = `${USAGE}\n\nNever proven by e2e (the NEVER list in this file, the single source; no covers.json entry overrides it):\n  ${NEVER.join('\n  ')}\n\nA lane with a prompt or agent file (${PROMPTS.join(', ')}) changed is never proven either.\n`;
 
 class Blocked extends Error {}
 
@@ -206,6 +207,7 @@ function parseArgs(argv) {
 }
 
 async function main(argv) {
+  if (argv.includes('--help') || argv.includes('-h')) { process.stdout.write(HELP); return 0; }
   let res;
   try {
     const o = parseArgs(argv);
