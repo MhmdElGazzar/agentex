@@ -38,7 +38,7 @@ const bump = (dir, secondsAgo) => { const t = new Date(Date.now() - secondsAgo *
 
 function child(file, args = [], env = {}) {
   return new Promise((resolve) => {
-    const c = spawn(process.execPath, [file, ...args], { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const c = spawn(process.execPath, [file, ...args], { env: { ...process.env, AGENTEX_E2E_REQUIRE: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; });
     c.on('close', (status) => resolve({ status, out }));
