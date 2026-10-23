@@ -2,21 +2,29 @@
 'use strict';
 // Maintainer test runner — every tracked *.test.js, in parallel.
 //
-//   node scripts/run-tests.js [--filter <substring>] [--concurrency <n>] [--serial]
+//   node scripts/run-tests.js [--filter <substring>] [--concurrency <n>] [--serial] [--require-e2e]
 //
 //   --filter       run only test files whose repo-relative path contains <substring>
 //   --concurrency  how many files run at once (default: the CPU count)
 //   --serial       one file at a time (same as --concurrency 1)
+//   --require-e2e  set AGENTEX_E2E_REQUIRE=1 for every child (the e2e harness then fails
+//                  instead of skipping) and count any skip as a failure
 //
 // Discovers the test files with `git ls-files` (tracked files only — `git add` a new
 // test before it is picked up) in the repo the current directory belongs to, and runs
 // each as `node <file>` from that repo's root, exactly as a maintainer would by hand.
 // Files in SERIAL_ONLY run one at a time after the parallel pool.
 //
-// Output: a human summary on stderr (one line per failure, totals, wall time) and
-// exactly ONE JSON line on stdout:
-//   {ok, total, passed, failed:[{file, exit, tail}], durationMs}
-// where tail is the file's last ~20 output lines (stdout and stderr interleaved).
+// Skip protocol: a file named *.e2e.test.js that exits 77 AND prints a line `SKIP: <reason>`
+// is SKIPPED (a browser or dependency this machine lacks), not failed. Exit 77 from any other
+// file, or without the SKIP: line, is a failure, so a runner that does not know the protocol
+// can never read a skip as a pass. See classify().
+//
+// Output: a human summary on stderr (one line per failure, one `SKIP <file>: <reason>` line
+// per skip, totals incl. the skipped count, wall time) and exactly ONE JSON line on stdout:
+//   {ok, total, passed, failed:[{file, exit, tail, reason?}], skipped:[{file, reason}], durationMs}
+// where tail is the file's last ~20 output lines (stdout and stderr interleaved); `passed`
+// excludes skipped files; total = passed + failed + skipped.
 // Exit 0 all passed · 1 any failed · 2 usage or IO error (nothing run).
 //
 // Maintainer tooling: never shipped by any host (scripts/hosts COMMON_EXCLUDES).
@@ -28,9 +36,12 @@ const { execFileSync, spawn } = require('node:child_process');
 // run one by one after the pool, in this order. Every entry needs a reason beside it.
 const SERIAL_ONLY = [];
 
+const SKIP_EXIT = 77;
+const E2E_FILE_RE = /(^|\/)[^/]+\.e2e\.test\.js$/;
+const SKIP_LINE_RE = /^SKIP: (.*\S.*)$/m;
 const TAIL_LINES = 20;
 const KEEP_BYTES = 64 * 1024;   // output kept per file — enough for any 20-line tail
-const USAGE = 'usage: run-tests.js [--filter <substring>] [--concurrency <n>] [--serial]';
+const USAGE = 'usage: run-tests.js [--filter <substring>] [--concurrency <n>] [--serial] [--require-e2e]';
 
 function usageError(msg) {
   const e = new Error(msg);
@@ -41,10 +52,11 @@ function usageError(msg) {
 const cpuCount = () => Math.max(1, typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length);
 
 function parseArgs(argv) {
-  const opts = { concurrency: cpuCount(), filter: null, serial: false };
+  const opts = { concurrency: cpuCount(), filter: null, serial: false, requireE2e: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--serial') { opts.serial = true; continue; }
+    if (a === '--require-e2e') { opts.requireE2e = true; continue; }
     if (a === '--filter' || a === '--concurrency') {
       const v = argv[++i];
       if (v === undefined || v.startsWith('--')) throw usageError(`${a} needs a value. ${USAGE}`);
@@ -83,7 +95,18 @@ function discover(cwd) {
   return { root, files };
 }
 
-function runOne(root, file) {
+// The verdict for one finished file — shared with scripts/dev/affected.js.
+//   result: {file, exit, skipReason?}  →  {status:'passed'} | {status:'failed', reason?} | {status:'skipped', reason}
+function classify(result, { requireE2e = false } = {}) {
+  if (result.exit === 0) return { status: 'passed' };
+  if (result.exit === SKIP_EXIT && E2E_FILE_RE.test(result.file) && result.skipReason) {
+    if (requireE2e) return { status: 'failed', reason: `e2e skipped under --require-e2e: ${result.skipReason}` };
+    return { status: 'skipped', reason: result.skipReason };
+  }
+  return { status: 'failed' };
+}
+
+function runOne(root, file, extraEnv) {
   return new Promise((resolve) => {
     let out = '';
     const keep = (chunk) => {
@@ -92,7 +115,7 @@ function runOne(root, file) {
     };
     let child;
     try {
-      child = spawn(process.execPath, [file], { cwd: root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawn(process.execPath, [file], { cwd: root, env: { ...process.env, ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) {
       resolve({ file, exit: null, tail: `could not start: ${e.message}` });
       return;
@@ -102,19 +125,21 @@ function runOne(root, file) {
     child.on('error', (e) => keep(`\n[run-tests] ${e.message}\n`));
     child.on('close', (code, signal) => {
       const r = { file, exit: code, tail: lastLines(out, TAIL_LINES) };
+      const m = out.replace(/\r\n/g, '\n').match(SKIP_LINE_RE);
+      if (m) r.skipReason = m[1].trim();
       if (signal) r.signal = signal;
       resolve(r);
     });
   });
 }
 
-async function runPool(root, files, concurrency) {
+async function runPool(root, files, concurrency, extraEnv) {
   const results = [];
   let next = 0;
   async function worker() {
     while (next < files.length) {
       const file = files[next++];
-      results.push(await runOne(root, file));
+      results.push(await runOne(root, file, extraEnv));
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker));
@@ -152,21 +177,34 @@ async function main(argv) {
   }
 
   const { pool, serial } = partition(files, SERIAL_ONLY);
+  const childEnv = opts.requireE2e ? { AGENTEX_E2E_REQUIRE: '1' } : {};
   const results = [
-    ...await runPool(found.root, pool, opts.concurrency),
-    ...await runPool(found.root, serial, 1),
+    ...await runPool(found.root, pool, opts.concurrency, childEnv),
+    ...await runPool(found.root, serial, 1, childEnv),
   ];
-  const failed = results.filter((r) => r.exit !== 0).sort((a, b) => a.file.localeCompare(b.file));
+  const failed = []; const skipped = []; let passed = 0;
+  for (const r of results.sort((a, b) => a.file.localeCompare(b.file))) {
+    const v = classify(r, { requireE2e: opts.requireE2e });
+    if (v.status === 'passed') passed++;
+    else if (v.status === 'skipped') skipped.push({ file: r.file, reason: v.reason });
+    else {
+      const f = { file: r.file, exit: r.exit, tail: r.tail };
+      if (r.signal) f.signal = r.signal;
+      if (v.reason) f.reason = v.reason;
+      failed.push(f);
+    }
+  }
   const durationMs = Date.now() - started;
 
-  for (const f of failed) process.stderr.write(`FAIL ${f.file} (exit ${f.exit === null ? f.signal || 'none' : f.exit})\n`);
-  process.stderr.write(`run-tests: ${results.length - failed.length}/${results.length} passed, ${failed.length} failed — `
+  for (const f of failed) process.stderr.write(`FAIL ${f.file} (exit ${f.exit === null ? f.signal || 'none' : f.exit})${f.reason ? `: ${f.reason}` : ''}\n`);
+  for (const s of skipped) process.stderr.write(`SKIP ${s.file}: ${s.reason}\n`);
+  process.stderr.write(`run-tests: ${passed} passed, ${failed.length} failed, ${skipped.length} skipped (of ${results.length}) — `
     + `${(durationMs / 1000).toFixed(1)}s wall (concurrency ${opts.concurrency}${serial.length ? `, ${serial.length} serial-only` : ''})\n`);
-  emit({ ok: failed.length === 0, total: results.length, passed: results.length - failed.length, failed, durationMs });
+  emit({ ok: failed.length === 0, total: results.length, passed, failed, skipped, durationMs });
   return failed.length ? 1 : 0;
 }
 
-module.exports = { parseArgs, partition, lastLines, runPool, SERIAL_ONLY };
+module.exports = { parseArgs, partition, lastLines, runPool, classify, SERIAL_ONLY };
 
 if (require.main === module) {
   main(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (e) => {

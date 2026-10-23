@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
-const { parseArgs, partition, lastLines } = require('./run-tests.js');
+const { parseArgs, partition, lastLines, classify } = require('./run-tests.js');
 
 const SCRIPT = path.join(__dirname, 'run-tests.js');
 let passed = 0; const failures = [];
@@ -35,7 +35,9 @@ function fixtureRepo(files, untracked = {}) {
   return dir;
 }
 function run(cwd, args = []) {
-  const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+  const env = { ...process.env };
+  delete env.AGENTEX_E2E_REQUIRE;   // the runner, not the caller's shell, decides it
+  const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', env });
   const lines = r.stdout.split('\n').filter(Boolean);
   return { code: r.status, lines, out: lines.length ? JSON.parse(lines[0]) : null, stderr: r.stderr };
 }
@@ -96,7 +98,7 @@ test('runs every tracked *.test.js; one failure → exit 1, one JSON line with i
   assert.ok(tail.includes('line 30') && tail.includes('line 11') && !tail.includes('line 10'), f.tail);
   assert.strictEqual(typeof r.out.durationMs, 'number');
   assert.match(r.stderr, /FAIL b\/fail\.test\.js \(exit 3\)/);
-  assert.match(r.stderr, /2\/3 passed, 1 failed/);
+  assert.match(r.stderr, /2 passed, 1 failed, 0 skipped \(of 3\)/);
 });
 
 test('stderr is captured into the tail too', () => {
@@ -161,7 +163,7 @@ test('outside a git repo → exit 2 (IO error), nothing run', () => {
 test('parseArgs: defaults to the CPU count; --serial means concurrency 1', () => {
   assert.strictEqual(parseArgs([]).concurrency, Math.max(1, os.availableParallelism ? os.availableParallelism() : os.cpus().length));
   assert.strictEqual(parseArgs(['--serial']).concurrency, 1);
-  assert.deepStrictEqual(parseArgs(['--concurrency', '4', '--filter', 'lib']), { concurrency: 4, filter: 'lib', serial: false });
+  assert.deepStrictEqual(parseArgs(['--concurrency', '4', '--filter', 'lib']), { concurrency: 4, filter: 'lib', serial: false, requireE2e: false });
   assert.throws(() => parseArgs(['--concurrency', '-1']), /concurrency/);
 });
 
@@ -176,6 +178,109 @@ test('lastLines: the last n lines, trailing blank lines dropped, CRLF tolerated'
   assert.strictEqual(lastLines('a\nb\nc\n\n', 2), 'b\nc');
   assert.strictEqual(lastLines('a\r\nb\r\n', 5), 'a\nb');
   assert.strictEqual(lastLines('', 5), '');
+});
+
+// ── the skip outcome: exit 77 + a SKIP: line, valid for *.e2e.test.js only ──────────────
+const SKIPS = (reason) => `console.log('SKIP: ${reason}');\nprocess.exit(77);\n`;
+
+test('exit 77 + SKIP: in an .e2e.test.js is skipped; the same from x.test.js fails', () => {
+  const dir = fixtureRepo({
+    'a/ok.test.js': PASS,
+    'b/page.e2e.test.js': SKIPS('playwright not found'),
+    'c/plain.test.js': SKIPS('not allowed here'),
+  });
+  const r = run(dir);
+  assert.strictEqual(r.code, 1, r.stderr);
+  assert.strictEqual(r.lines.length, 1);
+  assert.deepStrictEqual(r.out.skipped, [{ file: 'b/page.e2e.test.js', reason: 'playwright not found' }]);
+  assert.strictEqual(r.out.total, 3);
+  assert.strictEqual(r.out.passed, 1, 'passed excludes skipped');
+  assert.deepStrictEqual(r.out.failed.map((f) => [f.file, f.exit]), [['c/plain.test.js', 77]]);
+  assert.match(r.stderr, /1 passed, 1 failed, 1 skipped/);
+  assert.match(r.stderr, /SKIP b\/page\.e2e\.test\.js: playwright not found/);
+});
+
+test('only skips: exit 0, ok:true, the skipped count and one SKIP line per file on stderr', () => {
+  const dir = fixtureRepo({ 'x.test.js': PASS, 'a.e2e.test.js': SKIPS('one'), 'b.e2e.test.js': SKIPS('two') });
+  const r = run(dir);
+  assert.strictEqual(r.code, 0, r.stderr);
+  assert.strictEqual(r.out.ok, true);
+  assert.deepStrictEqual(r.out.failed, []);
+  assert.deepStrictEqual(r.out.skipped.map((s) => s.file), ['a.e2e.test.js', 'b.e2e.test.js']);
+  assert.match(r.stderr, /1 passed, 0 failed, 2 skipped/);
+  assert.match(r.stderr, /SKIP a\.e2e\.test\.js: one/);
+  assert.match(r.stderr, /SKIP b\.e2e\.test\.js: two/);
+});
+
+test('a clean run still reports "0 skipped" and skipped:[]', () => {
+  const r = run(fixtureRepo({ 'x.test.js': PASS }));
+  assert.match(r.stderr, /1 passed, 0 failed, 0 skipped/);
+  assert.deepStrictEqual(r.out.skipped, []);
+});
+
+test('exit 77 in an .e2e.test.js without a SKIP: line is a failure', () => {
+  const r = run(fixtureRepo({ 'a.e2e.test.js': "console.log('no marker');\nprocess.exit(77);\n" }));
+  assert.strictEqual(r.code, 1);
+  assert.deepStrictEqual(r.out.skipped, []);
+  assert.strictEqual(r.out.failed[0].exit, 77);
+});
+
+test('a SKIP: line with another exit code (a pass or a crash) is not a skip', () => {
+  const dir = fixtureRepo({
+    'a.e2e.test.js': "console.log('SKIP: said so');\n",
+    'b.e2e.test.js': "console.log('SKIP: said so');\nprocess.exit(1);\n",
+  });
+  const r = run(dir);
+  assert.deepStrictEqual(r.out.skipped, []);
+  assert.strictEqual(r.out.passed, 1);
+  assert.deepStrictEqual(r.out.failed.map((f) => f.file), ['b.e2e.test.js']);
+});
+
+test('the SKIP: reason is found even when more than 20 lines follow it', () => {
+  const body = "console.log('SKIP: early reason');\nfor (let i = 0; i < 40; i++) console.log('noise ' + i);\nprocess.exit(77);\n";
+  const r = run(fixtureRepo({ 'a.e2e.test.js': body }));
+  assert.strictEqual(r.code, 0, r.stderr);
+  assert.deepStrictEqual(r.out.skipped, [{ file: 'a.e2e.test.js', reason: 'early reason' }]);
+});
+
+test('--require-e2e sets AGENTEX_E2E_REQUIRE=1 for every child; without it the variable is not set', () => {
+  const CHECK = "console.log(process.env.AGENTEX_E2E_REQUIRE === '1' ? 'REQ-ON' : 'REQ-OFF');\nprocess.exit(process.env.AGENTEX_E2E_REQUIRE === '1' ? 1 : 0);\n";
+  const dir = fixtureRepo({ 'a.test.js': CHECK, 'b.e2e.test.js': CHECK });
+  const on = run(dir, ['--require-e2e']);
+  assert.strictEqual(on.code, 1);
+  assert.deepStrictEqual(on.out.failed.map((f) => f.tail), ['REQ-ON', 'REQ-ON']);
+  const off = run(dir);
+  assert.strictEqual(off.code, 0, off.stderr);
+});
+
+test('--require-e2e turns every skip into a failure with its reason', () => {
+  const dir = fixtureRepo({ 'ok.test.js': PASS, 'a.e2e.test.js': SKIPS('chromium missing') });
+  const r = run(dir, ['--require-e2e']);
+  assert.strictEqual(r.code, 1, r.stderr);
+  assert.strictEqual(r.out.ok, false);
+  assert.deepStrictEqual(r.out.skipped, []);
+  assert.strictEqual(r.out.passed, 1);
+  assert.strictEqual(r.out.failed.length, 1);
+  assert.strictEqual(r.out.failed[0].file, 'a.e2e.test.js');
+  assert.match(r.out.failed[0].reason, /e2e skipped under --require-e2e: chromium missing/);
+  assert.match(r.stderr, /FAIL a\.e2e\.test\.js/);
+});
+
+test('classify: the one verdict function (shared with affected.js)', () => {
+  const skip = { file: 'a/b.e2e.test.js', exit: 77, skipReason: 'no pw' };
+  assert.deepStrictEqual(classify({ file: 'a.test.js', exit: 0 }), { status: 'passed' });
+  assert.deepStrictEqual(classify(skip), { status: 'skipped', reason: 'no pw' });
+  assert.strictEqual(classify(skip, { requireE2e: true }).status, 'failed');
+  assert.match(classify(skip, { requireE2e: true }).reason, /e2e skipped under --require-e2e/);
+  assert.strictEqual(classify({ ...skip, file: 'a/b.test.js' }).status, 'failed');
+  assert.strictEqual(classify({ ...skip, skipReason: null }).status, 'failed');
+  assert.strictEqual(classify({ ...skip, exit: 0 }).status, 'passed');
+  assert.strictEqual(classify({ file: 'x.test.js', exit: null }).status, 'failed');
+});
+
+test('parseArgs: --require-e2e is a boolean flag', () => {
+  assert.strictEqual(parseArgs([]).requireE2e, false);
+  assert.strictEqual(parseArgs(['--require-e2e']).requireE2e, true);
 });
 
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
