@@ -7,6 +7,9 @@
 // studio. Then: approve, "approve and run now", and one case run from the editor.
 // Asserted: zero occurrences of the token in the catalog, the suite, the collected store, every
 // page response, executions/**, the server / channel / bridge output, and .playwright-cli/.
+// The saved-session path (`browser_bridge.js renew`, a stubbed playwright package, a state file
+// holding a cookie sentinel) runs first and hands the same token to the studio: the cookie
+// sentinel and the token appear in no output, and the state file is byte-identical afterwards.
 // Positive control: the token file holds it and the happy-path case PASSes with it.
 // Run: node skills/endpoint-testing/scripts/studio/sentinel.test.js
 const assert = require('node:assert');
@@ -24,6 +27,22 @@ const CHANNEL = path.join(__dirname, 'channel.js');
 const BRIDGE = path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'browser_bridge.js');
 const SHIM = path.join(__dirname, '..', '..', '..', 'swagger-import', 'scripts', 'golden', 'fake_playwright_cli.js');
 
+const COOKIE = `EVAL_SENTINEL_COOKIE_${Math.random().toString(36).slice(2, 10)}_renew`;
+const FAKE_PW = `
+const fs = require('fs');
+module.exports = { chromium: { async launch() { return {
+  async newContext(o) {
+    fs.readFileSync(o.storageState, 'utf8');
+    const h = { request: [], response: [] };
+    return { on(ev, fn) { h[ev].push(fn); }, async storageState() { throw new Error('the state file must never be written'); },
+      async newPage() { return {
+        async goto() { const req = { url: () => process.env.FAKE_PW_API + '/pets/7', allHeaders: async () => ({ authorization: 'Bearer ' + process.env.FAKE_PW_TOKEN }) };
+          h.request.forEach(f => f(req)); h.response.forEach(f => f({ request: () => req, status: () => 200 })); },
+        async waitForLoadState() {}, async waitForTimeout() { await new Promise(r => setTimeout(r, 5)); },
+        locator() { return { async count() { return 0; } }; } }; } };
+  },
+  async close() {} }; } } };
+`;
 const outputs = [];   // every stdout/stderr byte of the server, channel and bridge processes
 const responses = []; // every page response body
 function proc(script, args, opts = {}) {
@@ -111,6 +130,23 @@ function walk(dir) {
     assert.strictEqual(collect.json.ok, true, collect.text);
     const ev = lastJson(await wait1.done);
     assert.strictEqual(ev.event, 'collect');
+    // saved-session renewal first: the user's own state file (login_state.js name), headless, read only
+    const { statePathFor } = require(path.join(__dirname, '..', '..', '..', 'browser-driver', 'scripts', 'login_state.js'));
+    const stateFile = path.join(dir, statePathFor('qc', 'qa_user_a'));
+    fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+    fs.writeFileSync(stateFile, JSON.stringify({ cookies: [{ name: 'sid', value: COOKIE }], origins: [] }));
+    const stateBefore = fs.readFileSync(stateFile, 'utf8');
+    const pwDir = path.join(dir, 'node_modules', 'playwright');
+    fs.mkdirSync(pwDir, { recursive: true });
+    fs.writeFileSync(path.join(pwDir, 'package.json'), JSON.stringify({ name: 'playwright', version: '0.0.0-fake', main: 'index.js' }));
+    fs.writeFileSync(path.join(pwDir, 'index.js'), FAKE_PW);
+    const renewed = proc(BRIDGE, ['renew', '--env', 'qc', '--user', 'qa_user_a', '--url', 'https://app.example.test/pets', '--api-origin', `http://127.0.0.1:${apiPort}`, '--absent', 'input[type=password]', '--wait-ms', '300', '--landmark-ms', '50', '--to-studio', '--project', dir],
+      { cwd: dir, env: { FAKE_PW_API: `http://127.0.0.1:${apiPort}/v1`, FAKE_PW_TOKEN: SENTINEL } });
+    const renewOut = lastJson(await renewed.done);
+    assert.strictEqual(renewOut.renewed, true, renewed.out + renewed.err);
+    assert.deepStrictEqual(renewOut.token, { seen: true, scheme: 'bearer', delivered: 'studio' });
+    assert.strictEqual(renewOut.stateFile, statePathFor('qc', 'qa_user_a'));
+    assert.strictEqual(fs.readFileSync(stateFile, 'utf8'), stateBefore, 'renew never writes the state file');
     // the bridge captures the app's own calls (fake playwright-cli) and hands the token over
     const callsFile = path.join(TMP, 'calls.json');
     fs.writeFileSync(callsFile, JSON.stringify([{ method: 'GET', url: `http://127.0.0.1:${apiPort}/v1/pets/7`, status: 200,
@@ -171,6 +207,13 @@ function walk(dir) {
     // every file in the project other than the token file
     for (const f of walk(dir).filter(f => !f.includes(`${path.sep}.git${path.sep}`) && f !== tokenFile)) check(`file ${path.relative(dir, f)}`, fs.readFileSync(f, 'utf8'));
     assert.deepStrictEqual(leaks, [], `the token leaked into: ${leaks.join(', ')}`);
+    // the saved session's cookie value reaches no output, response or file but the state file itself
+    const cookieLeaks = [];
+    const checkCookie = (label, text) => { if (String(text).includes(COOKIE)) cookieLeaks.push(label); };
+    responses.forEach((b, i) => checkCookie(`page response #${i}`, b));
+    outputs.forEach((o, i) => { checkCookie(`process #${i} stdout`, o.out); checkCookie(`process #${i} stderr`, o.err); });
+    for (const f of walk(dir).filter(f => !f.includes(`${path.sep}.git${path.sep}`) && f !== stateFile)) checkCookie(`file ${path.relative(dir, f)}`, fs.readFileSync(f, 'utf8'));
+    assert.deepStrictEqual(cookieLeaks, [], `the saved-session cookie leaked into: ${cookieLeaks.join(', ')}`);
     assert.ok(walk(path.join(dir, 'executions')).some(f => f.endsWith('.log')), 'evidence logs exist (the check above is not vacuous)');
     assert.ok(responses.length > 15, 'page responses were captured');
     console.log(`  ok - AC14: the token (${SENTINEL.length} chars) appears only in its 0600 store; ${responses.length} page responses, ${outputs.length} process outputs and every project file checked`);
