@@ -219,6 +219,16 @@ daemon.stdout.once('data', (d) => {
     });
   }
 
+  // What only the handlers provide (the exit hook cleans up either way): a named FAIL line, never a bare stack.
+  for (const [label, throwing, line] of [['an uncaught exception', "throw new Error('late')", /^  FAIL - uncaught: .*late/m], ['an unhandled rejection', "Promise.reject(new Error('late'))", /^  FAIL - unhandled rejection: .*late/m]]) {
+    await test(`${label} outside a case: exit 1 with the harness's own FAIL line`, async () => {
+      const f = probe('late.js', `h.requireDeps(); h.run([['hangs', () => new Promise(() => {})]]); setTimeout(() => { ${throwing}; }, 300);`);
+      const r = await child(f, [], { AGENTEX_E2E_NODE_MODULES: fakeGood });
+      assert.strictEqual(r.status, 1, r.out);
+      assert.match(r.out, line);
+    });
+  }
+
   // ---- scanOutputs ---------------------------------------------------------------------------
   const { scanOutputs } = require(HARNESS);
   await test('scanOutputs: clean outputs and files pass; a sentinel in an output or in a file under dir fails, without echoing it', () => {
