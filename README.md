@@ -146,6 +146,7 @@ flowchart LR
   s_mobile_testing --> s_ask_kb
   s_mobile_testing --> s_db_integration
   s_mobile_testing --> s_extent_report
+  s_optimize_login --> s_browser_driver
   s_test_execution --> s_browser_driver
   s_test_execution --> s_extent_report
   s_test_execution --> s_ui_check
