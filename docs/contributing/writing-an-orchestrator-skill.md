@@ -16,8 +16,9 @@ orchestration.
 ## 1. Facts about subagents you need to know
 
 The whole design rests on these facts. "Subagent" here means a **named subagent**: an agent
-defined in `agents/` or `.claude/agents/`. A **fork** (a skill run with `context: fork`) is a
-different case, covered in the last row.
+defined in `agents/` or `.claude/agents/`. Two other cases are covered in the last two rows: a
+**fork subagent** (a subagent that is a copy of the main conversation) and a **forked skill** (a
+skill with `context: fork`).
 
 | Fact | What it means for the design |
 |---|---|
@@ -27,8 +28,9 @@ different case, covered in the last row.
 | A subagent can start other subagents, **up to 3 levels** below the main conversation | If you do not want that, remove `Agent` from its `tools` |
 | Once **20 subagents are running** in the session (nested ones included), any further start **fails** with `Concurrent subagent limit reached`; there is no queue | That worker never runs, so the orchestrator has to send work **in batches** itself (the limit is set by `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`) |
 | `skills:` in an agent definition **puts the skill's whole content** into the agent when it starts (a **preload**) | Every worker pays for those tokens |
-| A skill with `disable-model-invocation: true` **cannot be preloaded** into an agent. A preload that cannot be loaded is skipped, with a warning in the debug log only | Shared skills must not use that setting; a wrong preload fails without anyone noticing, and the worker runs without that knowledge |
-| A **fork** inherits the conversation, with exactly the same tools as the main conversation | The contract and deferred-question rules below are for named workers |
+| A skill with `disable-model-invocation: true` **cannot be preloaded** into an agent. We have not found documented what happens to a preload that cannot be loaded; in our experience it is skipped without a visible error | Shared skills must not use that setting; a wrong preload can fail without anyone noticing, and the worker then runs without that knowledge |
+| A **fork subagent** inherits the main conversation and gets exactly the same tool pool as the main conversation | The contract and deferred-question rules below are for named workers |
+| A **forked skill** (`context: fork`) does **not** see the conversation history, runs in the background by default, and gets a narrower tool set | Like a named worker, it needs everything sent to it; it suits a self-contained task, not one that needs the user along the way |
 
 ---
 
@@ -36,8 +38,8 @@ different case, covered in the last row.
 
 | If the orchestration… | Best fit |
 |---|---|
-| needs **the user along the way** (approvals, questions, checkpoints) | **A skill in the main conversation**, or an agent running as the **main session** (`claude --agent`, or `agent` in the plugin's settings) |
-| is **self-contained** and does not need the user | A skill with `context: fork`, or an agent sent as a subagent |
+| needs **the user along the way** (approvals, questions, checkpoints) | **A skill in the main conversation**, or an agent running as the **main session** (`agent` in the plugin's settings) |
+| is **self-contained** and does not need the user | A forked skill (`context: fork`), or an agent sent as a subagent |
 | needs a control flow that is **100% fixed** (loops, fan-out to many workers, a set number of retries) | **Scripts**, with the model only deciding |
 | has rules that **must never be broken** | **Hooks** that enforce them, not text alone |
 
@@ -148,7 +150,8 @@ before each tool call and can refuse it.
 - A plugin ships hooks from `hooks/hooks.json`, or from the `hooks` field in `plugin.json`.
 - Claude Code **ignores** `hooks` in the frontmatter of any agent that comes from a plugin, so
   such a hook never runs. Rules for workers need plugin-level hooks.
-- A repo's `.claude/settings.json` **does not reach** the plugin's users.
+- In our experience a repo's `.claude/settings.json` **does not reach** the plugin's users (we
+  have not found this documented). AgenTeX does not commit `.claude/` at all.
 
 ### 3.11 A record of each run
 Each run saves what was sent, to whom, with which inputs, and what came back. Without that
@@ -181,7 +184,7 @@ hooks/hooks.json           ← blocks every forbidden action, reliably
 
 | Mistake | Why it is a problem | Fix |
 |---|---|---|
-| The orchestrator is itself a subagent and waits for an approval | It cannot ask | Make it a skill in the main conversation, or run it with `claude --agent` |
+| The orchestrator is itself a subagent and waits for an approval | It cannot ask | Make it a skill in the main conversation, or run the agent as the main session |
 | All the detail of every phase in one `SKILL.md` | Tokens for phases that will not run | `references/procedures/` |
 | The worker returns free text | The merge becomes a guess | A fixed output shape |
 | A worker that says "ask the user" | It never happens | A deferred question |
@@ -199,7 +202,8 @@ hooks/hooks.json           ← blocks every forbidden action, reliably
 ## 6. Review
 
 Before merging an orchestrator, find its workers and check:
-- **Where the orchestrator runs:** it must not run in a fork and wait for the user (an error).
+- **Where the orchestrator runs:** it must not be a forked skill (`context: fork`) that waits for
+  the user (an error).
   An agent that waits for the user and is not clearly run as the main session is a warning. An
   orchestrator agent needs the `Agent` tool.
 - **The contract:** every `{{INPUT}}` a worker expects is one the orchestrator names; inputs and
@@ -221,7 +225,7 @@ every worker's result and every deferred question.
 
 ## Quick checklist
 
-- [ ] The orchestrator is in the main conversation (or `claude --agent`) if it talks to the user.
+- [ ] The orchestrator is in the main conversation (or runs as the main session) if it talks to the user.
 - [ ] Every worker has declared Inputs and a fixed-shape Output.
 - [ ] No worker asks the user; questions come back deferred.
 - [ ] IDs, folders, the merge and the verdict are in scripts.

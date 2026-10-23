@@ -33,8 +33,9 @@ what the user says never runs.
   after **1,536 characters**, and Claude never sees what comes after the cut.
 - Write it as two plain sentences, **not a bullet list inside the YAML**.
 
-AgenTeX's [host branches](./host-branches.md) have a stricter limit: a description longer than
-1024 characters fails the Copilot, Devin and Codex builds.
+This plugin's own host builds add a stricter limit of their own (see
+[Host Branches](./host-branches.md)): a description longer than 1024 characters fails the
+Copilot, Devin and Codex builds.
 
 **Good example:**
 ```yaml
@@ -96,8 +97,8 @@ The exact shape of the result.
   it replaces the conversation with a summary. After compaction, only **the first 5,000
   tokens** of each skill are put back. A rule at the end of a long file can be lost, and Claude
   then works without it.
-- **A Glossary** is worth adding once the skill has 3 or more internal terms (status names,
-  phase names, placeholders). Without it, the reader has to know the skill's language before
+- **A Glossary:** this project's convention is to add one once the skill has 3 or more
+  internal terms (status names, phase names, placeholders). Without it, the reader has to know the skill's language before
   reading it.
 - **Resources** must say, for every file, what it holds and when to read it. A file in
   `references/` that `SKILL.md` does not mention does not exist as far as Claude is concerned:
@@ -111,12 +112,16 @@ The **context** is everything Claude holds in mind for the current conversation.
 skill stays in the context on **every turn**, so each line has a fixed cost for as long as the
 skill is loaded.
 
-| Measure | Limit |
-|---|---|
-| **Target** | under ~3,000 tokens |
-| Compaction limit | 5,000 tokens (anything after it can be cut) |
-| Maximum length | 500 lines |
-| All skills together after compaction | 25,000 tokens |
+The hard numbers from Claude Code are the 1,536-character limit on `description` +
+`when_to_use` (section 2) and the budgets re-attached after compaction: 5,000 tokens per skill
+and 25,000 tokens for all skills together. The other numbers are recommendations.
+
+| Measure | Number | Kind |
+|---|---|---|
+| **Target** | under ~3,000 tokens | this project's convention |
+| Re-attached per skill after compaction | 5,000 tokens (anything after it can be cut) | Claude Code limit |
+| All skills together after compaction | 25,000 tokens | Claude Code limit |
+| Length | under 500 lines | Claude Code recommendation |
 
 **How to shrink it:**
 - Move long detail (schemas, many examples, step-by-step mechanics) to `references/`, and
@@ -128,6 +133,9 @@ skill is loaded.
 ---
 
 ## 5. Writing rules
+
+These are this project's conventions, not Claude Code limits; the 50-word and two-dash numbers
+are ours.
 
 | Rule | Not this | This |
 |---|---|---|
@@ -150,8 +158,9 @@ is done.
   is written as a **script**. A script is **run, not loaded** into the context, so it costs no
   tokens, and it gives the same result every time.
 - Use **`${CLAUDE_SKILL_DIR}/scripts/...`** for paths inside the skill. It is shorter than
-  `${CLAUDE_PLUGIN_ROOT}/skills/<name>/...`. Keep `${CLAUDE_PLUGIN_ROOT}` for pointing at
-  another skill. (Every skill on `main` today uses the `${CLAUDE_PLUGIN_ROOT}` form, which is
+  `${CLAUDE_PLUGIN_ROOT}/skills/<name>/...`. To point at another skill, this project uses
+  `${CLAUDE_PLUGIN_ROOT}/skills/<other>/...` (our convention; we have not found it documented).
+  (Every skill on `main` today uses the `${CLAUDE_PLUGIN_ROOT}` form, which is
   the one the [host branch](./host-branches.md) converters rewrite.)
 - Let only your own scripts run without a permission prompt:
   ```yaml
@@ -172,7 +181,9 @@ is done.
 | Background knowledge, not a command a user types | `user-invocable: false` | No | Yes |
 
 **`context: fork`** runs the skill in a separate **subagent**: another Claude instance that
-starts with an empty context and does not see the conversation. Use it only when the skill is
+starts with an empty context and does not see the conversation. This is a forked *skill*; it is
+not the same as a fork of the conversation (see
+[Writing an Orchestrator Skill](./writing-an-orchestrator-skill.md#1-facts-about-subagents-you-need-to-know)). Use it only when the skill is
 **a clear, self-contained task**. If the skill is guidance only, the subagent comes back with
 nothing useful.
 
@@ -180,10 +191,12 @@ nothing useful.
 
 ## 8. Common frontmatter mistakes
 
-- **`---` must be the first line of the file.** With a blank line before it, the whole file is
-  read as body text and none of the settings apply.
-- **Invalid YAML means no fields at all.** The skill still loads, but with no `description` and
-  no settings, so Claude has nothing to decide from and does not run it on its own.
+- **Put `---` on the first line of the file.** In our experience, with a blank line before it
+  the whole file is read as body text and none of the settings apply (we have not found this
+  documented).
+- **Keep the YAML valid.** Claude Code documents that an agent with invalid frontmatter loads
+  with no fields; we have not found this documented for skills, so assume the same: no
+  `description` and no settings, so Claude has nothing to decide from.
 - **A misspelled field name is ignored without any warning.** For example `allowed_tools` with
   an underscore instead of `allowed-tools`: the setting has no effect and nothing tells you.
   Field names use hyphens, except `when_to_use`.
@@ -215,7 +228,7 @@ nothing useful.
 - [ ] The `description` says what it does and when, with the most important use first.
 - [ ] Hard rules at the top of the file, one rule per line.
 - [ ] Internal terms are defined.
-- [ ] The file is under ~3,000 tokens, with the detail in `references/`.
+- [ ] The file is under ~3,000 tokens (this project's target), with the detail in `references/`.
 - [ ] Every file in `references/` is mentioned, with when to read it.
 - [ ] The fixed mechanics are scripts, with tests.
 - [ ] Every check in section 9, step 1, passes.
