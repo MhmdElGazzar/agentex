@@ -41,7 +41,7 @@ skill with `context: fork`).
 | needs **the user along the way** (approvals, questions, checkpoints) | **A skill in the main conversation**, or an agent running as the **main session** (`agent` in the plugin's settings) |
 | is **self-contained** and does not need the user | A forked skill (`context: fork`), or an agent sent as a subagent |
 | needs a control flow that is **100% fixed** (loops, fan-out to many workers, a set number of retries) | **Scripts**, with the model only deciding |
-| has rules that **must never be broken** | **Hooks** that enforce them, not text alone |
+| has rules that **must never be broken** | **Hooks** (a command Claude Code runs on its own at a set point, defined just below) that enforce them, not text alone |
 
 A **hook** is a command Claude Code runs on its own at a set point, for example before each tool
 call, whatever the model decides.

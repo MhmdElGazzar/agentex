@@ -8,3 +8,7 @@
   user, see the conversation), where the orchestrator should live, the worker contract,
   deferred questions, one approval before any write, batches under the subagent limit, and
   hooks for rules that must never break.
+  The guides were first written in Arabic. In the English versions the references to the
+  maintainers' own validator commands and checklists, the `project-manager` example and the
+  `claude --agent` mentions were replaced by the rules themselves or by a generic example,
+  because those tools are not part of the shipped plugin.
