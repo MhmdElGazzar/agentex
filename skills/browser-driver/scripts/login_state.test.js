@@ -177,6 +177,27 @@ test('AC3 load: landmark not held -> RESUME_FAIL landmark-failed, cookies + loca
   assertNoLeak(r);
 });
 
+test('AC3 load: after a failed landmark the page is reloaded after the two clears (cookie-clear, localstorage-clear, reload)', () => {
+  const cwd = proj(); seed(cwd);
+  const r = run(LOAD, { cwd, held: false });
+  assert.deepStrictEqual(r.cmds, ['state-load', 'goto', 'run-code', 'cookie-clear', 'localstorage-clear', 'reload']);
+  assert.strictEqual(r.json.reason, 'landmark-failed');
+  assert.ok(!/reload failed/.test(r.json.detail), r.json.detail);
+  assertNoLeak(r);
+});
+
+test('AC3 load: a failing or hanging reload keeps RESUME_FAIL landmark-failed (exit 1) and says so in detail', () => {
+  for (const modes of ['reload=bad', 'reload=gone', 'reload=hang']) {
+    const cwd = proj(); seed(cwd);
+    const r = run([...LOAD, '--timeout-ms', '800'], { cwd, held: false, modes });
+    assert.strictEqual(r.status, 1, `${modes}: ${r.stdout}`);
+    assert.strictEqual(r.json.result, 'RESUME_FAIL', modes);
+    assert.strictEqual(r.json.reason, 'landmark-failed', modes);
+    assert.ok(/reload failed/.test(r.json.detail), r.json.detail);
+    assert.ok(r.cmds.includes('reload'), modes);
+  }
+});
+
 // ---- AC4: load, driver failures ------------------------------------------------------------
 test('AC4 load: session not open -> BLOCKED session-not-open, infrastructure, exit 2', () => {
   const cwd = proj(); seed(cwd);

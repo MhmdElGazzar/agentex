@@ -42,7 +42,7 @@ It never writes or deletes the file.
 | `RESUME_FAIL` `no-environment` / `no-state` / `no-landmark` | 1 | Nothing usable saved. Log in through the UI. |
 | `RESUME_FAIL` `cli-unsupported` | 1 | The CLI is older than 0.0.63 (no `state-load`). Log in through the UI. |
 | `RESUME_FAIL` `state-unreadable` | 1 | The driver could not read the file. Log in through the UI. |
-| `RESUME_FAIL` `landmark-failed` | 1 | The saved login is expired or invalid. Cookies and localStorage were cleared; log in through the UI. The old file stays until the next save replaces it. |
+| `RESUME_FAIL` `landmark-failed` | 1 | The saved login is expired or invalid. Cookies and localStorage were cleared, then the page is reloaded (so a form's CSRF cookie and token match again; if the reload fails, `detail` says so, reload before the form login); log in through the UI. The old file stays until the next save replaces it. |
 | `BLOCKED` `session-not-open` / `driver-error` + `infrastructure: true` | 2 | The session is gone or the CLI hung. Scenario BLOCKED; one retry per the driver's infrastructure rule. |
 | `BLOCKED` `usage` / `unknown-user` | 2 | A wrong flag, or a user not in the environment. Scenario BLOCKED, reason verbatim. |
 
