@@ -13,12 +13,15 @@ of the page got across. "It reads better" is not a measure; the score is.
 1. **Define a term before its first use.** Write "acceptance criteria (ACs)" the first time,
    then "ACs". A term the reader has to guess costs them the sentence it sits in.
 2. **Say the consequence of a mechanism in plain words.** Naming a mechanism does not tell the
-   reader what it means for them. "Validated fail-closed" says how it works; "if validation
-   fails, nothing is written to the board" says what happens to them.
+   reader what it means for them. "Validated fail-closed" (every check runs before any write,
+   and one failed check stops everything before the first write) says how it works; "if
+   validation (the checks run before any write) fails, nothing is written to the board" says
+   what happens to them.
 
 **Why:** in a reader test on 2026-10-23, six public writing-style skills each rewrote part of
-the README under the same rules (keep every fact, add none). None scored above the unchanged
-text (7.5 of 9 each). The one gain came from defining "ACs" before using it (8.5 of 9). Every
+the README under the same rules (keep every fact, add none). Five scored the same as the
+unchanged text (7.5 of 9); the sixth scored 8.5, the only gain, because it defined "ACs" before
+using it. Every
 reader missed that a validation failure writes nothing to the board, because the text never
 said so. A fact missing from the text cannot be fixed by restyling it. Content and order decide
 whether a reader understands, not word choice.
@@ -98,4 +101,4 @@ the fastest way to see whether it works.
 | Q9 | What does "AC" mean here? | Acceptance criteria |
 | Q10 | If a field fails validation during `/design-test`, what has been written to the board? | Nothing; validation runs first and a failure stops before any write |
 
-Baseline: to be measured by the verifier
+Baseline: 8.17 of 10 (mean of 3 fresh readers, 2026-10-23) on the README with the added fail-closed sentence; the same questions on the README before it scored 7.17. Q9 ("AC") was 0 for every reader on both versions, so the README's first use of "ACs" now spells it out and the next run should score it. A later run below the latest recorded mean is a finding to look at, not an automatic block.
