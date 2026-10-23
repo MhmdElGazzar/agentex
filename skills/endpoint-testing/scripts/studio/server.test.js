@@ -209,5 +209,23 @@ const { test, done } = harness();
     s.close();
   });
 
+  await test('--spec and --suite reach the page script as data: a quote, </script>, U+2028/9, a backslash, a newline and $& run nothing', async () => {
+    const vm = require('node:vm');
+    const hostile = ["x';globalThis.__pwn=1;//", '</script><script>globalThis.__pwn=2</script>', 'a\u2028b\u2029c', 'back\\slash\\', 'line\nbreak', "$&$'$`", 'https://api.example.com/v1/swagger.json'];
+    const tpl = fs.readFileSync(path.join(__dirname, 'studio.html'), 'utf8');
+    for (const value of hostile) {
+      const s = await studio(editorProject(9), { spec: value, suite: value });
+      const html = (await req(s.st.port, 'GET', '/editor')).text;
+      s.close();
+      assert.strictEqual(html.split('</script>').length, tpl.split('</script>').length, `no extra script end for ${JSON.stringify(value)}`);
+      const line = html.split('\n').find(l => l.startsWith('const STUDIO = '));
+      const ctx = vm.createContext({});
+      const got = vm.runInContext(line + '\n;STUDIO', ctx);
+      assert.strictEqual(ctx.__pwn, undefined, `ran injected code for ${JSON.stringify(value)}`);
+      assert.strictEqual(got.spec, value);
+      assert.strictEqual(got.suite, value);
+    }
+  });
+
   done();
 })();

@@ -112,6 +112,10 @@ function endpointsFor(root, cases) {
   return out;
 }
 
+// The body of a single-quoted JS string literal in the page script: JSON.stringify escapes " \ and control
+// characters, not ' (would end the literal), < (</script>) or U+2028/9 (older line terminators).
+const jsStringBody = v => JSON.stringify(String(v || '')).slice(1, -1)
+  .replace(/'/g, '\\u0027').replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 // Store slug for a suite path: the file name without "_suite.json".
 const suiteSlug = rel => path.basename(rel).replace(/_suite\.json$/, '');
 
@@ -270,8 +274,7 @@ async function createStudio(opts) {
         .replace('__STUDIO_VIEW_HELPERS__', () => VIEW.source())
         .replace('__STUDIO_LANG__', lang)
         .replace('__STUDIO_VIEW__', view)
-        .replace('__STUDIO_SUITE__', JSON.stringify(state.initialSuite || '').slice(1, -1))
-        .replace('__STUDIO_SPEC__', JSON.stringify(state.prefillSpec || '').slice(1, -1).replace(/</g, '\\u003c'))
+        .replace(/__STUDIO_(SUITE|SPEC)__/g, (_, k) => jsStringBody(k === 'SUITE' ? state.initialSuite : state.prefillSpec)) // one pass: a value never gets re-scanned
         .replace('<html lang="ar" dir="rtl">', `<html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">`);
       return U.respond(res, 200, 'text/html; charset=utf-8', html);
     }
