@@ -154,8 +154,8 @@ Rules:
 - Resolve `baseUrl` / auth from the env-var **names** in the file (`${API_BASE_URL}`,
   `tokenEnv`). Use only variables that are **already set in the shell** (the user's own, or CI's).
   Never read, `cat` or source `.env`: the runner reads it for you, and that is the path to fix.
-  Check that a variable is set without printing it (`[ -n "$API_TOKEN" ]`); if one is empty, stop
-  with BLOCKED naming the variable and say the runner failed. **Never echo their values** and never write the
+  Check that a variable is set without printing it (`[ -n "$API_TOKEN" ]`); if any needed variable
+  (token or base URL) is empty, make no request: stop with BLOCKED naming it and say the runner failed. **Never echo their values** and never write the
   Authorization header value into the report (the raw log keeps headers you *send* out of it —
   log response status/headers/body only; if you must log the command, redact the token).
 - **Which target a catalog uses** follows "Where the target comes from" above (`--env <name>`
