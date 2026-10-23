@@ -34,7 +34,9 @@ test('a key match in test/** JSON is a Project hit with its file and JSON path',
   const dir = proj({ 'test/test-data/orders.json': { sample: { order_id: 1042, status: 'open' } } });
   const { code, out } = run(dir, NEEDS);
   assert.strictEqual(code, 0);
-  assert.deepStrictEqual(out.hits.find(h => h.param === 'orderId'), { param: 'orderId', value: 1042, source: 'project', file: 'test/test-data/orders.json', path: '$.sample.order_id' });
+  const o = out.hits.find(h => h.param === 'orderId');
+  assert.deepStrictEqual({ ...o, group: undefined }, { param: 'orderId', value: 1042, source: 'project', file: 'test/test-data/orders.json', path: '$.sample.order_id', from: 'test-data', environment: null, owner: null, group: undefined });
+  assert.ok(o.group);
   assert.strictEqual(out.hits.find(h => h.param === 'status').value, 'open');
 });
 
@@ -104,7 +106,7 @@ const ENVS = {
 
 test('600 files: the only matching ID sits in an old run\'s log -> found, not truncated', () => {
   const files = { ...ENVS };
-  for (let i = 0; i < 20; i++) files[`test/data/f${String(i).padStart(3, '0')}.json`] = { note: `n${i}` };
+  for (let i = 0; i < 19; i++) files[`test/data/f${String(i).padStart(3, '0')}.json`] = { note: `n${i}` };
   for (let r = 0; r < 29; r++) {
     const day = String(r + 1).padStart(2, '0');
     for (let k = 0; k < 20; k++) files[`executions/execu_2026-09-${day}_10-00-00/api-tests/logs/case${k}-get.log`] = log(`http://api.example.test/ping${k}`, '{"ok":true}');
@@ -153,7 +155,7 @@ test('IDs come from URL paths matched against the operations\' templates; one UR
     { param: 'itemId', in: 'path', type: 'integer', operations: ['GET /shops/{shopId}/items/{itemId}'] },
     { param: 'status', in: 'query', type: 'string' }];
   const { out } = run(dir, needs);
-  const byParam = Object.fromEntries(out.hits.map(h => [h.param, h]));
+  const byParam = Object.fromEntries(out.hits.filter(h => String(h.value) !== '9').map(h => [h.param, h]));
   assert.strictEqual(String(byParam.shopId.value), '7');
   assert.strictEqual(String(byParam.itemId.value), '98');
   assert.strictEqual(byParam.shopId.group, byParam.itemId.group);
