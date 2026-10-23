@@ -130,6 +130,7 @@ function bootLocal(cfg) {
   get defaultsFieldsV(){return defaultsFieldsSession},
   buildEnvConfig, buildProjectConfig, buildSecretsPayload, snapshotActiveEnv, buildDefaultsSecretField,
   renderDefaultsSection, toggleFieldSecret, plainLiteralsKept, shownHint, switchEnv,
+  get users(){return users}, buildUsersObj, userSecretNameInput, keepsPlainLiteral,
 };`)();
   window.WIZARD_MODE = prev.mode; window.WIZARD_TOKEN = prev.token;
   return new Promise(r => setTimeout(() => { document.getElementById = prev.getEl; r({ inst, toast: toastEl.textContent }); }, 20));
@@ -255,6 +256,69 @@ async function runA2Tests() {
       assert.deepStrictEqual(inst.plainLiteralsKept(), []);
     });
   }
+
+  // Secret USER field holding a plain string on disk: ONE fixture drives engine.js
+  // buildEnvUsers and ui.html buildUsersObj, and both must agree on every case.
+  await (async () => {
+    const engine = require('./engine.js');
+    const PLAIN_U = 'Usr-plain#value-1';
+    const proj = { name: 'p', defaultEnvironment: 'qa',
+      userFields: [{ key: 'phone', label: 'phone' }, { key: 'apiKey', label: 'key', secret: true }] };
+    const diskUsers = () => ({
+      plain: { phone: '0550000001', apiKey: PLAIN_U, hand: 'kept' },
+      ref:   { phone: '0550000002', apiKey: { envSecret: 'USER_REF_APIKEY' } },
+    });
+    const boot = () => bootLocal({ projectConfig: proj, defaultEnvironment: 'qa',
+      environments: { qa: { portalUrl: 'https://qa.example.test', defaults: {}, users: diskUsers() } } });
+    const both = (inst) => {
+      inst.snapshotActiveEnv();
+      const fromUi = inst.buildUsersObj(inst.envs.qa);
+      const fromEngine = engine.buildEnvUsers(inst.users, diskUsers(), proj.userFields, []);
+      assert.deepStrictEqual(fromEngine, fromUi, 'engine.js and ui.html build the same users');
+      return fromUi;
+    };
+    const idx = (inst, h) => inst.users.findIndex(u => u.handle === h);
+    await (async () => {
+      const { inst } = await boot();
+      test('secret user field, plain on disk (a): load then save with no edits keeps the string byte-identical', () => {
+        const out = both(inst);
+        assert.strictEqual(out.plain.apiKey, PLAIN_U);
+        assert.deepStrictEqual(out.plain, diskUsers().plain);
+        assert.strictEqual(inst.users[idx(inst, 'plain')].apiKey, '', 'the name slot stays empty (the string is not a name)');
+      });
+      test('secret user field, plain on disk (c): an { envSecret } value behaves exactly as before', () => {
+        assert.deepStrictEqual(both(inst).ref, diskUsers().ref);
+      });
+      test('secret user field, plain on disk (b): an edit, then clearing it on screen, still unsets it', () => {
+        const i = idx(inst, 'plain');
+        inst.userSecretNameInput(i, 'apiKey', 'USER_PLAIN_APIKEY');
+        assert.deepStrictEqual(both(inst).plain.apiKey, { envSecret: 'USER_PLAIN_APIKEY' }, 'typing a name moves it');
+        inst.userSecretNameInput(i, 'apiKey', '');
+        const out = both(inst);
+        assert.ok(!('apiKey' in out.plain), 'cleared on screen → unset');
+        assert.strictEqual(out.plain.hand, 'kept');
+      });
+      test('secret user field (c): clearing an { envSecret } name still unsets it', () => {
+        inst.userSecretNameInput(idx(inst, 'ref'), 'apiKey', '');
+        assert.ok(!('apiKey' in both(inst).ref));
+      });
+    })();
+    const { inst: inst2, toast: toast2 } = await boot();
+    test('one rule: engine.js and ui.html share the keep-plain-literal predicate (defaults.password guard uses it)', () => {
+      const inst = inst2;
+      for (const untouched of [true, false, undefined]) {
+        for (const disk of [undefined, null, '', 'x', 0, { envSecret: 'N' }]) {
+          assert.strictEqual(inst.keepsPlainLiteral(untouched, disk), engine.keepsPlainLiteral(untouched, disk));
+        }
+      }
+    });
+    test('secret user field: no message or output carries the plain value', () => {
+      const inst = inst2, toast = toast2;
+      inst.snapshotActiveEnv();
+      assert.ok(!toast.includes(PLAIN_U));
+      assert.ok(!JSON.stringify(inst.buildSecretsPayload()).includes(PLAIN_U));
+    });
+  })();
 
   await (async () => {
     const { inst, toast } = await bootLocal({ projectConfig: PRE_A2_TEMPLATE, projectPristine: true,
