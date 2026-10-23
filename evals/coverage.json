@@ -41,6 +41,7 @@
     "discipline-secret-scan-relay": ["commands/init-test.md", "scripts/secret_scan.js", "scripts/lib/secret_scan_core.js"],
     "discipline-suite-editor-no-overwrite-on-conflict": ["skills/endpoint-testing", "skills/api-integration", "commands/test-endpoints.md"],
     "discipline-suite-wizard-consent-exact-list": ["skills/swagger-import", "skills/endpoint-testing", "commands/import-swagger.md"],
+    "discipline-suite-wizard-disabled-user": ["skills/swagger-import", "skills/swagger-import/scripts/browser_bridge.js", "skills/endpoint-testing", "commands/import-swagger.md"],
     "discipline-suite-wizard-no-own-http": ["skills/swagger-import", "skills/endpoint-testing", "commands/import-swagger.md"],
     "discipline-suite-wizard-token-never-printed": ["skills/swagger-import", "skills/endpoint-testing", "commands/import-swagger.md"],
     "discipline-suite-wizard-unmarked-env-refused": ["skills/swagger-import", "skills/endpoint-testing", "commands/import-swagger.md"],

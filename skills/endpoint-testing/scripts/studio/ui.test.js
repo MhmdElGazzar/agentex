@@ -24,7 +24,9 @@ test('every data-i18n key and every t(\'…\') key used by the page exists', () 
   // template keys built at run time: t(`kind.${k}`), t(`badge.${…}`), t(`filter.${f}`)
   for (const k of ['happy', 'not-found', 'no-token', 'missing-field']) keys.add(`kind.${k}`);
   for (const k of ['ui', 'project', 'auto', 'placeholder', 'manual']) keys.add(`badge.${k}`);
-  for (const k of ['all', 'needs-review', 'failing', 'skipped']) keys.add(`filter.${k}`);
+  for (const k of ['all', 'needs-review', 'failing', 'blocked', 'skipped']) keys.add(`filter.${k}`);
+  for (const k of ['bad-type', 'credential-shaped', 'bad-value', 'other']) keys.add(`s3.refused.${k}`);
+  for (const k of ['catalog', 'suite', 'data-store', 'token', 'env-line']) keys.add(`s5.write.${k}`);
   const missing = [...keys].filter(k => !(k in strings.en));
   assert.deepStrictEqual(missing, []);
 });
@@ -93,11 +95,13 @@ function loadPage(routes = {}) {
   };
   const src = html.match(/<script>([\s\S]*)<\/script>/)[1]
     .replace(/'__STUDIO_(\w+)__'/g, (_, k) => (k === 'LANG' ? "'en'" : k === 'VIEW' ? "'editor'" : "''"))
-    .replace('const needsReview = __STUDIO_NEEDS_REVIEW__;', 'const needsReview = () => false;');
-  const ctx = vm.createContext({ document, fetch, location: { search: '', href: '' }, sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} }, URLSearchParams, console, setTimeout });
-  vm.runInContext(src + '\n;globalThis.__P = { ED, openDrawer, save, STR: () => STR, set STR(v) { STR = v; } };', ctx);
+    .replace('const needsReview = __STUDIO_NEEDS_REVIEW__;', 'const needsReview = () => false;')
+    .replace('__STUDIO_VIEW_HELPERS__', () => require('./studio_view.js').source());
+  const window = { listeners: {}, addEventListener(e, f) { this.listeners[e] = f; } };
+  const ctx = vm.createContext({ window, document, fetch, location: { search: '', href: '' }, sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} }, URLSearchParams, console, setTimeout });
+  vm.runInContext(src + '\n;globalThis.__P = { ED, WZ, openDrawer, save, renderEditor, renderStep3, setValue, loadPreview, renderStep5, startWizard, unloadWarning, t, tn, setLang(v) { LANG = v; }, STR: () => STR, set STR(v) { STR = v; } };', ctx);
   ctx.__P.STR = strings; // the real strings, English
-  return { P: ctx.__P, nodes, ctx };
+  return { P: ctx.__P, nodes, ctx, window };
 }
 const textOf = (n) => n.textContent;
 
@@ -110,7 +114,166 @@ test('S-3: the drawer of a case with no message check and no last run shows no l
   assert.ok(!/null|undefined/.test(textOf(drawer)), `drawer text: ${textOf(drawer).slice(-200)}`);
 });
 
+test('AC7: the language button names the language it switches to; both languages have the plural variants', () => {
+  assert.strictEqual(strings.en['app.lang'], 'العربية');
+  assert.strictEqual(strings.ar['app.lang'], 'English');
+  for (const key of ['ed.counts', 'ed.cases', 'cd.usedN', 'cd.casesNeed', 's3.progress', 's4.totals', 'ed.stat', 'q21.title']) {
+    for (const c of ['one', 'two', 'few', 'many', 'other']) for (const l of ['en', 'ar']) assert.ok(strings[l][`${key}#${c}`], `${l} ${key}#${c}`);
+    assert.ok(strings.ar[key] && strings.en[key], `${key} keeps its plain fallback`);
+    const forms = new Set(['one', 'two', 'few', 'many'].map(c => strings.ar[`${key}#${c}`]));
+    assert.strictEqual(forms.size, 4, `${key}: the Arabic one/two/few/many forms differ`);
+  }
+});
+
+test('AC7: .mono text and inputs are LTR and isolated; t() isolates interpolated values', () => {
+  assert.match(html, /\.mono \{[^}]*direction:ltr; unicode-bidi:isolate/);
+  assert.match(html, /input\.mono \{ width:100%/);
+  const { P } = loadPage();
+  assert.strictEqual(P.t('ed.cases#other', { n: 5 }), '⁨5⁩ cases');
+});
+
+test('AC7: Arabic counts take their own form for 1, 2, 3-10 and 11+ (41 is "many")', () => {
+  const { P } = loadPage();
+  P.setLang('ar');
+  const f = n => P.tn('ed.cases', 'n', { n });
+  assert.strictEqual(new Set([f(1), f(2), f(5), f(41)]).size, 4);
+  assert.strictEqual(f(41), P.t('ed.cases#many', { n: 41 }));
+  assert.strictEqual(f(5), P.t('ed.cases#few', { n: 5 }));
+});
+
+test('AC4: the wizard (step >= 2) and the editor (unsaved edits) register a beforeunload warning; a clean editor and an approved wizard do not', () => {
+  assert.match(html, /addEventListener\('beforeunload'/);
+  const { P, ctx, window } = loadPage();
+  const nodes = { wizard: ctx.document.getElementById('wizard'), editor: ctx.document.getElementById('editor') };
+  assert.strictEqual(typeof window.listeners.beforeunload, 'function');
+  nodes.wizard.hidden = true; nodes.editor.hidden = false;
+  assert.strictEqual(P.unloadWarning(), false);
+  P.ED.edits = [{ op: 'delete', index: 1 }];
+  assert.strictEqual(P.unloadWarning(), true);
+  let prevented = false;
+  window.listeners.beforeunload({ preventDefault() { prevented = true; } });
+  assert.ok(prevented);
+  P.ED.edits = [];
+  nodes.editor.hidden = true; nodes.wizard.hidden = false; P.WZ.step = 3;
+  assert.strictEqual(P.unloadWarning(), true);
+  P.WZ.approved = true;
+  assert.strictEqual(P.unloadWarning(), false);
+});
+
+test('AC1: the user picker keeps its option nodes and the chosen user across polls; disabled users are last and greyed out', () => {
+  const { P, nodes } = loadPage();
+  P.WZ.envs = [{ name: 'qc', portalUrl: 'https://app.example.test', users: ['alice', 'locked', 'bob'], userInfo: [{ name: 'alice', disabled: null }, { name: 'locked', disabled: 'account locked' }, { name: 'bob', disabled: null }] }];
+  P.WZ.needs = [];
+  P.WZ.state = { env: 'qc', attached: true, values: {}, missing: {}, user: null, run: null, suggestedUser: null };
+  P.renderStep3();
+  const opts = nodes.userSel.children.slice();
+  assert.deepStrictEqual(opts.map(o => o.attrs.value), ['', 'alice', 'bob', 'locked']);
+  assert.strictEqual(opts[0].textContent, '— pick a user —');
+  assert.ok('disabled' in opts[3].attrs && !('disabled' in opts[1].attrs));
+  assert.match(opts[3].textContent, /account locked/);
+  assert.match(nodes.whoLine.textContent, /Pick a user/);
+  nodes.userSel.value = 'bob'; nodes.userSel.handlers.change({ target: nodes.userSel });
+  for (let i = 0; i < 3; i++) P.renderStep3(); // three polls
+  assert.ok(nodes.userSel.children.every((o, i) => o === opts[i]), 'the options were not rebuilt');
+  assert.strictEqual(nodes.userSel.value, 'bob');
+  assert.match(nodes.whoLine.textContent, /bob/);
+  P.WZ.state = { ...P.WZ.state, suggestedUser: 'alice' };
+  P.renderStep3();
+  assert.ok(nodes.userSel.children[2].attrs.selected !== undefined, 'a suggestion rebuilds the list but the tester\'s choice (bob) stays selected');
+  assert.strictEqual(nodes.userSel.value, 'bob');
+});
+
+test('AC1: with no choice, the picker preselects suggestedUser; once a run exists the line names the run\'s user', () => {
+  const { P, nodes } = loadPage();
+  P.WZ.envs = [{ name: 'qc', portalUrl: 'https://app.example.test', users: ['alice', 'bob'], userInfo: [{ name: 'alice', disabled: null }, { name: 'bob', disabled: null }] }];
+  P.WZ.needs = [];
+  P.WZ.state = { env: 'qc', attached: true, values: {}, missing: {}, user: null, run: null, suggestedUser: 'bob' };
+  P.renderStep3();
+  assert.strictEqual(nodes.userSel.value, 'bob');
+  P.WZ.state = { ...P.WZ.state, user: 'alice', run: { runId: 'c1', status: 'ended' } };
+  P.renderStep3();
+  assert.match(nodes.whoLine.textContent, /alice/);
+  assert.doesNotMatch(nodes.whoLine.textContent, /bob/);
+});
+
+test('AC5: no phase line after the run ended or failed; "Collect again — missing only" is disabled when nothing is missing', () => {
+  const { P, nodes } = loadPage();
+  P.WZ.envs = [{ name: 'qc', portalUrl: 'https://x.test', users: ['alice'], userInfo: [{ name: 'alice', disabled: null }] }];
+  P.WZ.needs = [{ param: 'petId', in: 'path', type: 'integer' }];
+  const base = { env: 'qc', attached: true, values: { petId: { value: 3, source: 'ui' } }, missing: {}, user: 'alice' };
+  P.WZ.state = { ...base, run: { runId: 'c1', status: 'collecting', phase: { name: 'login', text: 'signing in' } } };
+  P.renderStep3();
+  assert.match(nodes.s3Notes.textContent, /signing in/);
+  P.WZ.state = { ...base, run: { runId: 'c1', status: 'failed', reason: 'gate not cleared', phase: { name: 'login', text: 'signing in' } } };
+  P.renderStep3();
+  assert.doesNotMatch(nodes.s3Notes.textContent, /signing in/);
+  assert.strictEqual(nodes.againMissing.disabled, true);
+  P.WZ.state = { ...base, values: {}, run: { runId: 'c1', status: 'ended' } };
+  P.renderStep3();
+  assert.strictEqual(nodes.againMissing.disabled, false);
+});
+
+test('AC6: the editor has a Blocked filter and count; a filter with no match shows an empty state (AC7)', () => {
+  const { P, nodes } = loadPage();
+  P.ED.path = 's.json'; P.ED.endpoints = { 'a.get': { method: 'GET', path: '/x', params: [], pathParams: [] } };
+  P.ED.doc = { cases: [{ name: 'c1', entry: 'a.get' }, { name: 'c2', entry: 'a.get' }] };
+  P.ED.last = { 1: { name: 'c1', result: 'BLOCKED', reasonCode: 'token-missing', reason: 'x' }, 2: { name: 'c2', result: 'PASS', status: 200 } };
+  P.renderEditor();
+  const filters = nodes.filters.children.map(b => b.textContent);
+  assert.ok(filters.some(f => /^Blocked \(1\)$/.test(f)), filters.join('|'));
+  assert.match(nodes.stats.textContent, /1⁩ blocked/);
+  P.ED.filter = 'blocked'; P.renderEditor();
+  assert.strictEqual(nodes.caseRows.children.filter(r => r.attrs.class === 'row').length, 1);
+  P.ED.last = {}; P.renderEditor();
+  assert.match(nodes.caseRows.textContent, /No case matches the filter/);
+});
+
 const asyncTests = [];
+asyncTests.push(['AC5: a refused typed value shows its reason on the row and the draft stays; a UI value gets a Change button', async () => {
+  const { P, nodes } = loadPage({
+    'POST /api/wizard/value': () => ({ ok: false, error: 'bad-type', expected: 'integer' }),
+    'GET /api/wizard/state': () => P0.state,
+  });
+  const P0 = { state: null };
+  P.WZ.envs = [{ name: 'qc', portalUrl: 'https://x.test', users: ['alice'], userInfo: [{ name: 'alice', disabled: null }] }];
+  P.WZ.needs = [{ param: 'petId', in: 'path', type: 'integer' }, { param: 'status', in: 'query', type: 'string' }];
+  P.WZ.step = 3;
+  P0.state = { ok: true, env: 'qc', attached: true, values: { status: { value: 'sold', source: 'ui' } }, missing: {}, user: null, run: null };
+  P.WZ.state = P0.state; P.WZ.drafts.petId = 'abc';
+  await P.setValue('petId', 'abc', 'manual');
+  assert.match(P.WZ.refused.petId, /integer/);
+  assert.strictEqual(P.WZ.drafts.petId, 'abc', 'the draft stays');
+  assert.match(nodes.needRows.textContent, /must be a ⁨integer⁩/);
+  const change = nodes.needRows.find(n => n.tag === 'button' && n.textContent === 'Change');
+  assert.strictEqual(change.length, 1, 'only the collected value has a Change button');
+}]);
+asyncTests.push(['AC6: step 4 splits ready from "will be BLOCKED: no token"; step 5 lists every write and warns', async () => {
+  const preview = { ok: true, summary: { total: 10, ready: 6, review: 1, skipped: 3, tokenBlocked: 4, tokenVar: 'SHOP_TOKEN', byKind: { happy: 4 }, bySource: {}, endpoints: [], mismatches: [{ id: 'GET /x', params: { a: 'g1', b: 'g2' } }] },
+    files: { catalog: 'c.json', suite: 's.json' }, exists: { catalog: false, suite: false }, token: { present: false }, baseUrl: { var: 'SHOP_BASE_URL', isSet: false, suggested: '' },
+    writes: [{ path: 'c.json', kind: 'catalog', when: 'always' }, { path: 's.json', kind: 'suite', when: 'always' }, { path: '.agentex/cache/api-data/shop.json', kind: 'data-store', when: 'data' }, { path: '.env', kind: 'env-line', when: 'base-url' }] };
+  const { P, nodes } = loadPage({ 'GET /api/wizard/preview': preview });
+  await P.loadPreview();
+  assert.match(nodes.totals.textContent, /2⁩ ready/);
+  assert.match(nodes.totals.textContent, /4⁩ will be BLOCKED: no token/);
+  assert.match(nodes.previewList.textContent, /come from different records/, 'step 4 shows the mismatch');
+  P.renderStep5();
+  assert.deepStrictEqual(nodes.fileList.children.length, 4);
+  assert.match(nodes.fileList.textContent, /api-data\/shop\.json/);
+  assert.match(nodes.fileList.textContent, /if you keep the base URL filled/);
+  assert.strictEqual(nodes.tokWarn.hidden, false);
+  assert.match(nodes.tokWarn.textContent, /SHOP_TOKEN/);
+}]);
+asyncTests.push(['AC4: a reload resumes at the furthest step the server holds', async () => {
+  const held = { ok: true, step: 3, source: 'specs/a.json', suiteName: 'Shop', env: 'qc', needs: [{ param: 'petId', in: 'path', type: 'integer' }], selection: ['GET /x'], values: {}, missing: {}, attached: false, run: null, user: null };
+  const { P } = loadPage({
+    'GET /api/envs': { environments: [{ name: 'qc', portalUrl: 'https://x.test', users: ['alice'], userInfo: [{ name: 'alice', disabled: null }] }] },
+    'GET /api/wizard/state': held,
+    'POST /api/wizard/spec': { ok: true, kept: true, files: { catalog: 'c', suite: 's' }, exists: {}, ops: [{ id: 'GET /x', method: 'GET', path: '/x', summary: '', auth: 'public', needs: [] }], selection: ['GET /x'] },
+  });
+  await P.startWizard();
+  assert.strictEqual(P.WZ.step, 3);
+  assert.deepStrictEqual([...P.WZ.selection], ['GET /x']);
+}]);
 asyncTests.push(['S-5: after Reload the Save-conflict banner is hidden', async () => {
   const { P, nodes } = loadPage({ 'POST /api/suite/save': { ok: false, error: 'conflict' }, 'GET /api/suite': { ok: true, path: 'suite.json', json: { cases: [] }, etag: 'e2', canonical: true } });
   P.ED.path = 'suite.json'; P.ED.etag = 'e1'; P.ED.doc = { cases: [{ name: 'c1' }] }; P.ED.edits = [{ op: 'update', index: 1, update: { name: 'x' } }];

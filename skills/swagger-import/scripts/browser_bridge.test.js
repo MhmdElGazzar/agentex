@@ -355,6 +355,194 @@ const CAPTURE = ['capture', '--session', 'agentex-collect', '--api-origin', 'htt
     assert.ok(!B.fillCode({ handleUrl: 'http://127.0.0.1:1/abc', locator: '#p', submit: '#go' }).includes('\n'));
   });
 
+
+  // ---- renew: headless resume of the user's saved login (a stubbed playwright package in the
+  // fixture project's node_modules, as session.test.js does; the real browser is never started)
+  const COOKIE = 'EVAL_SENTINEL_COOKIE_renew_55a';
+  const STORAGE = 'EVAL_SENTINEL_STORAGE_renew_71b';
+  const STATE_JSON = JSON.stringify({ cookies: [{ name: 'sid', value: COOKIE }], origins: [{ origin: 'https://app.example.test', localStorage: [{ name: 'oidc', value: STORAGE }] }] });
+  const FAKE_PW = `
+const fs = require('fs');
+const mode = () => process.env.FAKE_PW_MODE || 'ok';
+const log = ev => { const p = process.env.FAKE_PW_LOG; const a = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : []; a.push(ev); fs.writeFileSync(p, JSON.stringify(a)); };
+const ORIGIN = 'https://api.example.test';
+const chromium = {
+  async launch(opts) {
+    log({ launch: opts });
+    if (mode() === 'launch-throw') throw new Error('Chromium distribution is not found\\nsecond line');
+    return {
+      async newContext(o) {
+        log({ newContext: o.storageState });
+        fs.readFileSync(o.storageState, 'utf8'); // loading the state is reading it
+        const h = { request: [], response: [] };
+        return {
+          on(ev, fn) { h[ev].push(fn); },
+          async storageState(o2) { log({ storageStateCall: o2 }); },
+          async newPage() {
+            return {
+              async goto(u) {
+                log({ goto: u });
+                const emit = (url, headers, status) => { const req = { url: () => url, allHeaders: async () => headers }; h.request.forEach(f => f(req)); h.response.forEach(f => f({ request: () => req, status: () => status })); };
+                emit('https://elsewhere.example.test/x', { authorization: 'Bearer NOT-THE-APP-TOKEN' }, 200);
+                if (mode() === 'only-401') emit(ORIGIN + '/v1/me', { authorization: 'Bearer ' + process.env.FAKE_PW_TOKEN }, 401);
+                else if (mode() === 'no-token') emit(ORIGIN + '/v1/me', { accept: 'application/json' }, 200);
+                else { emit(ORIGIN + '/v1/me', { authorization: 'Bearer ' + process.env.FAKE_PW_TOKEN }, 200); }
+              },
+              async waitForLoadState() {},
+              async waitForTimeout() { await new Promise(r => setTimeout(r, 5)); },
+              locator(sel) { return { async count() { const signedOut = mode() === 'landmark-fail'; return /password/.test(sel) ? (signedOut ? 1 : 0) : (signedOut ? 0 : 1); } }; },
+            };
+          },
+        };
+      },
+      async close() { log({ close: true }); },
+    };
+  },
+};
+module.exports = { chromium, __fake: true };
+`;
+  function renewProj(files, { withPlaywright = true } = {}) {
+    const dir = proj({
+      'environments/qc.json': { users: { alice: { email: 'alice@example.test' }, bob: { email: 'bob@example.test', disabled: 'locked out: do not retry' }, qa_user_a: {} } },
+      ...files,
+    });
+    if (withPlaywright) {
+      const pw = path.join(dir, 'node_modules', 'playwright');
+      fs.mkdirSync(pw, { recursive: true });
+      fs.writeFileSync(path.join(pw, 'package.json'), JSON.stringify({ name: 'playwright', version: '0.0.0-fake', main: 'index.js' }));
+      fs.writeFileSync(path.join(pw, 'index.js'), FAKE_PW);
+    }
+    return dir;
+  }
+  const RENEW = ['renew', '--env', 'qc', '--user', 'alice', '--url', 'https://app.example.test/home', '--api-origin', 'https://api.example.test', '--absent', 'input[type=password]', '--wait-ms', '300', '--landmark-ms', '50', '--store', 'orders'];
+  const pwEvents = dir => { const f = path.join(dir, 'pw.json'); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : []; };
+  const renewRun = (dir, extra = [], env = {}, args = RENEW) => bridge(dir, [...args, ...extra], { FAKE_PW_LOG: path.join(dir, 'pw.json'), FAKE_PW_TOKEN: TOKEN, ...env });
+  const stat = f => { const s = fs.statSync(f); return `${s.mtimeMs}:${s.size}`; };
+  const noSecrets = r => { for (const v of [TOKEN, COOKIE, STORAGE, 'NOT-THE-APP-TOKEN']) assert.ok(!r.out.includes(v) && !r.err.includes(v), `${v} leaked`); };
+
+  await test('renew: the exact statePathFor file is loaded read-only; landmark, token from the app API, stored; state bytes and mtime unchanged; nothing secret printed', async () => {
+    const { statePathFor } = require('../../browser-driver/scripts/login_state.js');
+    const rel = statePathFor('qc', 'alice');
+    const dir = renewProj({ [rel]: STATE_JSON });
+    const abs = path.join(dir, rel);
+    const old = new Date(Date.now() - 3 * 86400000); fs.utimesSync(abs, old, old);
+    const before = stat(abs); const bytes = fs.readFileSync(abs, 'utf8');
+    const r = await renewRun(dir);
+    assert.strictEqual(r.code, 0, r.out + r.err);
+    assert.strictEqual(r.json.renewed, true);
+    assert.strictEqual(r.json.stateFile, rel);
+    assert.ok(r.json.ageDays >= 2.9 && r.json.ageDays <= 3.2, String(r.json.ageDays));
+    assert.deepStrictEqual(r.json.token, { seen: true, scheme: 'bearer', delivered: 'store', ref: 'orders-qc' });
+    const ev = pwEvents(dir);
+    assert.deepStrictEqual(ev.find(e => 'launch' in e).launch, { headless: true });
+    assert.strictEqual(ev.find(e => 'newContext' in e).newContext, abs);
+    assert.ok(!ev.some(e => 'storageStateCall' in e), 'the state is never written through the browser');
+    assert.ok(ev.some(e => e.close), 'the browser is closed');
+    assert.strictEqual(stat(abs), before);
+    assert.strictEqual(fs.readFileSync(abs, 'utf8'), bytes);
+    assert.ok(fs.readFileSync(path.join(dir, 'test/.auth/api-tokens/orders-qc.json'), 'utf8').includes(TOKEN));
+    assert.deepStrictEqual(fs.readdirSync(path.join(dir, 'test/.auth')).sort(), ['api-tokens', path.basename(rel)]);
+    noSecrets(r);
+  });
+
+  await test('renew: without the exact file, a hand-named file carrying the environment and the user key is used; newest wins; other users and environments are not', async () => {
+    const dir = renewProj({
+      'test/.auth/shop-qc-alice-state.json': STATE_JSON,
+      'test/.auth/old-qc-alice-state.json': STATE_JSON,
+      'test/.auth/shop-qc-bob-state.json': STATE_JSON,
+      'test/.auth/shop-uat-alice-state.json': STATE_JSON,
+      'test/.auth/shop-qc-alice-state.meta.json': '{}',
+    });
+    const old = new Date(Date.now() - 9 * 86400000); fs.utimesSync(path.join(dir, 'test/.auth/old-qc-alice-state.json'), old, old);
+    const newer = new Date(Date.now() + 5000); fs.utimesSync(path.join(dir, 'test/.auth/shop-uat-alice-state.json'), newer, newer);
+    fs.utimesSync(path.join(dir, 'test/.auth/shop-qc-bob-state.json'), newer, newer);
+    const r = await renewRun(dir);
+    assert.strictEqual(r.json.renewed, true, r.out);
+    assert.strictEqual(r.json.stateFile, 'test/.auth/shop-qc-alice-state.json');
+    // a user key with separators matches as a token run
+    const dir2 = renewProj({ 'test/.auth/shop-qc-qa_user_a-state.json': STATE_JSON });
+    const r2 = await renewRun(dir2, [], {}, RENEW.map(x => (x === 'alice' ? 'qa_user_a' : x)));
+    assert.strictEqual(r2.json.stateFile, 'test/.auth/shop-qc-qa_user_a-state.json', r2.out);
+  });
+
+  await test('renew: the exact file wins over a newer hand-named one', async () => {
+    const { statePathFor } = require('../../browser-driver/scripts/login_state.js');
+    const rel = statePathFor('qc', 'alice');
+    const dir = renewProj({ [rel]: STATE_JSON, 'test/.auth/shop-qc-alice-state.json': STATE_JSON });
+    const newer = new Date(Date.now() + 5000); fs.utimesSync(path.join(dir, 'test/.auth/shop-qc-alice-state.json'), newer, newer);
+    assert.strictEqual((await renewRun(dir)).json.stateFile, rel);
+  });
+
+  await test('renew: every normal miss is renewed:false with its reason, exit 0, browser closed, nothing secret printed', async () => {
+    const { statePathFor } = require('../../browser-driver/scripts/login_state.js');
+    const rel = statePathFor('qc', 'alice');
+    const none = renewProj({});
+    const a = await renewRun(none);
+    assert.strictEqual(a.code, 0);
+    assert.deepStrictEqual([a.json.renewed, a.json.reason, a.json.stateFile], [false, 'no-state-file', null]);
+    assert.strictEqual(pwEvents(none).length, 0, 'no browser without a file');
+
+    const dir = renewProj({ [rel]: STATE_JSON });
+    const bytes = fs.readFileSync(path.join(dir, rel), 'utf8');
+    for (const [mode, reason, seen] of [['landmark-fail', 'landmark-failed', false], ['no-token', 'no-token', false], ['only-401', 'no-token', true], ['launch-throw', 'browser-failed', false]]) {
+      fs.rmSync(path.join(dir, 'pw.json'), { force: true });
+      const r = await renewRun(dir, [], { FAKE_PW_MODE: mode });
+      assert.strictEqual(r.code, 0, `${mode}: ${r.out}`);
+      assert.strictEqual(r.json.renewed, false, mode);
+      assert.strictEqual(r.json.reason, reason, mode);
+      assert.strictEqual(r.json.token.seen, seen, mode);
+      assert.strictEqual(r.json.token.delivered, null);
+      if (mode !== 'launch-throw') assert.ok(pwEvents(dir).some(e => e.close), `${mode}: browser closed`);
+      assert.ok(!fs.existsSync(path.join(dir, 'test/.auth/api-tokens')), `${mode}: nothing stored`);
+      noSecrets(r);
+    }
+    assert.strictEqual(fs.readFileSync(path.join(dir, rel), 'utf8'), bytes);
+    const nopw = renewProj({ [rel]: STATE_JSON }, { withPlaywright: false });
+    const c = await renewRun(nopw);
+    assert.strictEqual(c.code, 0);
+    assert.deepStrictEqual([c.json.renewed, c.json.reason], [false, 'playwright-missing']);
+    assert.strictEqual(c.json.stateFile, rel);
+  });
+
+  await test('renew: a disabled or unknown user, bad usage and a missing studio exit 2 and never start a browser', async () => {
+    const { statePathFor } = require('../../browser-driver/scripts/login_state.js');
+    const dir = renewProj({ [statePathFor('qc', 'bob')]: STATE_JSON, [statePathFor('qc', 'alice')]: STATE_JSON });
+    const swap = u => RENEW.map(x => (x === 'alice' ? u : x));
+    const d = await renewRun(dir, [], {}, swap('bob'));
+    assert.strictEqual(d.code, 2);
+    assert.strictEqual(d.json.error, 'user-disabled');
+    assert.strictEqual(d.json.reason, 'locked out: do not retry');
+    const u = await renewRun(dir, [], {}, swap('carol'));
+    assert.deepStrictEqual([u.code, u.json.error], [2, 'unknown-user']);
+    const noLandmark = await renewRun(dir, [], {}, RENEW.filter(x => x !== '--absent' && x !== 'input[type=password]'));
+    assert.deepStrictEqual([noLandmark.code, noLandmark.json.error], [2, 'usage']);
+    const both = await renewRun(dir, ['--to-studio']);
+    assert.deepStrictEqual([both.code, both.json.error], [2, 'usage']);
+    const studio = await renewRun(dir, [], {}, RENEW.slice(0, RENEW.indexOf('--store')).concat('--to-studio'));
+    assert.deepStrictEqual([studio.code, studio.json.error], [2, 'no-studio']);
+    const ign = renewProj({ [statePathFor('qc', 'alice')]: STATE_JSON });
+    fs.writeFileSync(path.join(ign, '.gitignore'), '');
+    const n = await renewRun(ign);
+    assert.deepStrictEqual([n.code, n.json.error], [2, 'not-ignored']);
+    assert.strictEqual(pwEvents(dir).length + pwEvents(ign).length, 0);
+  });
+
+  await test('renew --to-studio hands the token to the open studio; nothing printed', async () => {
+    const { createStudio } = require('../../endpoint-testing/scripts/studio/server.js');
+    const { statePathFor } = require('../../browser-driver/scripts/login_state.js');
+    const dir = renewProj({ [statePathFor('qc', 'alice')]: STATE_JSON });
+    const st = await createStudio({ root: dir, port: 0, mode: 'wizard', mount: require('../../endpoint-testing/scripts/studio/wizard.js').mount, log: () => {} });
+    try {
+      const r = await renewRun(dir, [], {}, RENEW.slice(0, RENEW.indexOf('--store')).concat('--to-studio'));
+      assert.strictEqual(r.code, 0, r.out + r.err);
+      assert.deepStrictEqual(r.json.token, { seen: true, scheme: 'bearer', delivered: 'studio' });
+      assert.strictEqual(r.json.renewed, true);
+      assert.strictEqual(st.studio.wizard().token.value, TOKEN);
+      assert.strictEqual(st.studio.wizard().token.user, 'alice');
+      noSecrets(r);
+    } finally { st.close(); }
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

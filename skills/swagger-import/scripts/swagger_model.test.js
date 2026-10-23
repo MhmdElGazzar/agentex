@@ -58,6 +58,49 @@ test('listOperations: destructive = DELETE, a destructive verb, or x-destructive
   assert.deepStrictEqual(verb.map(o => o.destructive), [true, true, false]);
 });
 
+
+test('destructive (F4): a verb or its -s/-d/-ed/-ing form in a path segment, summary or operationId flags any method', () => {
+  const m = M.parseSpec({ openapi: '3.0.0', info: { title: 'x' }, paths: {
+    '/items/{id}/delete': { post: { responses: {} } },
+    '/items/delete-all': { post: { responses: {} } },
+    '/internal/reset-cache': { get: { responses: {} } },
+    '/cache/clear': { get: { responses: {} } },
+    '/cache/flushing': { put: { responses: {} } },
+    '/tokens': { post: { summary: 'Invalidates a token', responses: {} } },
+    '/orders/{id}': { get: { summary: 'Get one order', responses: {} } },
+    '/dropdowns': { get: { responses: {} } },
+  } }, 's');
+  const ops = M.listOperations(m);
+  const flags = Object.fromEntries(ops.map(o => [o.id, o.destructive]));
+  assert.deepStrictEqual(flags, { 'POST /items/{id}/delete': true, 'POST /items/delete-all': true, 'GET /internal/reset-cache': true, 'GET /cache/clear': true, 'PUT /cache/flushing': true, 'POST /tokens': true, 'GET /orders/{id}': false, 'GET /dropdowns': false });
+  assert.strictEqual(byId(ops, 'GET /internal/reset-cache').write, false);
+});
+
+test('destructive (F4): selected anyway, every case of a destructive non-write operation carries skip', () => {
+  const m = M.parseSpec({ openapi: '3.0.0', info: { title: 'x' }, servers: [{ url: 'http://h.test' }], paths: { '/internal/reset-cache': { get: { responses: { 200: { description: 'ok' } } } }, '/ping': { get: { responses: { 200: { description: 'ok' } } } } } }, 's');
+  const out = M.generate(m, ['GET /internal/reset-cache', 'GET /ping'], {}, { name: 'svc' });
+  const reset = out.suite.cases.filter(c => c.name.startsWith('get-internal-reset-cache'));
+  assert.ok(reset.length > 0 && reset.every(c => c.skip === M.DESTRUCTIVE_SKIP), JSON.stringify(reset));
+  assert.ok(out.suite.cases.filter(c => c.name.startsWith('get-ping')).every(c => !c.skip));
+});
+
+test('same record (B8): values from two groups -> summary.mismatches and a review note on each case; one group -> none', () => {
+  const m = M.parseSpec({ openapi: '3.0.0', info: { title: 'x' }, servers: [{ url: 'http://h.test' }], paths: {
+    '/shops/{shopId}/items/{itemId}': { get: { operationId: 'getItem', parameters: [
+      { name: 'shopId', in: 'path', required: true, schema: { type: 'integer' } }, { name: 'itemId', in: 'path', required: true, schema: { type: 'integer' } }], responses: { 200: { description: 'ok' } } } },
+    '/orders/{orderId}': { get: { operationId: 'getOrder', parameters: [{ name: 'orderId', in: 'path', required: true, schema: { type: 'integer' } }], responses: { 200: { description: 'ok' } } } },
+  } }, 's');
+  const vals = { shopId: { value: 7, source: 'project', group: 'a.log#url' }, itemId: { value: 98, source: 'project', group: 'b.log#url' }, orderId: { value: 5, source: 'project', group: 'c.json#$' } };
+  const out = M.generate(m, ['GET /shops/{shopId}/items/{itemId}', 'GET /orders/{orderId}'], vals, { name: 'svc' });
+  assert.deepStrictEqual(out.summary.mismatches, [{ id: 'GET /shops/{shopId}/items/{itemId}', params: { shopId: 'a.log#url', itemId: 'b.log#url' } }]);
+  const item = out.suite.cases.filter(c => c.entry === 'svc.getitem');
+  assert.ok(item.length > 0 && item.every(c => c.review.some(r => /different records/.test(r) && /404/.test(r))));
+  assert.ok(out.suite.cases.filter(c => c.entry === 'svc.getorder').every(c => !(c.review || []).some(r => /different records/.test(r))));
+  const same = M.generate(m, ['GET /shops/{shopId}/items/{itemId}'], { ...vals, itemId: { value: 98, source: 'project', group: 'a.log#url' } }, { name: 'svc' });
+  assert.deepStrictEqual(same.summary.mismatches, []);
+  assert.deepStrictEqual(M.needsReview(item[0]), false, 'needsReview keeps its definition');
+});
+
 const all = m => M.listOperations(m).map(o => o.id);
 const casesFor = (out, id) => out.suite.cases.filter(c => c.entry === `petstore.${out.summary.endpoints.find(e => e.id === id).request}`);
 
