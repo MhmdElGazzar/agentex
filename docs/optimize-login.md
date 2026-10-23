@@ -26,6 +26,13 @@ the session afterward, same as usual, so you only do it once.
 
 ## Quick reference
 
+- A test run does this by itself when the project's `login.mode` is `"session"`: it reloads the saved
+  login into its own browser, and after a login through the UI it saves a fresh one. You save and load
+  nothing by hand. The file is `test/.auth/<env>-<user>-state.json`, one per environment and user, next
+  to a small `<env>-<user>-state.meta.json` (the page and the signed-in check it was proven with; no
+  secrets). A file saved under the older per-app name is not read: the first run logs
+  in once and saves under the new name, and the old file is yours to delete. CI never saves a login; it
+  may still load one the pipeline provides.
 - Saved sessions live in `test/.auth/` — **gitignored by /init-test and /update-agentex, never commit them.** A
   saved session file is effectively a password: whoever has it is logged in as that user.
 - Only use this for applications you're authorized to test — it's for not repeating your own
@@ -37,7 +44,7 @@ the session afterward, same as usual, so you only do it once.
 - Check a saved session without running a full test:
   ```
   node ${CLAUDE_PLUGIN_ROOT}/skills/optimize-login/scripts/session.js resume \
-    --state test/.auth/<app>-<environment>-state.json \
+    --state test/.auth/<env>-<user>-state.json \
     --url   https://app.example.com/dashboard \
     --absent "role=button[name='Login']"
   ```

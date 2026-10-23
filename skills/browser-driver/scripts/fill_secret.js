@@ -331,4 +331,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { sweepStale, STALE_MS, MAX_TIMEOUT_MS, buildCode, parseArgs, toSelector };
+module.exports = { sweepStale, STALE_MS, MAX_TIMEOUT_MS, buildCode, parseArgs, toSelector, cliCommand };
