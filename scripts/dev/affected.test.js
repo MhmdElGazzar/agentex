@@ -202,6 +202,70 @@ test('a prompt file no eval covers is reported, not escalated', () => {
   assert.deepStrictEqual([json.tests.fallback, evals(json)], [[], []]);
 });
 
+// ── e2e browser tests (*.e2e.test.js, scripts/dev/e2e/**) ───────────────────────────────
+const E2E = (body) => `const path = require('node:path');\nconst CLI = path.join(__dirname, 'run.js');\n${body}`;
+
+test('a new or changed *.e2e.test.js selects no eval, while a plain *.test.js still does', () => {
+  let dir = repo();
+  write(dir, 'skills/s/scripts/page.e2e.test.js', E2E(''));
+  let r = run(dir, '--json').json;
+  assert.deepStrictEqual(evals(r), []);
+  assert.deepStrictEqual(tests(r), ['skills/s/scripts/page.e2e.test.js']);
+  dir = repo();
+  write(dir, 'skills/s/scripts/other.test.js', '// changed\n');
+  assert.deepStrictEqual(evals(run(dir, '--json').json), ['disc-s', 'disc-u']);
+});
+
+test('a change under scripts/dev/e2e/ selects no eval, even when a pattern names the file', () => {
+  const dir = repo();
+  write(dir, 'evals/coverage.json', JSON.stringify({ cases: { 'disc-s': ['skills/s', 'scripts/dev/e2e', 'scripts/dev/e2e/harness.js'], 'trigger-s': [], 'disc-t': [], 'disc-u': [] } }));
+  write(dir, 'scripts/dev/e2e/harness.js', 'module.exports = 2;\n');
+  write(dir, 'scripts/dev/e2e/covers.json', '{}\n');
+  const j = run(dir, '--json', '--files', 'scripts/dev/e2e/harness.js,scripts/dev/e2e/covers.json').json;
+  assert.deepStrictEqual(j.changed, ['scripts/dev/e2e/covers.json', 'scripts/dev/e2e/harness.js']);
+  assert.deepStrictEqual(evals(j), []);
+});
+
+test('a change to a script an e2e test spawns selects that e2e file', () => {
+  const dir = repo();
+  write(dir, 'skills/s/scripts/run.e2e.test.js', E2E(''));
+  git(dir, 'add', '-A'); git(dir, 'commit', '-q', '-m', 'e2e');
+  write(dir, 'skills/s/scripts/run.js', "require('../../../scripts/lib/a.js'); // changed\n");
+  const j = run(dir, '--json', '--base', 'feat~1').json;
+  assert.ok(tests(j).includes('skills/s/scripts/run.e2e.test.js'), JSON.stringify(tests(j)));
+  assert.deepStrictEqual(evals(j), ['disc-s']);
+});
+
+test('--run counts an e2e SKIP as skipped, not failed (exit 0, listed)', () => {
+  const dir = repo();
+  write(dir, 'scripts/b.js', '// changed\n');
+  write(dir, 'scripts/b.e2e.test.js', "const path = require('node:path');\nconst CLI = path.join(__dirname, 'b.js');\nconsole.log('SKIP: no chromium');\nprocess.exit(77);\n");
+  const r = run(dir, '--run');
+  assert.strictEqual(r.code, 0, r.out + r.err);
+  assert.match(r.out, /1 passed, 0 failed, 1 skipped/);
+  assert.match(r.out, /SKIP scripts\/b\.e2e\.test\.js: no chromium/);
+  const j = run(dir, '--run', '--json');
+  assert.strictEqual(j.code, 0);
+  assert.deepStrictEqual(j.json.skipped, [{ test: 'scripts/b.e2e.test.js', reason: 'no chromium' }]);
+  assert.deepStrictEqual(j.json.results.map((x) => x.test), ['scripts/b.e2e.test.js', 'scripts/b.test.js']);
+});
+
+test('--run: exit 77 from a plain test is still a failure; --require-e2e fails a skip and sets the variable', () => {
+  let dir = repo();
+  write(dir, 'scripts/b.js', '// changed\n');
+  write(dir, 'scripts/b.test.js', "const path = require('node:path');\nconst CLI = path.join(__dirname, 'b.js');\nconsole.log('SKIP: nope');\nprocess.exit(77);\n");
+  assert.strictEqual(run(dir, '--run').code, 1);
+  dir = repo();
+  write(dir, 'scripts/b.js', '// changed\n');
+  write(dir, 'scripts/b.e2e.test.js', "const path = require('node:path');\nconst CLI = path.join(__dirname, 'b.js');\nconsole.log('SKIP: no chromium');\nprocess.exit(77);\n");
+  const r = run(dir, '--run', '--require-e2e');
+  assert.strictEqual(r.code, 1, r.out);
+  assert.match(r.out, /e2e skipped under --require-e2e: no chromium/);
+  write(dir, 'scripts/b.e2e.test.js', "const path = require('node:path');\nconst CLI = path.join(__dirname, 'b.js');\nprocess.exit(process.env.AGENTEX_E2E_REQUIRE === '1' ? 0 : 5);\n");
+  assert.strictEqual(run(dir, '--run', '--require-e2e').code, 0);
+  assert.strictEqual(run(dir, '--run').code, 1, 'without the flag the variable is unset');
+});
+
 // ── --all, --run, errors ──────────────────────────────────────────────────────
 test('--all selects every test and every case', () => {
   const dir = repo();
