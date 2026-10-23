@@ -37,13 +37,15 @@ The orchestrator resolves `LOGIN_MODE`. When a scenario needs user U signed in, 
 | `session`, any other scenario | Load the saved login (step 1). |
 
 1. **Load.** Read `references/tools/login-state.md`, then run
-   `node ${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/scripts/login_state.js load --session <session> --env <ENVIRONMENT> --user <U>`.
+   `node ${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/scripts/login_state.js load --session <session> --user <U> --env <ENVIRONMENT>`
+   (leave out `--env` when ENVIRONMENT is empty). It loads the saved login into this session, opens the saved page and checks the saved landmark.
    - Exit 0 `RESUME_PASS`: you are signed in from the saved login. Continue with the steps.
    - Exit 1 `RESUME_FAIL` (with its reason): drive the login UI (step 2).
    - Exit 2 `BLOCKED`: the scenario is BLOCKED with the script's reason verbatim. A result marked `infrastructure: true` gets the one retry the driver contract allows.
 2. **Drive the login UI** in this session. A captcha, or an OTP you cannot obtain, is BLOCKED `captcha-or-otp`: surface it, never defeat it (the **optimize-login** skill's Limits). Then verify you are in by a landmark element, never by the URL. No landmark: the login step fails, FAIL or BLOCKED by the usual rules, with its evidence kept. Landmark held: in `fresh` mode, or when the login is under test, continue with the steps.
 3. **Save** (`session` mode, login not under test), only after the landmark proved you in. `<landmark>` is the selector of an element only a signed-in user sees:
-   `node ${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/scripts/login_state.js save --session <session> --env <ENVIRONMENT> --user <U> --present <landmark>`.
+   `node ${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/scripts/login_state.js save --session <session> --user <U> --present <landmark> --env <ENVIRONMENT>`
+   (leave out `--env` when ENVIRONMENT is empty). It checks the landmark on the current page again before it stores anything.
    - Exit 0 (`SAVED` or `SKIPPED`): continue with the steps.
    - Exit 1 or 2: add one report note, "saved login not stored: <reason>", and continue with the steps. A save that fails never changes a verdict.
 
