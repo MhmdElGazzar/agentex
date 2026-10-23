@@ -364,6 +364,21 @@ function serve(handler) {
     assert.strictEqual(JSON.parse(body).title, 'Buy milk & eggs');
   });
 
+  await test('legacy {name} body placeholder: backslash, newline, tab, quote, U+2028, emoji arrive byte-for-byte', async () => {
+    const values = ['C:\\new\\test', 'line1\nline2', 'a\tb', 'ends with \\', 'say "hi"', 'a\u2028b', 'smile \u{1F600}', 'Buy milk & eggs'];
+    for (const value of values) {
+      let body = '';
+      const { srv, port } = await serve((req, res) => { req.on('data', d => (body += d)); req.on('end', () => res.end('{}')); });
+      const cat = { ...CATALOG, baseUrl: `http://127.0.0.1:${port}`,
+        requests: [{ name: 'create-todo', method: 'POST', path: '/todos', params: ['title'], body: { title: 'x {title} y', completed: false } }] };
+      const dir = proj({ 'integration/sample_api.json': cat });
+      const { code, out } = await run(dir, ['--entry', 'sample-api.create-todo', '--param', `title=${value}`, '--log', path.join(dir, 'x.log')]);
+      srv.close();
+      assert.strictEqual(code, 0, JSON.stringify(value) + ' ' + JSON.stringify(out));
+      assert.strictEqual(JSON.parse(body).title, `x ${value} y`, JSON.stringify(value));
+    }
+  });
+
   await test('params listed in req.query go to the query string, even when also used in the body', async () => {
     let url = null;
     const { srv, port } = await serve((req, res) => { url = req.url; res.end('{}'); });
