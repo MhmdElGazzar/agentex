@@ -193,7 +193,7 @@ Open issues and PRs on the [GitHub repository](https://github.com/MhmdElGazzar/a
 - **Marwah Zain**
 - [**@mabdel130**](https://github.com/mabdel130) — `extent-report` skill (PR #1)
 - [**@YoussefAbdellah2023**](https://github.com/YoussefAbdellah2023) — `extent-report` v2/v3, Jira and Figma integration work (PRs #5, #6, #7, #8, #11, #13, #14)
-- **Hager-Helmy**
+- [**@Hager-Helmy**](https://github.com/Hager-Helmy) — the `bug-report-azure` skill (PR #2) and its rebuild as one context/prepare/execute operation with deterministic duplicate ranking (PR #19)
 - [**@MahmoudElSharkawy**](https://github.com/MahmoudElSharkawy) — annotated screenshots on filed Azure bugs (PR #20)
 - [**@abdo-mohamed-ezzat**](https://github.com/abdo-mohamed-ezzat) — session login reuse (PR #17), multi-context flows RFC (#18)
 - [**@MohamedAbdella**](https://github.com/MohamedAbdella) — multi-runtime support: native Codex and Copilot execution, guarded project installation and parallel agent coordination (PRs #22, #27, #28, #29). The host branches are generated from `main` using his host knowledge.
