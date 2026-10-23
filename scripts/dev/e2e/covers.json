@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "_doc": "Maps each e2e file to the files or file#fn1,fn2 scopes its cases assert on (see proof.js). Not derived from the require graph. login_state.js#save is deliberately NOT listed: it holds fs.chmodSync(tmpFile, 0o600), and mutation M4 (drop that chmod) is an EQUIVALENT MUTANT with @playwright/cli 0.1.22: the script pre-creates the temp file at 0600 and the CLI writes into it in place, so no case can see the line. A change anywhere in save therefore runs the ui lane live. engine.js is not listed either: the setup page never calls its keepsPlainLiteral/buildEnvUsers.",
+  "skills/browser-driver/scripts/login_state.e2e.test.js": [
+    "skills/browser-driver/scripts/login_state.js#AUTH_REL,LOAD_LANDMARK_MS,SAVE_LANDMARK_MS,HANDLE_RE,INFRA_RE,handle,statePathFor,sidecarPathFor,emit,blocked,environmentOf,checkUser,cli,sessionGone,landmark,bareUrl,readSidecar,load,isIgnored,main"
+  ],
+  "skills/swagger-import/scripts/browser_bridge.e2e.test.js": [
+    "skills/swagger-import/scripts/browser_bridge.js#findCli,findToken,tokensOf,findRun,carriesBoth,pickStateFile,sleep,renew"
+  ],
+  "skills/endpoint-testing/scripts/studio/studio.e2e.test.js": [
+    "skills/endpoint-testing/scripts/studio/studio.html#STUDIO,t,tn,matches,rcText,resultCell,renderEditor,renderUserSel,renderStep3,refreshState,pollState",
+    "skills/endpoint-testing/scripts/studio/studio_view.js",
+    "skills/endpoint-testing/scripts/studio/server.js#jsStringBody"
+  ],
+  "scripts/wizard/ui.e2e.test.js": [
+    "scripts/wizard/ui.html#isPlainLiteral,keepsPlainLiteral,usersFromEnv,userSecretNameInput,buildUsersObj"
+  ]
+}

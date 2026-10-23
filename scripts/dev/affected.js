@@ -4,13 +4,15 @@
 // never shipped (scripts/hosts/build_host.js COMMON_EXCLUDES). A release still runs
 // everything: `--all --run`.
 //
-// Usage: node scripts/dev/affected.js [--base <ref>] [--files a,b] [--all] [--run] [--json]
+// Usage: node scripts/dev/affected.js [--base <ref>] [--files a,b] [--all] [--run] [--require-e2e] [--json]
 //   Changed files = the merge-base of <ref> (default main) and HEAD, diffed against the
 //   working tree, plus untracked files. --files replaces that lookup (comma-separated,
 //   repeatable).
 //   --run executes the selected script tests in parallel through scripts/run-tests.js's pool
 //   (its SERIAL_ONLY files one at a time after); evals are only listed (they run through
-//   `claude plugin eval`, slow and paid, so starting them stays a human call).
+//   `claude plugin eval`, slow and paid, so starting them stays a human call). Each file is
+//   judged by run-tests.js's classify(): an *.e2e.test.js that exits 77 with a `SKIP:` line is
+//   listed as skipped, not failed; --require-e2e sets AGENTEX_E2E_REQUIRE=1 and fails skips.
 // Exit: 0 ok · 1 a selected test failed (--run) · 2 usage or git error.
 //
 // Tests: a test depends on what it require()s and on every path it builds from __dirname
@@ -25,13 +27,15 @@
 // scripts — a script change selects a case only through a pattern naming that script (or a
 // file that requires it); a *.test.js still counts as anything else. Any change to a
 // skills/*/SKILL.md or commands/*.md frontmatter selects every trigger-* and negative-* case.
+// A changed *.e2e.test.js or scripts/dev/e2e/** (maintainer browser tests and their harness)
+// selects no eval: those files test the plugin, they are not part of what an eval exercises.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const { matcher } = require('../hosts/transforms.js');
-const { runPool, partition, SERIAL_ONLY } = require('../run-tests.js');
+const { runPool, partition, classify, SERIAL_ONLY } = require('../run-tests.js');
 
 // Only these paths can change what a test or an eval sees; docs, CHANGELOG and spikes cannot.
 const IMPACT_ROOTS = matcher(['skills', 'scripts', 'commands', 'agents', 'templates', 'hosts',
@@ -39,6 +43,8 @@ const IMPACT_ROOTS = matcher(['skills', 'scripts', 'commands', 'agents', 'templa
 const NEVER_SCANNED = matcher(['.claude', '.git', 'node_modules']);
 const DESCRIPTION_SOURCES = matcher(['skills/*/SKILL.md', 'commands/*.md']);
 const PROMPT_FILES = matcher(['skills', 'commands', 'agents', 'references']);
+// Browser-test files and their shared harness: never part of what an eval exercises.
+const NO_EVAL = matcher(['**/*.e2e.test.js', 'scripts/dev/e2e']);
 const isTest = (f) => f.endsWith('.test.js');
 const isJs = (f) => /\.[cm]?js$/.test(f);
 const isScript = (f) => isJs(f) && !isTest(f);
@@ -219,6 +225,7 @@ function select({ root, changed, mergeBase = null, all = false }) {
     for (const t of tests) if (reaches(c, closures.get(t))) { testHits.get(t).push(c); reachedByTest = true; }
 
     let reachedByEval = false;
+    if (NO_EVAL(c)) { /* no eval */ } else {
     const evalCase = c.match(/^evals\/([^/]+)\//);
     if (evalCase && evalHits.has(evalCase[1])) { evalHits.get(evalCase[1]).push(c); reachedByEval = true; }
     const via = isJs(c) ? [c, ...graph.dependents(c)] : [c];
@@ -227,6 +234,7 @@ function select({ root, changed, mergeBase = null, all = false }) {
       result.evals.descriptionChanged.push(c);
       for (const k of cases) if (/^(trigger|negative)-/.test(k)) evalHits.get(k).push(c);
       reachedByEval = true;
+    }
     }
 
     if (c.startsWith('evals/')) continue;
@@ -242,11 +250,14 @@ function select({ root, changed, mergeBase = null, all = false }) {
 }
 
 // ---- running and printing ---------------------------------------------------------------
-async function runTests(root, selected) {
+async function runTests(root, selected, requireE2e = false) {
   const { pool, serial } = partition(selected.map((s) => s.test), SERIAL_ONLY);
-  const done = [...await runPool(root, pool, os.cpus().length), ...await runPool(root, serial, 1)];
-  return done.map((r) => ({ test: r.file, exit: r.exit === null ? 1 : r.exit, tail: r.tail }))
-    .sort((a, b) => a.test.localeCompare(b.test));
+  const env = requireE2e ? { AGENTEX_E2E_REQUIRE: '1' } : {};
+  const done = [...await runPool(root, pool, os.cpus().length, env), ...await runPool(root, serial, 1, env)];
+  return done.map((r) => {
+    const v = classify(r, { requireE2e });
+    return { test: r.file, exit: r.exit === null ? 1 : r.exit, tail: r.tail, status: v.status, reason: v.reason };
+  }).sort((a, b) => a.test.localeCompare(b.test));
 }
 
 function print(r, header) {
@@ -268,12 +279,13 @@ function print(r, header) {
 }
 
 function parseArgs(argv) {
-  const a = { base: 'main', files: null, all: false, run: false, json: false, root: path.resolve(__dirname, '..', '..') };
+  const a = { base: 'main', files: null, all: false, run: false, require: false, json: false, root: path.resolve(__dirname, '..', '..') };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--all') a.all = true;
     else if (k === '--run') a.run = true;
     else if (k === '--json') a.json = true;
+    else if (k === '--require-e2e') a.require = true;
     else if (k === '--base' || k === '--files' || k === '--root') {
       const v = argv[++i];
       if (v === undefined) throw new Error(`${k} needs a value`);
@@ -310,12 +322,16 @@ async function main(argv) {
 
   if (!a.json) print(r, header);
   const started = Date.now();
-  r.results = await runTests(a.root, r.tests.selected);
-  const failed = r.results.filter((x) => x.exit !== 0);
+  r.results = await runTests(a.root, r.tests.selected, a.require);
+  const failed = r.results.filter((x) => x.status === 'failed');
+  const skipped = r.results.filter((x) => x.status === 'skipped');
+  const passed = r.results.length - failed.length - skipped.length;
+  r.skipped = skipped.map((x) => ({ test: x.test, reason: x.reason }));
   if (a.json) console.log(JSON.stringify({ ...r, results: r.results.map(({ test, exit }) => ({ test, exit })) }));
   else {
-    failed.forEach((x) => console.log(`\nFAIL node ${x.test} (exit ${x.exit})\n${x.tail}`));
-    console.log(`\n${r.results.length - failed.length} passed, ${failed.length} failed — ${((Date.now() - started) / 1000).toFixed(1)}s`);
+    failed.forEach((x) => console.log(`\nFAIL node ${x.test} (exit ${x.exit})${x.reason ? `: ${x.reason}` : ''}\n${x.tail}`));
+    skipped.forEach((x) => console.log(`SKIP ${x.test}: ${x.reason}`));
+    console.log(`\n${passed} passed, ${failed.length} failed, ${skipped.length} skipped — ${((Date.now() - started) / 1000).toFixed(1)}s`);
   }
   return failed.length ? 1 : 0;
 }
