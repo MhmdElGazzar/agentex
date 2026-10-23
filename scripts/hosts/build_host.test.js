@@ -16,11 +16,13 @@ function test(name, fn) {
   catch (e) { failures.push(name); console.error(`  FAIL - ${name}: ${e.message}`); }
 }
 
-const GIT_ENV = {
-  ...process.env,
+// buildHostCommit runs git in this process (commit-tree), so the identity goes into our own
+// environment, not only the children's: a clean runner has no git identity to fall back on.
+Object.assign(process.env, {
   GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.com',
   GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.com',
-};
+});
+const GIT_ENV = { ...process.env };
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', env: GIT_ENV }).trim();
 }
