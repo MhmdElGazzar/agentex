@@ -87,8 +87,10 @@ const cases = [
     await page.evaluate(() => { document.querySelector('#userSel option[value="b"]').__probe = true; });
     const polls = () => seen.requests.filter((u) => u.endsWith('/api/wizard/state')).length;
     const before = polls();
-    await page.waitForTimeout(3500);
-    assert.ok(polls() - before >= 3, `the page polled ${polls() - before} times in 3.5 s`);
+    // Wait for the condition (three more polls of the page's own 1 s poll), not for a fixed time: a starved CPU polls late.
+    const t0 = Date.now();
+    while (polls() - before < 3 && Date.now() - t0 < 15000) await page.waitForTimeout(100);
+    assert.ok(polls() - before >= 3, `the page polled only ${polls() - before} times in ${Date.now() - t0} ms (needed 3)`);
     assert.strictEqual(await page.locator('#userSel').inputValue(), 'b', 'the choice survived the polls');
     assert.strictEqual(await page.evaluate(() => document.querySelector('#userSel option[value="b"]').__probe === true), true, 'the same <option> node: the list was not rebuilt');
     assert.deepStrictEqual(seen.errors, []);
@@ -172,7 +174,8 @@ const cases = [
   ...HOSTILE.map(([label, value]) => [`hostile --spec (${label}): no page error, no injected global, the input holds the value verbatim`, async () => {
     const s = await startStudio(wizardFiles(), ['--mode', 'wizard', '--lang=ar', `--spec=${value}`]);
     const w = await openPage(lb, s.url);
-    await w.page.locator('#specIn').waitFor({ state: 'visible', timeout: 10000 });
+    // #wizard is unhidden BEFORE the page's boot fills #specIn (after its /api/envs and /api/wizard/state calls): wait for the boot's last step, the step tabs.
+    await w.page.locator('#stepTabs span').first().waitFor({ state: 'visible', timeout: 15000 });
     assert.deepStrictEqual(w.seen.errors, []);
     assert.strictEqual(await w.page.evaluate(() => typeof globalThis.__pwn), 'undefined', 'no injected code ran');
     assert.strictEqual(await w.page.locator('#specIn').inputValue(), value);

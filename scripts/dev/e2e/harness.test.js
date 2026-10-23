@@ -187,6 +187,48 @@ const p = h.project({ files: { 'config/project.json': { defaultEnvironment: 'qa'
     assert.ok(!alive(i.pid), 'child stopped');
   });
 
+
+  // ---- a detached process tree and the socket dir are gone after every way of ending ------------
+  // The stand-in for a CLI session daemon: a detached node whose own child (the "browser") outlives a plain kill.
+  const treeProbe = (ending) => probe('tree.js', `
+const fs = require('node:fs');
+const { spawn } = require('node:child_process');
+h.requireDeps();
+const p = h.project({});
+const daemon = spawn(process.execPath, ['-e', "const {spawn}=require('child_process');const k=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});console.log(k.pid);setInterval(()=>{},1000)"], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
+daemon.stdout.once('data', (d) => {
+  h.adopt(daemon.pid, 'stub daemon');
+  fs.writeFileSync(process.argv[2], JSON.stringify({ daemon: daemon.pid, browser: Number(String(d).trim()), sockets: p.env().PWTEST_SOCKETS_DIR || null, root: p.root }));
+  ${ending}
+});`);
+  const endings = {
+    'a failed assertion': "h.run([['fails', async () => { throw new Error('forced'); }]]);",
+    'SIGTERM mid-case': "h.run([['hangs', () => new Promise(() => {})]]); setTimeout(() => process.kill(process.pid, 'SIGTERM'), 300);",
+    'an uncaught exception': "h.run([['hangs', () => new Promise(() => {})]]); setTimeout(() => { throw new Error('late'); }, 300);",
+  };
+  for (const [label, ending] of Object.entries(endings)) {
+    await test(`after ${label}: the detached daemon, its child, the socket dir and the temp root are all gone`, async () => {
+      const info = path.join(mk('info'), 'info.json');
+      const r = await child(treeProbe(ending), [info], { AGENTEX_E2E_NODE_MODULES: fakeGood });
+      assert.notStrictEqual(r.status, 0, r.out);
+      const i = readInfo(info);
+      assert.ok(!alive(i.daemon), 'daemon killed');
+      assert.ok(!alive(i.browser), 'its child killed');
+      if (i.sockets) assert.ok(!fs.existsSync(i.sockets), 'socket dir removed');
+      assert.ok(!fs.existsSync(i.root), 'temp root removed');
+    });
+  }
+
+  // What only the handlers provide (the exit hook cleans up either way): a named FAIL line, never a bare stack.
+  for (const [label, throwing, line] of [['an uncaught exception', "throw new Error('late')", /^  FAIL - uncaught: .*late/m], ['an unhandled rejection', "Promise.reject(new Error('late'))", /^  FAIL - unhandled rejection: .*late/m]]) {
+    await test(`${label} outside a case: exit 1 with the harness's own FAIL line`, async () => {
+      const f = probe('late.js', `h.requireDeps(); h.run([['hangs', () => new Promise(() => {})]]); setTimeout(() => { ${throwing}; }, 300);`);
+      const r = await child(f, [], { AGENTEX_E2E_NODE_MODULES: fakeGood });
+      assert.strictEqual(r.status, 1, r.out);
+      assert.match(r.out, line);
+    });
+  }
+
   // ---- scanOutputs ---------------------------------------------------------------------------
   const { scanOutputs } = require(HARNESS);
   await test('scanOutputs: clean outputs and files pass; a sentinel in an output or in a file under dir fails, without echoing it', () => {

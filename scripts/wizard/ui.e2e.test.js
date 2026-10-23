@@ -42,15 +42,22 @@ async function startWizard() {
 const nextButton = (page) => page.getByRole('button', { name: /Next/ });
 const saveButton = (page) => page.getByRole('button', { name: /Save/ });
 
+// Next, then wait until the page has really moved on (its text changed), not a fixed pause.
+async function stepForward(page) {
+  const before = await page.evaluate(() => document.body.innerText);
+  await nextButton(page).click();
+  await page.waitForFunction((b) => document.body.innerText !== b, before, { timeout: 10000 });
+}
+
 // The page's own navigation: step by step, to the users step.
 async function toUsersStep(page) {
   await page.locator('#mc-steps').click();
   await page.locator('#btn-start').click();
-  for (let i = 0; i < 12 && !(await page.locator('.user-card').count()); i++) { await nextButton(page).click(); await page.waitForTimeout(150); }
+  for (let i = 0; i < 12 && !(await page.locator('.user-card').count()); i++) { await stepForward(page); }
   await page.locator('.user-card').first().waitFor({ state: 'visible', timeout: 5000 });
 }
 async function toSaveAndSave(page) {
-  for (let i = 0; i < 12 && !(await saveButton(page).count()); i++) { await nextButton(page).click(); await page.waitForTimeout(150); }
+  for (let i = 0; i < 12 && !(await saveButton(page).count()); i++) { await stepForward(page); }
   const [res] = await Promise.all([page.waitForResponse((r) => r.url().endsWith('/api/save')), saveButton(page).click()]);
   assert.strictEqual(res.status(), 200);
   const body = await res.json();
@@ -58,7 +65,7 @@ async function toSaveAndSave(page) {
   await page.getByText('Setup complete').waitFor({ state: 'visible', timeout: 5000 });
   return body;
 }
-async function exited(kid) { for (let i = 0; i < 40 && !kid.exited(); i++) await new Promise((r) => setTimeout(r, 100)); return kid.exited(); }
+async function exited(kid) { for (let i = 0; i < 150 && !kid.exited(); i++) await new Promise((r) => setTimeout(r, 100)); return kid.exited(); }
 
 let lb;
 const cases = [
