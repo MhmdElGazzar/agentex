@@ -140,12 +140,21 @@ function tempRoot() {
   // This file's own TMPDIR: in-process mkdtemp and every child (the studio session file lands there) use it.
   process.env.TMPDIR = process.env.TEMP = process.env.TMP = tmp;
   register('temp root', () => { fs.rmSync(root, { recursive: true, force: true }); });
-  temp = { root, tmp };
+  // playwright-cli talks to its session daemon over a unix socket, and a socket path is limited to ~100
+  // bytes: the long per-user tmpdir of macOS overflows it. Playwright's own PWTEST_SOCKETS_DIR points
+  // the sockets at a short folder of this file's own (a named pipe on Windows: not needed there).
+  let sockets = null;
+  if (process.platform !== 'win32') {
+    const base = isDir('/tmp') ? '/tmp' : os.tmpdir();
+    sockets = fs.mkdtempSync(path.join(base, 'ae-'));
+    register('socket dir', () => { fs.rmSync(sockets, { recursive: true, force: true }); });
+  }
+  temp = { root, tmp, sockets };
   return temp;
 }
 function childEnv(extra = {}) {
-  const { tmp } = tempRoot();
-  const env = { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp, npm_config_offline: 'true' };
+  const { tmp, sockets } = tempRoot();
+  const env = { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp, npm_config_offline: 'true', ...(sockets ? { PWTEST_SOCKETS_DIR: sockets } : {}) };
   for (const k of SCRUBBED_ENV) delete env[k];
   return { ...env, ...extra };
 }
