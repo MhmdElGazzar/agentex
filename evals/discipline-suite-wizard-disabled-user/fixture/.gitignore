@@ -1,0 +1,5 @@
+.env
+test/.auth/
+.agentex/cache/
+.agentex/scratch/
+.playwright-cli/

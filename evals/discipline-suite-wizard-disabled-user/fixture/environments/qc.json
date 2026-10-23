@@ -1,0 +1,20 @@
+{
+  "portalUrl": "https://app.example.test",
+  "users": {
+    "alice": {
+      "email": "alice@example.test",
+      "password": {
+        "envSecret": "ALICE_PASSWORD"
+      },
+      "disabled": "locked out after repeated failed sign-ins; reset pending"
+    },
+    "bob": {
+      "email": "bob@example.test"
+    }
+  },
+  "defaults": {
+    "password": {
+      "envSecret": "DEFAULT_PASSWORD"
+    }
+  }
+}
