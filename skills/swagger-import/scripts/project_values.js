@@ -4,40 +4,52 @@
 // itself before anyone opens the application. Deterministic search only; which hit answers
 // which need is the agent's judgment.
 //
-// Usage: node project_values.js --needs <json-file|-> [--max-files 500] [--max-bytes 1048576]
-//          [--project <root>]
-//   --needs: [{param, in, type}] or a channel "collect" event ({needs: [...]}).
-// Searches: test/** *.json / *.csv, executions/** *.log / *.json (evidence logs: the response
-// body and the request's query string). Skips .env*, test/.auth/, .agentex/, node_modules/,
-// dot-folders, secret-named keys (a need named like a secret is not searched at all) and
-// JWT-shaped values. Lists integration/**/*_db.json queries with "selectOnly" (starts with
-// SELECT/WITH and has no write keyword) — run only those, through run_db.js.
-// Prints ONE JSON line: {"ok":true,"hits":[{param,value,source:"project",file,path}],
-//   "db":[{entry,file,params,selectOnly,description,query}],"scanned":{files,bytes},
-//   "truncated":bool,"skippedNeeds":[...]}. Exit 0, or 2 on bad input.
+// Usage: node project_values.js --needs <json-file|-> [--env <e>] [--max-files 500]
+//          [--max-bytes 1048576] [--max-total-bytes 268435456] [--project <root>]
+//   --needs: [{param, in, type, operations?}] or a channel "collect" event ({env, needs: [...]}).
+//   --env: the environment the values must belong to (default: the event's env).
+// Order: executions/ run folders newest first (folder name, then mtime), then test/. High-signal
+// execution files (*.log, suite-result.json, run-summary.json, result.md, report.md) do not count
+// toward --max-files. Skips .env*, test/.auth/, .agentex/, node_modules/, dot-folders, secret-named
+// keys (a need named like a secret is not searched at all) and JWT-shaped values. Extraction: URL
+// paths matched against the needs' operations' path templates ("GET /items/{itemId}" <- /items/98),
+// query strings, JSON bodies and test data by key name (plus <stem>.id -> <stem>Id), CSV columns.
+// Every hit carries environment, owner and group (null when nothing in the project says; never a
+// guess). A hit from another environment is dropped and only counted. environments/<env>.json is
+// read for user keys and non-secret string fields (owner attribution), never a secret.
+// Lists integration/**/*_db.json queries with "selectOnly" (starts with SELECT/WITH and has no
+// write keyword) — run only those, through run_db.js.
+// Prints ONE JSON line: {"ok":true,"hits":[{param,value,source:"project",file,path,from,
+//   environment,owner,group}],"groups":[{id,file,at,environment,owner,covers,values}],
+//   "db":[...],"scanned":{files,bytes,highSignal},"truncated":bool,"truncatedReason"?,
+//   "skipped":{"otherEnvironment":n},"skippedNeeds":[...]}. Exit 0, or 2 on bad input.
 const fs = require('fs');
 const path = require('path');
 
-const MAX_FILES = 500;            // (Q8)
+const MAX_FILES = 500;            // (Q8) counted files: test data and non-evidence execution files
 const MAX_BYTES = 1024 * 1024;    // per file (Q8)
+const MAX_TOTAL_BYTES = 256 * 1024 * 1024; // guard over the whole scan
 const MAX_HITS_PER_PARAM = 5;     // distinct values kept per need (Q8)
+const MAX_GROUP_ID = 200;
 const SECRET_RE = /token|secret|passw|authori|cookie|session|otp/i;
 const JWT_RE = /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/;
 const WRITE_SQL = /\b(insert|update|delete|merge|drop|truncate|alter|create|exec|execute|grant|revoke|into)\b/i;
+const HIGH_SIGNAL_NAMES = new Set(['suite-result.json', 'run-summary.json', 'result.md', 'report.md']);
 
 const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 const posix = p => p.split(path.sep).join('/');
+const isHighSignal = rel => rel.startsWith('executions/') && (rel.endsWith('.log') || HIGH_SIGNAL_NAMES.has(rel.split('/').pop()));
 
-function listFiles(root, rel, exts, out, cap) {
+// Every candidate file under root/rel, directory order sorted by name; no cap (the caller caps).
+function listFiles(root, rel, exts, out) {
   let entries;
   try { entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch { return; }
   for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (out.length >= cap) { out.truncated = true; return; }
     const r = rel ? `${rel}/${e.name}` : e.name;
     if (e.name.startsWith('.env')) continue;
     if (e.isDirectory()) {
       if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
-      listFiles(root, r, exts, out, cap);
+      listFiles(root, r, exts, out);
     } else if (e.isFile() && exts.some(x => e.name.toLowerCase().endsWith(x))) out.push(r);
   }
 }
