@@ -51,6 +51,7 @@ if (m === 'bad') { process.stderr.write('Error: ENOENT or invalid JSON in state 
 if (cmd === 'state-save') {
   const target = argv[2];
   fs.writeFileSync(target, JSON.stringify({ cookies: [{ name: 's', value: process.env.FAKE_COOKIE }], origins: [{ localStorage: [{ name: 'k', value: process.env.FAKE_STORAGE }] }] }));
+  fs.writeFileSync(path.join(rec, 'ino.json'), JSON.stringify({ ino: fs.statSync(target).ino, finalExists: process.env.FAKE_FINAL ? fs.existsSync(process.env.FAKE_FINAL) : null }));
   leak(); process.stdout.write(target + '\n'); process.exit(0);
 }
 if (cmd === 'run-code') {
@@ -94,7 +95,9 @@ function run(args, { cwd = proj(), modes = '', held = true, ci = false, seam = t
   let json = null; try { json = JSON.parse(lines[lines.length - 1]); } catch {}
   const f = path.join(rec, 'calls.json');
   const calls = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : [];
-  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '', lines, json, calls, cmds: calls.map((c) => c.argv[1]), cwd };
+  const inoF = path.join(rec, 'ino.json');
+  const saveProbe = fs.existsSync(inoF) ? JSON.parse(fs.readFileSync(inoF, 'utf8')) : null;
+  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '', lines, json, calls, cmds: calls.map((c) => c.argv[1]), cwd, saveProbe };
 }
 const LOAD = ['load', '--session', 'run-ab12', '--env', 'qa', '--user', 'buyer'];
 const SAVE = ['save', '--session', 'run-ab12', '--env', 'qa', '--user', 'buyer', '--present', '#account-menu'];
@@ -251,6 +254,14 @@ test('AC5 save: landmark held -> SAVED; 0600, temp + rename, sidecar without que
   assert.ok(typeof meta.savedAt === 'string' && !Number.isNaN(Date.parse(meta.savedAt)));
   assert.ok(!JSON.stringify(meta).includes('OAUTH_SECRET'));
   assertNoLeak(r);
+});
+
+test('AC5 save: the final file is the renamed temp file (same inode), and absent while the driver writes', () => {
+  const cwd = proj();
+  const r = run(SAVE, { cwd, extraEnv: { FAKE_FINAL: STATE(cwd) } });
+  assert.strictEqual(r.status, 0, r.stdout);
+  assert.strictEqual(r.saveProbe.finalExists, false, 'no final file while state-save writes the temp file');
+  if (process.platform !== 'win32') assert.strictEqual(fs.statSync(STATE(cwd)).ino, r.saveProbe.ino, 'renamed, not copied');
 });
 
 test('AC5 save: landmark not held -> NOT_AUTHENTICATED, exit 1, nothing written', () => {
