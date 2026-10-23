@@ -31,6 +31,7 @@ const { spawn } = require('child_process');
 const U = require('./http_util.js');
 const S = require('./suite_store.js');
 const D = require('./data_store.js');
+const VIEW = require('./studio_view.js');
 const W = require('../write_result.js');
 const pc = require(path.join(__dirname, '..', '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 
@@ -60,10 +61,15 @@ function envList(root) {
   const environments = pc.listEnvironments(root).map(name => {
     let e = {};
     try { e = JSON.parse(fs.readFileSync(path.join(root, 'environments', `${name}.json`), 'utf8')) || {}; } catch { e = {}; }
+    const users = e.users && typeof e.users === 'object' ? e.users : {};
+    // N1: "disabled": "<reason>" on users.<name> (true is accepted, with no reason) marks a user
+    // the wizard must never sign in as. `users` stays the plain list of names.
+    const disabledOf = u => (u && typeof u.disabled === 'string' && u.disabled.trim() ? u.disabled.trim() : u && u.disabled === true ? '' : null);
     return {
       name,
       portalUrl: typeof e.portalUrl === 'string' ? e.portalUrl : null,
-      users: e.users && typeof e.users === 'object' ? Object.keys(e.users) : [],
+      users: Object.keys(users),
+      userInfo: Object.keys(users).map(n => ({ name: n, disabled: disabledOf(users[n]) })),
       nonProduction: e.nonProduction === true,
     };
   });
@@ -261,6 +267,7 @@ async function createStudio(opts) {
       const html = fs.readFileSync(HTML, 'utf8')
         .replace('__STUDIO_TOKEN__', state.pageToken)
         .replace('__STUDIO_NEEDS_REVIEW__', () => S.needsReview.toString())
+        .replace('__STUDIO_VIEW_HELPERS__', () => VIEW.source())
         .replace('__STUDIO_LANG__', lang)
         .replace('__STUDIO_VIEW__', view)
         .replace('__STUDIO_SUITE__', JSON.stringify(state.initialSuite || '').slice(1, -1))
@@ -335,6 +342,7 @@ async function main(argv) {
   const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && ['--mode', '--suite', '--spec', '--port', '--lang'].includes(args[i - 1])));
   const root = path.resolve(positional[0] || process.cwd());
   const mode = val('--mode') === 'wizard' ? 'wizard' : 'editor';
+  const spec = val('--spec');
   const portRaw = val('--port');
   const port = portRaw !== undefined ? parseInt(portRaw, 10) : DEFAULT_PORT;
   const lang = ['ar', 'en'].includes(val('--lang')) ? val('--lang') : '';
@@ -344,7 +352,7 @@ async function main(argv) {
   try {
     const cur = JSON.parse(fs.readFileSync(sf, 'utf8'));
     if (cur && pidAlive(cur.pid) && cur.pid !== process.pid) {
-      emit({ ok: false, error: 'already-running', url: `http://${U.HOST}:${cur.port}/editor`, message: `[studio] already running for this project at http://${U.HOST}:${cur.port}/ — use that page, or close it first` });
+      emit({ ok: false, error: 'already-running', url: `http://${U.HOST}:${cur.port}/${mode}${spec ? `?spec=${encodeURIComponent(spec)}` : ''}`, message: `[studio] already running for this project at http://${U.HOST}:${cur.port}/ — use that page, or close it first` });
       process.exitCode = 1;
       return;
     }

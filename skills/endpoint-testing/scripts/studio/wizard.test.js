@@ -392,5 +392,186 @@ const ALL_SAFE = ['GET /pets', 'POST /pets', 'GET /pets/{petId}', 'GET /store/in
     s.close();
   });
 
+  // ---- wizard-trial-fixes (S-1): users, reload, typed values, token honesty, writes ----
+  const trialProject = (extra = {}) => project({
+    'environments/qc.json': { portalUrl: 'https://app.example.test', users: { alice: { email: 'a@example.test' }, locked: { email: 'l@example.test', disabled: 'account locked after 5 failed sign-ins' }, bob: {} } },
+    ...extra,
+  });
+  async function trialStudio(extra, selection = ['GET /pets/{petId}', 'GET /pets']) {
+    const sv = await servers();
+    const dir = trialProject(extra);
+    const s = await studio(dir, { mode: 'wizard' });
+    const r1 = await s.page('POST', '/api/wizard/spec', { source: sv.specUrl, suiteName: 'Pets', env: 'qc' });
+    await s.page('POST', '/api/wizard/select', { selection });
+    await s.agent('GET', '/api/agent/next?timeout=10'); // attach
+    sv.close();
+    return { s, dir, sv, r1 };
+  }
+
+  await test('AC1: /api/envs lists userInfo (reason or null) and keeps users as names', async () => {
+    const s = await studio(trialProject(), { mode: 'wizard' });
+    const qc = (await s.page('GET', '/api/envs')).json.environments.find(e => e.name === 'qc');
+    assert.deepStrictEqual(qc.users, ['alice', 'locked', 'bob']);
+    assert.deepStrictEqual(qc.userInfo, [{ name: 'alice', disabled: null }, { name: 'locked', disabled: 'account locked after 5 failed sign-ins' }, { name: 'bob', disabled: null }]);
+  });
+
+  await test('AC1: collect (and collect-again) with a disabled user is a 400 user-disabled naming the reason; no event, no run', async () => {
+    const { s } = await trialStudio();
+    for (const p of ['collect', 'collect-again']) {
+      const r = await s.page('POST', `/api/wizard/${p}`, { user: 'locked', all: true });
+      assert.strictEqual(r.status, 400, r.text);
+      assert.deepStrictEqual([r.json.error, r.json.reason], ['user-disabled', 'account locked after 5 failed sign-ins']);
+    }
+    assert.strictEqual((await s.page('GET', '/api/wizard/state')).json.run, null);
+    assert.strictEqual((await s.agent('GET', '/api/agent/next?timeout=10')).json.event, 'idle');
+    assert.strictEqual((await s.page('POST', '/api/wizard/collect', { user: 'alice' })).json.ok, true);
+  });
+
+  await test('AC2: suggestedUser is the most frequent usable owner of the project values; a disabled or unknown owner is skipped; none -> null', async () => {
+    const { s } = await trialStudio({}, ['GET /pets/{petId}', 'GET /pets', 'GET /store/inventory']);
+    const st = async () => (await s.page('GET', '/api/wizard/state')).json.suggestedUser;
+    assert.strictEqual(await st(), null);
+    const c = await s.page('POST', '/api/wizard/collect', { user: 'alice' });
+    const needs = (await s.page('GET', '/api/wizard/state')).json.needs.map(n => n.param);
+    const post = (param, user, extra = {}) => s.agent('POST', '/api/agent/event', { event: 'value', payload: { runId: c.json.runId, param, value: param === 'petId' ? 3 : 'sold', source: 'project', user, ...extra } });
+    assert.ok(needs.includes('petId') && needs.includes('status'), needs.join());
+    assert.strictEqual((await post('petId', 'locked')).json.ok, true);
+    assert.strictEqual(await st(), null, 'a disabled owner is never suggested');
+    await post('status', 'ghost');
+    assert.strictEqual(await st(), null, 'an owner who is not a user of the environment is skipped');
+    await post('petId', 'bob');
+    assert.strictEqual(await st(), 'bob');
+    await post('status', 'alice');
+    assert.strictEqual(await st(), 'alice', 'a tie goes to the first in the environment file order');
+  });
+
+  await test('AC4: step 1 reports an existing suite file; the same re-post keeps selection, values and token; a new spec or env resets and says so', async () => {
+    const sv = await servers();
+    const dir = trialProject({ 'integration/api_test_suites/pets/pets_suite.json': { name: 'pets-suite', cases: [] } });
+    const s = await studio(dir, { mode: 'wizard' });
+    const body = { source: sv.specUrl, suiteName: 'Pets', env: 'qc' };
+    const r1 = await s.page('POST', '/api/wizard/spec', body);
+    assert.strictEqual(r1.json.existsFile, 'integration/api_test_suites/pets/pets_suite.json');
+    assert.strictEqual(r1.json.reset, false);
+    await s.page('POST', '/api/wizard/select', { selection: ['GET /pets/{petId}'] });
+    await s.page('POST', '/api/wizard/value', { param: 'petId', value: '7', source: 'manual' });
+    await s.agent('POST', '/api/agent/token', { token: 'opaque-session-value-1', user: 'alice' });
+    const again = await s.page('POST', '/api/wizard/spec', body);
+    assert.strictEqual(again.json.kept, true);
+    assert.deepStrictEqual(again.json.selection, ['GET /pets/{petId}']);
+    const st = (await s.page('GET', '/api/wizard/state')).json;
+    assert.deepStrictEqual([st.step, st.values.petId.value, st.token.present, st.source, st.suiteName], [3, 7, true, sv.specUrl, 'Pets']);
+    const renamed = await s.page('POST', '/api/wizard/spec', { ...body, suiteName: 'Pets Two' });
+    assert.deepStrictEqual([renamed.json.kept, renamed.json.slug, renamed.json.existsFile], [true, 'pets-two', null]);
+    assert.strictEqual((await s.page('GET', '/api/wizard/state')).json.values.petId.value, 7);
+    const other = await s.page('POST', '/api/wizard/spec', { ...body, env: 'uat' });
+    sv.close();
+    assert.strictEqual(other.json.reset, true);
+    const after = (await s.page('GET', '/api/wizard/state')).json;
+    assert.deepStrictEqual([after.step, after.values, after.token.present, after.selection], [2, {}, false, []]);
+  });
+
+  await test('AC5: a wrong-type value is refused with bad-type naming the type, from the page and from the agent; a right one is kept', async () => {
+    const { s } = await trialStudio();
+    const bad = await s.page('POST', '/api/wizard/value', { param: 'petId', value: 'abc', source: 'manual' });
+    assert.deepStrictEqual([bad.status, bad.json.error, bad.json.expected], [400, 'bad-type', 'integer']);
+    const c = await s.page('POST', '/api/wizard/collect', { user: 'alice' });
+    const ev = (p) => s.agent('POST', '/api/agent/event', { event: 'value', payload: { runId: c.json.runId, ...p } });
+    const viaAgent = await ev({ param: 'petId', value: 'abc', source: 'ui' });
+    assert.deepStrictEqual([viaAgent.status, viaAgent.json.error, viaAgent.json.expected], [400, 'bad-type', 'integer']);
+    assert.deepStrictEqual((await s.page('GET', '/api/wizard/state')).json.values, {});
+    assert.strictEqual((await ev({ param: 'petId', value: '12', source: 'ui' })).json.ok, true);
+  });
+
+  await test('AC5: a UI or project value can be replaced by a typed one (manual)', async () => {
+    const { s } = await trialStudio();
+    const c = await s.page('POST', '/api/wizard/collect', { user: 'alice' });
+    await s.agent('POST', '/api/agent/event', { event: 'value', payload: { runId: c.json.runId, param: 'petId', value: 3, source: 'ui' } });
+    assert.strictEqual((await s.page('POST', '/api/wizard/value', { param: 'petId', value: '9', source: 'manual' })).json.ok, true);
+    const v = (await s.page('GET', '/api/wizard/state')).json.values.petId;
+    assert.deepStrictEqual([v.value, v.source], [9, 'manual']);
+  });
+
+  await test('AC5: "missing only" with nothing missing answers nothing-missing and starts no run; "all" still runs', async () => {
+    const { s } = await trialStudio({}, ['GET /pets/{petId}']);
+    await s.page('POST', '/api/wizard/value', { param: 'petId', value: '7', source: 'manual' });
+    const c = await s.page('POST', '/api/wizard/collect', { user: 'alice' });
+    const post = (event, payload) => s.agent('POST', '/api/agent/event', { event, payload: { runId: c.json.runId, ...payload } });
+    await post('value', { param: 'petId', value: 3, source: 'ui' });
+    await post('ended', { found: 1, total: 1 });
+    const none = await s.page('POST', '/api/wizard/collect-again', { all: false, user: 'alice' });
+    assert.deepStrictEqual([none.status, none.json.ok, none.json.error], [200, false, 'nothing-missing']);
+    assert.strictEqual((await s.page('GET', '/api/wizard/state')).json.run.runId, c.json.runId, 'no new run');
+    assert.strictEqual((await s.page('POST', '/api/wizard/collect-again', { all: true, user: 'alice' })).json.ok, true);
+  });
+
+  await test('B7/§1.1: a value stores its owner, environment and group; another environment is refused; phase "session" is accepted', async () => {
+    const { s, dir } = await trialStudio();
+    const c = await s.page('POST', '/api/wizard/collect', { user: 'alice' });
+    const post = (event, payload) => s.agent('POST', '/api/agent/event', { event, payload: { runId: c.json.runId, ...payload } });
+    assert.strictEqual((await post('phase', { name: 'session', text: 'renewing the saved session' })).json.ok, true);
+    const other = await post('value', { param: 'petId', value: 3, source: 'project', user: 'bob', environment: 'uat', group: 'g1' });
+    assert.deepStrictEqual([other.status, other.json.error], [400, 'other-environment']);
+    assert.ok(!(await s.page('GET', '/api/wizard/state')).json.values.petId);
+    assert.strictEqual((await post('value', { param: 'petId', value: 3, source: 'project', user: 'bob', environment: 'qc', group: 'executions/run-1/a.log#1' })).json.ok, true);
+    const v = (await s.page('GET', '/api/wizard/state')).json.values.petId;
+    assert.deepStrictEqual([v.user, v.environment, v.group], ['bob', 'qc', 'executions/run-1/a.log#1']);
+    await s.page('POST', '/api/wizard/approve', {});
+    const store = JSON.parse(fs.readFileSync(path.join(dir, '.agentex/cache/api-data/pets.json'), 'utf8'));
+    const sv = store.values.find(x => x.param === 'petId');
+    assert.deepStrictEqual([sv.user, sv.environment, sv.group], ['bob', 'qc', 'executions/run-1/a.log#1']);
+  });
+
+  await test('AC6: tokenBlocked counts the ready token cases when nothing supplies a token, and drops to 0 with a captured token; writes[] lists every write', async () => {
+    const { s } = await trialStudio({}, ['GET /pets/{petId}', 'GET /pets']);
+    await s.page('POST', '/api/wizard/value', { param: 'petId', value: '7', source: 'manual' });
+    const p1 = (await s.page('GET', '/api/wizard/preview')).json;
+    const authed = p1.summary.endpoints.filter(e => e.auth === 'token').flatMap(e => e.cases).filter(c => !c.skipped && !c.needsReview && c.kind !== 'no-token').length;
+    assert.ok(authed >= 1, JSON.stringify(p1.summary.endpoints));
+    assert.strictEqual(p1.summary.tokenBlocked, authed);
+    assert.ok(p1.summary.tokenBlocked <= p1.summary.ready);
+    assert.deepStrictEqual(p1.writes.map(w => w.kind), ['catalog', 'suite', 'data-store', 'env-line'], JSON.stringify(p1.writes));
+    await s.agent('POST', '/api/agent/token', { token: 'opaque-session-value-1', user: 'alice' });
+    const p2 = (await s.page('GET', '/api/wizard/preview')).json;
+    assert.strictEqual(p2.summary.tokenBlocked, 0);
+    assert.deepStrictEqual(p2.writes.map(w => w.kind), ['catalog', 'suite', 'data-store', 'token', 'env-line']);
+    assert.ok(!JSON.stringify(p2).includes('opaque-session-value-1'));
+  });
+
+  await test('AC6: a tokenEnv value in .env, or an unexpired token store, also clears tokenBlocked; no data and a set base URL shorten writes[]', async () => {
+    const { s } = await trialStudio({ '.env': 'PETS_TOKEN=abc\nPETS_BASE_URL=http://127.0.0.1:1\n' }, ['GET /pets/{petId}']);
+    const p = (await s.page('GET', '/api/wizard/preview')).json;
+    assert.strictEqual(p.summary.tokenBlocked, 0);
+    assert.ok(p.writes.some(w => w.kind === 'data-store'), 'a needed value is still missing, so the store is written');
+    assert.ok(!p.writes.some(w => w.kind === 'env-line'));
+    const t2 = await trialStudio({ 'test/.auth/api-tokens/pets-qc.json': { token: 'x', expiresAt: new Date(Date.now() + 3600e3).toISOString() } }, ['GET /pets/{petId}']);
+    assert.strictEqual((await t2.s.page('GET', '/api/wizard/preview')).json.summary.tokenBlocked, 0);
+    const t3 = await trialStudio({ 'test/.auth/api-tokens/pets-qc.json': { token: 'x', expiresAt: new Date(Date.now() - 3600e3).toISOString() } }, ['GET /pets/{petId}']);
+    assert.ok((await t3.s.page('GET', '/api/wizard/preview')).json.summary.tokenBlocked > 0);
+  });
+
+  await test('AC9 (step 3 side): the wizard state carries summary.mismatches from the generator, empty when there is none', async () => {
+    const { s } = await trialStudio();
+    assert.deepStrictEqual((await s.page('GET', '/api/wizard/state')).json.mismatches, []);
+  });
+
+  await test('F18: a second studio start answers already-running with the URL of the requested mode (+ ?spec=)', async () => {
+    const dir = trialProject();
+    const s = await studio(dir, { mode: 'wizard' });
+    const out = require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, 'server.js'), dir, '--mode', 'wizard', '--spec', 'specs/a b.json', '--no-open', '--port', '0'], { encoding: 'utf8', env: { ...process.env, TMPDIR: path.dirname(path.dirname(s.st.studio.sessionFile)) } });
+    const j = JSON.parse(out.stdout.trim().split('\n').pop());
+    assert.strictEqual(j.error, 'already-running', out.stdout + out.stderr);
+    assert.strictEqual(j.url, `http://127.0.0.1:${s.st.port}/wizard?spec=${encodeURIComponent('specs/a b.json')}`);
+    const ed = require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, 'server.js'), dir, '--no-open', '--port', '0'], { encoding: 'utf8', env: { ...process.env, TMPDIR: path.dirname(path.dirname(s.st.studio.sessionFile)) } });
+    assert.strictEqual(JSON.parse(ed.stdout.trim().split('\n').pop()).url, `http://127.0.0.1:${s.st.port}/editor`);
+  });
+
+  await test('page injection: the editor page carries the studio_view.js helpers and the user data', async () => {
+    const s = await studio(trialProject(), { mode: 'wizard' });
+    const html = (await req(s.st.port, 'GET', '/wizard')).text;
+    assert.ok(!html.includes('__STUDIO_VIEW_HELPERS__'));
+    assert.ok(html.includes('function userOptions('), 'helpers injected');
+  });
+
   done();
 })();
