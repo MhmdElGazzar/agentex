@@ -153,5 +153,20 @@ test('structural pin: preflight.js contains no process.exit(', () => {
   assert.ok(!src.includes('process.exit('), 'preflight.js must not force-exit');
 });
 
+test('node: the found and required versions are reported; below the minimum is the failure shape {ok:false, error, version, required}', () => {
+  const { judgeNode, MIN_NODE_MAJOR } = require('./preflight.js');
+  assert.strictEqual(MIN_NODE_MAJOR, 20);
+  const bad = judgeNode('v18.19.0');
+  assert.strictEqual(bad.ok, false);
+  assert.strictEqual(bad.version, 'v18.19.0');
+  assert.strictEqual(bad.required, '>=20');
+  assert.match(bad.error, /v18\.19\.0/);
+  assert.match(bad.error, /20/);
+  const good = judgeNode('v20.0.0');
+  assert.deepStrictEqual(good, { ok: true, version: 'v20.0.0', required: '>=20' });
+  const r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', env: { ...process.env, AGENTEX_PWCLI_PROBE_CMD: 'echo 0.1.18' } });
+  assert.strictEqual(JSON.parse(r.stdout.trim()).node.required, '>=20');
+});
+
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
 process.exitCode = failures.length ? 1 : 0;

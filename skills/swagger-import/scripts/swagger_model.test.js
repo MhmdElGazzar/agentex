@@ -247,5 +247,28 @@ test('legacy mode reproduces the importer case set (happy-path + error-case)', (
   assert.strictEqual(out.catalog.target, 'catalog');
 });
 
-console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
-process.exitCode = failures.length ? 1 : 0;
+// A server that accepts the request and never answers (127.0.0.1 only): the fetch must end
+// in SpecError within the bound, not hang.
+(async () => {
+  const http = require('node:http');
+  const server = http.createServer(() => {});
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${server.address().port}/spec.json`;
+  const t0 = Date.now();
+  try {
+    await M.loadSpec(url, { timeoutMs: 300 });
+    failures.push('hung server'); console.error('  FAIL - hung server: loadSpec resolved');
+  } catch (e) {
+    try {
+      assert.ok(e instanceof M.SpecError, `not a SpecError: ${e && e.message}`);
+      assert.match(e.message, /timed out after 0\.3 s/);
+      assert.ok(e.message.includes(url));
+      assert.ok(Date.now() - t0 < 5000, 'took too long');
+      passed++; console.log('  ok - a spec URL that never answers ends in SpecError "timed out" within the bound');
+    } catch (a) { failures.push('hung server'); console.error(`  FAIL - hung server: ${a.message}`); }
+  }
+  server.closeAllConnections && server.closeAllConnections();
+  server.close();
+  console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
+  process.exitCode = failures.length ? 1 : 0;
+})();
