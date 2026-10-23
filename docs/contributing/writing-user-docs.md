@@ -67,8 +67,8 @@ the fastest way to see whether it works.
    reason).
 2. **Write the answer key before any reader runs.** A key written after reading the answers
    bends toward them.
-3. **Give each variant to its own blind reader.** One fresh reader per variant, never one reader
-   for two variants. Tell it to answer from the text alone, to write "not stated" when the text
+3. **Give each variant to its own blind reader.** At least one fresh reader per variant (more
+   readers on the same variant are fine, each fresh), never one reader for two variants. Tell it to answer from the text alone, to write "not stated" when the text
    does not say, to name the sentence it had to reread, and to give the text a clarity score
    from 1 to 10.
 4. **Score each answer against the key:** 1 = correct and complete, 0.5 = partly right or a
@@ -77,7 +77,8 @@ the fastest way to see whether it works.
    fix the content (add the fact, define the term), not the style, and run the test again. The
    reread sentences show where a reader stumbled; with one reader per variant, clarity scores a
    point or two apart are noise.
-6. **Compare with the baseline.** A score below the baseline is a finding.
+6. **Compare with the baseline.** A score below the baseline is a finding. When no baseline is
+   recorded yet, this score becomes the baseline.
 
 ## Appendix: the README question set
 
