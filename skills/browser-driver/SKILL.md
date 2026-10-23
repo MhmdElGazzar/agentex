@@ -33,14 +33,14 @@ The orchestrator resolves `LOGIN_MODE`. When a scenario needs user U signed in, 
 | Mode | Do |
 |---|---|
 | `fresh` | Drive the login UI in this session (step 2 below). |
-| `session`, the login itself under test (a negative login, login-form checks) | Start clean: `npx playwright-cli -s=<session> cookie-clear`, then `npx playwright-cli -s=<session> localstorage-clear`. Then drive the login UI (step 2). Never load or save a saved login here: a reused session would pass the scenario without testing the login. |
+| `session`, the login itself under test (a negative login, login-form checks) | Start clean: `npx playwright-cli -s=<session> cookie-clear`, then `npx playwright-cli -s=<session> localstorage-clear`, then reload the login page (`npx playwright-cli -s=<session> reload`, or open the login URL again), because the form on screen just lost its own cookie. Only then drive the login UI (step 2). Never fill the form on the stale page. Never load or save a saved login here: a reused session would pass the scenario without testing the login. |
 | `session`, any other scenario | Load the saved login (step 1). |
 
 1. **Load.** Read `references/tools/login-state.md`, then run
    `node ${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/scripts/login_state.js load --session <session> --user <U> --env <ENVIRONMENT>`
    (leave out `--env` when ENVIRONMENT is empty). It loads the saved login into this session, opens the saved page and checks the saved landmark.
    - Exit 0 `RESUME_PASS`: you are signed in from the saved login. Continue with the steps.
-   - Exit 1 `RESUME_FAIL` (with its reason): drive the login UI (step 2).
+   - Exit 1 `RESUME_FAIL` (with its reason): drive the login UI (step 2). For `landmark-failed` the script cleared the cookies and localStorage and then reloaded the page itself, so go on to the login UI on that reloaded page with no reload of your own. For any other reason (`no-state`, `no-landmark`, `cli-unsupported`, `state-unreadable`, `no-environment`) nothing was cleared.
    - Exit 2 `BLOCKED`: the scenario is BLOCKED with the script's reason verbatim. A result marked `infrastructure: true` gets the one retry the driver contract allows.
 2. **Drive the login UI** in this session. A captcha, or an OTP you cannot obtain, is BLOCKED `captcha-or-otp`: surface it, never defeat it (the **optimize-login** skill's Limits). Then verify you are in by a landmark element, never by the URL. No landmark: the login step fails, FAIL or BLOCKED by the usual rules, with its evidence kept. Landmark held: in `fresh` mode, or when the login is under test, continue with the steps.
 3. **Save** (`session` mode, login not under test), only after the landmark proved you in. `<landmark>` is the selector of an element only a signed-in user sees:
