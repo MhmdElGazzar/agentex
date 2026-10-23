@@ -128,6 +128,7 @@ process.on('exit', releaseSync);
 
 // Values that must never reach a FAIL line (a test registers its sentinels here).
 const masked = new Set();
+const maskValues = (list) => { for (const v of list) if (v) masked.add(v); };
 const mask = (text) => { let s = String(text); for (const v of masked) if (v) s = s.split(v).join('***'); return s; };
 
 // ---- the project ----------------------------------------------------------------------------------
@@ -327,5 +328,5 @@ async function run(cases, { watchdogMs = 120000 } = {}) {
 
 module.exports = {
   REPO_ROOT, HOST, find, requireDeps, skipOrFail, project, exec, startChild, freePort, startFixture, cliSession, libBrowser,
-  run, scanOutputs, mask, register,
+  run, scanOutputs, mask, maskValues, register,
 };
