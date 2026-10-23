@@ -61,7 +61,8 @@ function repo() {
   return dir;
 }
 function run(dir, ...args) {
-  const r = spawnSync(process.execPath, [CLI, '--root', dir, ...args], { encoding: 'utf8' });
+  const env = { ...process.env }; delete env.AGENTEX_E2E_REQUIRE;   // the flag, not the caller's shell, decides it
+  const r = spawnSync(process.execPath, [CLI, '--root', dir, ...args], { encoding: 'utf8', env });
   return { code: r.status, out: r.stdout, err: r.stderr, json: args.includes('--json') && r.stdout ? JSON.parse(r.stdout) : null };
 }
 const tests = (j) => j.tests.selected.map((s) => s.test).sort();
