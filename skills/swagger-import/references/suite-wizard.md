@@ -72,7 +72,7 @@ If neither, post `ended` (§4) and stop.
     `"token":{"seen":true,"delivered":"studio"}`.
   - `"renewed": true`: if no value is still missing, post `ended`. Otherwise go on to the UI.
   - `"renewed": false` with a `reason` (`no-state-file`, `landmark-failed`, `no-token`,
-    `playwright-missing`, `browser-failed`): a normal miss. Go on to the UI.
+    `playwright-missing`, `browser-failed`, `delivery-failed`): a normal miss. Go on to the UI.
 
 **The UI last**, only for values still missing or a token `renew` did not deliver. If the
 environment has no `portalUrl`, post `failed {runId, reason}` in plain words (for example "no
