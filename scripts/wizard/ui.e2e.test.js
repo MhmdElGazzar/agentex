@@ -56,12 +56,13 @@ async function toSaveAndSave(page) {
   const body = await res.json();
   assert.strictEqual(body.ok, true, JSON.stringify(body));
   await page.getByText('Setup complete').waitFor({ state: 'visible', timeout: 5000 });
+  return body;
 }
 async function exited(kid) { for (let i = 0; i < 40 && !kid.exited(); i++) await new Promise((r) => setTimeout(r, 100)); return kid.exited(); }
 
 let lb;
 const cases = [
-  ['Save with no edit: the plain value under the secret user field stays byte-identical, hand-added keys stay, and no .env line is written for it', async () => {
+  ['Save with the secret field untouched (another field of the user edited, so the file IS rewritten): the plain value stays byte-identical, hand-added keys stay, and no .env line is written for it', async () => {
     lb = await h.libBrowser(proj);
     const before = disk();
     assert.strictEqual(before.users.plain.apiKey, PLAIN);
@@ -76,10 +77,13 @@ const cases = [
     assert.strictEqual(await page.locator('#usf-0-apiKey').inputValue(), '', 'the name slot stays empty: the string is not a name');
     assert.match(await page.locator('.user-card .field-secret-note').first().textContent(), /plain-text value|plain text/i);
     assert.ok(!(await page.content()).includes(PLAIN), 'the page never shows the plain value');
-    await toSaveAndSave(page);
+    // An unedited environment is not written at all, so the phone is edited with a real input: the file is rewritten.
+    await page.locator('.user-card .field', { hasText: 'phone' }).locator('input').fill('0550000099');
+    const saved = await toSaveAndSave(page);
+    assert.ok(saved.written.includes('environments/qa.json'), 'the environment file was really written');
     const after = disk();
     assert.strictEqual(after.users.plain.apiKey, PLAIN, 'the plain value is kept');
-    assert.deepStrictEqual(after.users.plain, before.users.plain, 'the whole user entry is unchanged');
+    assert.deepStrictEqual(after.users.plain, { ...before.users.plain, phone: '0550000099' }, 'only the edited field changed');
     assert.ok(proj.read('environments/qa.json').includes(JSON.stringify(PLAIN)), 'byte-identical on disk');
     if (proj.exists('.env')) assert.ok(!/USER_PLAIN|Usr-plain/.test(proj.read('.env')), 'no .env line for the plain value');
     assert.deepStrictEqual(errors, []);
@@ -101,11 +105,12 @@ const cases = [
     await page.locator('#usf-0-apiKey').fill(NAME);          // a real input event: the field is edited
     await page.locator('#usf-0-apiKey').fill('');            // and cleared on screen
     assert.strictEqual(await page.locator('#usf-0-apiKey').inputValue(), '');
-    await toSaveAndSave(page);
+    const saved = await toSaveAndSave(page);
+    assert.ok(saved.written.includes('environments/qa.json'), 'the environment file was really written');
     const after = disk();
     assert.ok(!('apiKey' in after.users.plain), 'cleared on screen: the key is gone');
     assert.strictEqual(after.users.plain.hand, 'kept', 'the hand-added key stays');
-    assert.strictEqual(after.users.plain.phone, '0550000001');
+    assert.strictEqual(after.users.plain.phone, '0550000099');
     assert.deepStrictEqual(errors, []);
     assert.ok(await exited(w.kid));
     outputs.push(w.kid.out(), w.kid.err());
