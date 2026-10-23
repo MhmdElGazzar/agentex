@@ -2,6 +2,137 @@
 
 All notable changes to AgenTeX are documented here.
 
+## [0.28.0] — 2026-10-24
+### Added
+- **An architecture map on the README.** A "How it fits together" section with two mermaid
+  diagrams. The first shows what you can run: every command, the skill it runs, the skills
+  that spec steps or other skills trigger, and the subagents that take parallel work. The
+  second shows which skill relies on which. Both are generated from the plugin's own files by
+  `node scripts/dev/architecture.js --write`, and `scripts/dev/architecture.test.js` fails
+  whenever a command, skill or agent is added without regenerating, so the map cannot go
+  stale. Maintainer tooling only: `scripts/dev/` is never shipped; the README section is.
+- **Two contributor guides on writing skills.** `docs/contributing/writing-a-good-skill.md`
+  covers a `SKILL.md` that a person can read and Claude can follow: a description that says
+  what the skill does and when, hard rules first because only the first 5,000 tokens survive
+  compaction, the size limits, the writing rules, scripts for fixed mechanics, and the
+  frontmatter mistakes that silently drop a setting. `docs/contributing/writing-an-orchestrator-skill.md`
+  covers a skill or agent that hands work to subagents: what a subagent cannot do (ask the
+  user, see the conversation), where the orchestrator should live, the worker contract,
+  deferred questions, one approval before any write, batches under the subagent limit, and
+  hooks for rules that must never break.
+  The guides were first written in Arabic. In the English versions the references to the
+  maintainers' own validator commands and checklists, the `project-manager` example and the
+  `claude --agent` mentions were replaced by the rules themselves or by a generic example,
+  because those tools are not part of the shipped plugin.
+- **Browser tests can skip, and say so.** The maintainer test runner now knows a skip: an
+  `*.e2e.test.js` that exits 77 with a `SKIP: <reason>` line is counted as skipped (listed on
+  stderr and in the JSON), while 77 from any other test stays a failure. `--require-e2e` turns
+  every skip into a failure, and `scripts/dev/affected.js` no longer lists paid evals for browser
+  test files. Documented in `docs/contributing/testing.md`.
+- **A saved login now reaches the test browser.** With `login.mode: "session"` (the wizard's
+  default), a run reloads the saved login into its own browser and starts signed in, and after a
+  login through the UI it saves a fresh one. A new script, `browser-driver/scripts/login_state.js`
+  (`load` / `save`), moves the file through `@playwright/cli`'s own `state-load` / `state-save`, so
+  it needs no `playwright` library and never reads, prints or passes a cookie or storage value. It
+  checks a signed-in landmark before saving and after loading (never the URL), refuses to save when
+  `test/.auth/` is not gitignored, never saves in CI, and falls back to the UI login whenever a saved
+  login is missing, expired or unreadable. Documented in `references/tools/login-state.md`.
+- **The wizard's test-data step uses the project and the saved session before a live sign-in.**
+  `project_values.js` reads past runs first (newest first, their logs and reports do not count
+  toward the file cap), takes IDs from the URL paths of past calls by matching them against the
+  selected operations' path templates, and tags every hit with the environment, the owner and
+  the record it came from. A hit from another environment is dropped and counted. A guard of
+  256 MB stops a huge `executions/` folder instead of silently missing it.
+- **`browser_bridge.js renew`: a token from the user's saved login, headless, no password.** It
+  resumes `test/.auth/<env>-<user>-state.json` (or a hand-named file carrying the environment
+  and the user) in a browser of its own, proves the landmark, takes the token from the
+  application's own API call and hands it to the studio or the token store. The saved login is
+  read only, never written. A miss (no file, expired session, no token, no `playwright`) exits 0
+  with a reason so the next step of the ladder runs. A disabled or unknown user exits 2. Nothing
+  secret is printed.
+- **Values for one endpoint are checked to come from one record.** Values chosen from different
+  records add `summary.mismatches` and a review note on that endpoint's cases (the call may 404).
+- **A user can be marked disabled.** Put `"disabled": "<reason>"` on `users.<name>` in
+  `environments/<env>.json` and the suite wizard lists that account greyed out with the reason,
+  never preselects it, and refuses to collect test data with it (the server answers
+  `user-disabled`). The wizard now preselects the most frequent owner of the values it found in
+  your project, when that owner is a known, usable user. The Blocked results in the editor have
+  their own filter and count, and step 5 lists every write the approval makes: the catalog, the
+  suite, the collected-data store, the token file and the `.env` line, each only when it applies.
+- **A contributor guide to writing user docs.** `docs/contributing/writing-user-docs.md` gives the
+  rule for `README.md` and `docs/` pages (define a term before its first use, say what a
+  mechanism means for the user), the blind reader test that checks a page before a release, and
+  the README's question set with its answer key; the README's Tracker planning row now says that
+  if validation fails, nothing is written to the board.
+### Changed
+- **The manual `curl` fallback no longer loads `.env`.** When the API runner cannot start, the
+  fallback in `api-integration` used `set -a; . ./.env; set +a`, which put every key of `.env` in
+  the shell and broke on values with spaces or `#`. It now uses only variables already set in the
+  shell (yours, or CI's), checks that each is set without printing it, and stops with BLOCKED
+  naming a missing variable. This matches the rule that the agent never reads `.env`.
+- **The saved login file is named per user.** `test/.auth/<env>-<user>-state.json` (plus a small
+  `<env>-<user>-state.meta.json` with the page and landmark it was proven with), so a spec that
+  logs in as `buyer` and as `admin` keeps both. A file saved under the old `<app>-<env>-state.json`
+  name is not read: the first run logs in once and saves under the new name; delete the old file.
+- **The "only the library can load a saved storageState" message is gone** from `session.js` and
+  from preflight's `playwright` hint: a run's saved login does not need the library.
+- **More operations count as destructive.** The path joins the summary and operationId, any
+  method, with `-s`, `-d`, `-ed` and `-ing` forms, and `clear`, `flush` and `invalidate` join the
+  verbs. `POST .../delete`, `POST .../delete-all` and `GET /internal/reset-cache` start
+  unselected, and if one is selected anyway its cases are written with `skip`. The classic
+  `import_swagger.js` output is unchanged.
+- **The suite wizard, after its first real trial.** The user picker no longer resets while you
+  pick, starts on "pick a user", and the sign-in line names the user the run actually used. A
+  suite name that already exists stops at step 1 and names the file. Re-sending the same spec,
+  name and environment keeps your selection, values and token, a reload resumes at the furthest
+  step, and the page asks before it is closed with work in it. A typed value that does not fit
+  the field's type (`abc` for an integer) is refused with the type named, whether you or the
+  agent sent it, and a refused value shows its reason on its row and keeps your draft. A
+  collected value can be replaced by a typed one, "collect missing only" with nothing missing
+  says so, and the agent's phase line disappears once the run ended. Steps 4 and 5 split the
+  ready cases into ready and "will be BLOCKED: no token" when nothing supplies a token.
+  Arabic: counts take the right plural form, values are isolated so paths and ids do not
+  reorder the sentence, the language button names the language it switches to, and a filter
+  with no match says so. A second `server.js` start now answers with the URL of the mode you
+  asked for.
+### Fixed
+- **The test-execution skill no longer tells the agent to read `.env`.** Config comes from
+  `config/project.json` and `environments/<env>.json` only; the bundled scripts read the values
+  they need from `.env` themselves, as `fill_secret.js` and the shipped `Read(./.env*)` deny
+  rules already assumed. A never-migrated project that gets no URL from the user now stops
+  with "give the URL, or run `/update-agentex`" instead of reading `QA_TARGET_URL` from `.env`.
+  CI is unchanged: `ci_preflight.js` still reads it itself. `/execute-test` says the same.
+- **`kb:` steps describe where the default KB project comes from.** Both executors said
+  `agentex.config.json`; the runner resolves `kb.project` in `config/project.json`, then
+  `KB_PROJECT`, then the legacy file, and the executors now say so.
+- **The ask-kb guardrail names the real rule.** It referred to a `VerifyEvidence` term that
+  exists nowhere; it now says a KB answer is never a verdict and never a step's evidence.
+- **The extent-report notes match what executors and ui-check report.** Executors emit
+  PASS / FAIL / FLAKY / BLOCKED (not only PASS/FAIL), NEEDS-USER is resolved at MERGE and never
+  reaches the report, and the Warning status includes a ui-check that matched a cached (not
+  live) Figma baseline.
+- **No more `/optimize-login` command that does not exist.** The playwright-cli reference,
+  `docs/configuration.md`, `docs/ci-quality-gate.md` and preflight's missing-`playwright`
+  message now name the optimize-login skill (`login.mode: "session"`), which is what needs
+  the `playwright` library.
+- **`/init-test` launches the Setup Wizard without an undefined `${PROJECT_ROOT}`.** The
+  wizard runs from the project root with no path argument and writes into the current folder.
+  Before, a shell that exported its own `PROJECT_ROOT` sent the config there.
+- `bug-report-azure`'s `check-image.js` comment names the visual relevance check instead of a
+  step number that no longer exists.
+- **Importing a Swagger/OpenAPI spec from a URL no longer hangs on a server that never answers.**
+  The fetch now stops after 30 seconds and reports `could not fetch <url>: timed out after 30 s`.
+- **Preflight checks the Node version.** The `node` entry now carries `required` (`>=20`, the version
+  the CI templates and docs declare) and reports `ok: false` with both the found and the required
+  version when Node is older.
+- **A login-negative scenario no longer fails with a false 403 "CSRF verification failed".** The browser driver now reloads the login page after clearing cookies and localStorage and before it fills the form, because the form on screen had just lost its own cookie. After a `landmark-failed` saved login the agent goes on to the login form on the page the script already reloaded, with no reload of its own. The `discipline-saved-login-via-script` eval checks the reload.
+- **Signing in by the form right after a cleared saved login no longer fails on sites that need a CSRF cookie.** `login_state.js load` now reloads the page after clearing the dead cookies and localStorage, so the form carries a fresh token.
+- **define-flow, mobile testing, azure-integration and `/ask-kb` no longer tell the agent to read `.env`.** They now resolve config from `config/project.json` and `environments/<env>.json` only, leave secrets to the bundled scripts that read them (`appium_client.js send-keys --text-env`, the runners), and a legacy `/define-flow` with no URL stops with "give the URL, or run `/update-agentex`", as `/execute-test` does.
+- **A body parameter containing a backslash or a line break is now sent exactly as given.**
+- **The studio page treats `--spec` and `--suite` as data.** A quote in either value no longer breaks out of the page script, and `</script>`, line separators and `$` sequences are carried through unchanged.
+- The settings wizard no longer deletes a plain-text value sitting under a secret user field when you save: a field you did not touch keeps its value byte-identical and is marked as plain text on disk.
+- Editing or clearing the field on screen still replaces or unsets it, and `defaults.password` and secret user fields now share one keep-a-plain-value rule.
+
 ## [0.27.0] — 2026-10-23
 ### Added
 - **From a Swagger to basic API checks with real data: `/import-swagger --wizard`.** A local

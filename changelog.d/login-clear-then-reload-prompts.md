@@ -1,2 +1,0 @@
-### Fixed
-- **A login-negative scenario no longer fails with a false 403 "CSRF verification failed".** The browser driver now reloads the login page after clearing cookies and localStorage and before it fills the form, because the form on screen had just lost its own cookie. After a `landmark-failed` saved login the agent goes on to the login form on the page the script already reloaded, with no reload of its own. The `discipline-saved-login-via-script` eval checks the reload.

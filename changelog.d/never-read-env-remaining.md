@@ -1,2 +1,0 @@
-### Fixed
-- **define-flow, mobile testing, azure-integration and `/ask-kb` no longer tell the agent to read `.env`.** They now resolve config from `config/project.json` and `environments/<env>.json` only, leave secrets to the bundled scripts that read them (`appium_client.js send-keys --text-env`, the runners), and a legacy `/define-flow` with no URL stops with "give the URL, or run `/update-agentex`", as `/execute-test` does.
