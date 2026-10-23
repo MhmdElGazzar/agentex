@@ -196,6 +196,7 @@ Open issues and PRs on the [GitHub repository](https://github.com/MhmdElGazzar/a
 - **Hager-Helmy**
 - [**@MahmoudElSharkawy**](https://github.com/MahmoudElSharkawy) — annotated screenshots on filed Azure bugs (PR #20)
 - [**@abdo-mohamed-ezzat**](https://github.com/abdo-mohamed-ezzat) — session login reuse (PR #17), multi-context flows RFC (#18)
+- [**@MohamedAbdella**](https://github.com/MohamedAbdella) — multi-runtime support: native Codex and Copilot execution, guarded project installation and parallel agent coordination (PRs #22, #27, #28, #29). The host branches are generated from `main` using his host knowledge.
 
 ## License
 
