@@ -1,0 +1,5 @@
+{
+  "name": "sample-shop-qa",
+  "defaultEnvironment": "qa",
+  "login": { "mode": "session" }
+}

@@ -36,6 +36,7 @@
     "discipline-report-secrets": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
     "discipline-run-summary-persists": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
     "discipline-run-timing-captured": ["skills/extent-report", "skills/test-execution", "commands/execute-test.md"],
+    "discipline-saved-login-via-script": ["skills/browser-driver", "skills/browser-driver/scripts/login_state.js", "agents/qa-executor.md", "skills/optimize-login"],
     "discipline-secret-fill-via-script": ["skills/browser-driver", "skills/test-execution", "commands/execute-test.md", "agents/qa-executor.md"],
     "discipline-secret-scan-relay": ["commands/init-test.md", "scripts/secret_scan.js", "scripts/lib/secret_scan_core.js"],
     "discipline-suite-editor-no-overwrite-on-conflict": ["skills/endpoint-testing", "skills/api-integration", "commands/test-endpoints.md"],
