@@ -214,7 +214,12 @@ function load(a, cwd, environment) {
     // A dead login must not leak into the UI login that follows.
     cli(a.session, ['cookie-clear'], a.timeoutMs);
     cli(a.session, ['localstorage-clear'], a.timeoutMs);
-    throw fail('landmark-failed', 'the landmark did not appear after loading the saved login — it is expired or invalid; cookies and localStorage were cleared, log in through the UI');
+    // The page on screen was loaded with the dead cookies: a form on it may carry a token tied to a
+    // cookie that is now gone (CSRF), so reload it before the UI login. A failed reload never turns
+    // the result into BLOCKED: it stays landmark-failed and says so.
+    let reloaded = false;
+    try { reloaded = cli(a.session, ['reload'], a.timeoutMs).status === 0; } catch { reloaded = false; }
+    throw fail('landmark-failed', `the landmark did not appear after loading the saved login — it is expired or invalid; cookies and localStorage were cleared${reloaded ? ' and the page was reloaded' : ', but the page reload failed (reload it before the form login)'}, log in through the UI`);
   }
   throw new Done({ result: 'RESUME_PASS', env: environment.name, user: a.user, path: rel }, 0);
 }

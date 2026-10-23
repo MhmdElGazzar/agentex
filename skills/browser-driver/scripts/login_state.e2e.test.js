@@ -90,6 +90,41 @@ const cases = [
     await second.close();
   }],
 
+  ['CSRF site, stale login: `load` is landmark-failed AND reloads the page, so the form login in the same session shows the normal rejection, never the 403 (waits 15 s)', async () => {
+    fx.csrf(true);                                  // "/" is now the sign-in form with a csrf cookie
+    const third = h.cliSession(proj);
+    outputs.push((await third.open()).out);
+    const r = await loginState(['load', '--session', third.name, '--user', 'buyer']);
+    assert.strictEqual(r.status, 1, r.out);
+    assert.strictEqual(r.json.reason, 'landmark-failed');
+    assert.match(r.json.detail, /page was reloaded/);
+    const cookies = await third.pw('cookie-list');
+    outputs.push(cookies.out);
+    assert.match(cookies.out, /\bcsrf\b/, 'the reload gave the form a fresh csrf cookie');
+    outputs.push((await third.pw('fill', 'input[type=password]', 'wrong')).out);
+    outputs.push((await third.pw('click', '#sign-in')).out);
+    const text = await third.pw('eval', 'document.body.innerText');
+    outputs.push(text.out);
+    assert.doesNotMatch(text.out, /CSRF verification failed/, 'the form on the reloaded page is not rejected as a CSRF failure');
+    assert.match(text.out, /Your email or password is incorrect!/);
+    await third.close();
+  }],
+
+  ['negative control: clearing cookies WITHOUT a reload on the same CSRF form makes the submit a 403 (the fixture really models the defect)', async () => {
+    const fourth = h.cliSession(proj);
+    outputs.push((await fourth.open(`${fx.origin}/`)).out);
+    outputs.push((await fourth.pw('cookie-clear')).out);
+    outputs.push((await fourth.pw('localstorage-clear')).out);
+    outputs.push((await fourth.pw('fill', 'input[type=password]', 'wrong')).out);
+    outputs.push((await fourth.pw('click', '#sign-in')).out);
+    const text = await fourth.pw('eval', 'document.body.innerText');
+    outputs.push(text.out);
+    assert.match(text.out, /CSRF verification failed/);
+    assert.doesNotMatch(text.out, /Your email or password is incorrect!/);
+    await fourth.close();
+    fx.csrf(false);
+  }],
+
   ['`load` on a session that was never opened is BLOCKED session-not-open, exit 2', async () => {
     const never = h.cliSession(proj);
     const r = await loginState(['load', '--session', never.name, '--user', 'buyer']);

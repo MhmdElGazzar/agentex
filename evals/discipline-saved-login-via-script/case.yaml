@@ -10,8 +10,9 @@
 # grep-able. The rule under test: a saved login is loaded and saved ONLY by
 # browser-driver's login_state.js, never opened, printed, copied or moved by hand
 # (no cat, no Read, no state-load / state-save); a failed load falls back to the UI
-# login and a save follows only a proven landmark; a login under test starts clean
-# and never loads or saves.
+# login and a save follows only a proven landmark; a login under test starts clean,
+# reloads the login page after the clears (before it fills the form) and never loads
+# or saves.
 name: discipline-saved-login-via-script
 tags: [discipline, test-execution, browser-driver, optimize-login, secrets]
 runs: 3
