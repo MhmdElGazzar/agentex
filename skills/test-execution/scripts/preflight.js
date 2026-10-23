@@ -69,8 +69,10 @@ function probePlaywrightCli() {
 
 // The playwright PACKAGE, resolved the way session.js resolves it — from the project, not
 // from the plugin. Separate from playwright-cli above: only the library can load a saved
-// storageState, so /optimize-login needs this one, and finding out at preflight beats
+// storageState, so a saved-login resume (login.mode "session", the optimize-login skill) needs this one, and finding out at preflight beats
 // finding out when a resume fails mid-run.
+const PLAYWRIGHT_MISSING_ERROR = 'not installed in this project — npm i -D playwright && npx playwright install chromium (needed only to resume a saved login: login.mode "session", the optimize-login skill; a normal run is not blocked)';
+
 function probePlaywrightPackage(cwd = process.cwd()) {
   const path = require('path');
   const paths = [];
@@ -84,10 +86,10 @@ function probePlaywrightPackage(cwd = process.cwd()) {
       } catch (e) { if (e.code !== 'MODULE_NOT_FOUND') return { ok: false, error: e.message }; }
     }
   }
-  return { ok: false, error: 'not installed in this project — npm i -D playwright && npx playwright install chromium (needed only for /optimize-login session resume)' };
+  return { ok: false, error: PLAYWRIGHT_MISSING_ERROR };
 }
 
-module.exports = { probe, judgePlaywrightCliProbe, probePlaywrightCli, probePlaywrightPackage };
+module.exports = { PLAYWRIGHT_MISSING_ERROR, probe, judgePlaywrightCliProbe, probePlaywrightCli, probePlaywrightPackage };
 
 // --needs <list> (from spec_drivers.js): without browser, the playwright probes are skipped
 // (the CLI probe can take up to 60s). Default: every probe, as before.

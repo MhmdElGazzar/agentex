@@ -138,6 +138,16 @@ test('--needs without browser: the playwright probes never run (reported skipped
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('playwright-missing error names the saved-login resume, not a /optimize-login command', () => {
+  const { PLAYWRIGHT_MISSING_ERROR: msg } = require('./preflight.js');
+  assert.strictEqual(typeof msg, 'string', 'preflight.js must export PLAYWRIGHT_MISSING_ERROR');
+  assert.ok(!/\/optimize-login/.test(msg), `no such command exists: ${msg}`);
+  assert.match(msg, /login\.mode/);
+  assert.match(msg, /session/);
+  assert.match(msg, /optimize-login skill/);
+  assert.match(msg, /npm i -D playwright && npx playwright install chromium/);
+});
+
 test('structural pin: preflight.js contains no process.exit(', () => {
   const src = fs.readFileSync(SCRIPT, 'utf8');
   assert.ok(!src.includes('process.exit('), 'preflight.js must not force-exit');

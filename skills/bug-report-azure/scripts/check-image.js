@@ -2,7 +2,7 @@
 // check-image.js — Pass 1 (STRUCTURAL) screenshot validation before a screenshot is
 // attached to an Azure bug. Dependency-free (Node built-ins only). It answers "is this a
 // real, non-blank image?" — NOT "does it show the bug?" (that is the vision pass done by
-// Claude, per SKILL.md step 7). Structural + semantic together = evidence worth attaching.
+// Claude, the skill's visual check of the screenshot against the defect). Structural + semantic together = evidence worth attaching.
 //
 // Checks per file:
 //   - is it actually a PNG or JPEG (magic bytes)
