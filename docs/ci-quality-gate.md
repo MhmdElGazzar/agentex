@@ -333,7 +333,7 @@ Actions:
   Browser fields that need a secret are typed by `fill_secret.js`, which reads the value
   itself and never prints it.
 - **`test/.auth/` is secret-grade.** A saved login session (`login.mode: "session"`,
-  written by `/optimize-login`) is a credential equivalent. Never publish it as a
+  written by the optimize-login skill) is a credential equivalent. Never publish it as a
   pipeline artifact (the templates publish `executions/` only, and the shipped
   `ci-settings.json` denies reading it). If your CI runs need session login, provision
   the state file through the CI's secure-file mechanism — or set CI runs to fresh login

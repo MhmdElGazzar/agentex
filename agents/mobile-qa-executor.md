@@ -40,8 +40,8 @@ APPIUM SESSION
     `${CLAUDE_PLUGIN_ROOT}/skills/mobile-testing/references/appium-client-wrapper.md`.
   Pick whichever the project already uses; default to raw REST if neither is established.
 - SECRETS: type a password / OTP / token ONLY with the wrapper's
-  `send-keys --element <id> --text-env <NAME>` (NAME = the `envSecret` name from TEST_DATA,
-  read from the environment or `.env`). Never put a secret value on a command line — not in
+  `send-keys --element <id> --text-env <NAME>` (NAME = the `envSecret` name from TEST_DATA;
+  the wrapper reads its value from the environment or `.env` itself). Never put a secret value on a command line — not in
   `--text`, not in a `curl` body. If webdriverio is not installed, the secret step is
   BLOCKED (report it); do not fall back to typing the value.
 - Re-fetch the page source / re-find elements after every navigation or app-state change —
@@ -54,8 +54,9 @@ WHERE TO SAVE EVIDENCE (your session slice only)
   or `xcrun simctl spawn booted log stream` (iOS) captures for the scenario window when
   something looks wrong.
 
-TEST_DATA is your test input (users, default OTP/password). A `{ "envSecret": "NAME" }` value =
-read `NAME` from the project's `.env` at use time; never print or log it.
+TEST_DATA is your test input (users, default OTP/password). A `{ "envSecret": "NAME" }` value is
+typed only with `send-keys --text-env NAME` (SECRETS above). Never read `.env`: the bundled
+scripts read the values they need from it themselves. Never print or log a secret.
 
 INTEGRATION STEPS (`api:` / `db:` in the spec)
 - `api:` steps → the **api-integration** skill; `db:` steps → the **db-integration** skill
@@ -76,7 +77,9 @@ KB QUESTIONS (`kb:` in the spec)
   skill (read the skill + `references/kb-ask-api.md` before the first such step). Execute via
   the bundled runner:
     node ${CLAUDE_PLUGIN_ROOT}/skills/ask-kb/scripts/ask_kb.js --question "<text>" [--project <id>] --log {{SESSION_DIR}}/logs/<scenario>-kb.log
-  Step syntax: `kb: <question>` uses the default project from `agentex.config.json`;
+  Step syntax: `kb: <question>` passes no `--project`; the runner resolves the default itself,
+  in this order: `kb.project` in `config/project.json`, then `KB_PROJECT` (shell env or `.env`,
+  read by the runner), then legacy `agentex.config.json`.
   `kb:<project>: <question>` overrides it (pass the project as `--project`).
 - Prints {"result":"OK|NOT_COVERED|BLOCKED", ...} as JSON (exit 0 OK/NOT_COVERED, 2 BLOCKED).
   OK → read the `answer` as advisory context. NOT_COVERED → treat as "not documented in the KB".
