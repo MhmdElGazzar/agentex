@@ -16,8 +16,9 @@ Do this:
 1. **Parse the arguments:**
    - If they begin with `<project>:` (e.g. `acme-store: how does the checkout flow work?`), use that as
      the project and the rest as the question.
-   - Otherwise the whole string is the question and the default project is resolved from
-     `config/project.json` (`kb.project`) → `.env` (`KB_PROJECT`) → `agentex.config.json` (`kb.project`).
+   - Otherwise the whole string is the question; pass no `--project` and the runner resolves the
+     default itself: `config/project.json` (`kb.project`) → `KB_PROJECT` (environment or `.env`,
+     read by the runner) → `agentex.config.json` (`kb.project`). Never read `.env`.
    - If the argument text is empty, ask the user what they want to ask the KB, then stop.
 
 2. **Run the bundled runner** (it reads `baseUrl` / `project` / `org` from `config/project.json`'s

@@ -278,7 +278,7 @@ if (target && target.token) {
 let body;
 if (req.body !== undefined) {
   let raw = JSON.stringify(req.body);
-  for (const [k, v] of Object.entries(params)) raw = raw.split(`{${k}}`).join(v.replace(/"/g, '\\"'));
+  for (const [k, v] of Object.entries(params)) raw = raw.split(`{${k}}`).join(JSON.stringify(String(v)).slice(1, -1));
   if (bodyParamNames.size) {
     let parsed;
     try { parsed = JSON.parse(raw); } catch (e) { blocked(`body of ${entry} is not valid JSON after substituting params: ${e.message}`); }

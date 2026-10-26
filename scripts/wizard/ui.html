@@ -786,6 +786,9 @@ const isPlainLiteral = (v) => v !== undefined && v !== null && v !== '' && typeo
 /** The guard applies to a defaults field that was secret when the session began
  *  and was not flipped by the consented secret/plain toggle since. */
 const literalGuardApplies = (f) => !!(f && f.secret && f._secretAtLoad && !f._toggled);
+/** The ONE keep-a-plain-literal rule (mirror of engine.js keepsPlainLiteral):
+ *  defaults.password (R10.4) and secret user fields both go through it. */
+const keepsPlainLiteral = (untouched, disk) => !!untouched && isPlainLiteral(disk);
 
 /** Environments whose file keeps a plain literal under a secret defaults field
  *  because its name slot is empty (R10.4) — listed on the review step. */
@@ -973,8 +976,12 @@ function usersFromEnv(env) {
     const o = { handle };
     for (const f of userFieldsSession) {
       const v = u[f.key];
-      if (f.secret) o[f.key] = (v && typeof v === 'object' && v.envSecret) ? v.envSecret : '';
-      else o[f.key] = (v === undefined || v === null || typeof v === 'object') ? '' : String(v);
+      if (f.secret) {
+        o[f.key] = (v && typeof v === 'object' && v.envSecret) ? v.envSecret : '';
+        // A plain string here is not a name: the slot stays empty, and the
+        // marker keeps the on-disk value until the user edits the field.
+        if (isPlainLiteral(v)) (o._plain = o._plain || {})[f.key] = true;
+      } else o[f.key] = (v === undefined || v === null || typeof v === 'object') ? '' : String(v);
     }
     return o;
   });
@@ -992,6 +999,7 @@ function usersFromEnv(env) {
 function cloneUser(u) {
   const c = { ...u };
   if (u._secrets) c._secrets = { ...u._secrets };
+  if (u._plain) c._plain = { ...u._plain };
   return c;
 }
 
@@ -1974,11 +1982,12 @@ function refreshUserCards(list) {
             <input type="text" id="usf-${i}-${f.key}" value="${esc(u[f.key] || '')}"
               placeholder="${esc(suggestUserSecretName(u.handle, f.key))}"
               style="direction:ltr;font-family:var(--mono);flex:1;min-width:140px"
-              oninput="users[${i}]['${f.key}']=this.value;usersDirty()" />
+              oninput="userSecretNameInput(${i},'${f.key}',this.value)" />
             <input type="password" class="secret-input" value="${esc((u._secrets && u._secrets[f.key]) || '')}"
               placeholder="••••••••" style="flex:1;min-width:140px"
               oninput="userSecretInput(${i},'${f.key}',this)" />
           </div>
+          ${u._plain && u._plain[f.key] ? `<div class="field-secret-note">${L('⚠️ الملف لسه شايل قيمة هنا كنص عادي، وهتفضل زي ما هي لحد ما تعدّل الحقل.', '⚠️ The file still holds a plain-text value here; it is kept as is until you edit this field.')}</div>` : ''}
           <div class="field-secret-note">${L('القيمة بتتكتب في ‎.env تحت الاسم ده — ملف البيئة بيشاور عليها بـ envSecret بس', 'The value is written to ‎.env under this name — the environment file only points at it with envSecret')}</div>
         </div>`);
       } else {
@@ -2002,11 +2011,21 @@ function refreshUserCards(list) {
   });
 }
 
+/** Typing a secret field's NAME: an edit, so an untouched plain-on-disk
+ *  value no longer shields the field (clearing it afterwards unsets it). */
+function userSecretNameInput(i, key, value) {
+  const u = users[i];
+  u[key] = value;
+  if (u._plain) delete u._plain[key];   // an edit: the field now mirrors the screen
+  usersDirty();
+}
+
 /** A typed secret VALUE lives in the session only (never in JSON); typing it
  *  fills an empty name slot with the USER_<HANDLE>_<KEY> prefill — visible
  *  and editable, never silent. */
 function userSecretInput(i, key, inp) {
   const u = users[i];
+  if (u._plain) delete u._plain[key];
   u._secrets = u._secrets || {};
   u._secrets[key] = inp.value;
   usersDirty();
@@ -2987,7 +3006,7 @@ function buildEnvConfig(name) {
       // Literal guard (R10.4): an empty name slot over a plain value on disk
       // keeps that value byte-identical — a save the user did not direct at it
       // never drops or resets it. Entering a value (or a name) moves it.
-      else if (literalGuardApplies(f) && base && base.defaults && isPlainLiteral(base.defaults[f.key])) defaults[f.key] = base.defaults[f.key];
+      else if (keepsPlainLiteral(literalGuardApplies(f), base && base.defaults && base.defaults[f.key])) defaults[f.key] = base.defaults[f.key];
       else delete defaults[f.key];
       continue;
     }
@@ -3051,7 +3070,9 @@ function buildUsersObj(e) {
     for (const f of userFieldsSession) {
       if (f.secret) {
         const n = String(u[f.key] || '').trim();
-        if (n) entry[f.key] = { envSecret: n }; else delete entry[f.key];
+        if (n) entry[f.key] = { envSecret: n };
+        else if (keepsPlainLiteral(u._plain && u._plain[f.key], entry[f.key])) { /* untouched plain value stays */ }
+        else delete entry[f.key];
       } else if (u[f.key]) {
         entry[f.key] = u[f.key];
       } else {

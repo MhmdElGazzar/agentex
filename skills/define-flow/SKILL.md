@@ -54,18 +54,22 @@ mid-run interaction.
   beside it. It is never rewritten, reformatted, re-numbered, or silently annotated. The one
   line that may ever be added to an original is the cross-reference offered in walkthrough
   mode step 3, and only after the user says yes to it.
-- Never modify application source code. Config files may be read to resolve the target;
-  never print, log, or pass secret values. A `{ "envSecret" }` field is typed only with
-  browser-driver's `fill_secret.js` (its Secret fields rule), never with `fill` or `type`.
+- Never modify application source code. Resolve config from `config/project.json` and
+  `environments/<env>.json` only. Never read `.env`: the bundled scripts read the values they
+  need from it themselves. Never print, log, or pass secret values. A `{ "envSecret" }` field
+  is typed only with browser-driver's `fill_secret.js` (its Secret fields rule), never with
+  `fill` or `type`.
 
 ## 1. SETUP
 
 1. **Resolve target & environment** exactly per the "Which environment?" and "Which login mode?"
    rules under Decisions in `<agentex-root>/skills/test-execution/SKILL.md` — read those
-   sections and follow them as written (explicit environment → `defaultEnvironment` in `config/project.json` →
-   legacy `.env`; undefined environment names are an error, undefined user handles are
-   BLOCKED). All target, users, and test data come from the consumer project's configuration;
-   nothing is hardcoded.
+   sections and follow them as written: explicit environment → `defaultEnvironment` in
+   `config/project.json` → legacy, the URL the user gave. A legacy project with no URL stops
+   before the session with "give the URL, or run `/agentex:update-agentex`". Never read `.env` to find
+   it. Undefined environment names are an error; undefined user handles are BLOCKED. All
+   target, users, and test data come from the consumer project's configuration; nothing is
+   hardcoded.
 2. **Read `<agentex-root>/skills/browser-driver/references/tools/playwright-cli.md`**
    before the first browser action. A definition session is single-session (no `-s=`
    fan-out) but NEVER the default playwright-cli session: generate one unique name —

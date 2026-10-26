@@ -71,21 +71,38 @@ are in Arabic by default; add `--lang=en` for English.
 2. **Endpoints:** every operation with its auth need and the data it needs. DELETE and other
    destructive writes start unselected; other writes arrive skipped; public ones get no 401
    case.
-3. **Test data:** Claude looks in the project first (test data, past runs, read-only DB
-   queries). Then it signs in to the application's UI as a user you pick. The password comes
-   from `.env` and is never shown. It reads real IDs, bodies and the session token from the
-   application's own network calls. A captcha or OTP is handed to you. A value nobody finds can
-   be typed or left as a placeholder.
+3. **Test data:** Claude goes up a ladder and stops as soon as the values are found:
+   1. **The project:** past runs first, newest first (a run's logs and reports, IDs read from the
+      URL paths of its calls and from response bodies), then your test data files. Every hit
+      carries the environment and the user it came from when the project says so; a hit from
+      another environment is never used. Values for one endpoint are taken from one record
+      (one body or one URL), and a mix of records is flagged in steps 3 and 4.
+   2. **Read-only DB queries** from `integration/*_db.json`.
+   3. **The user's saved session:** only the picked user's own saved login
+      (`test/.auth/<env>-<user>-state.json`, or a file whose name carries the environment and the
+      user). It is resumed in a hidden browser, read only, and the application's own API call
+      gives the session token. No sign-in, no password. An old session may have expired; the
+      page then says so and goes on.
+   4. **The application's UI**, last: sign in as the user you pick. The password comes from
+      `.env` and is never shown. It reads real IDs, bodies and the session token from the
+      application's own network calls. A captcha or OTP is handed to you.
+
+   The user picker starts on "pick a user" (or the owner of the project values) and lists a user
+   marked `"disabled": "<reason>"` greyed out; that user is never signed in. A value nobody finds
+   can be typed or left as a placeholder.
    - Creating missing data through the UI needs your one consent on the exact list, and only on
      an environment marked `"nonProduction": true` (see [configuration](./configuration.md)).
 4. **Cases:** a preview of four basic checks per endpoint: happy path (2xx + required fields),
    not found (404), no token (401), missing required field (400).
-5. **Approve:** one approval writes the catalog and the suite (never over an existing file),
-   then opens the editor. "Approve and run now" also runs the new suite.
+   When no token was captured, steps 4 and 5 split the ready count into ready and "will be
+   BLOCKED: no token".
+5. **Approve:** one approval writes what step 5 lists: the catalog and the suite (never over an
+   existing file), plus the collected values, the token file and the `.env` line when each
+   applies, then opens the editor. "Approve and run now" also runs the new suite.
 
 **`/agentex:test-endpoints --edit`: the suite editor**
 - Every suite under `integration/api_test_suites/`, with a source badge on each value (UI ·
-  Project · Auto · Placeholder · Manual) and Needs review / Failing / Skipped filters.
+  Project · Auto · Placeholder · Manual) and Needs review / Failing / Skipped / Blocked filters (Blocked includes cases with no token).
 - Edit a case in the drawer, then Save. If the file changed on disk after you opened it, Save
   refuses and keeps both your edits and the file.
 - Run all or Run this case go through the same runner as `/agentex:test-endpoints` and leave the same

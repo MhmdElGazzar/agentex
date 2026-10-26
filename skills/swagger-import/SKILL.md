@@ -41,10 +41,13 @@ scheme selection works.
 ## The suite wizard (`/agentex:import-swagger --wizard`)
 
 A local page walks the tester through spec → endpoints → test data → cases → one approval.
-Step 3 is the agent's: project values first, then the application's own network calls through
-the browser bridge, with one consent on an exact list before creating anything (non-production
-environments only). A login password declared `{ "envSecret" }` is typed only by browser-driver's
-`fill_secret.js`, never by hand. Read
+Step 3 is the agent's, as a ladder: project values first (past runs before test data), then
+select-only cataloged queries, then the chosen user's saved session, and a UI sign-in last that
+reads the application's own network calls. The browser bridge's `renew` renews the saved
+session headless and reads the file itself; the agent never opens it. A user marked
+`disabled` is never signed in. One consent on an exact list comes before creating anything
+(non-production environments only). A login password declared `{ "envSecret" }` is typed
+only by browser-driver's `fill_secret.js`, never by hand. Read
 **`<agentex-root>/skills/swagger-import/references/suite-wizard.md`** before launching
 it; it is the whole protocol. The direct import below is unchanged.
 
