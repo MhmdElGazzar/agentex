@@ -47,8 +47,9 @@ function loadPlaywright(cwd = process.cwd()) {
   throw new Error(
     'playwright is not installed in ' + path.resolve(cwd) + ' — run `npm i -D playwright` there, ' +
     'then `npx playwright install chromium`. (Or point NODE_PATH at a node_modules that has it.) ' +
-    'This script drives a real browser through the playwright library; playwright-cli cannot ' +
-    'stand in for it, because only the library can load a saved storageState.'
+    'This script drives its own browser through the playwright library, so it needs the package. ' +
+    'A test run does not: it reloads a saved login into its playwright-cli session with ' +
+    'browser-driver\'s login_state.js.'
   );
 }
 

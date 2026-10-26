@@ -33,8 +33,11 @@ Do these steps, then report what was created:
 2. **Launch the Setup Wizard** to guide the user through filling in their project config:
 
    ```
-   node "<agentex-root>/scripts/wizard/server.js" "${PROJECT_ROOT}"
+   node "<agentex-root>/scripts/wizard/server.js"
    ```
+
+   Run it from the project root, like step 1, and pass no path: the wizard writes the
+   config into the current folder (it refuses, exit 1, when that folder is the plugin itself).
 
    This starts a local web server and opens the browser automatically at
    `http://127.0.0.1:7373/setup`. The wizard is bilingual: it opens in Arabic and carries

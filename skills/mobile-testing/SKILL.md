@@ -30,8 +30,9 @@ From the environment file's `mobile` block (see `docs/configuration.md`): `platf
 (iOS, already installed), `deviceName`, `platformVersion`, optional `udid` (a specific real
 device). `defaults` and `users` from the same environment file are the test data for the run,
 same convention as test-execution: a spec step like "login as expired_user" means
-`users.expired_user`; a user without `password` uses `defaults.password`; a
-`{ "envSecret": "NAME" }` value means read `NAME` from `.env` — never print it.
+`users.expired_user`; a user without `password` uses `defaults.password`. A
+`{ "envSecret": "NAME" }` value is typed only with the wrapper's `send-keys --text-env NAME`
+(see Tools), which reads `NAME` itself — never read `.env` and never print it.
 
 Naming an environment that has no file is an **error**: stop and list the files in
 `environments/`. Never silently fall back to another environment, and never invent capability
@@ -183,8 +184,10 @@ without pausing.
 - In **sequential mode**, never proceed past a checkpoint without an explicit "go" / "approved".
   In **parallel mode**, do not pause for checkpoints — run autonomously within the autonomy
   boundary above.
-- `config/project.json`, `environments/<env>.json`, and `.env` may be read to resolve config;
-  never print, log, or pass secret values (tokens, credentials, envSecret targets) anywhere.
+- Resolve config from `config/project.json` and `environments/<env>.json` only. Never read
+  `.env`: the bundled scripts read the values they need from it themselves (`appium_client.js
+  send-keys --text-env` for `envSecret` fields, the runners for `api:`/`db:`/`kb:`). Never
+  print, log, or pass secret values (tokens, credentials, envSecret targets) anywhere.
 - Never modify application source code. You may write test notes/artifacts only.
 - Never run a destructive device command (uninstall, wipe/clear data, reboot, root/jailbreak
   actions) against the target device/emulator — the run's footprint is limited to installing,

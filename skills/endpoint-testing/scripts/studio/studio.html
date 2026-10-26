@@ -30,7 +30,9 @@
   table { border-collapse:collapse; width:100%; background:var(--panel); }
   th, td { text-align:start; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
   th { font-weight:600; color:var(--mute); font-size:12px; }
-  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; direction:ltr; unicode-bidi:isolate; }
+  input.mono { width:100%; text-align:start; }
+  option:disabled { color:#9aa3ae; }
   [hidden] { display:none !important; }
   /* editor */
   #editor { display:grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 50px); }
@@ -139,6 +141,7 @@
       <tbody id="opRows"></tbody>
     </table>
     <p id="pickOne" class="note warn" data-i18n="s2.pickOne" hidden></p>
+    <div id="s2Msg"></div>
     <div class="actions"><button id="s2Back" data-i18n="nav.back">Back</button><button id="s2Next" class="primary" data-i18n="nav.next">Next</button></div>
   </section>
 
@@ -173,7 +176,8 @@
 
   <section id="step5" class="card" hidden>
     <p data-i18n="s5.files"></p>
-    <ul id="fileList" class="mono"></ul>
+    <ul id="fileList"></ul>
+    <p id="tokWarn" class="note warn" hidden></p>
     <h3 data-i18n="s5.sources">Sources</h3>
     <div id="sourceCounts" class="bar"></div>
     <div class="grid2"><label for="baseUrlIn" id="baseUrlLabel"></label><input id="baseUrlIn" class="mono"></div>
@@ -191,7 +195,11 @@ const STUDIO = { token: '__STUDIO_TOKEN__', lang: '__STUDIO_LANG__', view: '__ST
 let STR = { en: {}, ar: {} };
 let LANG = STUDIO.lang === 'en' ? 'en' : 'ar';
 const $ = id => document.getElementById(id);
-const t = (k, v) => String((STR[LANG] && STR[LANG][k]) || k).replace(/\{(\w+)\}/g, (_, n) => (v && v[n] !== undefined ? String(v[n]) : `{${n}}`));
+const V = __STUDIO_VIEW_HELPERS__; // studio_view.js, injected by server.js: user options, bidi, plurals, token split
+// t() isolates every interpolated value (F15); tn() picks the plural variant of the key for the
+// number in v[pivot] (F20), falling back to the plain key.
+const t = (k, v) => V.interpolate(String((STR[LANG] && STR[LANG][k]) || k), v);
+const tn = (k, pivot, v) => { const s = STR[LANG] || {}; return V.interpolate(String(s[V.pluralKey(s, LANG, k, v[pivot])] || k), v); };
 function el(tag, attrs, ...kids) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -266,6 +274,7 @@ function matches(c, f) {
   if (f === 'needs-review') return needsReview(c);
   if (f === 'failing') { const l = lastOf(c); return !!l && l.result === 'FAIL'; }
   if (f === 'skipped') return !!c.skip;
+  if (f === 'blocked') { const l = lastOf(c); return !!l && l.result === 'BLOCKED' && !l.skipped; } // F14: includes token-BLOCKED results
   return true;
 }
 function messageCheck(c) {
@@ -297,7 +306,7 @@ function resultCell(c) {
 function renderRail() {
   $('suiteList').replaceChildren(...ED.suites.map(s => el('div', { class: `suite${s.path === ED.path ? ' on' : ''}`, onclick: () => openSuite(s.path) },
     el('div', { class: 'nm', text: s.name }),
-    el('div', { class: 'ct', text: s.error ? s.error : t('ed.counts', { e: s.endpoints, c: s.cases }) }),
+    el('div', { class: 'ct', text: s.error ? s.error : tn('ed.counts', 'c', { e: s.endpoints, c: s.cases }) }),
     s.needsReview ? el('span', { class: 'tag', text: `${t('filter.needs-review')} ${s.needsReview}` }) : null,
     s.failing ? el('span', { class: 'tag r-FAIL', text: `${t('filter.failing')} ${s.failing}` }) : null)));
   $('noSuites').hidden = ED.suites.length > 0;
@@ -311,8 +320,8 @@ function renderEditor() {
   $('filePath').textContent = ED.path ? t('ed.file', { path: ED.path }) : '';
   const count = f => cases.filter(c => matches(c, f)).length;
   const lasts = cases.map(lastOf).filter(Boolean);
-  $('stats').textContent = ED.path ? t('ed.stat', { cases: cases.length, review: count('needs-review'), pass: lasts.filter(l => l.result === 'PASS').length, fail: lasts.filter(l => l.result === 'FAIL').length, skipped: count('skipped') }) : '';
-  $('filters').replaceChildren(...['all', 'needs-review', 'failing', 'skipped'].map(f => el('button', { class: ED.filter === f ? 'on' : '', onclick: () => { ED.filter = f; renderEditor(); }, text: `${t(`filter.${f}`)} (${count(f)})` })));
+  $('stats').textContent = ED.path ? tn('ed.stat', 'cases', { cases: cases.length, review: count('needs-review'), pass: lasts.filter(l => l.result === 'PASS').length, fail: lasts.filter(l => l.result === 'FAIL').length, skipped: count('skipped'), blocked: count('blocked') }) : '';
+  $('filters').replaceChildren(...['all', 'needs-review', 'failing', 'blocked', 'skipped'].map(f => el('button', { class: ED.filter === f ? 'on' : '', onclick: () => { ED.filter = f; renderEditor(); }, text: `${t(`filter.${f}`)} (${count(f)})` })));
   $('casesView').hidden = ED.tab !== 'cases'; $('dataView').hidden = ED.tab !== 'data';
   $('tabCases').className = ED.tab === 'cases' ? 'on' : ''; $('tabData').className = ED.tab === 'data' ? 'on' : '';
   const rows = [];
@@ -323,7 +332,7 @@ function renderEditor() {
     const shown = g.cases.filter(c => matches(c, ED.filter));
     if (!shown.length) continue;
     rows.push(el('tr', { class: 'group' }, el('td', { colspan: 5 },
-      el('span', { class: 'mono', text: `${ep.method} ${ep.path}` }), ' ', el('span', { class: 'muted', text: t('ed.cases', { n: g.cases.length }) }), ' ',
+      el('span', { class: 'mono', text: `${ep.method} ${ep.path}` }), ' ', el('span', { class: 'muted', text: tn('ed.cases', 'n', { n: g.cases.length }) }), ' ',
       el('button', { onclick: ev => { ev.stopPropagation(); addCase(g.entry); }, text: t('ed.addCase') }))));
     for (const c of shown) {
       const mc = messageCheck(c);
@@ -344,6 +353,8 @@ function renderEditor() {
         el('td', {}, resultCell(c))));
     }
   }
+  const empty = ED.path && cases.length ? V.emptyState(rows.length, ED.filter) : null; // F17
+  if (empty) rows.push(el('tr', {}, el('td', { colspan: 5, class: 'muted', text: t(empty.key, { filter: t(`filter.${empty.filter}`) }) })));
   $('caseRows').replaceChildren(...rows);
   renderData(cases);
 }
@@ -364,9 +375,9 @@ function renderData(cases) {
     el('td', {}, el('span', { class: 'mono', text: fmt(v.value) }), badge(v.source)),
     el('td', { text: v.user || '—' }),
     el('td', { class: 'prov', text: v.provenance ? [v.provenance.screen, v.provenance.call, v.provenance.file, v.provenance.path].filter(Boolean).join(' · ') : '—' }),
-    el('td', { text: t('cd.usedN', { n: cases.filter(c => c.params && fmt(c.params[v.param]) === fmt(v.value)).length }) }))));
+    el('td', { text: tn('cd.usedN', 'n', { n: cases.filter(c => c.params && fmt(c.params[v.param]) === fmt(v.value)).length }) }))));
   $('missingList').replaceChildren(...(col.missing || []).map(m => el('div', { class: 'note warn' },
-    el('strong', { class: 'mono', text: m.param }), ' — ', t('cd.casesNeed', { n: m.cases !== undefined ? m.cases : cases.filter(c => c.sources && c.sources[m.param] === 'placeholder').length }),
+    el('strong', { class: 'mono', text: m.param }), ' — ', tn('cd.casesNeed', 'n', { n: m.cases !== undefined ? m.cases : cases.filter(c => c.sources && c.sources[m.param] === 'placeholder').length }),
     m.hint ? el('div', { class: 'muted', text: m.hint }) : null, el('div', { class: 'muted', text: t('ed.missingHint') }))));
 }
 function addCase(entry) {
@@ -563,7 +574,7 @@ $('tabData').addEventListener('click', () => { ED.tab = 'data'; renderEditor(); 
 $('importBtn').addEventListener('click', () => { location.href = `/wizard?lang=${LANG}`; });
 
 // ============================ Wizard ============================
-const WZ = { step: 1, envs: [], ops: [], selection: new Set(), needs: [], files: null, exists: null, state: null, preview: null, polling: false, drafts: {}, rowsSig: null };
+const WZ = { step: 1, envs: [], ops: [], selection: new Set(), needs: [], files: null, exists: null, state: null, preview: null, polling: false, drafts: {}, rowsSig: null, user: null, userSig: null, refused: {}, editing: {}, msg: '', approved: false };
 function showStep(n) {
   WZ.step = n;
   for (let i = 1; i <= 5; i++) $(`step${i}`).hidden = i !== n;
@@ -580,6 +591,16 @@ async function startWizard() {
   // No preselection (A18): the tester picks the environment.
   $('envIn').replaceChildren(el('option', { value: '', text: t('s1.envPick') }), ...WZ.envs.map(e => el('option', { value: e.name, text: e.name })));
   if (STUDIO.spec) $('specIn').value = STUDIO.spec;
+  // F12/F13: a reload resumes what the server holds (the same spec, name and environment are kept).
+  const held = await api('GET', '/api/wizard/state');
+  if (held.ok && held.step >= 2 && held.source && (!STUDIO.spec || STUDIO.spec === held.source)) {
+    $('specIn').value = held.source; $('nameIn').value = held.suiteName || ''; $('envIn').value = held.env || '';
+    const k = await api('POST', '/api/wizard/spec', { source: held.source, suiteName: held.suiteName, env: held.env });
+    if (k.ok && k.kept) {
+      WZ.ops = k.ops; WZ.files = k.files; WZ.exists = k.exists; WZ.selection = new Set(k.selection || []); WZ.needs = held.needs || []; WZ.state = held;
+      renderStep2(); showStep(held.step); return;
+    }
+  }
   showStep(1);
 }
 $('s1Next').addEventListener('click', async () => {
@@ -588,10 +609,13 @@ $('s1Next').addEventListener('click', async () => {
   note('s1Msg', '', t('s1.fetching'));
   const r = await api('POST', '/api/wizard/spec', { source, suiteName, env });
   if (!r.ok) { note('s1Msg', 'err', t('s1.specError', { msg: r.message || r.error })); return; }
+  // F5: an existing suite stops here, naming the file (step 5 would refuse it anyway).
+  if (r.existsFile) { note('s1Msg', 'err', t('s1.exists', { file: r.existsFile })); return; }
   note('s1Msg', '', '');
   WZ.ops = r.ops; WZ.files = r.files; WZ.exists = r.exists;
-  WZ.selection = new Set(r.ops.filter(o => !o.destructive).map(o => o.id));
+  WZ.selection = new Set(r.kept && r.selection && r.selection.length ? r.selection : r.ops.filter(o => !o.destructive).map(o => o.id));
   renderStep2(); showStep(2);
+  note('s2Msg', 'warn', r.reset ? t('s1.reset') : '');
 });
 function renderStep2() {
   $('opRows').replaceChildren(...WZ.ops.map(o => {
@@ -614,25 +638,43 @@ $('s2Next').addEventListener('click', async () => {
   if (!r.ok) { $('pickOne').hidden = false; return; }
   WZ.needs = r.needs; showStep(3);
 });
-function envOf() { return WZ.envs.find(e => e.name === $('envIn').value) || { users: [] }; }
+function envOf() { const n = (WZ.state && WZ.state.env) || $('envIn').value; return WZ.envs.find(e => e.name === n) || { users: [], userInfo: [] }; }
+const curUser = () => $('userSel').value || null;
+// F1/F2: the list is rebuilt only when the environment's users, the suggestion or the language
+// change; a poll or a change event never resets the tester's choice (it lives in WZ.user).
+function renderUserSel(s) {
+  const env = envOf();
+  const info = env.userInfo || env.users.map(name => ({ name, disabled: null }));
+  const sig = JSON.stringify([env.name, V.userSignature(info), s.suggestedUser || null, LANG]);
+  if (sig === WZ.userSig) return;
+  WZ.userSig = sig;
+  const opts = V.userOptions(info, { selected: WZ.user, suggested: s.suggestedUser, pickLabel: t('s3.pickUser') });
+  $('userSel').replaceChildren(...opts.map(o => el('option', { value: o.value, text: o.text, selected: o.selected, disabled: o.disabled, title: o.reason || undefined })));
+  $('userSel').value = (opts.find(o => o.selected) || opts[0]).value;
+}
 function renderStep3() {
   const env = envOf();
-  $('userSel').replaceChildren(...env.users.map(u => el('option', { value: u, text: u })));
   const s = WZ.state || {};
-  const user = $('userSel').value || '—';
-  $('whoLine').textContent = env.portalUrl && env.users.length ? t('s3.who', { url: env.portalUrl, user }) : t('s3.uiFailed', { reason: t('s3.noPortal') });
+  renderUserSel(s);
+  const user = curUser();
+  $('whoLine').textContent = !(env.portalUrl && env.users.length) ? t('s3.uiFailed', { reason: t('s3.noPortal') })
+    : s.run && s.user ? t('s3.whoRun', { user: s.user }) : user ? t('s3.who', { url: env.portalUrl, user }) : t('s3.pickFirst');
   $('noAgent').hidden = !!s.attached || (s.run && s.run.status === 'collecting');
   const run = s.run || null;
   const collecting = run && run.status === 'collecting';
   $('collectBtn').hidden = !!run; $('collectBtn').disabled = !s.attached;
   $('againMissing').hidden = !run || collecting; $('againAll').hidden = !run || collecting;
-  $('againMissing').disabled = $('againAll').disabled = !s.attached;
-  $('cancelBtn').hidden = !collecting;
   const values = s.values || {};
+  const missingNow = WZ.needs.filter(n => !values[n.param] || !['ui', 'project'].includes(values[n.param].source)).length; // F8
+  $('againMissing').disabled = !s.attached || missingNow === 0; $('againAll').disabled = !s.attached;
+  $('againMissing').title = missingNow === 0 ? t('s3.nothingMissing') : '';
+  $('cancelBtn').hidden = !collecting;
   const found = WZ.needs.filter(n => values[n.param] && ['ui', 'project'].includes(values[n.param].source)).length;
-  $('progress').textContent = run ? `${collecting ? t('s3.collecting') + ' ' : ''}${t('s3.progress', { n: found, m: WZ.needs.length })}` : '';
+  $('progress').textContent = run ? `${collecting ? t('s3.collecting') + ' ' : ''}${tn('s3.progress', 'm', { n: found, m: WZ.needs.length })}` : '';
   const notes = [];
-  if (run && run.phase) notes.push(el('div', { class: 'note', text: t('s3.phase', { text: run.phase.text || run.phase.name }) }));
+  if (WZ.msg) notes.push(el('div', { class: 'note err', text: WZ.msg }));
+  for (const m of s.mismatches || []) notes.push(el('div', { class: 'note warn', text: t('s3.mismatch', { id: m.id, params: Object.keys(m.params || {}).join(', ') }) }));
+  if (run && collecting && run.phase) notes.push(el('div', { class: 'note', text: t('s3.phase', { text: run.phase.text || run.phase.name }) }));
   if (run && run.status === 'failed') notes.push(el('div', { class: 'note err', text: t('s3.uiFailed', { reason: run.reason || '' }) }));
   if (run && run.status === 'ended' && !(s.token && s.token.present) && s.tokenNeeded) notes.push(el('div', { class: 'note warn', text: t('s3.noToken', { NAME: s.tokenVar || '' }) }));
   if (s.token && s.token.present) notes.push(el('div', { class: 'note ok', text: t('s3.tokenSeen') }));
@@ -645,7 +687,7 @@ function renderStep3() {
   const pb = $('proposalBox');
   if (run && run.proposal && !run.proposal.decided) {
     const items = run.proposal.items;
-    pb.replaceChildren(el('strong', { text: t('q21.title', { n: items.length, env: s.env }) }), el('p', { text: t('q21.body') }),
+    pb.replaceChildren(el('strong', { text: tn('q21.title', 'n', { n: items.length, env: s.env }) }), el('p', { text: t('q21.body') }),
       el('ol', {}, items.map(i => el('li', { text: `${i.what} — ${i.screen}` }))),
       el('div', { class: 'actions' },
         el('button', { onclick: () => consent('no'), text: t('q21.no') }),
@@ -654,7 +696,7 @@ function renderStep3() {
   } else pb.hidden = true;
   // Re-render the rows only when the data changed: the 1 s poll must never wipe a value the
   // tester is typing (drafts are kept per param as well).
-  const sig = JSON.stringify([WZ.needs, values, s.missing || {}, LANG]);
+  const sig = JSON.stringify([WZ.needs, values, s.missing || {}, LANG, WZ.refused, WZ.editing]);
   if (sig === WZ.rowsSig) return;
   WZ.rowsSig = sig;
   $('needRows').replaceChildren(...WZ.needs.map(n => {
@@ -663,19 +705,29 @@ function renderStep3() {
     const draft = WZ.drafts[n.param];
     const input = el('input', { class: 'mono', value: draft !== undefined ? draft : (v && v.source === 'manual' ? fmt(v.value) : ''), oninput: ev => { WZ.drafts[n.param] = ev.target.value; } });
     const prov = v && v.provenance ? [v.provenance.screen, v.provenance.call, v.provenance.file, v.provenance.path].filter(Boolean).join(' · ') : '';
+    const collected = v && ['ui', 'project'].includes(v.source) && !WZ.editing[n.param];
     return el('tr', {},
       el('td', { class: 'mono', text: `${n.param} (${n.in})` }),
-      el('td', {}, v && ['ui', 'project'].includes(v.source) ? el('span', { class: 'mono', text: fmt(v.value) }) :
+      el('td', {}, collected ?
+        el('span', {}, el('span', { class: 'mono', text: fmt(v.value) }), ' ', el('button', { onclick: () => { WZ.editing[n.param] = true; WZ.drafts[n.param] = fmt(v.value); refreshState(); }, text: t('s3.change') })) : // F7
         el('span', {}, input, ' ', el('button', { onclick: () => setValue(n.param, input.value, 'manual'), text: t('s3.set') }), ' ',
-          el('button', { onclick: () => setValue(n.param, '', 'placeholder'), text: t('s3.leave') }))),
+          el('button', { onclick: () => setValue(n.param, '', 'placeholder'), text: t('s3.leave') })),
+        WZ.refused[n.param] ? el('div', { class: 'note err', text: WZ.refused[n.param] }) : null), // F6
       el('td', {}, src ? badge(src) : el('span', { class: 'muted', text: (s.missing || {})[n.param] ? t('s3.notFound') : '—' })),
       el('td', { class: 'prov', text: prov || (((s.missing || {})[n.param] || {}).hint || '') + (v && v.user ? ` ${v.user}` : '') }));
   }));
 }
 async function setValue(param, value, source) {
   if (source === 'manual' && !String(value).trim()) return;
-  await api('POST', '/api/wizard/value', { param, value, source });
-  delete WZ.drafts[param];
+  const r = await api('POST', '/api/wizard/value', { param, value, source });
+  if (!r.ok) {
+    // F6: the reason shows on that row and the typed draft stays.
+    const known = STR[LANG] && STR[LANG][`s3.refused.${r.error}`];
+    WZ.refused[param] = t(`s3.refused.${known ? r.error : 'other'}`, { type: r.expected, error: r.error });
+    await refreshState();
+    return;
+  }
+  delete WZ.drafts[param]; delete WZ.refused[param]; delete WZ.editing[param];
   await refreshState();
 }
 async function consent(decision) { await api('POST', '/api/wizard/consent', { proposalId: WZ.state.run.proposal.id, decision }); await refreshState(); }
@@ -685,10 +737,16 @@ async function pollState() {
   while (WZ.step === 3) { await refreshState(); await new Promise(r => setTimeout(r, 1000)); }
   WZ.polling = false;
 }
-$('userSel').addEventListener('change', renderStep3);
-$('collectBtn').addEventListener('click', async () => { const r = await api('POST', '/api/wizard/collect', { user: $('userSel').value || null }); if (!r.ok && r.error === 'no-agent') $('noAgent').hidden = false; refreshState(); });
-$('againMissing').addEventListener('click', async () => { await api('POST', '/api/wizard/collect-again', { all: false, user: $('userSel').value || null }); refreshState(); });
-$('againAll').addEventListener('click', async () => { await api('POST', '/api/wizard/collect-again', { all: true, user: $('userSel').value || null }); refreshState(); });
+$('userSel').addEventListener('change', ev => { WZ.user = ev.target.value; renderStep3(); });
+async function collectWith(path, body) {
+  const r = await api('POST', path, { ...body, user: curUser() });
+  WZ.msg = r.error === 'user-disabled' ? t('s3.userDisabled', { reason: r.reason || '—' }) : r.error === 'nothing-missing' ? t('s3.nothingMissing') : '';
+  if (!r.ok && r.error === 'no-agent') $('noAgent').hidden = false;
+  await refreshState();
+}
+$('collectBtn').addEventListener('click', () => collectWith('/api/wizard/collect', {}));
+$('againMissing').addEventListener('click', () => collectWith('/api/wizard/collect-again', { all: false }));
+$('againAll').addEventListener('click', () => collectWith('/api/wizard/collect-again', { all: true }));
 $('cancelBtn').addEventListener('click', async () => { await api('POST', '/api/wizard/cancel', {}); refreshState(); });
 $('gateDone').addEventListener('click', async () => { await api('POST', '/api/wizard/gate-cleared', {}); refreshState(); });
 $('s3Back').addEventListener('click', () => showStep(2));
@@ -698,9 +756,10 @@ async function loadPreview() {
   if (!r.ok) { $('previewList').replaceChildren(el('div', { class: 'note err', text: t('app.error', { msg: r.message || r.error }) })); return; }
   WZ.preview = r;
   const s = r.summary;
-  $('totals').textContent = t('s4.totals', { total: s.total, ready: s.ready, review: s.review, skipped: s.skipped });
+  const sp = V.tokenSplit(s); // F11: ready cases that will be BLOCKED for want of a token
+  $('totals').textContent = tn('s4.totals', 'total', { total: s.total, ready: sp.ready, review: s.review, skipped: s.skipped }) + (sp.blocked ? ` · ${t('s4.blocked', { n: sp.blocked })}` : '');
   $('kinds').replaceChildren(...Object.entries(s.byKind).map(([k, n]) => el('span', { class: 'tag', text: `${t(`kind.${k}`)}: ${n}` })));
-  $('previewList').replaceChildren(...s.endpoints.map(e => el('div', { class: 'card' },
+  $('previewList').replaceChildren(...(s.mismatches || []).map(m => el('div', { class: 'note warn', text: t('s3.mismatch', { id: m.id, params: Object.keys(m.params || {}).join(', ') }) })), ...s.endpoints.map(e => el('div', { class: 'card' },
     el('strong', { class: 'mono', text: `${e.method} ${e.path}` }),
     el('table', {}, el('tbody', {}, e.cases.map(c => el('tr', {},
       el('td', { text: c.name }), el('td', { text: t(`kind.${c.kind}`) }), el('td', { class: 'mono', text: `${t('s4.expect')} ${c.status}` }),
@@ -711,7 +770,12 @@ $('s4Next').addEventListener('click', () => showStep(5));
 function renderStep5() {
   const p = WZ.preview;
   if (!p) return;
-  $('fileList').replaceChildren(el('li', { text: p.files.catalog }), el('li', { text: p.files.suite }));
+  // F19: every write the approval makes, not only the two files.
+  const writes = p.writes || [{ path: p.files.catalog, kind: 'catalog' }, { path: p.files.suite, kind: 'suite' }];
+  $('fileList').replaceChildren(...writes.map(w => el('li', {}, el('span', { class: 'mono', text: w.path }), ` — ${t(`s5.write.${w.kind}`)}${w.when === 'base-url' ? ` (${t('s5.when.base-url')})` : ''}`)));
+  const blocked = V.tokenSplit(p.summary).blocked;
+  $('tokWarn').hidden = !blocked;
+  if (blocked) $('tokWarn').textContent = t('s5.tokWarn', { n: blocked, NAME: p.summary.tokenVar || '' });
   $('sourceCounts').replaceChildren(...['ui', 'project', 'auto', 'placeholder', 'manual'].map(k => el('span', {}, badge(k), ` ${p.summary.bySource[k] || 0}`)));
   $('baseUrlLabel').textContent = t('s5.baseUrl', { NAME: p.baseUrl.var });
   $('baseUrlIn').value = p.baseUrl.suggested || '';
@@ -733,6 +797,7 @@ async function approve(runNow) {
   }
   const notIgnored = (r.notIgnored || []).map(p => t('ed.notIgnored', { path: p })).join(' ');
   if (notIgnored) sessionStorage.setItem('studioNotice', notIgnored);
+  WZ.approved = true; // leaving now is the point: no "leave the page?" prompt
   location.href = `/editor?lang=${LANG}&suite=${encodeURIComponent(r.suitePath)}&filter=${r.filter}${r.runId ? `&run=${r.runId}` : ''}`;
 }
 $('s5Back').addEventListener('click', () => showStep(4));
@@ -740,8 +805,11 @@ $('s5Open').addEventListener('click', () => approve(false));
 $('s5Run').addEventListener('click', () => approve(true));
 
 // ============================ Boot ============================
+// F12: leaving the wizard (past step 1) or the editor with unsaved edits asks first.
+function unloadWarning() { return (!$('wizard').hidden && WZ.step >= 2 && !WZ.approved) || (!$('editor').hidden && ED.edits.length > 0); }
+if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('beforeunload', ev => { if (unloadWarning()) { ev.preventDefault(); ev.returnValue = ''; } });
 $('langBtn').addEventListener('click', () => { LANG = LANG === 'ar' ? 'en' : 'ar'; applyI18n(); if (!$('editor').hidden) { renderRail(); renderEditor(); } else showStep(WZ.step); });
-$('doneBtn').addEventListener('click', async () => { await api('GET', '/api/done'); document.body.replaceChildren(el('p', { class: 'note', text: t('app.closed') })); });
+$('doneBtn').addEventListener('click', async () => { WZ.approved = true; await api('GET', '/api/done'); document.body.replaceChildren(el('p', { class: 'note', text: t('app.closed') })); });
 (async () => {
   const s = await api('GET', '/api/strings');
   if (s.en) STR = s;
