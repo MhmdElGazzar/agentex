@@ -177,21 +177,23 @@ function sectionAt(lines, n, header) {
   return null;
 }
 
-// Pure. The hunks of `diff` (git diff -U0 text) placed in the sections of `file`:
+// Pure. A hunk touching a header line (added, deleted or edited) is unplaceable → null. The hunks of `diff` (git diff -U0 text) placed in the sections of `file`:
 // added lines in the HEAD text, deleted lines in the base text. → {lanes, sections}, or null
 // when anything is unplaceable or unmapped (the caller then uses the whole-file mapping).
 function sectionImpact(file, baseText, headText, diff) {
   const cfg = SECTIONS[file];
   if (!cfg || typeof baseText !== 'string' || typeof headText !== 'string') return null;
-  const baseLines = baseText.split('\n');
-  const headLines = headText.split('\n');
+  const baseLines = baseText.split(/\r?\n/);   // CRLF files: a header must still end at "$"
+  const headLines = headText.split(/\r?\n/);
   const names = new Set();
   const place = (lines, start, count) => {
     if (count === 0) return true;
-    const first = sectionAt(lines, start, cfg.header);
-    if (first === null) return false;
-    names.add(first);
-    for (let n = start + 1; n < start + count; n++) if (cfg.header.test(lines[n - 1])) names.add(sectionName(lines[n - 1]));
+    // A header line added, deleted or edited moves the section boundaries: the body's
+    // owner changes, so the hunk cannot be placed → whole-file mapping.
+    for (let n = start; n < start + count; n++) if (n >= 1 && n <= lines.length && cfg.header.test(lines[n - 1])) return false;
+    const sec = sectionAt(lines, start, cfg.header);
+    if (sec === null) return false;
+    names.add(sec);
     return true;
   };
   const re = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;

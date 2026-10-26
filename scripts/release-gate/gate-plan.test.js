@@ -263,16 +263,37 @@ test('section: EXECUTION RULES, the parameter block, or a hunk spanning into an 
   }
 });
 
-test('section: a pure deletion is located with the base text; a hunk spanning two mapped sections takes both', () => {
-  // Delete the whole INTEGRATION STEPS body: at HEAD those lines sit under WHERE TO SAVE EVIDENCE's end / UI CHECKS' start,
-  // so only the base text names the section the deleted lines were in.
+test('section: a pure deletion is located with the base text; two hunks in two mapped sections take both', () => {
+  // Delete the INTEGRATION STEPS body (not its header): at HEAD those lines' position sits under the
+  // preceding section, so only the base text names the section the deleted lines were in.
   const del = sectionRepo((t) => sub(t, 'i1\ni2\n', ''));
   assert.deepStrictEqual([del.r.out.full, runs(del.r.out)], [false, ['api', 'setup', 'wizard']]);
   assert.deepStrictEqual(del.r.out.lanes.api.because, [`${QA}#INTEGRATION STEPS`]);
-  const span = sectionRepo((t) => sub(t, 'b3\nWHERE TO SAVE EVIDENCE (every run):\ne1', 'b3 x\nx\ne1 x'));
-  assert.deepStrictEqual([span.r.out.full, runs(span.r.out)], [false, ['reporting', 'setup', 'ui', 'wizard']]);
-  assert.deepStrictEqual(span.r.out.lanes.ui.because, [`${QA}#BROWSER STEPS`, `${QA}#WHERE TO SAVE EVIDENCE`]);
-  assert.deepStrictEqual(span.r.out.lanes.reporting.because, [`${QA}#WHERE TO SAVE EVIDENCE`], 'reporting is named only by the sections that map to it');
+  const two = sectionRepo((t) => sub(sub(t, 'b2\n', 'b2 c\n'), 'e1\n', 'e1 c\n'));
+  assert.deepStrictEqual([two.r.out.full, runs(two.r.out)], [false, ['reporting', 'setup', 'ui', 'wizard']]);
+  assert.deepStrictEqual(two.r.out.lanes.ui.because, [`${QA}#BROWSER STEPS`, `${QA}#WHERE TO SAVE EVIDENCE`]);
+  assert.deepStrictEqual(two.r.out.lanes.reporting.because, [`${QA}#WHERE TO SAVE EVIDENCE`], 'reporting is named only by the sections that map to it');
+});
+
+test('section: a CRLF file keeps the fail-safe (a bare header like EXECUTION RULES still ends the section)', () => {
+  const crlf = (t) => t.replace(/\n/g, '\r\n');
+  const rules = sectionRepo((t) => sub(t, 'r1\r\n', 'r1 changed\r\n'), {}, crlf(qaText()));
+  assert.deepStrictEqual([rules.r.out.full, runs(rules.r.out)], [true, FULL_RUN]);
+  const ok = sectionRepo((t) => sub(t, 'b2\r\n', 'b2 c\r\n'), {}, crlf(qaText()));
+  assert.deepStrictEqual([ok.r.out.full, runs(ok.r.out)], [false, ['setup', 'ui', 'wizard']]);
+});
+
+test('section: a hunk that adds, deletes or edits a header line → whole-file fallback (full, plain path)', () => {
+  const cases = {
+    delete_header: (t) => sub(t, 'INTEGRATION STEPS (api):\n', ''),
+    add_header: (t) => sub(t, 'b2\n', 'b2\nSTRAY SECTION:\n'),
+    edit_header: (t) => sub(t, 'UI CHECKS (when asked):', 'UI CHECKS (when needed):'),
+  };
+  for (const [name, edit] of Object.entries(cases)) {
+    const { r } = sectionRepo(edit);
+    assert.deepStrictEqual([name, r.out.full, runs(r.out)], [name, true, FULL_RUN]);
+    assert.ok(r.out.lanes.api.because.includes(QA) && !r.out.lanes.api.because.some((b) => b.includes('#')), name);
+  }
 });
 
 test('section: an added file, a deleted file, or an unreadable file → whole-file fallback (full)', () => {
