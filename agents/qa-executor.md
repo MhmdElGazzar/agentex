@@ -33,6 +33,10 @@ BROWSER STEPS (only when DRIVERS includes browser; unprefixed steps are browser 
   browser, other executions' included. Example:
     npx playwright-cli -s={{SESSION}} open {{TARGET_URL}}
     npx playwright-cli -s={{SESSION}} snapshot
+- Use each command in the shape `browser-driver/references/tools/playwright-cli.md` gives: the
+  target is positional (`click e12`), no invented option (`--ref`, `--target`, `--timeout`), a
+  plain command first and run-code only for what no command does, never as the retry for a
+  failed click or fill. Unsure, or an `Unknown option`: `npx playwright-cli --help <command>`.
 - Console errors and failed network calls are defects even when the UI looks fine.
 - For any "success" UI, verify the element's computed display/visibility via `eval` — do not
   trust that the text merely exists in the DOM (it may be static markup).
@@ -111,8 +115,8 @@ UI CHECKS (`ui-check:` in the spec)
   NOT see the live design: report the reason verbatim, and a conforming result is PASS +
   warning, never a clean PASS.
 - Then follow the skill's flow in full: variant gate, form-factor gate (different classes =
-  a named VIEW MISMATCH ERROR, no PASS/FAIL), set the declared viewport via `run-code`
-  `page.setViewportSize(...)`, capture the actual to
+  a named VIEW MISMATCH ERROR, no PASS/FAIL), set the declared viewport with
+  `npx playwright-cli -s={{SESSION}} resize <w> <h>`, capture the actual to
   {{SESSION_DIR}}/screenshots/<scenario>-ui-check-actual.png, and compare per the step's mode
   (`exact` / `reference`).
 - DEFERRAL RULE — you cannot ask the user mid-run: when the skill calls for user confirmation
@@ -154,8 +158,9 @@ WHEN A SCENARIO FAILS: DEFECT OR FLAKE
 - Default: ONE attempt per scenario. A scenario that passed is never re-run "to be sure".
 - Retry exactly one class of failure — the ones where the app never got to answer:
   - browser: the browser or session died, navigation never completed (`net::ERR_*`, connection
-    reset or refused, DNS/proxy failure), the CLI errored instead of returning a page,
-    `snapshot` came back with no page, or a step timed out with no page rendered at all. The
+    reset or refused, DNS/proxy failure), the CLI errored instead of returning a page (not a
+    usage error: `Unknown option`, a run-code `SyntaxError` is your own command error, corrected
+    once, never retried as a scenario, never FLAKY), `snapshot` came back with no page, or a step timed out with no page rendered at all. The
     symptom list is in `${CLAUDE_PLUGIN_ROOT}/skills/browser-driver/references/experience/gotchas.md`
     under "Driver error vs app defect".
   - `api:`: the runner's `request failed` (connection refused, DNS, timeout — no response at all).

@@ -113,7 +113,8 @@ run targets desktop 1440×900" — and **no PASS/FAIL verdict is issued**.
   `<W>x<H>` in the step is used verbatim.
 - No declared viewport → set the viewport width to the baseline frame's width (same
   class by construction).
-- Set it via `run-code` `page.setViewportSize({width, height})`, then capture:
+- Set it with `resize <w> <h>` (run-code `page.setViewportSize({width, height})` only where
+  `--help resize` shows no such command), then capture:
   `screenshot --filename=<SESSION_DIR>/screenshots/<scenario>-ui-check-actual.png`.
 - **No navigation** — the comparison target is the live page as the scenario left it.
 

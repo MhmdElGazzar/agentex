@@ -24,7 +24,7 @@ reports) belongs to the **test-execution** skill.
 ## Executing a browser step
 1. Before the first command in a session, read `references/tools/playwright-cli.md`.
 2. `snapshot` to get element refs before interacting. Refs change on navigation: re-snapshot after each page load.
-3. Act, then verify with the techniques in `references/techniques/browser-checks.md`.
+3. Act with a plain command in the shape `playwright-cli.md` gives: the target positional, no invented option. Use run-code only for what no command does. Never use it as the retry for a failed click, fill, check or select. Never use `force: true` or an `element.click()` through `evaluate`. Then verify with the techniques in `references/techniques/browser-checks.md`.
 4. Save evidence under `SESSION_DIR`: screenshots in `screenshots/<scenario>.png`, console and network captures in `logs/<scenario>.log`.
 5. When a command fails or behaves unexpectedly, read `references/experience/gotchas.md` before deciding retry versus defect.
 

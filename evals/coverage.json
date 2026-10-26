@@ -10,6 +10,7 @@
   "cases": {
     "discipline-api-no-improvised-request": ["skills/api-integration", "agents/qa-executor.md"],
     "discipline-api-only-run-no-browser": ["skills/api-integration", "skills/endpoint-testing", "skills/test-execution", "skills/browser-driver", "commands/execute-test.md", "agents/api-executor.md"],
+    "discipline-browser-command-shapes": ["skills/browser-driver", "skills/test-execution", "agents/qa-executor.md"],
     "discipline-bug-filing-annotation": ["skills/bug-report-azure"],
     "discipline-bug-filing-cache-refresh": ["skills/bug-report-azure"],
     "discipline-bug-filing-ledger": ["skills/bug-report-azure"],
