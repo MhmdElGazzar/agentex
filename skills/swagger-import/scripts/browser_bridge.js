@@ -33,6 +33,18 @@
 //         so no later snapshot can print it. The password never appears in a command line, an
 //         output or a log.
 //   token-status --store <suite> --env <e>      owner and times only, never the value
+//   renew --env <e> --user <u> --url <app page> --api-origin <o> (--present <sel> | --absent <sel>)
+//         (--to-studio | --store <suite>) [--wait-ms 8000] [--landmark-ms 15000] [--header-name <h>]
+//       Resumes the user's saved login HEADLESS, in a browser of its own (the playwright package
+//       of the project, through optimize-login's session.js helpers), proves the landmark, takes
+//       the token from the app's own API request (answered with anything but 401/403) and hands
+//       it over like capture does (--to-studio | --store). The saved-login file is READ ONLY: it
+//       is loaded as storageState and never written (no storageState({path}) call, no
+//       resumeSession). File: the exact login_state.js statePathFor(env, user) when it exists,
+//       else the newest test/.auth/*-state.json whose name (split on - _ .) carries both the
+//       environment and the user key. A miss exits 0 with renewed:false and a reason, so the
+//       ladder goes on; exit 2: usage, unknown-user, user-disabled, not-ignored, no-studio.
+//       Output: never a token, cookie or storage value.
 //
 // Common: [--project <root>] (default: the current directory).
 // The playwright-cli used: $AGENTEX_PLAYWRIGHT_CLI (a path; .js files run with node) → the
@@ -250,6 +262,122 @@ const fillSecretArgv = ({ session, locator, envVar, env, submit }) =>
 const fillSecretCommand = o => fillSecretArgv(o).map(shq).join(' ');
 const fillSecretCommandPowerShell = o => fillSecretArgv(o).map(psq).join(' ');
 
+// ---- renew: headless resume of the user's saved login; the state file is read only ----
+const tokensOf = s => String(s).toLowerCase().split(/[-_.]/).filter(Boolean);
+function findRun(hay, needle) { // every start index where needle's tokens occur contiguously in hay's
+  const at = [];
+  if (!needle.length) return at;
+  for (let i = 0; i + needle.length <= hay.length; i++) if (needle.every((t, k) => hay[i + k] === t)) at.push(i);
+  return at;
+}
+function carriesBoth(name, env, user) {
+  const hay = tokensOf(name); const e = tokensOf(env); const u = tokensOf(user);
+  return findRun(hay, e).some(i => findRun(hay, u).some(j => j + u.length <= i || i + e.length <= j));
+}
+// The user's own saved login: the exact login_state.js name first, else the name rule (newest wins).
+function pickStateFile(root, env, user) {
+  const { statePathFor } = require(path.join(__dirname, '..', '..', 'browser-driver', 'scripts', 'login_state.js'));
+  const exact = statePathFor(env, user);
+  try { if (fs.statSync(path.join(root, exact)).isFile()) return exact; } catch { /* fall back */ }
+  let names = [];
+  try { names = fs.readdirSync(path.join(root, 'test', '.auth')); } catch { return null; }
+  let best = null;
+  for (const n of names) {
+    if (!/-state\.json$/i.test(n) || !carriesBoth(n.replace(/-state\.json$/i, ''), env, user)) continue;
+    let st; try { st = fs.statSync(path.join(root, 'test', '.auth', n)); } catch { continue; }
+    if (st.isFile() && (!best || st.mtimeMs > best.m)) best = { rel: `test/.auth/${n}`, m: st.mtimeMs };
+  }
+  return best && best.rel;
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function renew(root, args) {
+  const opt = k => { const i = args.indexOf(k); return i === -1 ? undefined : args[i + 1]; };
+  const all = k => args.reduce((a, x, i) => (x === k && args[i + 1] !== undefined ? [...a, args[i + 1]] : a), []);
+  const env = opt('--env'), user = opt('--user'), url = opt('--url'), apiOrigin = opt('--api-origin'), store = opt('--store'), headerName = opt('--header-name');
+  const toStudio = args.includes('--to-studio');
+  const present = all('--present')[0], absent = all('--absent')[0];
+  const num = (k, d) => { const n = parseInt(opt(k), 10); return Number.isFinite(n) && n >= 0 ? n : d; };
+  const waitMs = num('--wait-ms', 8000), landmarkMs = num('--landmark-ms', 15000);
+  if (!env || !user || !url || !/^https?:\/\//i.test(url) || !apiOrigin || !/^https?:\/\//i.test(apiOrigin) || (!present && !absent) || toStudio === !!store) {
+    return emit({ ok: false, error: 'usage', message: 'renew --env <e> --user <u> --url <app page> --api-origin <o> (--present <sel> | --absent <sel>) (--to-studio | --store <suite>) [--wait-ms n]' }, 2);
+  }
+  let envJson;
+  try { envJson = JSON.parse(fs.readFileSync(path.join(root, 'environments', `${env}.json`), 'utf8')); } catch { envJson = null; }
+  const u = envJson && envJson.users && Object.prototype.hasOwnProperty.call(envJson.users, user) ? envJson.users[user] : undefined;
+  if (u === undefined) return emit({ ok: false, error: 'unknown-user', user, message: `user "${user}" is not in environments/${env}.json` }, 2);
+  if (u && u.disabled) return emit({ ok: false, error: 'user-disabled', user, reason: typeof u.disabled === 'string' ? u.disabled : '', message: `user "${user}" is marked disabled in environments/${env}.json; pick another user` }, 2);
+  let sess = null;
+  if (toStudio) {
+    sess = channel.readSession(root);
+    if (!sess) return emit({ ok: false, error: 'no-studio', message: 'no studio is running for this project — use --store outside the wizard' }, 2);
+  } else {
+    let rel;
+    try { rel = D.tokenRel(store, env); } catch (e) { return emit({ ok: false, error: 'usage', message: e.message }, 2); }
+    if (!D.isIgnored(root, rel)) return emit({ ok: false, error: 'not-ignored', path: rel, message: `${rel} is not in .gitignore, so no token was stored — run /update-agentex to fix .gitignore` }, 2);
+  }
+  const miss = (reason, extra = {}) => emit({ ok: true, renewed: false, reason, stateFile: extra.stateFile || null, ageDays: extra.ageDays === undefined ? null : extra.ageDays, token: { seen: !!extra.seen, delivered: null }, ...(extra.detail ? { detail: extra.detail } : {}) }, 0);
+
+  const rel = pickStateFile(root, env, user);
+  if (!rel) return miss('no-state-file');
+  const abs = path.join(root, rel);
+  let ageDays = null;
+  try { ageDays = +((Date.now() - fs.statSync(abs).mtimeMs) / 86400000).toFixed(1); } catch { /* keep null */ }
+  const info = { stateFile: rel, ageDays };
+
+  const S = require(path.join(__dirname, '..', '..', 'optimize-login', 'scripts', 'session.js'));
+  let pw;
+  try { pw = S.loadPlaywright(root); } catch { return miss('playwright-missing', info); }
+  let browser;
+  try { browser = await pw.chromium.launch(S.launchOptions({})); } catch (e) { return miss('browser-failed', { ...info, detail: redactString(String((e && e.message) || e).split('\n')[0].slice(0, 200), []) }); }
+  const calls = []; const pend = []; let landmarkOk = false; let found = null;
+  try {
+    const context = await browser.newContext({ storageState: abs, viewport: { width: 1500, height: 1000 } });
+    const track = new Map();
+    context.on('request', q => {
+      if (!String(q.url()).startsWith(apiOrigin) || calls.length >= MAX_CALLS) return;
+      const c = { url: q.url() }; calls.push(c); track.set(q, c);
+      pend.push(Promise.resolve(q.allHeaders()).then(h => { c.headers = h; }, () => {}));
+    });
+    context.on('response', r => { const c = track.get(r.request()); if (c) c.status = r.status(); });
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
+    await page.waitForLoadState('networkidle').catch(() => {});
+    landmarkOk = await S.isAuthenticated(page, { present, absent }, landmarkMs);
+    if (landmarkOk) {
+      const deadline = Date.now() + waitMs;
+      for (;;) {
+        await Promise.all(pend);
+        found = findToken(calls.filter(c => c.status !== undefined && c.status !== 401 && c.status !== 403), headerName);
+        if (found || Date.now() >= deadline) break;
+        await sleep(Math.min(250, Math.max(0, deadline - Date.now())));
+      }
+    }
+  } catch (e) {
+    await browser.close().catch(() => {});
+    return miss('browser-failed', { ...info, detail: redactString(String((e && e.message) || e).split('\n')[0].slice(0, 200), []) });
+  }
+  await browser.close().catch(() => {});
+  if (!landmarkOk) return miss('landmark-failed', info);
+  if (!found) {
+    await Promise.all(pend);
+    return miss('no-token', { ...info, seen: !!findToken(calls, headerName) });
+  }
+  const token = { seen: true, scheme: found.scheme, delivered: null };
+  if (toStudio) {
+    try {
+      const res = await channel.call(sess, 'POST', '/api/agent/token', { token: found.token, scheme: found.scheme, headerName: found.headerName, user, apiOrigin }, 10000);
+      token.delivered = res.json && res.json.ok ? 'studio' : null;
+      if (!token.delivered) token.error = (res.json && res.json.error) || 'refused';
+    } catch { token.error = 'no-studio'; }
+  } else {
+    const w = D.writeToken(root, { store, environment: env, user, scheme: found.scheme, headerName: found.headerName, token: found.token });
+    if (w.ok) { token.delivered = 'store'; token.ref = w.ref; } else { token.error = w.error; }
+  }
+  const renewed = token.delivered !== null;
+  return emit({ ok: true, renewed, ...(renewed ? {} : { reason: 'delivery-failed' }), ...info, token }, 0);
+}
+
 async function main(argv) {
   const args = argv.slice(2);
   const opt = k => { const i = args.indexOf(k); return i === -1 ? undefined : args[i + 1]; };
@@ -300,6 +428,8 @@ async function main(argv) {
     return emit({ ok: true, filled: true, submitted: true, user, passwordFieldCleared: false }, 0);
   }
 
+  if (cmd === 'renew') return renew(root, args);
+
   if (cmd === 'capture') {
     const session = opt('--session'), apiOrigin = opt('--api-origin'), goto = opt('--goto'), click = opt('--click');
     const waitRaw = parseInt(opt('--wait-ms'), 10);
@@ -344,8 +474,8 @@ async function main(argv) {
     return emit({ ok: true, apiOrigin, callCount: calls.length, truncated: calls.length >= MAX_CALLS, calls: redacted, token }, 0);
   }
 
-  return emit({ ok: false, error: 'usage', message: 'usage: browser_bridge.js capture … | fill-secret … | token-status …' }, 2);
+  return emit({ ok: false, error: 'usage', message: 'usage: browser_bridge.js capture … | fill-secret … | token-status … | renew …' }, 2);
 }
 
 if (require.main === module) main(process.argv);
-module.exports = { serveOnce, sinkOnce, redactCalls, redactString, findToken, captureCode, fillCode, findCli, userPassword, fillSecretCommand, fillSecretCommandPowerShell, psq };
+module.exports = { pickStateFile, carriesBoth, serveOnce, sinkOnce, redactCalls, redactString, findToken, captureCode, fillCode, findCli, userPassword, fillSecretCommand, fillSecretCommandPowerShell, psq };

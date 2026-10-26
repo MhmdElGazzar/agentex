@@ -13,7 +13,7 @@ A driver executes one step type for the orchestrator. Every driver provides the 
 ## The drivers
 | Driver | Step form | Runs via | Evidence | Infrastructure (retry once; twice = BLOCKED) | Preflight needs |
 |---|---|---|---|---|---|
-| **browser-driver** | unprefixed prose | `npx playwright-cli -s=<session>` | screenshots, console/network logs | The session or browser died, navigation never completed (`net::ERR_*`), the CLI errored instead of returning a page, a timeout with no page rendered. Full list: `browser-driver/references/experience/gotchas.md`. | playwright-cli, a browser binary, `portalUrl` |
+| **browser-driver** | unprefixed prose | `npx playwright-cli -s=<session>` | screenshots, console/network logs | The session or browser died, navigation never completed (`net::ERR_*`), the CLI errored instead of returning a page (a usage error such as `Unknown option` is the agent's own: corrected once, never retried), a timeout with no page rendered. Full list: `browser-driver/references/experience/gotchas.md`. | playwright-cli, a browser binary, `portalUrl` |
 | **api-integration** | `api:` | `run_api.js` | the runner's `--log` | The request never got a response: `request failed` (connection refused, DNS, timeout). | `api.baseUrl` answers, when the env defines one |
 | **db-integration** | `db:` | `run_db.js` | the runner's `--log` | sqlcmd could not connect or run (a sqlcmd error, not a wrong row). | sqlcmd |
 | **ask-kb** | `kb:` | `ask_kb.js` | the runner's `--log` | Advisory only: never a verdict, never retried. | none |

@@ -33,7 +33,7 @@ These hold for every run, in every mode.
 - Never print, log, or pass secret values (tokens, credentials, `envSecret` targets).
 - Every `{ "envSecret" }` browser field is typed only by `skills/browser-driver/scripts/fill_secret.js`, in every mode (browser-driver's Secret fields rule). A missing or empty variable is BLOCKED `secret-unavailable`, never FAIL and never `captcha-or-otp`.
 - `run-summary.json` and `extent-report.html` carry user handles only. Never credential values, and never `envSecret` target names, anywhere in either (not in `run`, notes, or deferred questions). Record the login mode as the mode word only.
-- `config/project.json`, `environments/<env>.json`, and `.env` may be read to resolve config.
+- Resolve config from `config/project.json` and `environments/<env>.json` only. Never read `.env`: the bundled scripts read the values they need from it themselves (`fill_secret.js` for `envSecret` fields, the runners for `api:`/`db:`/`kb:`).
 
 **Scope**
 - Never modify application source. Write test notes and artifacts only.
@@ -90,7 +90,9 @@ Run `spec_drivers.js <specs>` once, before any other action. Its `drivers` decid
 Resolve once, before any step. Take the first match:
 1. **Explicit**: "run on uat" or `env: uat` in the spec → `environments/uat.json`.
 2. **Default**: `defaultEnvironment` in `config/project.json` → that file.
-3. **Legacy** (neither file exists): `QA_TARGET_URL` from `.env`, or the URL the user gave. There are no defaults or users.
+3. **Legacy** (neither file exists): the URL the user gave. There are no defaults or users. With no URL:
+   - CI mode: `ci_preflight.js` reads `QA_TARGET_URL` itself; a target it cannot resolve is BLOCKED by preflight.
+   - Any other mode: stop before any step and tell the user "give the URL, or run `/update-agentex`" (it moves `QA_TARGET_URL` into `environments/`). Never read `.env` to find it.
 
 From the environment file:
 - `portalUrl` is the browser target. `defaults` + `users` are the test data for every scenario.
@@ -135,7 +137,7 @@ First ask: did the app ever answer? Each driver's infrastructure signatures are 
 | `references/concepts/spec-format.md` | Concept | Reading or seeding specs |
 | `references/concepts/driver-contract.md` | Concept | Deciding retry vs defect; adding a driver |
 
-Scripts in `${CLAUDE_SKILL_DIR}/scripts/` each print one JSON line:
+Scripts in `<agentex-root>/skills/test-execution/scripts/` each print one JSON line:
 | Script | Use |
 |---|---|
 | `preflight.js [--needs <drivers>]` | Check the run's tools in one call at session start. Its JSON becomes `run.tools`. |

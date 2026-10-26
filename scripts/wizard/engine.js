@@ -671,6 +671,16 @@ function planSave(payload, diskState) {
 }
 
 /**
+ * The ONE keep-a-plain-literal rule for secret fields (defaults.password's
+ * R10.4 guard and secret user fields share it; ui.html mirrors it): a plain
+ * value on disk under a secret field is kept byte-identical while the field is
+ * untouched this session. An edit or a consented toggle makes it touched.
+ */
+function keepsPlainLiteral(untouched, disk) {
+  return !!untouched && disk !== undefined && disk !== null && disk !== '' && typeof disk !== 'object';
+}
+
+/**
  * Build an environment file's users object from the wizard's user list,
  * merging each entry onto its on-disk base entry so hand-added properties the
  * wizard has no input for survive a save (invariant #11). Schema-driven
@@ -679,7 +689,8 @@ function planSave(payload, diskState) {
  * are the ONE exception to unknown-prop preservation: keys the user
  * explicitly removed or renamed away this session (consented ops) are deleted
  * from the base before the merge. The managed fields mirror the screen
- * exactly: a value sets the key, an empty field unsets it.
+ * exactly: a value sets the key, an empty field unsets it — except a plain
+ * string on disk under a secret field the user never touched (`u._plain[key]`).
  * ui.html's buildUsersObj mirrors this logic (browser copy — keep in sync).
  */
 function buildEnvUsers(list, baseUsers, userFields = BUILTIN_USER_FIELDS, dropKeys = []) {
@@ -693,7 +704,9 @@ function buildEnvUsers(list, baseUsers, userFields = BUILTIN_USER_FIELDS, dropKe
       const v = u[f.key];
       if (f.secret) {
         const n = String(v || '').trim();
-        if (n) entry[f.key] = { envSecret: n }; else delete entry[f.key];
+        if (n) entry[f.key] = { envSecret: n };
+        else if (keepsPlainLiteral(u._plain && u._plain[f.key], entry[f.key])) { /* untouched plain value stays */ }
+        else delete entry[f.key];
       } else if (v) {
         entry[f.key] = v;
       } else {
@@ -773,6 +786,6 @@ module.exports = {
   BUILTIN_USER_FIELDS, BUILTIN_DEFAULTS_FIELDS, LEGACY_DEFAULTS_FIELDS, LEGACY_HINT_CORRECTIONS,
   validateFieldDescriptors, validateProjectFieldSchema,
   stepApplies, validateTrackerBlocks, TRACKER_PROVIDERS,
-  buildConfigs, validate, validateConfigs, validateEnvConfig, planSave, buildEnvUsers, isHttpUrl,
+  buildConfigs, validate, validateConfigs, validateEnvConfig, planSave, buildEnvUsers, keepsPlainLiteral, isHttpUrl,
   extractFromText, extractUsers, mergeExtracted, mergeUsers, flattenObject,
 };

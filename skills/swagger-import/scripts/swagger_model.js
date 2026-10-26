@@ -34,19 +34,30 @@ const WRITE_SKIP = 'review: write operation — remove this line to enable';
 const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 // Generated non-existent IDs for not-found cases (source "auto"). (Q8)
 const AUTO_IDS = { integer: 999999999, uuid: '00000000-0000-4000-8000-000000000000', string: 'agentex-does-not-exist' };
-// A12: a write operation is destructive when it is a DELETE, carries x-destructive: true, or
-// its summary / operationId uses one of these verbs.
+// A12 (tightened by wizard-trial-fixes B9): an operation is destructive when it is a DELETE,
+// carries x-destructive: true, or a word of its path, summary or operationId is one of these verbs
+// (or its -s / -d / -ed / -ing form), on any method. "clear", "flush" and "invalidate" joined.
 const DESTRUCTIVE_VERBS = ['delete', 'remove', 'destroy', 'purge', 'erase', 'wipe', 'drop', 'truncate', 'terminate', 'revoke', 'reset', 'cancel'];
+const DESTRUCTIVE_EXTRA = ['clear', 'flush', 'invalidate'];
+const DESTRUCTIVE_FORMS = new Set([...DESTRUCTIVE_VERBS, ...DESTRUCTIVE_EXTRA].flatMap(v => [v, `${v}s`, `${v}d`, `${v}ed`, `${v}ing`, ...(v.endsWith('e') ? [`${v.slice(0, -1)}ing`] : [])]));
+const DESTRUCTIVE_SKIP = 'review: destructive operation — remove this line to enable';
 // A12: where an error example keeps its message — the first string found wins.
 const MESSAGE_PATHS = ['message', 'error.message', 'detail', 'title', 'error'];
 
 // ---- load (file or URL) ----
-async function loadSpec(source) {
+// A URL fetch is bounded (default 30 s, opts.timeoutMs overrides — the headers and the body
+// share the one bound), so a server that never answers ends here, not in a hung run.
+const FETCH_TIMEOUT_MS = 30000;
+async function loadSpec(source, opts = {}) {
   let raw;
   if (/^https?:\/\//i.test(source)) {
+    const timeoutMs = opts.timeoutMs || FETCH_TIMEOUT_MS;
     let res;
-    try { res = await fetch(source); raw = await res.text(); }
-    catch (e) { throw new SpecError(`could not fetch ${source}: ${e.message}`); }
+    try { res = await fetch(source, { signal: AbortSignal.timeout(timeoutMs) }); raw = await res.text(); }
+    catch (e) {
+      if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) throw new SpecError(`could not fetch ${source}: timed out after ${timeoutMs / 1000} s — the server did not answer`);
+      throw new SpecError(`could not fetch ${source}: ${e.message}`);
+    }
     if (!res.ok) throw new SpecError(`could not fetch ${source}: HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`, { status: res.status });
   } else {
     const fs = require('fs');
@@ -361,10 +372,10 @@ function typeOf(schema) {
   return 'string';
 }
 function wordsOf(s) { return String(s || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean); }
-function isDestructive(method, op) {
+function isDestructive(method, op, urlPath) {
   if (method === 'delete' || op['x-destructive'] === true) return true;
-  const words = [...wordsOf(op.summary), ...wordsOf(op.operationId)];
-  return words.some(w => DESTRUCTIVE_VERBS.includes(w));
+  const words = [...wordsOf(op.summary), ...wordsOf(op.operationId), ...wordsOf(String(urlPath || '').replace(/\{[^}]*\}/g, ' '))];
+  return words.some(w => DESTRUCTIVE_FORMS.has(w));
 }
 
 function walkOperations(model, review) {
@@ -402,7 +413,7 @@ function walkOperations(model, review) {
       ops.push({
         id: `${method.toUpperCase()} ${urlPath}`, method: method.toUpperCase(), path: urlPath,
         summary: op.summary || op.description || '', operationId: op.operationId || '',
-        auth, needs, write, destructive: write && isDestructive(method, op), request, op,
+        auth, needs, write, destructive: isDestructive(method, op, urlPath), request, op,
       });
     }
   }
@@ -469,6 +480,7 @@ function generate(model, selection, values, opts) {
   const requests = [];
   const cases = [];
   const endpoints = [];
+  const mismatches = [];
   for (const o of chosen) {
     const responses = o.op.responses || {};
     const reqReview = [];
@@ -488,7 +500,7 @@ function generate(model, selection, values, opts) {
       ...(reqReview.length ? { review: reqReview } : {}),
     });
     const entry = `${name}.${o.request}`;
-    const skip = o.write ? { skip: WRITE_SKIP } : {};
+    const skip = o.write ? { skip: WRITE_SKIP } : o.destructive ? { skip: DESTRUCTIVE_SKIP } : {};
     // The catalog's auth applies to every request in it; a public operation's cases are sent
     // without a credential, as the spec describes it (and never BLOCKED on a missing token).
     const publicAuth = o.auth === 'public' && auth.type !== 'none' ? { auth: 'none' } : {};
@@ -504,6 +516,15 @@ function generate(model, selection, values, opts) {
     }
     const opCases = [];
     const add = c => { opCases.push(c); cases.push(c); };
+    // same record: values the agent chose for one operation from two or more groups (B8)
+    const grouped = {};
+    for (const n of o.needs) {
+      const v = vals[n.param];
+      if (v && typeof v.group === 'string' && v.group && baseSources[n.param] !== 'placeholder') grouped[n.param] = v.group;
+    }
+    const groupIds = [...new Set(Object.values(grouped))];
+    const mismatch = groupIds.length >= 2;
+    if (mismatch) mismatches.push({ id: o.id, params: grouped });
 
     // happy
     const okCode = h.firstCode(responses, c => c >= 200 && c < 300);
@@ -540,6 +561,10 @@ function generate(model, selection, values, opts) {
         params: { ...baseParams }, sources: { ...baseSources }, omit: [missing.param], expect,
         ...(msg ? {} : { review: ['no documented 400 message — the case checks the status only; add the expected message if the service documents one'] }) });
     }
+    if (mismatch) {
+      const note = `values come from different records (${Object.entries(grouped).map(([p, g]) => `${p} <- ${g}`).join(', ')}) — the call may return 404`;
+      for (const c of opCases) c.review = [...(c.review || []), note];
+    }
     endpoints.push({ id: o.id, method: o.method, path: o.path, request: o.request, write: o.write, destructive: o.destructive, auth: o.auth,
       cases: opCases.map(c => ({ name: c.name, kind: c.kind, status: c.expect.status, skipped: !!c.skip, needsReview: needsReview(c) })) });
   }
@@ -567,7 +592,7 @@ function generate(model, selection, values, opts) {
   return {
     catalog, suite,
     summary: { total: cases.length, ready, review, skipped, byKind, bySource, endpoints, baseUrlVar, baseUrlLiteral,
-      tokenVar: auth.tokenEnv || `${envPrefix}_TOKEN`, specReview },
+      tokenVar: auth.tokenEnv || `${envPrefix}_TOKEN`, specReview, mismatches },
   };
 }
 // "Needs review": a case that is not skipped and still sends a placeholder value. A skipped case
@@ -578,7 +603,7 @@ function needsReview(c) {
 }
 
 module.exports = {
-  SpecError, slug, envPrefixFor, WRITE_SKIP, AUTO_IDS, MESSAGE_PATHS, DESTRUCTIVE_VERBS,
+  SpecError, slug, envPrefixFor, WRITE_SKIP, DESTRUCTIVE_SKIP, AUTO_IDS, MESSAGE_PATHS, DESTRUCTIVE_VERBS,
   loadSpec, parseSpec, listOperations, generate, generateLegacy, messageOf, needsReview,
   baseUrlOf: model => baseUrlFor(model, []),
 };

@@ -35,28 +35,40 @@ Find out by looking, not by assuming.
    sessions (`"session"`) or log in fresh every run (`"fresh"`)).
 2. **Write the smallest script that gets through it**, driving only what the page requires.
 3. **Prove you are in** — by a landmark, never by the URL (see below).
-4. **Save the session** (`storageState`).
+4. **Save the session** (`storageState`). In a playwright-cli session (a test run,
+   define-flow): `login_state.js save`, never `state-save` by hand.
 5. **Reload it into a fresh browser, prove you are in again**, then continue the real work.
+   In a playwright-cli session: `login_state.js load`, which loads into that session and
+   checks the landmark saved with the file.
 6. **When the session dies, log in again.** Do not build renewal machinery; re-login is cheap
    once step 2 exists.
 
-Steps 3–5 are identical in every application and ship with this skill:
-`<agentex-root>/skills/optimize-login/scripts/session.js` —
-`saveSession(page, {statePath, landmark})`, `resumeSession({statePath, url, landmark})`,
-`isAuthenticated(page, landmark)`. Steps 1–2 are yours to discover per application.
+Steps 3–5 are identical in every application and are bundled:
+- **In a playwright-cli session** (a test run, define-flow):
+  `<agentex-root>/skills/browser-driver/scripts/login_state.js`. Follow the browser-driver
+  skill's "Login mode" section and
+  `<agentex-root>/skills/browser-driver/references/tools/login-state.md`.
+- **In your own library script, or a standalone check:**
+  `<agentex-root>/skills/optimize-login/scripts/session.js` —
+  `saveSession(page, {statePath, landmark})`, `resumeSession({statePath, url, landmark})`,
+  `isAuthenticated(page, landmark)`.
 
-To check a saved session without writing any project code:
+Steps 1–2 are yours to discover per application.
+
+To check a saved session outside a run, without writing any project code (this launches its own
+library browser, not the run's session):
 
     node <agentex-root>/skills/optimize-login/scripts/session.js resume \
-      --state test/.auth/<app>-<environment>-state.json \
+      --state test/.auth/<environment>-<user>-state.json \
       --url   https://app.example.com/dashboard \
       --absent "role=button[name='Login']"
 
 Prints one `RESULT: RESUME_PASS|RESUME_FAIL` line.
 
-It needs the `playwright` PACKAGE (not `playwright-cli`: only the library can load a saved
-`storageState`), and it looks for it in the project you run it from — the working directory
-and its parents, so a monorepo hoist works — falling back to `NODE_PATH` if you set one. If
+`session.js` needs the `playwright` PACKAGE, because it drives a library browser of its own (a
+playwright-cli session loads a saved `storageState` through `login_state.js` and needs no
+library). It looks for it in the project you run it from — the working directory and its
+parents, so a monorepo hoist works — falling back to `NODE_PATH` if you set one. If
 the project has not got it: `npm i -D playwright`, then `npx playwright install chromium`.
 The bundled Chromium is what it launches; add `--channel chrome` (or `msedge`, …) only when
 the test needs that specific browser, and `--headed` to watch a resume fail with your own
@@ -120,7 +132,7 @@ This skill produces no report of its own — its output is state, consumed by wh
 invoked it:
 - The bundled `session.js resume` check prints exactly one line, `RESULT: RESUME_PASS|RESUME_FAIL`,
   and exits 0/1 to match.
-- A successful run leaves a session file at `test/.auth/<app>-<environment>-state.json` for
+- A successful run leaves a session file at `test/.auth/<environment>-<user>-state.json` for
   later runs to reload.
 - Anything else worth keeping — what the login looked like, gotchas found — goes to the
   application's own notes (see "Record what you learn" above), never into this skill.
@@ -129,6 +141,8 @@ invoked it:
 
 A saved session is a bearer token in a file: whoever holds it is logged in as that user. Keep
 these in `test/.auth/`, which /init-test and /update-agentex add to the project's `.gitignore`,
-and never commit one.
-Sessions are saved per environment — `test/.auth/<app>-<environment>-state.json` (e.g.
-`myapp-qa-state.json`); a session saved on one environment is never resumed on another.
+and never commit one. Never open, print, copy or edit one (or its `.meta.json` sidecar); in a
+playwright-cli session only `login_state.js` loads or saves it.
+Sessions are saved per environment and user — `test/.auth/<environment>-<user>-state.json`
+(e.g. `qa-buyer-state.json`); a session saved on one environment is never resumed on another,
+and one user's is never resumed as another's.

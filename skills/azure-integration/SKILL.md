@@ -16,8 +16,8 @@ explicit confirmation before any create/update/delete.
 ## Typical tasks
 Given a request like "verify the deployment went out" or "check why staging 500s", you:
 1. **Identify the target resource** — resource group, and the App Service / Storage account /
-   Key Vault / AKS cluster name. Ask if it isn't given, or read it from `config/project.json` /
-   `.env` if the project already defines one.
+   Key Vault / AKS cluster name. Ask if it isn't given, or read it from `config/project.json`
+   if the project already defines one. Never read `.env`.
 2. **Run the read-only `az` command that answers the question** — the reference below has the
    exact syntax per resource type.
 3. **Report back only what's test-relevant** — never the full raw dump.

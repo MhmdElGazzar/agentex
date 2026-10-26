@@ -32,7 +32,7 @@ const JWT_RE = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/;
 const HEADER_TOKEN_RE = /^\s*(bearer|basic|token|apikey|api-key)\s+\S{8,}/i;
 
 function freshWizard() {
-  return { model: null, source: null, ops: [], slug: null, env: null, files: null, apiOrigin: null, baseUrlLiteral: null,
+  return { model: null, source: null, suiteName: null, ops: [], slug: null, env: null, files: null, apiOrigin: null, baseUrlLiteral: null,
     selection: [], needs: [], values: {}, missing: {}, user: null, run: null, runSeq: 0, consents: [], token: null };
 }
 
@@ -43,6 +43,19 @@ function coerceTyped(value, type) {
   if (type === 'boolean' && (s === 'true' || s === 'false')) return s === 'true';
   if (type === 'json') { try { return JSON.parse(s); } catch { return value; } }
   return value;
+}
+// F9: a value must fit the need's type, whoever posts it (the page or the agent). Returns the
+// expected type when it does not fit, else null. Strings and unknown types are never refused.
+function typeMismatch(value, type) {
+  const s = typeof value === 'string' ? value.trim() : value;
+  if (type === 'integer') return (typeof s === 'number' && Number.isSafeInteger(s)) || (typeof s === 'string' && /^-?\d+$/.test(s) && Number.isSafeInteger(Number(s))) ? null : 'integer';
+  if (type === 'number') return (typeof s === 'number' && Number.isFinite(s)) || (typeof s === 'string' && s !== '' && Number.isFinite(Number(s))) ? null : 'number';
+  if (type === 'boolean') return typeof s === 'boolean' || s === 'true' || s === 'false' ? null : 'boolean';
+  if (type === 'json') {
+    if (typeof s !== 'string') return s !== null && typeof s === 'object' ? null : 'json';
+    try { JSON.parse(s); return null; } catch { return 'json'; }
+  }
+  return null;
 }
 function suggestBaseUrl(literal, observed) {
   const absolute = typeof literal === 'string' && /^https?:\/\//i.test(literal) && !literal.includes('REPLACE_ME');
@@ -102,6 +115,17 @@ function mount(studio) {
   const need = p => wz.needs.find(n => n.param === p);
   const generate = () => M.generate(wz.model, wz.selection, wz.values, { name: wz.slug, capturedToken: wz.token ? { scheme: wz.token.scheme, headerName: wz.token.headerName } : undefined });
   const existsNow = () => ({ catalog: fs.existsSync(path.join(root, wz.files.catalog)), suite: fs.existsSync(path.join(root, wz.files.suite)) });
+  // F11: cases that need the token will be BLOCKED when nothing supplies one: no captured token,
+  // no value in .env for the catalog's tokenEnv, no unexpired saved token for this suite.
+  function tokenMissing(gen) {
+    const a = gen.catalog.auth || {};
+    if (a.type !== 'bearer' && a.type !== 'apiKey') return false;
+    if (wz.token && wz.token.value) return false;
+    if (a.tokenEnv && pc.readEnvVar(root, a.tokenEnv)) return false;
+    let meta = null;
+    try { meta = D.readTokenMeta(root, wz.slug, wz.env); } catch { meta = null; }
+    return !(meta && (!meta.expiresAt || Date.parse(meta.expiresAt) > Date.now()));
+  }
   const tokenView = () => (wz.token ? { present: true, user: wz.token.user || null, capturedAt: wz.token.capturedAt, scheme: wz.token.scheme } : { present: false });
   const runView = r => r && {
     runId: r.runId, status: r.status, phase: r.phase, gate: r.gate, reason: r.reason, found: r.found, total: r.total,
@@ -119,21 +143,29 @@ function mount(studio) {
     if (!source || !suiteName) return { status: 400, body: { ok: false, error: 'missing', message: 'a spec source and a suite name are required' } };
     const names = studio.envList().environments.map(e => e.name);
     if (!names.includes(env)) return { status: 400, body: { ok: false, error: 'env', message: `pick one of the project's environments (${names.join(', ') || 'none defined'})` } };
+    const slug = M.slug(suiteName);
+    const files = { catalog: `integration/api_test_suites/${slug}/${slug}_api.json`, suite: `integration/api_test_suites/${slug}/${slug}_suite.json` };
+    const existsFile = () => { const e = existsNow(); return e.catalog ? wz.files.catalog : e.suite ? wz.files.suite : null; };
+    // F5/F12: the same spec and environment keep everything held (a re-post, a reload); only a
+    // new name recomputes the files. A different spec or environment starts over, and says so.
+    if (wz.model && wz.source === source && wz.env === env) {
+      if (wz.suiteName !== suiteName) Object.assign(wz, { suiteName, slug, files });
+      return { body: { ok: true, kept: true, slug: wz.slug, files: wz.files, exists: existsNow(), existsFile: existsFile(), ops: wz.ops, selection: wz.selection } };
+    }
     const src = /^https?:\/\//i.test(source) ? source : path.resolve(root, source);
     let model;
     try { model = M.parseSpec(await M.loadSpec(src), source); }
     catch (e) { return { status: 400, body: { ok: false, error: 'spec', message: e.message } }; }
     const ops = M.listOperations(model);
     if (!ops.length) return { status: 400, body: { ok: false, error: 'spec', message: 'no operations found in "paths" — nothing to import' } };
-    const slug = M.slug(suiteName);
+    const reset = !!wz.model;
     wz = state.wizard = freshWizard();
     const lit = M.baseUrlOf(model);
     let apiOrigin = null;
     try { apiOrigin = /^https?:\/\//i.test(lit) && !lit.includes('REPLACE_ME') ? new URL(lit).origin : null; } catch { apiOrigin = null; }
-    Object.assign(wz, { model, source, ops, slug, env, apiOrigin, baseUrlLiteral: lit,
-      files: { catalog: `integration/api_test_suites/${slug}/${slug}_api.json`, suite: `integration/api_test_suites/${slug}/${slug}_suite.json` } });
+    Object.assign(wz, { model, source, suiteName, ops, slug, env, apiOrigin, baseUrlLiteral: lit, files });
     state.log(`wizard: read ${ops.length} operations from ${source}`);
-    return { body: { ok: true, slug, files: wz.files, exists: existsNow(), ops } };
+    return { body: { ok: true, reset, slug, files: wz.files, exists: existsNow(), existsFile: existsFile(), ops } };
   });
 
   // ---- step 2: pick operations ----
@@ -164,13 +196,34 @@ function mount(studio) {
     if (b.source === 'placeholder') { wz.values[n.param] = { value: '', source: 'placeholder' }; return { body: { ok: true } }; }
     if (b.source !== 'manual' || b.value === undefined || String(b.value).trim() === '') return { status: 400, body: { ok: false, error: 'bad-value' } };
     if (credentialShaped(b.value)) return { status: 400, body: { ok: false, error: 'credential-shaped' } };
+    const expected = typeMismatch(b.value, n.type);
+    if (expected) return { status: 400, body: { ok: false, error: 'bad-type', expected } };
     wz.values[n.param] = { value: coerceTyped(b.value, n.type), source: 'manual' };
     delete wz.missing[n.param];
     return { body: { ok: true } };
   });
 
+  // N1: the default user is the most frequent owner of the accepted project values who is a
+  // known, usable user of the environment (ties: the environment file's order); none → null.
+  const envInfo = () => studio.envList().environments.find(e => e.name === wz.env) || { users: [], userInfo: [] };
+  function suggestedUser() {
+    const info = envInfo().userInfo || [];
+    const usable = info.filter(u => !u.disabled && u.disabled !== '').map(u => u.name);
+    const count = new Map();
+    for (const v of Object.values(wz.values)) {
+      if (v.source !== 'project' || !v.user || !usable.includes(v.user)) continue;
+      if (v.environment && v.environment !== wz.env) continue;
+      count.set(v.user, (count.get(v.user) || 0) + 1);
+    }
+    let best = null;
+    for (const u of usable) if (count.has(u) && (best === null || count.get(u) > count.get(best))) best = u;
+    return best;
+  }
+  const stepNow = () => (!wz.model ? 1 : wz.selection.length ? 3 : 2);
+  const mismatchesNow = () => { try { return wz.model && wz.selection.length ? (generate().summary.mismatches || []) : []; } catch { return []; } };
   route('GET', '/api/wizard/state', 'page', () => ({ body: {
     ok: true, attached: studio.agentAttached(), slug: wz.slug, env: wz.env, user: wz.user, files: wz.files, needs: wz.needs,
+    source: wz.source, suiteName: wz.suiteName, selection: wz.selection, step: stepNow(), suggestedUser: suggestedUser(), mismatches: mismatchesNow(),
     values: wz.values, missing: wz.missing, run: runView(wz.run), token: tokenView(),
     tokenNeeded: wz.ops.some(o => wz.selection.includes(o.id) && o.auth === 'token'),
     tokenVar: wz.slug ? `${M.envPrefixFor(wz.slug)}_TOKEN` : null,
@@ -181,8 +234,16 @@ function mount(studio) {
     if (!wz.model || !wz.selection.length) return { status: 400, body: { ok: false, error: 'no-selection' } };
     const gen = generate();
     const v = gen.summary.baseUrlVar;
-    return { body: { ok: true, summary: gen.summary, files: wz.files, exists: existsNow(), token: tokenView(),
-      baseUrl: { var: v, isSet: !!pc.readEnvVar(root, v), suggested: suggestBaseUrl(gen.summary.baseUrlLiteral, wz.token && wz.token.apiOrigin) } } };
+    const baseSet = !!pc.readEnvVar(root, v);
+    const hasData = Object.values(wz.values).some(x => x.source === 'ui' || x.source === 'project') || wz.needs.some(n => !wz.values[n.param] || wz.values[n.param].source === 'placeholder') || wz.consents.length > 0;
+    const hasToken = !!(wz.token && wz.token.value);
+    const tokenBlocked = tokenMissing(gen) ? gen.suite.cases.filter(c => !c.skip && !M.needsReview(c) && c.auth !== 'none').length : 0;
+    const writes = [{ path: wz.files.catalog, kind: 'catalog', when: 'always' }, { path: wz.files.suite, kind: 'suite', when: 'always' },
+      ...(hasData ? [{ path: D.storeRel(wz.slug), kind: 'data-store', when: 'data' }] : []),
+      ...(hasToken ? [{ path: D.tokenRel(wz.slug, wz.env), kind: 'token', when: 'token' }] : []),
+      ...(!baseSet ? [{ path: '.env', kind: 'env-line', when: 'base-url' }] : [])];
+    return { body: { ok: true, summary: { ...gen.summary, tokenBlocked }, writes, files: wz.files, exists: existsNow(), token: tokenView(),
+      baseUrl: { var: v, isSet: baseSet, suggested: suggestBaseUrl(gen.summary.baseUrlLiteral, wz.token && wz.token.apiOrigin) } } };
   });
 
   // ---- step 5: one approval writes everything ----
@@ -221,7 +282,7 @@ function mount(studio) {
     const store = {
       suite: wz.files.suite, environment: wz.env, collectedAt: new Date().toISOString(),
       values: Object.entries(wz.values).filter(([, v]) => v.source === 'ui' || v.source === 'project')
-        .map(([param, v], i) => ({ id: `v${i + 1}`, param, value: v.value, source: v.source, ...(v.user ? { user: v.user } : {}), ...(v.provenance ? { provenance: v.provenance } : {}) })),
+        .map(([param, v], i) => ({ id: `v${i + 1}`, param, value: v.value, source: v.source, ...(v.user ? { user: v.user } : {}), ...(v.environment ? { environment: v.environment } : {}), ...(v.group ? { group: v.group } : {}), ...(v.provenance ? { provenance: v.provenance } : {}) })),
       missing: wz.needs.filter(n => !wz.values[n.param] || wz.values[n.param].source === 'placeholder')
         .map(n => ({ param: n.param, cases: usedPlaceholders(n.param), hint: (wz.missing[n.param] || {}).hint || '' })),
       consents: wz.consents,
@@ -256,17 +317,21 @@ function mount(studio) {
   route('POST', '/api/wizard/collect-again', 'page', async (req) => startCollect(await U.readJSON(req), 'collect-again'));
   function startCollect(b, kind) {
     if (!wz.model || !wz.selection.length) return { status: 400, body: { ok: false, error: 'no-selection' } };
-    if (!studio.agentAttached()) return { body: { ok: false, error: 'no-agent' } };
-    if (wz.run && wz.run.status === 'collecting') return { status: 409, body: { ok: false, error: 'busy' } };
-    const env = studio.envList().environments.find(e => e.name === wz.env) || { users: [] };
+    const env = envInfo();
     const user = b.user === null || b.user === undefined || b.user === '' ? null : String(b.user);
     if (user && !env.users.includes(user)) return { status: 400, body: { ok: false, error: 'unknown-user' } };
-    wz.user = user;
-    const runId = `c${++wz.runSeq}`;
-    wz.run = { runId, status: 'collecting', phase: null, gate: null, proposal: null, refused: null, violations: [], created: [], reason: null };
+    // N1: a user marked "disabled" in the environment file never reaches the agent.
+    const locked = user && (env.userInfo || []).find(u => u.name === user && u.disabled !== null);
+    if (locked) return { status: 400, body: { ok: false, error: 'user-disabled', reason: locked.disabled } };
     const needs = kind === 'collect-again' && b.all !== true
       ? wz.needs.filter(n => !wz.values[n.param] || !['ui', 'project'].includes(wz.values[n.param].source))
       : wz.needs;
+    if (kind === 'collect-again' && !needs.length) return { body: { ok: false, error: 'nothing-missing' } };
+    if (!studio.agentAttached()) return { body: { ok: false, error: 'no-agent' } };
+    if (wz.run && wz.run.status === 'collecting') return { status: 409, body: { ok: false, error: 'busy' } };
+    wz.user = user;
+    const runId = `c${++wz.runSeq}`;
+    wz.run = { runId, status: 'collecting', phase: null, gate: null, proposal: null, refused: null, violations: [], created: [], reason: null };
     studio.notifyAgent({ event: kind, runId, suite: wz.slug, env: wz.env, user, apiOrigin: wz.apiOrigin, needs });
     return { body: { ok: true, runId } };
   }
@@ -305,7 +370,7 @@ function mount(studio) {
   const str = (v, max = 500) => (typeof v === 'string' ? v.slice(0, max) : '');
   const agentEvents = {
     phase(r, b) {
-      if (!['project', 'login', 'walk', 'create', 'done'].includes(b.name)) return { ok: false, error: 'bad-phase' };
+      if (!['project', 'session', 'login', 'walk', 'create', 'done'].includes(b.name)) return { ok: false, error: 'bad-phase' };
       r.phase = { name: b.name, text: str(b.text) };
       return { ok: true };
     },
@@ -315,9 +380,13 @@ function mount(studio) {
       if (b.source !== 'project' && b.source !== 'ui') return { ok: false, error: 'bad-source' };
       if (b.value === undefined || b.value === null || b.value === '') return { ok: false, error: 'bad-value' };
       if (credentialShaped(b.value)) return { ok: false, error: 'credential-shaped' };
+      // B7: a value read from another environment is never stored.
+      if (typeof b.environment === 'string' && b.environment && b.environment !== wz.env) return { ok: false, error: 'other-environment' };
+      const expected = typeMismatch(b.value, n.type);
+      if (expected) return { ok: false, error: 'bad-type', expected };
       const prov = b.provenance && typeof b.provenance === 'object' ? Object.fromEntries(Object.entries(b.provenance).filter(([k, v]) => ['screen', 'call', 'file', 'path', 'query'].includes(k) && typeof v === 'string').map(([k, v]) => [k, v.slice(0, 300)])) : undefined;
       if (prov && credentialShaped(Object.values(prov).join(' '))) return { ok: false, error: 'credential-shaped' };
-      wz.values[n.param] = { value: b.value, source: b.source, ...(b.user ? { user: str(b.user, 100) } : {}), ...(prov ? { provenance: prov } : {}) };
+      wz.values[n.param] = { value: b.value, source: b.source, ...(b.user ? { user: str(b.user, 100) } : {}), ...(b.environment ? { environment: str(b.environment, 100) } : {}), ...(b.group ? { group: str(b.group, 200) } : {}), ...(prov ? { provenance: prov } : {}) };
       delete wz.missing[n.param];
       return { ok: true };
     },

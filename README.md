@@ -2,7 +2,7 @@
 
 **Agentic QA for Claude Code — an agent plans, runs, and reports your tests so you don't click through them by hand.**
 
-[![Version](https://img.shields.io/badge/version-0.27.0-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.28.1-blue.svg)](./CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-8A2BE2.svg)](https://docs.anthropic.com/en/docs/claude-code)
 [![Playwright](https://img.shields.io/badge/Playwright-CLI-2EAD33.svg?logo=playwright&logoColor=white)](https://www.npmjs.com/package/@playwright/cli)
@@ -39,7 +39,7 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 | **Ask the KB** | `kb:` steps (or `/ask-kb`) query your project's KB Ask API for advisory context — informs testing, **never** used as PASS/FAIL evidence. | [ask-kb](./docs/ask-kb.md) |
 | **UI check steps** | `ui-check:` scenario steps compare the live page against a design baseline — a Figma frame (identifier only; file + token configured once) or a screenshot — in `exact` or `reference` mode; verdicts, warnings, and view-mismatch errors land in the reports with both images as evidence. | [ui-check](./docs/ui-check.md) |
 | **Optimize login** | Pay a web app's login once per session: drive it live, verify by landmark (never by URL), save the browser session, and reload it into a fresh browser to continue. | [optimize-login](./docs/optimize-login.md) |
-| **Tracker planning (Azure DevOps or Jira Cloud)** | `/estimate-story <ids>` and `/estimate-sprint` create the `[Testing]` tasks your `config/estimation.json` defines (Jira: sub-tasks with time tracking), proposed on the first run from your team's own last closed sprints, with abnormal values asked about on the same screen; `/design-test` turns story ACs into linked test cases (Jira has no native Test Case type — you choose what to create) — both through bundled scripts over the tracker REST API (no `az`, no `acli`), validated fail-closed first, with **one** consolidated approval per flow. | [azure-devops](./docs/azure-devops.md) · [jira](./docs/jira.md) |
+| **Tracker planning (Azure DevOps or Jira Cloud)** | `/estimate-story <ids>` and `/estimate-sprint` create the `[Testing]` tasks your `config/estimation.json` defines (Jira: sub-tasks with time tracking), proposed on the first run from your team's own last closed sprints, with abnormal values asked about on the same screen; `/design-test` turns story acceptance criteria (ACs) into linked test cases (Jira has no native Test Case type — you choose what to create) — both through bundled scripts over the tracker REST API (no `az`, no `acli`), validated fail-closed first, with **one** consolidated approval per flow. Fail-closed means that if validation (the checks every task or test case must pass, run before any write) fails, nothing is written to the board. | [azure-devops](./docs/azure-devops.md) · [jira](./docs/jira.md) |
 | **Tracker bug filing (Azure DevOps or Jira Cloud)** | After a run, `bug-report-azure` files found defects as tracker **Bugs** through the same bundled scripts — recommends severity/priority, validates every field against your project's real values, links each bug to its parent User Story, validates & attaches screenshots, optionally fails the related test case (ADO); all writes behind **one** approval, with an exact per-write ledger if anything fails partway. | [azure-devops](./docs/azure-devops.md) · [jira](./docs/jira.md) |
 | **HTML report** | At the end of a run, generates a standalone, self-contained `extent-report.html` dashboard (donut chart, status cards, expandable per-test-case steps). | [extent-report](./docs/extent-report.md) |
 | **Configuration** | Three homes, one each: `config/project.json` (project settings), `environments/<env>.json` (targets, users, integrations), and a secrets-only `.env` — legacy keys-only `.env` projects still work untouched. After a plugin update, `/update-agentex` migrates a project to the new conventions, carrying your values. | [configuration](./docs/configuration.md) |
@@ -146,6 +146,7 @@ flowchart LR
   s_mobile_testing --> s_ask_kb
   s_mobile_testing --> s_db_integration
   s_mobile_testing --> s_extent_report
+  s_optimize_login --> s_browser_driver
   s_test_execution --> s_browser_driver
   s_test_execution --> s_extent_report
   s_test_execution --> s_ui_check
@@ -192,9 +193,10 @@ Open issues and PRs on the [GitHub repository](https://github.com/MhmdElGazzar/a
 - **Marwah Zain**
 - [**@mabdel130**](https://github.com/mabdel130) — `extent-report` skill (PR #1)
 - [**@YoussefAbdellah2023**](https://github.com/YoussefAbdellah2023) — `extent-report` v2/v3, Jira and Figma integration work (PRs #5, #6, #7, #8, #11, #13, #14)
-- **Hager-Helmy**
+- [**@Hager-Helmy**](https://github.com/Hager-Helmy) — the `bug-report-azure` skill (PR #2) and its rebuild as one context/prepare/execute operation with deterministic duplicate ranking (PR #19)
 - [**@MahmoudElSharkawy**](https://github.com/MahmoudElSharkawy) — annotated screenshots on filed Azure bugs (PR #20)
 - [**@abdo-mohamed-ezzat**](https://github.com/abdo-mohamed-ezzat) — session login reuse (PR #17), multi-context flows RFC (#18)
+- [**@MohamedAbdella**](https://github.com/MohamedAbdella) — multi-runtime support: native Codex and Copilot execution, guarded project installation and parallel agent coordination (PRs #22, #27, #28, #29). The host branches are generated from `main` using his host knowledge.
 
 ## License
 

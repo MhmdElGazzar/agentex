@@ -20,8 +20,10 @@ Arguments: $ARGUMENTS
 
 **Environment (if named in the arguments):**
 - "on uat" / "env uat" selects `environments/uat.json` as the active environment; otherwise
-  the project's `defaultEnvironment` applies (legacy projects: `.env`). An environment with
-  no file is an error — list `environments/` and stop.
+  the project's `defaultEnvironment` applies. A legacy project (no `config/project.json`,
+  no `environments/`) uses the URL the user gave; with none, stop before the session and say
+  "give the URL, or run `/update-agentex`". Never read `.env`.
+  An environment with no file is an error — list `environments/` and stop.
 
 Then follow the skill: resolve target & environment per test-execution's environment rules,
 read the skill's referenced `playwright-cli.md` (browser-driver) before the first browser action, and run the
