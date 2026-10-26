@@ -14,6 +14,11 @@
 //   - LANE_MAP → the lanes whose consumer flows exercise that file;
 //   - anything else is UNMAPPED and forces the full gate — fail safe: a lane is never
 //     skipped for a file the table does not know.
+// A file in SECTIONS (a shared
+// agent file made of named sections) is read hunk by hunk instead: when every hunk sits in
+// a mapped section, only the union of those sections' lanes runs (named file#SECTION);
+// a hunk in an unmapped section, before the first header, or one that cannot be placed
+// falls back to the whole-file mapping above.
 // setup and wizard always run (every consumer starts there); a lane that reads another
 // lane's output (REQUIRES) runs with it. A diff of INERT files only (or none) is
 // docsOnly — the gate is skipped per the release checklist, so every lane is off.
@@ -50,6 +55,24 @@ const FULL = [
   'scripts/lib/tracker/**',
   'scripts/lib/project_config.js',
 ];
+
+// Section-level mapping for a shared file. `header` finds a section's header line; `map` is
+// [section-name prefix, lanes] (the name is the header up to its first " (" or ":"). A
+// section not listed — the parameter block, TEST SPECIFICATION, EXECUTION RULES, OUTPUT, any
+// line before the first header — governs every lane, so it is unmapped → the whole-file mapping.
+const SECTIONS = {
+  'agents/qa-executor.md': {
+    header: /^[A-Z][A-Z0-9/&-]+(?: [A-Z0-9/&-]+)*(?: \(|:|$)/,
+    map: [
+      ['BROWSER STEPS', ['ui']],
+      ['UI CHECKS', ['ui']],
+      ['WHERE TO SAVE EVIDENCE', ['ui', 'reporting']],
+      ['WHEN A SCENARIO FAILS', ['ui', 'reporting']],
+      ['INTEGRATION STEPS', ['api']],
+      ['KB QUESTIONS', ['api']],
+    ],
+  },
+};
 
 // [glob, lanes]. A file collects the lanes of EVERY entry it matches.
 const LANE_MAP = [
@@ -143,7 +166,53 @@ const FULL_RE = compiled(FULL);
 const LANE_RE = LANE_MAP.map(([g, lanes]) => [globToRegExp(g), lanes]);
 const hit = (res, f) => res.some((re) => re.test(f));
 
-function planLanes(changed) {
+const sectionName = (line) => line.split(/ \(|:/)[0];
+const lanesOfSection = (file, name) => (SECTIONS[file].map.find(([p]) => name.startsWith(p)) || [null, null])[1];
+
+// The section a 1-based line of `lines` sits in (its own name when it is a header), or null
+// before the first header or past the end of the text.
+function sectionAt(lines, n, header) {
+  if (!(n >= 1 && n <= lines.length)) return null;
+  for (let i = n - 1; i >= 0; i--) if (header.test(lines[i])) return sectionName(lines[i]);
+  return null;
+}
+
+// Pure. The hunks of `diff` (git diff -U0 text) placed in the sections of `file`:
+// added lines in the HEAD text, deleted lines in the base text. → {lanes, sections}, or null
+// when anything is unplaceable or unmapped (the caller then uses the whole-file mapping).
+function sectionImpact(file, baseText, headText, diff) {
+  const cfg = SECTIONS[file];
+  if (!cfg || typeof baseText !== 'string' || typeof headText !== 'string') return null;
+  const baseLines = baseText.split('\n');
+  const headLines = headText.split('\n');
+  const names = new Set();
+  const place = (lines, start, count) => {
+    if (count === 0) return true;
+    const first = sectionAt(lines, start, cfg.header);
+    if (first === null) return false;
+    names.add(first);
+    for (let n = start + 1; n < start + count; n++) if (cfg.header.test(lines[n - 1])) names.add(sectionName(lines[n - 1]));
+    return true;
+  };
+  const re = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm;
+  let m; let hunks = 0;
+  while ((m = re.exec(diff))) {
+    hunks++;
+    const [a, b, c, d] = [m[1], m[2] ?? 1, m[3], m[4] ?? 1].map(Number);
+    if (!place(headLines, c, d) || !place(baseLines, a, b)) return null;
+  }
+  if (!hunks) return null;
+  const lanes = new Set();
+  for (const name of names) {
+    const ls = lanesOfSection(file, name);
+    if (!ls) return null;
+    for (const l of ls) lanes.add(l);
+  }
+  return { lanes: [...lanes], sections: [...names].sort() };
+}
+
+// sectionLanes (optional): file → {lanes, sections} from sectionImpact; absent → whole-file.
+function planLanes(changed, sectionLanes = {}) {
   const files = [...new Set(changed)].sort();
   const because = Object.fromEntries(LANES.map((l) => [l, new Set()]));
   const unmapped = [];
@@ -152,6 +221,17 @@ function planLanes(changed) {
   for (const f of files) {
     if (hit(INERT_RE, f)) continue;
     active++;
+    const sec = SECTIONS[f] && sectionLanes[f];
+    if (sec) {
+      for (const l of sec.lanes) {
+        // the label names only the sections that map to this lane
+        const names = sec.sections.filter((s) => (lanesOfSection(f, s) || sec.lanes).includes(l));
+        for (const s of names) {
+          for (const t of [l, ...(REQUIRES[l] || [])]) because[t].add(`${f}#${s}`);
+        }
+      }
+      continue;
+    }
     if (hit(FULL_RE, f)) {
       full = true;
       for (const l of LANES) because[l].add(f);
@@ -194,9 +274,10 @@ function parseArgs(argv) {
   return opts;
 }
 
-function gitText(cwd, args) {
+function gitText(cwd, args, raw = false) {
   try {
-    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1 << 28 }).trim();
+    const out = execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 1 << 28 });
+    return raw ? out : out.trim();
   } catch (e) {
     const why = (e.stderr || e.message || '').toString().trim().split('\n')[0];
     throw new Error(`git ${args[0]} failed: ${why}`);
@@ -222,8 +303,19 @@ function plan(cwd, opts) {
   catch { throw new Error(`--base ${JSON.stringify(baseRef)} is not a commit in this repo`); }
   const head = gitText(cwd, ['rev-parse', '--verify', 'HEAD^{commit}']);
   const changed = gitText(cwd, ['diff', '--name-only', '--no-renames', `${base}..${head}`]).split('\n').filter(Boolean);
+  // Hunk-by-hunk for the sectioned files; any git failure leaves the file to the whole-file mapping.
+  const sectionLanes = {};
+  for (const f of new Set(changed)) {
+    if (!SECTIONS[f] || hit(INERT_RE, f)) continue;
+    try {
+      const diff = gitText(cwd, ['diff', '-U0', '--no-renames', `${base}..${head}`, '--', f], true);
+      const at = (rev) => gitText(cwd, ['show', `${rev}:${f}`], true);
+      const found = sectionImpact(f, at(base), at(head), diff);
+      if (found) sectionLanes[f] = found;
+    } catch { /* unreadable → whole file */ }
+  }
   const short = (sha) => gitText(cwd, ['rev-parse', '--short', sha]);
-  return { base: short(base), head: short(head), ...planLanes(changed), changed: changed.length };
+  return { base: short(base), head: short(head), ...planLanes(changed, sectionLanes), changed: changed.length };
 }
 
 function main(argv) {
@@ -241,11 +333,13 @@ function main(argv) {
   process.stderr.write(`gate-plan: ${out.base}..${out.head}, ${changed} files changed — `
     + (out.docsOnly ? 'docs/evals/tests only: the gate is skipped\n'
       : `${out.full ? 'FULL gate' : 'scoped gate'}: run ${on.join(', ')}${off.length ? `; skip ${off.join(', ')}` : ''}\n`));
+  const secs = [...new Set(LANES.flatMap((l) => out.lanes[l].because).filter((b) => b.includes('#')))];
+  if (secs.length) process.stderr.write(`gate-plan: section-mapped: ${secs.join(', ')}\n`);
   if (out.unmapped.length) process.stderr.write(`gate-plan: unmapped (forces full): ${out.unmapped.join(', ')}\n`);
   process.stdout.write(JSON.stringify(out) + '\n');
   return 0;
 }
 
-module.exports = { LANES, ALWAYS_ON, REQUIRES, INERT, FULL, LANE_MAP, globToRegExp, planLanes, lastBump, parseArgs };
+module.exports = { LANES, ALWAYS_ON, REQUIRES, INERT, FULL, LANE_MAP, SECTIONS, globToRegExp, planLanes, sectionImpact, lastBump, parseArgs };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
