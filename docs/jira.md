@@ -1,5 +1,9 @@
 # Jira QA
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [14. Jira Cloud](./user-guide/agentex/14-jira-cloud.md) · **Related:** [Azure DevOps QA](./azure-devops.md) · [Configuration](./configuration.md)
+<!-- /docs-nav:top -->
+
 If your team tracks work in Jira Cloud, AgenTeX runs the same QA flows it runs on Azure
 DevOps — estimate QA effort, design test artifacts from a story's acceptance criteria, and
 file bugs found during a run — always with **one consolidated approval** before anything is
@@ -196,3 +200,14 @@ Two gaps that are not capability flags, known as of 0.23.0:
 - **"More than one tracker provider is configured"** — a config carrying both an `azure`
   and a `jira` block fails closed; keep exactly one provider block (the wizard enforces
   this on save).
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [14. Jira Cloud](./user-guide/agentex/14-jira-cloud.md)
+- **Related reference:** [Azure DevOps QA](./azure-devops.md) · [Configuration](./configuration.md)
+- **Source:** [skills/task-estimation/SKILL.md](../skills/task-estimation/SKILL.md) · [skills/test-design/SKILL.md](../skills/test-design/SKILL.md) · [skills/bug-report-azure/SKILL.md](../skills/bug-report-azure/SKILL.md) · [references/tracker/jira-boards.md](../references/tracker/jira-boards.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

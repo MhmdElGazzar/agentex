@@ -1,5 +1,9 @@
 # Interactive HTML Report
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [16. Reports](./user-guide/agentex/16-reports-and-evidence.md) · **Related:** [Test Execution](./test-execution.md) · [CI Quality Gate](./ci-quality-gate.md)
+<!-- /docs-nav:top -->
+
 At the end of a run, you get more than a plain-text summary — AgenTeX can also produce a
 standalone **`extent-report.html`**: a dark-themed dashboard you can open in any browser, no
 server or internet connection needed.
@@ -32,3 +36,14 @@ for creating an interactive dashboard alongside the test results.
 **Reference:**
 - Skill: `skills/extent-report/SKILL.md`
 - Contributed by [@mabdel130](https://github.com/mabdel130) (PR #1).
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [16. Reports](./user-guide/agentex/16-reports-and-evidence.md)
+- **Related reference:** [Test Execution](./test-execution.md) · [CI Quality Gate](./ci-quality-gate.md)
+- **Source:** [skills/extent-report/SKILL.md](../skills/extent-report/SKILL.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

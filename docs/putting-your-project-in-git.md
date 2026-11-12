@@ -1,5 +1,9 @@
 # Putting your project in git
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [18. Git and security](./user-guide/agentex/18-git-and-security.md) · **Related:** [Configuration](./configuration.md) · [Getting Started](./getting-started.md)
+<!-- /docs-nav:top -->
+
 Your AgenTeX project — specs, catalogs, config — is worth sharing with your team through git.
 This page says what to commit and what stays on your machine, how to set a remote safely, and
 how the plugin's secret scan and optional pre-commit hook keep a secret from reaching git
@@ -254,3 +258,14 @@ The hook refuses a commit only when a value from your `.env` appears in a commit
 holds secrets only, so a non-secret value there — a URL, a team name, a test phone number — is
 in the wrong place. Move it to `config/project.json` or `environments/<env>.json` (the setup
 wizard has a field for most of them), delete the line from `.env`, and commit again.
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [18. Git and security](./user-guide/agentex/18-git-and-security.md)
+- **Related reference:** [Configuration](./configuration.md) · [Getting Started](./getting-started.md)
+- **Source:** [scripts/secret_scan.js](../scripts/secret_scan.js) · [scripts/precommit_hook.js](../scripts/precommit_hook.js)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

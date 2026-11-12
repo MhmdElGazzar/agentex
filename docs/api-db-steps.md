@@ -1,9 +1,27 @@
 # API & DB Steps
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [10. API testing](./user-guide/agentex/10-api-testing.md) · [11. Database checks](./user-guide/agentex/11-database-checks.md) · **Related:** [Test Execution](./test-execution.md) · [Configuration](./configuration.md) · [CI Quality Gate](./ci-quality-gate.md)
+<!-- /docs-nav:top -->
+
 Sometimes seeing something happen in the browser isn't proof enough — did the signup actually
 create a user in the database? Did the right thing happen server-side? `api:` and `db:` steps
 let a test scenario check that directly, seed test data your scenarios need, or verify state
 without you writing any code.
+
+```mermaid
+flowchart LR
+  sw["Swagger / OpenAPI JSON"] -->|"/import-swagger"| cat
+  you["You, by hand"] --> cat["API catalog<br/>integration/*_api.json"]
+  you --> dbc["DB catalog<br/>integration/*_db.json"]
+  cat --> suite["API suite<br/>*_suite.json"]
+  cat -->|"api: step"| ra["run_api.js"] --> api["Your API"]
+  suite -->|"/test-endpoints"| ra
+  dbc -->|"db: step"| rd["run_db.js<br/>DDL refused"] --> sql["SQL Server"]
+  ra & rd --> ev["executions/<br/>PASS · FAIL · BLOCKED"]
+```
+
+Only what is in a catalog can run; anything else is BLOCKED, never improvised.
 
 ## Walkthrough
 
@@ -122,3 +140,14 @@ New suite-case fields for hand-written suites too: `"auth": "none"` (send with n
 **Reference:**
 - Skills: `skills/api-integration/SKILL.md`, `skills/db-integration/SKILL.md`
 - Configuration: see [configuration](./configuration.md)
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [10. API testing](./user-guide/agentex/10-api-testing.md) · [11. Database checks](./user-guide/agentex/11-database-checks.md)
+- **Related reference:** [Test Execution](./test-execution.md) · [Configuration](./configuration.md) · [CI Quality Gate](./ci-quality-gate.md)
+- **Source:** [skills/api-integration/SKILL.md](../skills/api-integration/SKILL.md) · [skills/db-integration/SKILL.md](../skills/db-integration/SKILL.md) · [skills/endpoint-testing/SKILL.md](../skills/endpoint-testing/SKILL.md) · [skills/swagger-import/SKILL.md](../skills/swagger-import/SKILL.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

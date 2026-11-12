@@ -1,0 +1,75 @@
+# AgenTeX
+
+> AgenTeX (Agentic Test eXecution) is a QA plugin for Claude Code. An agent plans test scenarios, drives a real browser (playwright-cli) or a native mobile app (Appium), calls only the APIs and database queries you catalog, captures screenshot and log evidence, and writes a defect report. It also estimates QA effort, designs test cases and files bugs on Jira Cloud or Azure DevOps, always behind one approval, and runs as a CI quality gate with exit codes 0 PASS, 1 FAIL, 2 BLOCKED. It is designed never to edit the application under test.
+
+Two kinds of user docs: the step-by-step User Guide (docs/user-guide/, one markdown file per chapter, also exported as PDF) and one reference page per feature (docs/*.md) with every option. Both are markdown; the PDFs are exports of the guide.
+
+## Start here
+
+- [README](README.md): what AgenTeX is, features, architecture diagrams, usage at a glance, repository layout
+- [Documentation index](docs/README.md): every user page, plus a "Find it fast — I want to…" task table
+- [Getting Started](docs/getting-started.md): install, browser driver, /init-test, permissions, first run
+- [Using Claude Code](docs/using-claude-code.md): Claude Code basics for new users: requests, slash commands, approvals
+
+## Docs
+
+- [Test Execution](docs/test-execution.md): sequential vs parallel runs, writing specs (browser, api:, db:, kb:, ui-check: steps), result statuses, output layout
+- [Define Flow](docs/define-flow.md): /define-flow builds a spec live, one executed and confirmed step at a time; also clarifies existing specs
+- [Mobile Testing](docs/mobile-testing.md): native Android / iOS testing through Appium: setup, the mobile environment block, specs, sequential and parallel runs
+- [API & DB Steps](docs/api-db-steps.md): catalog-only api: and db: steps, the integration/ catalog, /test-endpoints, Swagger / OpenAPI import
+- [Ask the Knowledge Base](docs/ask-kb.md): kb: steps and /ask-kb; answers are advisory, never PASS/FAIL evidence
+- [UI Check](docs/ui-check.md): ui-check: steps compare the live page with a Figma frame or a screenshot, exact or reference mode
+- [Optimize Login](docs/optimize-login.md): log in once, save the browser session, reuse it in later tests
+- [Azure DevOps QA](docs/azure-devops.md): /estimate-story, /estimate-sprint, /design-test, bug filing, reading Azure resources
+- [Jira QA](docs/jira.md): the same tracker flows on Jira Cloud, setup, and the known limitations
+- [Interactive HTML Report](docs/extent-report.md): the self-contained extent-report.html dashboard
+- [CI Quality Gate](docs/ci-quality-gate.md): ci_gate.js, exit codes 0/1/2, the verdict JSON, GitHub Actions and Azure Pipelines templates
+- [Configuration](docs/configuration.md): config/project.json, environments/<env>.json, the secrets-only .env, envSecret, permissions, /update-agentex
+- [Putting your project in git](docs/putting-your-project-in-git.md): what to commit, what stays local, the secret scan, the pre-commit hook
+
+## User guides (step by step)
+
+- [User guides](docs/user-guide/README.md): the two guides, their folders (agentex/, mobile/), and how to update and export them
+- [AgenTeX User Guide — contents](docs/user-guide/agentex/README.md): every chapter with what it covers and its reference page
+- [1. What is AgenTeX?](docs/user-guide/agentex/01-what-is-agentex.md): features, safety guarantees and what enforces each, run modes, all commands
+- [2. Quick start by goal](docs/user-guide/agentex/02-quick-start-by-goal.md): "I want to…" → command → chapter
+- [3. Installation and first setup](docs/user-guide/agentex/03-installation.md): prerequisites, plugin install, browser driver, /init-test, permissions, the plugin path
+- [4. Configuration](docs/user-guide/agentex/04-configuration.md): envSecret, config/project.json, environments/<env>.json, .env, which base URL and token an api: step uses
+- [5. Writing test specs](docs/user-guide/agentex/05-writing-test-specs.md): spec anatomy, step types, stateful chains, suites, result statuses
+- [6. Browser testing](docs/user-guide/agentex/06-browser-testing.md): sequential and parallel runs, suite folders, output, tips
+- [7. Define flow](docs/user-guide/agentex/07-define-flow.md): build a spec by doing it
+- [8. Optimize login](docs/user-guide/agentex/08-optimize-login.md): session mode, captcha / OTP, checking a saved session
+- [9. Mobile testing](docs/user-guide/agentex/09-mobile-testing.md): Appium, the mobile block, mobile specs, appium_client.js
+- [10. API testing](docs/user-guide/agentex/10-api-testing.md): catalog, api: steps, /test-endpoints, suite editor, Swagger import
+- [11. Database checks](docs/user-guide/agentex/11-database-checks.md): query catalog, sqlcmd, db: steps, safety rules
+- [12. UI check](docs/user-guide/agentex/12-ui-check.md): Figma / screenshot baselines, modes, viewports
+- [13. Ask the knowledge base](docs/user-guide/agentex/13-knowledge-base.md): kb: steps and /ask-kb
+- [14. Jira Cloud](docs/user-guide/agentex/14-jira-cloud.md): setup, estimation, test design, bug filing, limitations, troubleshooting
+- [15. Azure DevOps](docs/user-guide/agentex/15-azure-devops.md): setup, estimation file, test design, ledger, bug filing, Azure resources
+- [16. Reports and evidence](docs/user-guide/agentex/16-reports-and-evidence.md): run files, defect format, dashboard
+- [17. CI quality gate](docs/user-guide/agentex/17-ci-quality-gate.md): exit codes, ci_gate.js options, retries, GitHub Actions, CI rules
+- [18. Git and security](docs/user-guide/agentex/18-git-and-security.md): what to commit, environment safety, secret scan
+- [19. Keeping your project up to date](docs/user-guide/agentex/19-keeping-up-to-date.md): /update-agentex
+- [20. Troubleshooting and FAQ](docs/user-guide/agentex/20-troubleshooting-and-faq.md): common problems, support matrix, FAQ
+- [Glossary](docs/user-guide/agentex/glossary.md): every AgenTeX term
+- [Cheat sheet](docs/user-guide/agentex/cheat-sheet.md): every command on one page
+- [Mobile Testing User Guide](docs/user-guide/mobile/README.md): the short mobile walkthrough in 7 sections
+- [AgenTeX User Guide (PDF)](docs/user-guide/agentex/agentex-user-guide.pdf) · [Mobile Testing User Guide (PDF)](docs/user-guide/mobile/agentex-mobile-user-guide.pdf): PDF exports of the above
+
+## Repository layout
+
+- [skills/](skills/README.md): every skill, grouped by area, with the command that starts it and its user doc
+- [scripts/](scripts/README.md): setup, migration, secret scan, self-update, shared libraries, maintainer tools
+- [templates/](templates/README.md): the starter config/project.json and environments/qc.json
+- [references/](references/README.md): tracker knowledge shared by several skills
+- [hosts/](hosts/README.md): how AgenTeX is built for Claude Code, Codex, Copilot and Devin
+- [test/](test/README.md): where test specs live and how suites are organized
+- [executions/](executions/README.md): the layout of a run's results
+- commands/: one .md file per slash command
+- agents/: the qa-executor, mobile-qa-executor and api-executor subagents
+
+## Optional
+
+- [Contributing](docs/contributing/README.md): for people changing AgenTeX itself: architecture, adding a skill, conventions, testing, PR workflow
+- [Evals](evals/README.md): behavioral evals for the skills
+- [Changelog](CHANGELOG.md): what changed in each release

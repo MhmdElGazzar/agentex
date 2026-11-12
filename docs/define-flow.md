@@ -1,5 +1,9 @@
 # Define Flow
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [7. Define flow](./user-guide/agentex/07-define-flow.md) · **Related:** [Test Execution](./test-execution.md) · [Optimize Login](./optimize-login.md)
+<!-- /docs-nav:top -->
+
 Writing a long test spec by hand means writing it blind: you describe fifteen steps from
 memory, run the whole thing, and only then discover step 7 was misunderstood. `/define-flow`
 removes that guesswork — the flow is **defined by doing it**. Claude leads a live session:
@@ -80,3 +84,14 @@ original is left untouched except for one note added at its top — "Defined flo
   end produces normal run evidence.
 - Skill: `skills/define-flow/SKILL.md`
 - Spec conventions the output follows: [`test/README.md`](../test/README.md)
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [7. Define flow](./user-guide/agentex/07-define-flow.md)
+- **Related reference:** [Test Execution](./test-execution.md) · [Optimize Login](./optimize-login.md)
+- **Source:** [skills/define-flow/SKILL.md](../skills/define-flow/SKILL.md) · [commands/define-flow.md](../commands/define-flow.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

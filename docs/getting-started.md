@@ -1,5 +1,9 @@
 # Getting Started
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [3. Installation](./user-guide/agentex/03-installation.md) · **Related:** [Using Claude Code](./using-claude-code.md) · [Configuration](./configuration.md) · [Test Execution](./test-execution.md)
+<!-- /docs-nav:top -->
+
 New to Claude Code itself? Read [Using Claude Code](./using-claude-code.md) first — this page
 assumes you already know how to type a request and approve an action.
 
@@ -105,3 +109,14 @@ instead (or as well), see [Mobile Testing](./mobile-testing.md) for the equivale
 - [Putting your project in git](./putting-your-project-in-git.md) — what to commit, setting a
   remote safely, the secret scan and the optional pre-commit hook.
 - [docs/](./README.md) — the full feature reference.
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [3. Installation](./user-guide/agentex/03-installation.md)
+- **Related reference:** [Using Claude Code](./using-claude-code.md) · [Configuration](./configuration.md) · [Test Execution](./test-execution.md)
+- **Source:** [commands/init-test.md](../commands/init-test.md) · [scripts/init.js](../scripts/init.js) · [templates/README.md](../templates/README.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

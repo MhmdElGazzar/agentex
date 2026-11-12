@@ -1,5 +1,9 @@
 # Azure DevOps QA
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [15. Azure DevOps](./user-guide/agentex/15-azure-devops.md) · **Related:** [Jira QA](./jira.md) · [Configuration](./configuration.md)
+<!-- /docs-nav:top -->
+
 If your team tracks work in Azure DevOps, AgenTeX can estimate QA effort, generate test cases
 from a story's acceptance criteria, file bugs it finds during a run, and reach Azure resources
 mid-test — always with your confirmation before anything is written. Every ADO flow — bug
@@ -152,3 +156,14 @@ succeeded" or "tail the app's logs."
 | Azure resources | `skills/azure-integration/SKILL.md` | `skills/azure-integration/references/azure-cli.md` |
 
 Configuration: see [configuration](./configuration.md)
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [15. Azure DevOps](./user-guide/agentex/15-azure-devops.md)
+- **Related reference:** [Jira QA](./jira.md) · [Configuration](./configuration.md)
+- **Source:** [skills/task-estimation/SKILL.md](../skills/task-estimation/SKILL.md) · [skills/test-design/SKILL.md](../skills/test-design/SKILL.md) · [skills/bug-report-azure/SKILL.md](../skills/bug-report-azure/SKILL.md) · [skills/azure-integration/SKILL.md](../skills/azure-integration/SKILL.md) · [references/tracker/ado-boards.md](../references/tracker/ado-boards.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

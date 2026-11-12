@@ -1,5 +1,9 @@
 # UI check steps — design conformance in test specs
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [12. UI check](./user-guide/agentex/12-ui-check.md) · **Related:** [Test Execution](./test-execution.md) · [Configuration](./configuration.md)
+<!-- /docs-nav:top -->
+
 A `ui-check:` step compares the **live page currently open in the browser under test**
 against a declared design baseline, at the exact point in the scenario where the step
 appears. It joins `api:` / `db:` / `kb:` as a first-class spec step, executed by the
@@ -100,3 +104,14 @@ Be aware: vision comparison can miss very subtle deviations (1–2px shifts,
 near-identical hues). "No silent tolerance" means no numeric threshold is ever applied;
 it does not make perception perfect. Treat `exact` mode as a rigorous visual review, not
 a pixel-perfect guarantee.
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [12. UI check](./user-guide/agentex/12-ui-check.md)
+- **Related reference:** [Test Execution](./test-execution.md) · [Configuration](./configuration.md)
+- **Source:** [skills/ui-check/SKILL.md](../skills/ui-check/SKILL.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

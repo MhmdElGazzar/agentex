@@ -43,6 +43,43 @@ nothing is written to the board."
 **Pros/cons:** + a fix is usually one added fact, not a rewrite — but each definition or
 consequence adds words to the page.
 
+## How the docs are organized
+
+**Three page types, each linked to the others:**
+
+| Type | Where | Job | Must link to |
+|------|-------|-----|--------------|
+| **Guide chapter** | `docs/user-guide/agentex/NN-*.md`, `docs/user-guide/mobile/NN-*.md` | The walkthrough: what to do, in order | The previous and next chapter, the guide's contents (`README.md`), and its reference page ("More:") |
+| **Reference page** | `docs/*.md` | Every option and rule of one feature | Its guide chapter(s), related reference pages, and the source (`SKILL.md`, scripts) |
+| **Folder README** | `skills/`, `scripts/`, `hosts/`, `templates/`, `references/` | What the code folder holds | The reference pages that describe it |
+
+`docs/README.md` is the hub: the docs map, the "Find it fast" table and the list of every page.
+`llms.txt` at the repo root lists every page for AI tools. When you add a page, add it to both.
+
+**The navigation blocks on reference pages.** Every `docs/*.md` reference page has a breadcrumb
+under its title and a "See also" footer, between these markers:
+
+```
+<!-- docs-nav:top --> … <!-- /docs-nav:top -->
+<!-- docs-nav:bottom --> … <!-- /docs-nav:bottom -->
+```
+
+Keep both blocks when you edit a page, and update their links when a chapter or page is
+renamed. A new reference page gets the same two blocks: copy them from a neighbor and change
+the links.
+
+**Diagrams.** Diagrams and charts are [Mermaid](https://mermaid.js.org/) code blocks
+(` ```mermaid `), which GitHub draws from text, so they are edited like any other text.
+
+- Use a diagram where it shows something text can't: a flow with decisions, who talks to whom
+  (`sequenceDiagram`), states (`stateDiagram-v2`), or numbers (`xychart-beta`, `pie`).
+- A chart shows real numbers only: measured, or taken from a shipped default. Say where they
+  come from, and label an example as an example.
+- Put every node label in double quotes (`a["Label (with) symbols"]`) and use `<br/>` for line
+  breaks. Unquoted parentheses, brackets and `<…>` break the diagram.
+- Check that it renders: open the file's preview on GitHub (or in VS Code with a Mermaid
+  extension) before you merge.
+
 ## Running a reader test
 
 **Terms used below:**

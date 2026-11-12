@@ -215,6 +215,12 @@ If this were a real skill (it isn't — it's this guide's running example), the 
 be:
 
 - Add a row to `docs/README.md`'s feature table and the root `README.md` feature table.
+- Add the skill to [`skills/README.md`](../../skills/README.md) under its area, and its user doc
+  to [`llms.txt`](../../llms.txt).
+- If users run it directly, cover it in the user guide too: a section in the matching chapter
+  of `docs/user-guide/agentex/` (or a new chapter), and a row in `docs/README.md`'s "Find it
+  fast" table. A new reference page gets the navigation blocks described in
+  [Writing User Docs](./writing-user-docs.md#how-the-docs-are-organized).
 - Regenerate the README's architecture map: `node scripts/dev/architecture.js --write`. It
   reads every command, skill and agent, so a new one appears with its links;
   `scripts/dev/architecture.test.js` fails until you do.

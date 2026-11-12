@@ -1,5 +1,9 @@
 # Configuration
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [4. Configuration](./user-guide/agentex/04-configuration.md) · [19. Keeping up to date](./user-guide/agentex/19-keeping-up-to-date.md) · **Related:** [Getting Started](./getting-started.md) · [Putting your project in git](./putting-your-project-in-git.md)
+<!-- /docs-nav:top -->
+
 Project data falls into three kinds, each with one home:
 
 | Kind | Examples | Home |
@@ -7,6 +11,20 @@ Project data falls into three kinds, each with one home:
 | Secrets | PAT, API tokens, passwords | `.env` (**only** these) |
 | Project settings | tracker settings (Azure DevOps or Jira), login mode, KB settings | `config/project.json` |
 | Environment data | portal URL, DB, API, test users, default OTP | `environments/<env>.json` |
+
+```mermaid
+flowchart LR
+  subgraph commit["Committed to git"]
+    pj["config/project.json<br/>tracker · login · KB · Figma · CI"]
+    env["environments/qc.json, uat.json …<br/>URL · users · db · api · mobile"]
+  end
+  subgraph local["Local only, gitignored"]
+    dotenv[".env<br/>secret values"]
+  end
+  pj -->|"envSecret: FIGMA_TOKEN"| dotenv
+  env -->|"envSecret: DEFAULT_PASSWORD"| dotenv
+  pj -->|defaultEnvironment| env
+```
 
 **The JSON files never contain a secret.** A secret-valued field (`password`,
 `token`) is either a plain string — acceptable only for team-known throwaway test
@@ -176,3 +194,14 @@ Two of those entries need your attention rather than a blind copy, and the file'
 - DB and tracker secrets are read from the environment or `.env` by the tools themselves
   (`SQLCMDPASSWORD` by sqlcmd, `AZURE_PAT` / `JIRA_EMAIL` + `JIRA_API_TOKEN` by the bundled
   tracker scripts), never placed on a command line.
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [4. Configuration](./user-guide/agentex/04-configuration.md) · [19. Keeping up to date](./user-guide/agentex/19-keeping-up-to-date.md)
+- **Related reference:** [Getting Started](./getting-started.md) · [Putting your project in git](./putting-your-project-in-git.md)
+- **Source:** [templates/README.md](../templates/README.md) · [scripts/migrate.js](../scripts/migrate.js) · [commands/update-agentex.md](../commands/update-agentex.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

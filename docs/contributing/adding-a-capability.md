@@ -89,11 +89,16 @@ say why in the design.
 
 10. **`docs/<name>.md`** — user-facing doc mirroring the closest existing one (walkthroughs,
     spec-writing guide, quick reference table, setup snippet, reference pointers). See
-    `docs/mobile-testing.md` next to `docs/test-execution.md`.
+    `docs/mobile-testing.md` next to `docs/test-execution.md`. Give it the breadcrumb and
+    "See also" blocks every reference page has, and add a **user guide chapter** in
+    `docs/user-guide/agentex/` (renumber later chapters' links if you insert one) — see
+    [Writing User Docs](./writing-user-docs.md#how-the-docs-are-organized).
 
 11. **Wire it up everywhere a skill would, plus:**
     - Row in `docs/README.md`'s table and the root `README.md` feature table (a new capability
       this size usually also earns a badge next to the existing ones).
+    - A row in `docs/README.md`'s "Find it fast" table, the skill in `skills/README.md`, and
+      the new pages in `llms.txt`.
     - A changelog fragment `changelog.d/<slug>.md` (never `CHANGELOG.md` directly).
     - The README's architecture map: `node scripts/dev/architecture.js --write` (a test fails
       until the new command, skill or agent is on it).
@@ -117,8 +122,9 @@ say why in the design.
 | `skills/<name>/scripts/*.js` (+ a `.test.js` for each) | deterministic orchestration + drivers |
 | `agents/<name>-qa-executor.md` | isolated per-session execution (only if mechanics differ from the existing subagent) |
 | `commands/<verb>.md` | thin entrypoint |
-| `docs/<name>.md` | user-facing walkthrough |
-| `docs/README.md` / root `README.md` / `CHANGELOG.md` / `plugin.json` / `settings.example.json` | wiring |
+| `docs/<name>.md` | user-facing reference page (with the navigation blocks) |
+| `docs/user-guide/agentex/NN-<name>.md` | user guide chapter: the step-by-step walkthrough |
+| `docs/README.md` / root `README.md` / `skills/README.md` / `llms.txt` / `CHANGELOG.md` / `plugin.json` / `settings.example.json` | wiring |
 
 Next: [Conventions](./conventions.md) for the naming/security rules this checklist assumes, or
 [PR Workflow](./pr-workflow.md) to open the change.

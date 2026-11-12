@@ -38,6 +38,10 @@ const REQUIRES = { reporting: ['ui'] };
 // No lane: nothing here runs in a consumer flow.
 const INERT = [
   'docs/**', 'README.md', 'CHANGELOG.md', 'changelog.d/**', 'LICENSE', 'executions/README.md',
+  // Folder guides and the LLM index: prose no flow reads. Listed one by one, not as
+  // **/README.md, so a README dropped inside a skill folder still plans as a skill change.
+  'llms.txt', 'skills/README.md', 'scripts/README.md', 'hosts/README.md', 'templates/README.md',
+  'references/README.md',
   'evals/**', '**/*.test.js', 'skills/*/scripts/golden/**',
   '.github/**', '.gitattributes', '.gitignore',
   'scripts/hosts/**', 'scripts/dev/**', 'scripts/run-tests.js', 'scripts/release-gate/gate-plan.js', 'scripts/release-gate/README.md',

@@ -46,7 +46,60 @@ New here? **[Getting Started](./docs/getting-started.md)** walks you through ins
 | **Standalone API tests** | `/test-endpoints` runs every cataloged endpoint's test cases in one pass, dispatching an `api-executor` subagent and reporting pass/fail per case. `/test-endpoints --edit` opens a local editor to review, fix and re-run cases. | [skills/endpoint-testing/SKILL.md](./skills/endpoint-testing/SKILL.md) |
 | **Swagger/OpenAPI import** | `/import-swagger <path-or-url>` generates the API catalog + suite from a Swagger 2.0 / OpenAPI 3.x spec — mapping fields, skipping what it can't infer, and picking an auth scheme. `/import-swagger --wizard` walks you through it with real test data and four basic checks per endpoint. | [skills/swagger-import/SKILL.md](./skills/swagger-import/SKILL.md) |
 
-See [docs/](./docs/) for the full reference on any feature.
+See [Documentation](#documentation) below for the user guides and the full reference on any feature.
+
+## Documentation
+
+### User guides
+
+Step-by-step guides to read in order, with diagrams, real examples and a cheat sheet. They are
+written in markdown, one file per chapter, so they are easy to update and to search, and are
+also exported as PDF:
+
+- **[AgenTeX User Guide](./docs/user-guide/agentex/README.md)** ([PDF](./docs/user-guide/agentex/agentex-user-guide.pdf)):
+  the whole framework in 20 chapters, from install to CI, Jira, Azure DevOps and troubleshooting.
+- **[Mobile Testing User Guide](./docs/user-guide/mobile/README.md)** ([PDF](./docs/user-guide/mobile/agentex-mobile-user-guide.pdf)):
+  native Android / iOS testing only, the short path.
+
+Every option of every feature is in the reference pages in [`docs/`](./docs/README.md). Each
+guide chapter links to its reference page and back; the
+[docs map](./docs/README.md#how-the-docs-fit-together) shows how all the pages connect.
+
+### Find it fast
+
+| I want to… | Start with | Read |
+|------------|------------|------|
+| Test a website in a browser | `/execute-test https://your-app.com` | [test-execution](./docs/test-execution.md) |
+| Test an Android / iOS app | `/execute-mobile-test suite1` | [mobile-testing](./docs/mobile-testing.md) |
+| Test APIs, or check the database | `/test-endpoints` · `api:` / `db:` steps | [api-db-steps](./docs/api-db-steps.md) |
+| Write a spec by doing the flow live | `/define-flow https://your-app.com` | [define-flow](./docs/define-flow.md) |
+| Estimate, design tests or file bugs on Jira / Azure DevOps | `/estimate-sprint` · `/design-test <id>` | [jira](./docs/jira.md) · [azure-devops](./docs/azure-devops.md) |
+| Gate a CI/CD pipeline on test results | `ci_gate.js` | [ci-quality-gate](./docs/ci-quality-gate.md) |
+
+More goals are in [docs/README.md — Find it fast](./docs/README.md#find-it-fast--i-want-to).
+
+### Repository layout
+
+What each top-level folder holds. A folder with a README explains its contents in more detail.
+
+| Folder | What it holds |
+|--------|---------------|
+| [`commands/`](./commands/) | The slash commands (`/execute-test`, `/init-test`, …), one `.md` file each. Claude Code loads every file there as a command, so the folder has no README. |
+| [`skills/`](./skills/README.md) | The abilities behind the commands: one folder per skill, each with a `SKILL.md` and its scripts. |
+| [`agents/`](./agents/) | The three subagents that run work in parallel: `qa-executor` (browser), `mobile-qa-executor` (mobile), `api-executor` (API pass). A subagent is a separate Claude worker with its own session. Claude Code loads every file there as an agent, so the folder has no README. |
+| [`references/`](./references/README.md) | Knowledge several skills share, such as how Azure DevOps and Jira boards work. |
+| [`templates/`](./templates/README.md) | The starter `config/project.json` and `environments/qc.json` that `/init-test` copies into your project. |
+| [`scripts/`](./scripts/README.md) | Plugin-wide Node scripts: setup, migration, secret scan, self-update, shared libraries, maintainer tools. |
+| [`docs/`](./docs/README.md) | User documentation: a reference page per feature, the step-by-step user guide and its PDFs ([`docs/user-guide/`](./docs/user-guide/README.md)), and contributor docs ([`docs/contributing/`](./docs/contributing/README.md)). |
+| [`test/`](./test/README.md) | Test specs: plain-language descriptions of what to test, grouped into suite folders. |
+| [`evals/`](./evals/README.md) | Behavioral evals: checks that each skill starts on the right requests and follows its rules. |
+| [`executions/`](./executions/README.md) | Run results: one timestamped folder per run, with the report, dashboard, screenshots and logs. |
+| [`hosts/`](./hosts/README.md) | Build settings that publish AgenTeX for Claude Code, Codex, Copilot and Devin. |
+| [`changelog.d/`](./changelog.d/) | One changelog note per feature, merged into [CHANGELOG.md](./CHANGELOG.md) at release time. Every `.md` file there gets merged, so the folder has no README. |
+
+**For AI assistants:** [`llms.txt`](./llms.txt) is a plain-text map of every documentation
+page with a one-line summary, so a tool can find the right page without reading the whole
+repository.
 
 ## How it fits together
 
