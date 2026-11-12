@@ -12,7 +12,10 @@ common reason a PR needs a revision.
    worked example in [Adding a Skill](./adding-a-skill.md).
 3. **Run script tests** for anything you touched or added — see [Testing](./testing.md).
 4. **Update docs** — a new skill needs a row in `docs/README.md`'s table (and the root
-   `README.md` feature table if it's user-facing).
+   `README.md` feature table if it's user-facing), an entry in `skills/README.md`, and its
+   pages in `llms.txt`. A change users will notice also updates the matching user guide
+   chapter in `docs/user-guide/`. Keep every relative link working; see
+   [Writing User Docs](./writing-user-docs.md#how-the-docs-are-organized).
 5. **Add a changelog fragment** `changelog.d/<slug>.md` instead of editing `CHANGELOG.md`
    (every branch editing that file conflicts on every merge). A fragment holds only
    `### Added` / `### Changed` / `### Fixed` sections, each followed by `- ` bullets — see the

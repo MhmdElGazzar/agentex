@@ -1,5 +1,9 @@
 # Ask the Knowledge Base
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [13. Knowledge base](./user-guide/agentex/13-knowledge-base.md) · **Related:** [Test Execution](./test-execution.md)
+<!-- /docs-nav:top -->
+
 If your project has a knowledge base, you can ask it questions in plain language mid-test — or
 any time, standalone — instead of digging through docs yourself. The answer is **advisory
 only**: it helps you understand a flow, but it never counts as pass/fail proof. The call is explicit — Claude never queries the KB on its own initiative.
@@ -47,3 +51,14 @@ or `kb:acme-store: <question>` inside a spec.
 - Skill: `skills/ask-kb/SKILL.md`
 - Command: `commands/ask-kb.md`
 - API contract & curl fallback: `skills/ask-kb/references/kb-ask-api.md`
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [13. Knowledge base](./user-guide/agentex/13-knowledge-base.md)
+- **Related reference:** [Test Execution](./test-execution.md)
+- **Source:** [skills/ask-kb/SKILL.md](../skills/ask-kb/SKILL.md) · [commands/ask-kb.md](../commands/ask-kb.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

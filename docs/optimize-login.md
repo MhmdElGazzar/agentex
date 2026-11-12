@@ -1,5 +1,9 @@
 # Optimize Login
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [8. Optimize login](./user-guide/agentex/08-optimize-login.md) · **Related:** [Test Execution](./test-execution.md) · [Configuration](./configuration.md)
+<!-- /docs-nav:top -->
+
 Login is usually the slowest, least interesting part of testing a web app — and if every
 scenario logs in from scratch, that cost repeats every single time. This feature pays it once:
 Claude drives the real login the first time, saves that logged-in session, and reuses it for
@@ -52,3 +56,14 @@ the session afterward, same as usual, so you only do it once.
   `npx playwright install chromium`) — it is resolved from the project you run it in, not
   from the plugin. Launches the bundled Chromium; add `--channel chrome` for a real Chrome,
   `--headed` to watch it.
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [8. Optimize login](./user-guide/agentex/08-optimize-login.md)
+- **Related reference:** [Test Execution](./test-execution.md) · [Configuration](./configuration.md)
+- **Source:** [skills/optimize-login/SKILL.md](../skills/optimize-login/SKILL.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

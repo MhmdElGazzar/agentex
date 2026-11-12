@@ -3,3 +3,6 @@
 # Windows, and some sync/backup utilities) make every touched file show as fully
 # modified even when no content changed.
 * text=auto eol=lf
+
+# Binary documents (the PDF user guides in docs/user-guide/): never diff or convert line endings.
+*.pdf binary

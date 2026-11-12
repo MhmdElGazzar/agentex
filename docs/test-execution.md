@@ -1,5 +1,9 @@
 # Test Execution
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [5. Writing test specs](./user-guide/agentex/05-writing-test-specs.md) · [6. Browser testing](./user-guide/agentex/06-browser-testing.md) · **Related:** [Define Flow](./define-flow.md) · [API & DB Steps](./api-db-steps.md) · [UI Check](./ui-check.md) · [Optimize Login](./optimize-login.md) · [HTML Report](./extent-report.md)
+<!-- /docs-nav:top -->
+
 This is the core of AgenTeX: instead of clicking through a web app by hand to test it, you
 describe what to test and Claude runs it for you — driving a real browser, calling your APIs,
 and checking your database — taking evidence, checking for errors, and reporting back what
@@ -15,6 +19,16 @@ The **test-execution** skill runs the test; each step goes to the driver that ow
 | `db: …` | **db-integration** |
 | `kb: …` | **ask-kb** (advisory only) |
 | `ui-check: …` | **ui-check** (needs the browser) |
+
+```mermaid
+flowchart LR
+  step["A spec step"] --> p{"Starts with…"}
+  p -->|"no prefix"| br["browser-driver<br/>playwright-cli"] --> app["Your web app"]
+  p -->|"api:"| api["run_api.js<br/>catalog only"] --> apis["Your APIs"]
+  p -->|"db:"| db["run_db.js<br/>catalog only"] --> sql["SQL Server"]
+  p -->|"kb:"| kb["ask-kb<br/>advisory"] --> kbs["Knowledge base"]
+  p -->|"ui-check:"| ui["ui-check<br/>Figma or image"] --> app
+```
 
 ## Walkthrough: your first run (sequential)
 
@@ -134,3 +148,14 @@ project's `.claude/settings.json` to pre-approve the safe `playwright-cli` comma
 - Driver notes: `skills/browser-driver/references/tools/playwright-cli.md`
 - Spec format: `skills/test-execution/references/concepts/spec-format.md`
 - HTML dashboard: see [extent-report](./extent-report.md)
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [5. Writing test specs](./user-guide/agentex/05-writing-test-specs.md) · [6. Browser testing](./user-guide/agentex/06-browser-testing.md)
+- **Related reference:** [Define Flow](./define-flow.md) · [API & DB Steps](./api-db-steps.md) · [UI Check](./ui-check.md) · [Optimize Login](./optimize-login.md) · [HTML Report](./extent-report.md)
+- **Source:** [skills/test-execution/SKILL.md](../skills/test-execution/SKILL.md) · [skills/browser-driver/SKILL.md](../skills/browser-driver/SKILL.md) · [agents/qa-executor.md](../agents/qa-executor.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

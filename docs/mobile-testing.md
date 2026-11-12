@@ -1,10 +1,18 @@
 # Mobile Testing
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [9. Mobile testing](./user-guide/agentex/09-mobile-testing.md) · **Related:** [Test Execution](./test-execution.md) · [API & DB Steps](./api-db-steps.md) · [HTML Report](./extent-report.md)
+<!-- /docs-nav:top -->
+
 The native-app counterpart to [Test Execution](./test-execution.md): instead of clicking
 through an Android/iOS app by hand, you describe what to test and Claude drives it for you
 through a real [Appium](https://appium.io/docs/en/latest/) session — taking screenshots,
 watching the device log, and reporting back what passed and what didn't. It never touches your
 application's code — only test artifacts get written.
+
+> **Prefer a short walkthrough?** The [Mobile Testing User Guide](./user-guide/mobile/README.md)
+> ([PDF](./user-guide/mobile/agentex-mobile-user-guide.pdf)) covers setup, your first run, writing a
+> spec and parallel devices in 7 short sections. This page is the full reference.
 
 ## Walkthrough: your first run (sequential)
 
@@ -151,3 +159,14 @@ Pick whichever fits your project; both are documented in the skill's `references
 - Driver notes: `skills/mobile-testing/references/appium-server-cli.md` and
   `references/appium-client-wrapper.md`
 - HTML dashboard: see [extent-report](./extent-report.md)
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [9. Mobile testing](./user-guide/agentex/09-mobile-testing.md) · [Mobile Testing User Guide](./user-guide/mobile/README.md)
+- **Related reference:** [Test Execution](./test-execution.md) · [API & DB Steps](./api-db-steps.md) · [HTML Report](./extent-report.md)
+- **Source:** [skills/mobile-testing/SKILL.md](../skills/mobile-testing/SKILL.md) · [agents/mobile-qa-executor.md](../agents/mobile-qa-executor.md) · [commands/execute-mobile-test.md](../commands/execute-mobile-test.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

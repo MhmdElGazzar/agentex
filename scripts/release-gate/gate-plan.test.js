@@ -79,6 +79,18 @@ test('changelog fragments (changelog.d) are inert — never shipped, so they gat
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan), plan.unmapped], [true, false, [], []]);
 });
 
+test('folder READMEs, the PDF guides and llms.txt are inert — prose no flow reads', () => {
+  const plan = gp.planLanes(['llms.txt', 'skills/README.md', 'scripts/README.md', 'hosts/README.md',
+    'templates/README.md', 'references/README.md', 'docs/user-guide/README.md',
+    'docs/user-guide/agentex/agentex-user-guide.pdf', 'docs/user-guide/mobile/agentex-mobile-user-guide.pdf']);
+  assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan), plan.unmapped], [true, false, [], []]);
+});
+
+test('a README inside a skill folder is not a folder guide — it plans like the skill', () => {
+  const plan = gp.planLanes(['skills/test-design/README.md']);
+  assert.strictEqual(plan.docsOnly, false);
+});
+
 test('an empty diff is docsOnly too — nothing to gate', () => {
   const plan = gp.planLanes([]);
   assert.deepStrictEqual([plan.docsOnly, plan.full, runs(plan)], [true, false, []]);

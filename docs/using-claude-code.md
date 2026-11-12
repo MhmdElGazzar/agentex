@@ -1,5 +1,9 @@
 # Using Claude Code — the Basics
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [3. Installation](./user-guide/agentex/03-installation.md) · **Related:** [Getting Started](./getting-started.md)
+<!-- /docs-nav:top -->
+
 If you've never used an AI coding assistant like Claude Code before, start here — every other
 page in this manual assumes you've read this one.
 
@@ -51,3 +55,13 @@ When AgenTeX runs a test, you'll typically see:
   was saved
 
 Next: [Getting Started](./getting-started.md) — install AgenTeX and run your first test.
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [3. Installation](./user-guide/agentex/03-installation.md)
+- **Related reference:** [Getting Started](./getting-started.md)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->

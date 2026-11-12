@@ -11,10 +11,20 @@ skills/       one folder per capability (SKILL.md + references/ + scripts/ + tem
 commands/     thin slash-command entrypoints ($ARGUMENTS -> skill)
 agents/       subagent definitions (one per isolated-session executor, e.g. qa-executor.md,
               mobile-qa-executor.md)
-docs/         user-facing feature docs (this contributing/ subfolder is the exception)
+references/   knowledge several skills share (tracker boards)
+templates/    starter config/project.json and environments/qc.json for /init-test
+scripts/      plugin-wide scripts: setup, migration, secret scan, shared libs, maintainer tools
+hosts/        build settings for the Codex, Copilot and Devin branches (not shipped)
+docs/         user-facing docs: one reference page per feature, the step-by-step user guide
+              (user-guide/agentex/, user-guide/mobile/), and this contributing/ subfolder
 test/         sample specs scaffolded by /init-test
 executions/   NOT shipped in the plugin — output folder created in the consumer's project
+llms.txt      a one-file map of every doc page, for AI tools
 ```
+
+Each of `skills/`, `scripts/`, `hosts/`, `templates/` and `references/` has a `README.md`
+listing what it holds. `commands/`, `agents/` and `changelog.d/` have none on purpose: every
+`.md` file there is loaded as a command or agent, or merged into the changelog.
 
 ## SKILL.md = judgment, references/ = mechanics
 

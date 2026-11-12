@@ -1,5 +1,9 @@
 # CI Quality Gate
 
+<!-- docs-nav:top -->
+> [All docs](./README.md) · **Step by step:** [17. CI gate](./user-guide/agentex/17-ci-quality-gate.md) · **Related:** [Test Execution](./test-execution.md) · [HTML Report](./extent-report.md) · [Configuration](./configuration.md)
+<!-- /docs-nav:top -->
+
 Run a full AgenTeX test suite from your CI/CD pipeline — headlessly, with zero user
 interaction — and gate the delivery on a dependable machine-readable verdict. The plugin
 provides the CI-invokable pieces (one entry-point script, a gating preflight, the verdict
@@ -20,6 +24,21 @@ The gate step (`ci_gate.js`) concludes with exactly one of three exit codes:
 produce exit 1. A broken QA environment, an expired login gate, or a model API outage can
 never masquerade as a product failure — and a real defect is never hidden behind an
 environment excuse.
+
+The order the gate applies (see [Verdict mapping](#verdict-mapping-fixed-order) for the exact rules):
+
+```mermaid
+flowchart TB
+  start["All scenarios finished"] --> d{"Any real product defect?"}
+  d -->|yes| f["Exit 1 · FAIL"]
+  d -->|no| w{"Warnings, with<br/>warningsFailGate on?"}
+  w -->|yes| f
+  w -->|no| b{"Anything BLOCKED, not run or a view mismatch?<br/>environment, secret, timeout, captcha"}
+  b -->|yes| bk["Exit 2 · BLOCKED"]
+  b -->|no| fl{"FLAKY, with<br/>flakyFailsGate on?"}
+  fl -->|yes| bk
+  fl -->|no| p["Exit 0 · PASS"]
+```
 
 ## The entry point
 
@@ -357,3 +376,14 @@ item) overlaps this verdict's territory. When it lands, the two reconcile explic
 the verdict either adopts the Phase 0 record as a superset (additive, no bump) or bumps
 `schemaVersion` with release notes. Pipelines parsing tolerantly per the stability rules
 above will not notice the additive case.
+
+<!-- docs-nav:bottom -->
+---
+
+**See also**
+
+- **Step by step:** [17. CI gate](./user-guide/agentex/17-ci-quality-gate.md)
+- **Related reference:** [Test Execution](./test-execution.md) · [HTML Report](./extent-report.md) · [Configuration](./configuration.md)
+- **Source:** [skills/test-execution/scripts/ci_gate.js](../skills/test-execution/scripts/ci_gate.js) · [skills/test-execution/templates/ci/github-actions.yml](../skills/test-execution/templates/ci/github-actions.yml) · [skills/test-execution/templates/ci/azure-pipelines.yml](../skills/test-execution/templates/ci/azure-pipelines.yml)
+- **Everything else:** [All docs](./README.md) · [Find it fast](./README.md#find-it-fast--i-want-to)
+<!-- /docs-nav:bottom -->
