@@ -142,8 +142,10 @@ guessing "all of them" when nothing is actually guaranteed present.
 
 ## What's skipped, not guessed
 
-- **Header/cookie params** (`in: header`, `in: cookie`) — the catalog format has no mechanism
-  for custom per-request headers beyond auth. Skipped, and noted in `review`.
+- **Header/cookie params** (`in: header`, `in: cookie`) — not generated yet. Skipped, and
+  noted in `review`; a header param can be added to the generated catalog by hand as a
+  request `headers` entry (`"X-Request-Id": "{requestId}"`, see api-integration's
+  `references/api-requests.md`, "Custom headers").
 - **Non-JSON response/request bodies** (e.g. XML, form-encoded) — only JSON
   (`application/json`, `application/*+json`) is read. A request body offered only in another
   content type is dropped and flagged in that request's `review`; response schemas in other

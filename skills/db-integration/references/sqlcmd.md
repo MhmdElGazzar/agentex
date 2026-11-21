@@ -63,13 +63,18 @@ export SQLCMDPASSWORD  # user exports it in their shell / .env
 # DB_PORT empty → default 1433.
 SRV="$DB_SERVER"; [ -n "$DB_PORT" ] && SRV="$DB_SERVER,$DB_PORT"
 
-sqlcmd -S "$SRV" -d "$DB_NAME" -U "$DB_USER" -C -b \
-  -Q "SELECT TOP 1 Id, Title, Status FROM Todos WHERE Title = 'qa-test-item' ORDER BY Id DESC" \
-  > "$SESSION_DIR/logs/s6-todo-by-title.log" 2>&1
+sqlcmd -S "$SRV" -d "$DB_NAME" -U "$DB_USER" -C -b -u \
+  -o "$SESSION_DIR/logs/s6-todo-by-title.log" \
+  -Q "SELECT TOP 1 Id, Title, Status FROM Todos WHERE Title = 'qa-test-item' ORDER BY Id DESC"
 ```
 
 - `-C` trusts the server certificate (typical for staging); `-b` makes SQL errors set a nonzero
   exit code so failures are detectable.
+- `-u -o <file>` writes the result to the file as Unicode (UTF-16LE). Console output is written
+  in the console's OEM code page (e.g. 437 on an English Windows), so text that page cannot
+  hold (Arabic, Cyrillic, CJK, …) arrives as `?` even though the database stores it correctly;
+  `-f o:65001` does not fix it reliably (the first call of a console session still writes
+  `?`). The runner always writes to a file this way. Read the file as UTF-16.
 - For Azure AD / integrated auth omit `-U` and use `-G`/`-E` per the environment; ask the user
   once which applies.
 

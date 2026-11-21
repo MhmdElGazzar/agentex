@@ -752,6 +752,174 @@ function serve(handler) {
     assert.strictEqual(typeof b.out.ms, 'number');
   });
 
+  // ---- custom headers: catalog-level and request-level "headers" ----
+  const hdrCat = (port, extra = {}, reqExtra = {}) => ({
+    name: 'msgs', target: 'catalog', baseUrl: `http://127.0.0.1:${port}`, auth: { type: 'none' },
+    requests: [
+      { name: 'send', method: 'POST', path: '/messages', params: ['requestId', 'text'],
+        headers: { 'X-Request-Id': '{requestId}' },
+        body: { text: { $param: 'text', type: 'string' } }, ...reqExtra },
+      { name: 'ping', method: 'GET', path: '/ping', params: [] },
+    ],
+    ...extra,
+  });
+  const sendArgs = ['--entry', 'msgs.send', '--param', 'requestId=req-001', '--param', 'text=hello'];
+
+  await test('headers: a request header takes a declared {param}, which stays out of the URL', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = proj({ 'integration/msgs_api.json': hdrCat(port) });
+    const { code, out } = await run(dir, [...sendArgs, '--expect-status', '200', '--log', log(dir)]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(seen[0].headers['x-request-id'], 'req-001');
+    assert.strictEqual(seen[0].url, '/messages');
+    assert.deepStrictEqual(JSON.parse(seen[0].body), { text: 'hello' });
+  });
+
+  await test('headers: catalog-level headers reach every request; a request overrides one case-insensitively', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = proj({ 'integration/msgs_api.json': hdrCat(port,
+      { headers: { 'X-Client': 'qa-suite', 'X-Request-Id': 'catalog-default' } }) });
+    const a = await run(dir, ['--entry', 'msgs.ping', '--log', log(dir)]);
+    const b = await run(dir, [...sendArgs, '--log', log(dir)]);
+    srv.close();
+    assert.strictEqual(a.code, 0, JSON.stringify(a.out));
+    assert.strictEqual(b.code, 0, JSON.stringify(b.out));
+    assert.strictEqual(seen[0].headers['x-client'], 'qa-suite');
+    assert.strictEqual(seen[0].headers['x-request-id'], 'catalog-default');
+    assert.strictEqual(seen[1].headers['x-client'], 'qa-suite');
+    assert.strictEqual(seen[1].headers['x-request-id'], 'req-001');
+  });
+
+  await test('headers: a ${ENV_VAR} value is read from .env, sent, and redacted from the log and stdout', async () => {
+    const SECRET = 'EVAL_SENTINEL_HEADER_runapi_9d2';
+    const { srv, port, seen } = await recorder((req, res) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ echo: req.headers['x-tenant-key'] })); });
+    const dir = proj({ 'integration/msgs_api.json': hdrCat(port, { headers: { 'X-Tenant-Key': '${TENANT_KEY_T}' } }), '.env': `TENANT_KEY_T=${SECRET}\n` });
+    const { code, out, raw } = await runRaw(dir, [...sendArgs, '--expect-equals', 'echo=nope', '--log', log(dir)]);
+    srv.close();
+    assert.strictEqual(code, 1, JSON.stringify(out));
+    assert.strictEqual(seen[0].headers['x-tenant-key'], SECRET);
+    const logText = fs.readFileSync(log(dir), 'utf8');
+    assert.ok(!logText.includes(SECRET), 'log leaks the header value');
+    assert.ok(!raw.includes(SECRET), 'stdout leaks the header value');
+    assert.match(logText, /X-Tenant-Key: \[redacted\]/);
+  });
+
+  await test('headers: an unset ${ENV_VAR} in a header is BLOCKED naming the var, nothing sent', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = proj({ 'integration/msgs_api.json': hdrCat(port, { headers: { 'X-Tenant-Key': '${NOPE_TENANT_T}' } }) });
+    const { code, out } = await run(dir, [...sendArgs, '--log', log(dir)]);
+    srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.match(out.reason, /NOPE_TENANT_T/);
+    assert.strictEqual(seen.length, 0);
+  });
+
+  await test('headers: Content-Type and Accept may be overridden, and are not sent twice', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = proj({ 'integration/msgs_api.json': hdrCat(port, {}, {
+      headers: { 'X-Request-Id': '{requestId}', 'content-type': 'application/vnd.example+json', ACCEPT: 'application/vnd.example+json' } }) });
+    const { code, out } = await run(dir, [...sendArgs, '--log', log(dir)]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(seen[0].headers['content-type'], 'application/vnd.example+json');
+    assert.strictEqual(seen[0].headers.accept, 'application/vnd.example+json');
+  });
+
+  await test('headers: they work alongside basic auth', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = proj({
+      'integration/msgs_api.json': hdrCat(port, { auth: { type: 'basic', userEnv: 'MSG_USER_T', passEnv: 'MSG_PASS_T' } }),
+      '.env': 'MSG_USER_T=qa\nMSG_PASS_T=pw-123\n',
+    });
+    const { code, out } = await run(dir, [...sendArgs, '--log', log(dir)]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(seen[0].headers.authorization, 'Basic ' + Buffer.from('qa:pw-123').toString('base64'));
+    assert.strictEqual(seen[0].headers['x-request-id'], 'req-001');
+  });
+
+  await test('headers: --omit of a header param drops that header only', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = proj({ 'integration/msgs_api.json': hdrCat(port, { headers: { 'X-Client': 'qa-suite' } }) });
+    const { code, out } = await run(dir, ['--entry', 'msgs.send', '--param', 'text=hello', '--omit', 'requestId', '--log', log(dir)]);
+    srv.close();
+    assert.strictEqual(code, 0, JSON.stringify(out));
+    assert.strictEqual(seen[0].headers['x-request-id'], undefined);
+    assert.strictEqual(seen[0].headers['x-client'], 'qa-suite');
+  });
+
+  await test('headers: the evidence log lists the custom headers sent', async () => {
+    const { srv, port } = await recorder();
+    const dir = proj({ 'integration/msgs_api.json': hdrCat(port) });
+    await run(dir, [...sendArgs, '--log', log(dir)]);
+    srv.close();
+    assert.match(fs.readFileSync(log(dir), 'utf8'), /^POST http:\/\/127\.0\.0\.1:\d+\/messages\nX-Request-Id: req-001\n\nHTTP_STATUS:200/);
+  });
+
+  for (const [label, headers, pattern] of [
+    ['Authorization (a credential)', { Authorization: 'Bearer abc' }, /credential.*"auth"/],
+    ['Cookie (a credential)', { Cookie: 'sid=abc' }, /credential/],
+    ['proxy-authorization (a credential, any case)', { 'proxy-authorization': 'Basic abc' }, /credential/],
+    ['Host (client-managed)', { Host: 'evil.example' }, /set by the HTTP client/],
+    ['Content-Length (client-managed)', { 'Content-Length': '5' }, /set by the HTTP client/],
+    ['an invalid header name', { 'Bad Name': 'x' }, /not a valid HTTP header name/],
+    ['a non-string value', { 'X-Retries': 3 }, /must have a string value/],
+    ['an undeclared {param}', { 'X-Trace': '{traceId}' }, /\{traceId\}.*not a declared param/],
+  ]) {
+    await test(`headers: ${label} is BLOCKED (bad-headers), nothing sent`, async () => {
+      const { srv, port, seen } = await recorder();
+      const dir = proj({ 'integration/msgs_api.json': hdrCat(port, {}, { headers: { 'X-Request-Id': '{requestId}', ...headers } }) });
+      const { code, out } = await run(dir, [...sendArgs, '--log', log(dir)]);
+      srv.close();
+      assert.strictEqual(code, 2, JSON.stringify(out));
+      assert.strictEqual(out.reasonCode, 'bad-headers', JSON.stringify(out));
+      assert.match(out.reason, pattern);
+      assert.strictEqual(seen.length, 0);
+    });
+  }
+
+  await test('headers: a catalog-level headers block that is not an object is BLOCKED', async () => {
+    const dir = proj({ 'integration/msgs_api.json': hdrCat(9, { headers: ['X-A: b'] }) });
+    const { code, out } = await run(dir, ['--entry', 'msgs.ping', '--log', log(dir)]);
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.reasonCode, 'bad-headers');
+  });
+
+  await test('headers: the header the apiKey auth sends cannot also be set in headers', async () => {
+    const dir = proj({
+      'integration/msgs_api.json': hdrCat(9, { auth: { type: 'apiKey', headerName: 'X-Api-Key', tokenEnv: 'K_T' } }, { headers: { 'x-api-key': 'literal' } }),
+      '.env': 'K_T=key-123\n',
+    });
+    const { code, out } = await run(dir, ['--entry', 'msgs.send', '--param', 'requestId=r', '--param', 'text=t', '--log', log(dir)]);
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.reasonCode, 'bad-headers');
+    assert.match(out.reason, /apiKey auth sends/);
+  });
+
+  await test('headers: a param value with a line break is BLOCKED without echoing it, nothing sent', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = proj({ 'integration/msgs_api.json': hdrCat(port) });
+    const { code, out } = await run(dir, ['--entry', 'msgs.send', '--param', 'requestId=a\r\nX-Injected: yes', '--param', 'text=t', '--log', log(dir)]);
+    srv.close();
+    assert.strictEqual(code, 2, JSON.stringify(out));
+    assert.strictEqual(out.reasonCode, 'bad-headers');
+    assert.match(out.reason, /line break or control character/);
+    assert.ok(!out.reason.includes('X-Injected'), 'the value is echoed');
+    assert.strictEqual(seen.length, 0);
+  });
+
+  await test('headers: a catalog without "headers" sends exactly the headers it sent before', async () => {
+    const { srv, port, seen } = await recorder();
+    const dir = proj({ 'integration/orders_api.json': svc(port) });
+    const { code } = await run(dir, [...listArgs, '--log', log(dir)]);
+    srv.close();
+    assert.strictEqual(code, 0);
+    const custom = Object.keys(seen[0].headers).filter(k => !['host', 'connection', 'accept', 'accept-encoding', 'accept-language', 'sec-fetch-mode', 'user-agent', 'content-length'].includes(k));
+    assert.deepStrictEqual(custom, []);
+    assert.match(fs.readFileSync(log(dir), 'utf8'), /^GET http:\/\/127\.0\.0\.1:\d+\/orders\?status=open&page=1\n\nHTTP_STATUS:200/);
+  });
+
   console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed` : `\n${passed} passed`);
   process.exitCode = failures.length ? 1 : 0;
 })();

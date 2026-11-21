@@ -24,7 +24,8 @@ node "${CLAUDE_PLUGIN_ROOT}/skills/api-integration/scripts/run_api.js" \
   2. listed in the request's optional `"query": ["name", ...]` → sent in the query string
      (`swagger-import` writes this for every `in: query` param);
   3. a `{name}` placeholder in `body` → stays in the body only (never added to the URL);
-  4. referenced nowhere in the request → query string (backward-compatible fallback, e.g.
+  4. a `{name}` placeholder in a custom header (see "Custom headers" below) → that header only;
+  5. referenced nowhere in the request → query string (backward-compatible fallback, e.g.
      `params: ["userId"]` with a path of `/todos` and no placeholder becomes `?userId=<value>`).
   A `query` entry that isn't in `params` is BLOCKED.
 - **`auth.type`**: `bearer`, `basic`, `apiKey` (custom header — e.g.
@@ -58,6 +59,46 @@ before.
 { "name": "create-order", "method": "POST", "path": "/orders", "params": ["qty", "item"],
   "body": { "qty": { "$param": "qty", "type": "integer" }, "item": { "$param": "item", "type": "json" } } }
 ```
+
+## Custom headers — `headers`
+
+APIs often expect headers of their own: a correlation or request ID, a tenant, a client name,
+a vendor media type. Declare them as `"headers": {"<Name>": "<value>"}` at the catalog's top
+level (sent with every request of the catalog) and/or on a request (merged over the catalog's;
+names are compared case-insensitively, so a request's `x-client` replaces the catalog's
+`X-Client`).
+
+```json
+{ "name": "messages", "target": "catalog", "baseUrl": "${MESSAGES_BASE_URL}",
+  "auth": { "type": "basic", "userEnv": "MESSAGES_USER", "passEnv": "MESSAGES_PASS" },
+  "headers": { "X-Client": "qa-suite", "X-Tenant-Key": "${MESSAGES_TENANT_KEY}" },
+  "requests": [
+    { "name": "send", "method": "POST", "path": "/messages", "params": ["requestId", "text"],
+      "headers": { "X-Request-Id": "{requestId}" },
+      "body": { "text": { "$param": "text", "type": "string" } } } ] }
+```
+
+- **A value** is literal text with optional `{param}` refs (a declared param; it stays in the
+  header and is never added to the URL) and `${ENV_VAR}` refs (process env, then `.env`, like
+  `baseUrl`). A resolved `${ENV_VAR}` is treated as a credential: replaced by `[redacted]` in
+  the log and the printed JSON. Refs resolve in one pass: a param or env value is never
+  re-scanned.
+- **Any header name** that is a valid HTTP token is allowed, `Content-Type` and `Accept`
+  included (they replace the runner's defaults), except:
+  - `Authorization`, `Proxy-Authorization`, `Cookie`: they carry credentials, so they go
+    through `auth` (`bearer` / `basic`, or `apiKey` with any `headerName`), where the value
+    stays in `.env` and is redacted;
+  - the header the catalog's `apiKey` auth already sends (set it in one place only);
+  - `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`: the HTTP client sets them.
+
+  Each of these, an invalid name, a non-string value, an undeclared `{param}`, and a value that
+  resolves to a line break or control character is BLOCKED (`reasonCode: "bad-headers"`)
+  before anything is sent; the value itself is never echoed. An unset `${ENV_VAR}` is BLOCKED
+  naming the variable.
+- **`--omit <param>`** on a param used in a header sends the request without that header.
+- **Evidence:** the custom headers sent are listed under the request line in the `--log` file
+  (resolved `${ENV_VAR}` values as `[redacted]`). A catalog without `headers` sends and logs
+  exactly what it did before.
 
 ## A captured token — `auth.tokenStore`
 
