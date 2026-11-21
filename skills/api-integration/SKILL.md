@@ -81,6 +81,9 @@ whatever the target.
 
 - Writes (POST/PUT/DELETE) run if cataloged — the catalog is the authorization.
 - Secrets stay in env — catalog files hold env-var *names* (`tokenEnv`); never print values.
+- Custom headers (`headers`, catalog- or request-level) take literal text, `{param}` and
+  `${ENV_VAR}` values; credential headers (Authorization, Cookie) go through `auth` instead —
+  see `references/api-requests.md`, "Custom headers".
 - Missing param/env → BLOCKED (sequential: ask the user instead).
 
 ## Evidence

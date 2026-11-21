@@ -7,7 +7,10 @@
 //     [--env <environment-name>] [--expect-rows N] [--expect-min-rows N] [--catalog ./integration] --log <path>
 //
 // Prints ONE JSON line: {"result":"PASS|FAIL|BLOCKED", ...}. Exit: 0 PASS, 1 FAIL, 2 BLOCKED.
+// sqlcmd writes its result as Unicode to a temp file (-u -o), so non-ASCII text (Arabic, …)
+// reaches the log intact whatever the console code page.
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
@@ -70,7 +73,14 @@ catch (e) { blocked(e.message); }
 if (c.user && !c.password) blocked(`DB password is not set — set ${c.passwordHint} in .env (never on the command line)`);
 const srv = c.port ? `${c.server},${c.port}` : c.server;
 
-const cmdArgs = ['-S', srv, '-C', '-b', '-h', '-1', '-W', '-s', '|', '-Q', sql];
+// Results go to a file in Unicode (-u -o), not through the console: console output is written
+// in the console's OEM code page (e.g. 437 on an English Windows), which turns every character
+// that page lacks (Arabic, Cyrillic, CJK, …) into "?", although the database holds it. -f o:65001
+// is not a fix: on Windows the first sqlcmd call of a console session still writes "?". The
+// file lives in a fresh temp folder and is removed as soon as it is read.
+const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentex-sqlcmd-'));
+const outFile = path.join(outDir, 'result.txt');
+const cmdArgs = ['-S', srv, '-C', '-b', '-h', '-1', '-W', '-s', '|', '-u', '-o', outFile, '-Q', sql];
 if (c.database) cmdArgs.splice(2, 0, '-d', c.database);
 if (c.user) cmdArgs.splice(2, 0, '-U', c.user); // password only via SQLCMDPASSWORD in the child env
 
@@ -79,14 +89,31 @@ const r = spawnSync('sqlcmd', cmdArgs, {
   encoding: 'utf8', timeout: 30000,
   env: c.password ? { ...process.env, SQLCMDPASSWORD: c.password } : process.env,
 });
+// The result file: UTF-16LE as -u asks for, with or without a BOM; UTF-8 otherwise (a sqlcmd
+// that ignores -u). Missing when sqlcmd failed before writing it.
+function readResult(file) {
+  let buf;
+  try { buf = fs.readFileSync(file); } catch { return ''; }
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return buf.subarray(2).toString('utf16le');
+  if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return buf.subarray(3).toString('utf8');
+  // Bare UTF-16LE, no BOM: a zero high byte on the first character only shows up when that
+  // character is ASCII (an Arabic first column starts 45 06, not 45 00). Decode as UTF-8 and
+  // fall back to UTF-16LE when that yields NUL or replacement characters, which a database
+  // column never holds.
+  const asUtf8 = buf.toString('utf8');
+  if (buf.length % 2 === 0 && (asUtf8.includes('\u0000') || asUtf8.includes('\uFFFD'))) return buf.toString('utf16le');
+  return asUtf8;
+}
+const result = readResult(outFile);
+fs.rmSync(outDir, { recursive: true, force: true });
 if (r.error && r.error.code === 'ENOENT') blocked('sqlcmd is not installed — see the db-integration reference for install steps (winget install -e --id Microsoft.Sqlcmd)');
-const output = (r.stdout || '') + (r.stderr ? `\nSTDERR:\n${r.stderr}` : '');
+const output = result + (r.stdout ? `\n${r.stdout}` : '') + (r.stderr ? `\nSTDERR:\n${r.stderr}` : '');
 fs.mkdirSync(path.dirname(logPath), { recursive: true });
 fs.writeFileSync(logPath, `ENTRY: ${entry}\n\n${output}\n`);
 if (r.status !== 0) out({ result: 'FAIL', reason: 'sqlcmd returned an error (see log)', log: logPath }, 1);
 
 // ---- row count + assertions ----
-const rows = (r.stdout || '').split(/\r?\n/)
+const rows = result.split(/\r?\n/)
   .map(l => l.trim())
   .filter(l => l && !/^\(\d+ rows? affected\)$/i.test(l) && !/^Warning:/i.test(l)).length;
 const failures = [];

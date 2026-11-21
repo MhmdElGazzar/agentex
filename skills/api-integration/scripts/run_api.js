@@ -25,6 +25,15 @@
 // string; a param used only as a `{name}` placeholder in the body stays in the body; a param
 // referenced nowhere in the request template falls back to the query string.
 // auth.type: "bearer" | "basic" | "apiKey" (custom header, e.g. X-API-Key) | "none".
+// Custom headers: "headers": {"<Name>": "<value>"} at the catalog's top level (every request)
+// and/or on a request (merged over the catalog's, names compared case-insensitively). A value
+// is literal text with optional `{param}` (a declared param — header-only, never added to the
+// URL; --omit drops the header) and `${ENV_VAR}` refs (process env, then .env; the resolved
+// value is redacted like a credential). Any header name is allowed except the credential
+// headers (Authorization, Proxy-Authorization, Cookie — use "auth"), the header the catalog's
+// auth sends, and the headers the HTTP client manages (Host, Content-Length,
+// Transfer-Encoding, Connection); a value with a line break or control character is BLOCKED.
+// Content-Type and Accept may be overridden. Sent custom headers are listed in the log.
 // Catalog "target" (optional, top level) decides who owns the base URL and auth: "catalog" →
 // the catalog's own baseUrl refs and auth, the environment's api block ignored (swagger-import
 // writes it); "environment" → the active environment's api block; absent → the environment's
@@ -157,6 +166,43 @@ function fillNodes(n) {
   return n;
 }
 
+// ---- custom headers: catalog-level "headers", overridden per request by the request's ----
+// Validated before anything is sent. Values resolve later (after auth), in one pass, so a
+// param value or an env value is never re-scanned for further refs.
+const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/; // RFC 9110 token
+const MANAGED_HEADERS = ['host', 'content-length', 'transfer-encoding', 'connection'];
+const CREDENTIAL_HEADERS = ['authorization', 'proxy-authorization', 'cookie'];
+const HEADER_REF_RE = /\$\{([A-Z0-9_]+)\}|\{([a-zA-Z0-9_]+)\}/g;
+function headerBlock(block, where) {
+  if (block === undefined) return [];
+  const bad = msg => blocked(msg, { reasonCode: 'bad-headers' });
+  if (!block || typeof block !== 'object' || Array.isArray(block)) bad(`"headers" ${where} must be an object of header name → value`);
+  return Object.entries(block).map(([name, value]) => {
+    if (!HEADER_NAME_RE.test(name)) bad(`header name ${JSON.stringify(name)} ${where} is not a valid HTTP header name`);
+    if (typeof value !== 'string') bad(`header "${name}" ${where} must have a string value`);
+    const lower = name.toLowerCase();
+    if (MANAGED_HEADERS.includes(lower)) bad(`header "${name}" ${where} is set by the HTTP client and cannot be set in the catalog`);
+    if (CREDENTIAL_HEADERS.includes(lower)) bad(`header "${name}" ${where} carries a credential — configure it through "auth" so its value stays in .env and is redacted`);
+    return { name, lower, value };
+  });
+}
+const customHeaders = new Map(); // lower-case name → { name, lower, value }
+for (const h of headerBlock(def.headers, `in catalog "${fileName}"`)) customHeaders.set(h.lower, h);
+for (const h of headerBlock(req.headers, `of ${entry}`)) customHeaders.set(h.lower, h);
+const authHeaderName = def.auth && def.auth.type === 'apiKey' && typeof def.auth.headerName === 'string' ? def.auth.headerName.toLowerCase() : null;
+if (authHeaderName && customHeaders.has(authHeaderName)) {
+  blocked(`header "${customHeaders.get(authHeaderName).name}" of ${entry} is the header the catalog's apiKey auth sends — set it in one place only`, { reasonCode: 'bad-headers' });
+}
+const headerRefs = h => [...h.value.matchAll(HEADER_REF_RE)];
+const headerParamNames = new Set();
+for (const h of customHeaders.values()) {
+  for (const m of headerRefs(h)) {
+    if (m[2] === undefined) continue;
+    if (!declared.includes(m[2])) blocked(`header "${h.name}" of ${entry} uses {${m[2]}}, which is not a declared param (declared: ${declared.join(', ') || 'none'})`, { reasonCode: 'bad-headers' });
+    headerParamNames.add(m[2]);
+  }
+}
+
 // ---- target: the environment's api block or the catalog's own baseUrl/auth (one rule below) ----
 const pc = require(path.join(__dirname, '..', '..', '..', 'scripts', 'lib', 'project_config.js'));
 // Catalog-named vars resolve like every other secret: process env, then the project's .env.
@@ -199,7 +245,8 @@ const baseUrl = target ? target.baseUrl : resolveEnvRefs(def.baseUrl || '');
 //   1. `{k}` in the path            → substituted into the path
 //   2. k listed in req.query        → query string (explicit; swagger-import writes this)
 //   3. `{k}` in the body template   → body only (never leaks into the URL)
-//   4. referenced nowhere           → query string (backward-compat fallback)
+//   4. `{k}` in a custom header     → that header only (never leaks into the URL)
+//   5. referenced nowhere           → query string (backward-compat fallback)
 const queryList = req.query === undefined ? [] : req.query;
 if (!Array.isArray(queryList)) blocked(`"query" of ${entry} must be an array of param names`);
 for (const k of queryList) if (!declared.includes(k)) blocked(`query param "${k}" of ${entry} is not declared in "params" (declared: ${declared.join(', ') || 'none'})`);
@@ -210,7 +257,7 @@ for (const [k, v] of Object.entries(params)) {
   const placeholder = `{${k}}`;
   const inPath = urlPath.includes(placeholder);
   if (inPath) urlPath = urlPath.split(placeholder).join(encodeURIComponent(v));
-  if (queryList.includes(k) || (!inPath && !bodyTemplate.includes(placeholder) && !bodyParamNames.has(k))) queryParams.push([k, v]);
+  if (queryList.includes(k) || (!inPath && !bodyTemplate.includes(placeholder) && !bodyParamNames.has(k) && !headerParamNames.has(k))) queryParams.push([k, v]);
 }
 const unresolved = urlPath.match(/\{[a-zA-Z0-9_]+\}/);
 if (unresolved) blocked(`unresolved placeholder ${unresolved[0]} in path`);
@@ -288,6 +335,28 @@ if (req.body !== undefined) {
   headers['Content-Type'] = 'application/json';
 }
 
+// Custom headers go on last, so a catalog may override Content-Type / Accept (an existing key
+// in another letter case is replaced, never sent twice). A header whose value uses an
+// omitted param is not sent at all.
+const sentCustomHeaders = [];
+for (const h of customHeaders.values()) {
+  const refs = headerRefs(h);
+  if (refs.some(m => m[2] !== undefined && omit.includes(m[2]))) continue;
+  const value = h.value.replace(HEADER_REF_RE, (_, envRef, p) => {
+    if (envRef === undefined) return params[p];
+    const v = envVar(envRef);
+    if (!v) blocked(`env var ${envRef} is not set in .env or the environment (referenced by header "${h.name}" of ${entry})`);
+    addSecret(v);
+    return v;
+  });
+  // The value itself is never echoed: it may hold a resolved ${ENV_VAR}.
+  if (/[\x00-\x08\x0a-\x1f\x7f]/.test(value)) blocked(`header "${h.name}" of ${entry} resolves to a value with a line break or control character`, { reasonCode: 'bad-headers' });
+  for (const k of Object.keys(headers)) if (k.toLowerCase() === h.lower) delete headers[k];
+  headers[h.name] = value;
+  sentCustomHeaders.push(`${h.name}: ${value}`);
+}
+const requestHeadersLog = sentCustomHeaders.length ? sentCustomHeaders.join('\n') + '\n' : '';
+
 // ---- execute ----
 (async () => {
   const ctl = new AbortController();
@@ -299,16 +368,17 @@ if (req.body !== undefined) {
     text = await res.text();
   } catch (e) {
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    fs.writeFileSync(logPath, redact(`${req.method || 'GET'} ${url}\nREQUEST FAILED: ${e.message}\n`));
+    fs.writeFileSync(logPath, redact(`${req.method || 'GET'} ${url}\n${requestHeadersLog}REQUEST FAILED: ${e.message}\n`));
     outAsync({ result: 'FAIL', reason: `request failed: ${e.message}`, log: logPath, ms: Date.now() - started }, 1);
     return;
   } finally { clearTimeout(t); }
   const ms = Date.now() - started;
 
-  // evidence log: request line (no auth header values), response status/headers/body
+  // evidence log: request line + custom headers sent (no auth header values), response
+  // status/headers/body
   const respHeaders = [...res.headers.entries()].map(([k, v]) => `${k}: ${v}`).join('\n');
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
-  fs.writeFileSync(logPath, redact(`${req.method || 'GET'} ${url}\n\nHTTP_STATUS:${res.status}\n${respHeaders}\n\n${text}\n`));
+  fs.writeFileSync(logPath, redact(`${req.method || 'GET'} ${url}\n${requestHeadersLog}\nHTTP_STATUS:${res.status}\n${respHeaders}\n\n${text}\n`));
 
   // ---- assertions ----
   const failures = [];
